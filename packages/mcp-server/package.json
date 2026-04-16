@@ -1,0 +1,23 @@
+{
+  "name": "@beevibe/mcp-server",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Beevibe MCP server — HTTP tool surface + MeshServer broker",
+  "type": "module",
+  "main": "./dist/main.js",
+  "bin": {
+    "beevibe-mcp-server": "./dist/main.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "start": "node dist/main.js",
+    "dev": "tsx watch src/main.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "lint": "eslint src",
+    "test": "vitest run",
+    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "@beevibe/core": "workspace:*"
+  }
+}
