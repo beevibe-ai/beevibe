@@ -76,19 +76,37 @@ export class PostgresCoreMemoryRepository implements CoreMemoryBlockRepository {
 
   async initDefaults(agentId: string, level: HierarchyLevel): Promise<CoreMemoryBlock[]> {
     const templates = DEFAULT_BLOCK_TEMPLATES[level];
-    const created: CoreMemoryBlock[] = [];
+    if (templates.length === 0) return [];
+
+    // Batch insert all templates in a single round-trip; ON CONFLICT preserves
+    // existing rows' id + content (we pass EXCLUDED.* only for new inserts via
+    // ON CONFLICT DO UPDATE which still runs — here we deliberately keep the
+    // existing row's content on conflict since this is a "first-time init").
+    const tuples: string[] = [];
+    const values: unknown[] = [];
+    let i = 1;
     for (const tmpl of templates) {
-      const block = await this.upsert({
-        id: blockId(),
-        agent_id: agentId,
-        block_name: tmpl.block_name,
-        content: tmpl.initial_content,
-        char_limit: tmpl.char_limit,
-        is_system: tmpl.is_system,
-      });
-      created.push(block);
+      tuples.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
+      values.push(
+        blockId(),
+        agentId,
+        tmpl.block_name,
+        tmpl.initial_content,
+        tmpl.char_limit,
+        tmpl.is_system,
+      );
     }
-    return created;
+
+    const { rows } = await this.pool.query<CoreMemoryBlockRow>(
+      `INSERT INTO core_memory_block (
+         id, agent_id, block_name, content, char_limit, is_system
+       ) VALUES ${tuples.join(", ")}
+       ON CONFLICT (agent_id, block_name) DO UPDATE SET
+         updated_at = NOW()
+       RETURNING *`,
+      values,
+    );
+    return rows.map(rowToBlock);
   }
 }
 

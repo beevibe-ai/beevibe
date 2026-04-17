@@ -1,6 +1,7 @@
 import type { Person } from "../../domain/person.js";
 import type { PersonRepository, NewPerson, PersonPatch } from "../../ports/person-repo.js";
 import type { Pool } from "./client.js";
+import { buildPatchClause } from "./pg-helpers.js";
 import type { PersonRow } from "./row-types.js";
 
 export class PostgresPersonRepository implements PersonRepository {
@@ -42,30 +43,22 @@ export class PostgresPersonRepository implements PersonRepository {
   }
 
   async update(id: string, patch: PersonPatch): Promise<Person> {
-    const fields: string[] = [];
-    const values: unknown[] = [];
-    let i = 1;
+    const clause = buildPatchClause<PersonPatch>(patch, {
+      name: "name",
+      email: "email",
+    });
 
-    if (patch.name !== undefined) {
-      fields.push(`name = $${i++}`);
-      values.push(patch.name);
-    }
-    if (patch.email !== undefined) {
-      fields.push(`email = $${i++}`);
-      values.push(patch.email ?? null);
-    }
-
-    if (fields.length === 0) {
+    if (clause.fields.length === 0) {
       const existing = await this.findById(id);
       if (!existing) throw new Error(`Person not found: ${id}`);
       return existing;
     }
 
-    fields.push(`updated_at = NOW()`);
+    clause.fields.push(`updated_at = NOW()`);
 
     const { rows } = await this.pool.query<PersonRow>(
-      `UPDATE person SET ${fields.join(", ")} WHERE id = $${i} RETURNING *`,
-      [...values, id],
+      `UPDATE person SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
+      [...clause.values, id],
     );
     if (!rows[0]) throw new Error(`Person not found: ${id}`);
     return rowToPerson(rows[0]);

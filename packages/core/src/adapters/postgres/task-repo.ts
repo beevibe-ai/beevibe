@@ -11,6 +11,7 @@ import type {
   TaskListFilter,
 } from "../../ports/task-repo.js";
 import type { Pool } from "./client.js";
+import { buildPatchClause } from "./pg-helpers.js";
 import type { TaskRow } from "./row-types.js";
 
 export class PostgresTaskRepository implements TaskRepository {
@@ -93,7 +94,7 @@ export class PostgresTaskRepository implements TaskRepository {
 
   async countChildrenNotComplete(parentId: string): Promise<number> {
     const { rows } = await this.pool.query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM task
+      `SELECT COUNT(*) AS count FROM task
         WHERE parent_task_id = $1
           AND status NOT IN ('done', 'cancelled', 'failed')`,
       [parentId],
@@ -128,39 +129,31 @@ export class PostgresTaskRepository implements TaskRepository {
   }
 
   async update(id: string, patch: TaskPatch): Promise<Task> {
-    const fields: string[] = [];
-    const values: unknown[] = [];
-    let i = 1;
-    const set = <K extends keyof TaskPatch>(col: string, key: K) => {
-      if (patch[key] !== undefined) {
-        fields.push(`${col} = $${i++}`);
-        values.push(patch[key] ?? null);
-      }
-    };
+    const clause = buildPatchClause<TaskPatch>(patch, {
+      title: "title",
+      description: "description",
+      status: "status",
+      priority: "priority",
+      assignee_id: "assignee_id",
+      creator_id: "creator_id",
+      creator_type: "creator_type",
+      parent_task_id: "parent_task_id",
+      result_summary: "result_summary",
+      blocker_agent_id: "blocker_agent_id",
+      blocker_reason: "blocker_reason",
+    });
 
-    set("title", "title");
-    set("description", "description");
-    set("status", "status");
-    set("priority", "priority");
-    set("assignee_id", "assignee_id");
-    set("creator_id", "creator_id");
-    set("creator_type", "creator_type");
-    set("parent_task_id", "parent_task_id");
-    set("result_summary", "result_summary");
-    set("blocker_agent_id", "blocker_agent_id");
-    set("blocker_reason", "blocker_reason");
-
-    if (fields.length === 0) {
+    if (clause.fields.length === 0) {
       const existing = await this.findById(id);
       if (!existing) throw new Error(`Task not found: ${id}`);
       return existing;
     }
 
-    fields.push(`updated_at = NOW()`);
+    clause.fields.push(`updated_at = NOW()`);
 
     const { rows } = await this.pool.query<TaskRow>(
-      `UPDATE task SET ${fields.join(", ")} WHERE id = $${i} RETURNING *`,
-      [...values, id],
+      `UPDATE task SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
+      [...clause.values, id],
     );
     if (!rows[0]) throw new Error(`Task not found: ${id}`);
     return rowToTask(rows[0]);

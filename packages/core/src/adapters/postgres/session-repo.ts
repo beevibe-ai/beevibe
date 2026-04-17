@@ -10,6 +10,7 @@ import type {
   SessionPatch,
 } from "../../ports/session-repo.js";
 import type { Pool } from "./client.js";
+import { buildPatchClause } from "./pg-helpers.js";
 import type { SessionRow } from "./row-types.js";
 
 export class PostgresSessionRepository implements SessionRepository {
@@ -57,7 +58,7 @@ export class PostgresSessionRepository implements SessionRepository {
   async countRunningByAgent(agentId: string, types: SessionType[]): Promise<number> {
     if (types.length === 0) return 0;
     const { rows } = await this.pool.query<{ count: string }>(
-      `SELECT COUNT(*)::text AS count FROM session
+      `SELECT COUNT(*) AS count FROM session
         WHERE agent_id = $1
           AND status = 'running'
           AND type = ANY($2::text[])`,
@@ -117,40 +118,32 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   async update(id: string, patch: SessionPatch): Promise<Session> {
-    const fields: string[] = [];
-    const values: unknown[] = [];
-    let i = 1;
-    const set = (col: string, val: unknown) => {
-      if (val !== undefined) {
-        fields.push(`${col} = $${i++}`);
-        values.push(val ?? null);
-      }
-    };
+    const clause = buildPatchClause<SessionPatch>(patch, {
+      prior_session_id: "prior_session_id",
+      status: "status",
+      intent: "intent",
+      cli_session_id: "cli_session_id",
+      worktree_path: "worktree_path",
+      branch_name: "branch_name",
+      process_pid: "process_pid",
+      process_group_id: "process_group_id",
+      result_summary: "result_summary",
+      exit_code: "exit_code",
+      error: "error",
+      usage: "usage",
+      started_at: "started_at",
+      completed_at: "completed_at",
+    });
 
-    set("prior_session_id", patch.prior_session_id);
-    set("status", patch.status);
-    set("intent", patch.intent);
-    set("cli_session_id", patch.cli_session_id);
-    set("worktree_path", patch.worktree_path);
-    set("branch_name", patch.branch_name);
-    set("process_pid", patch.process_pid);
-    set("process_group_id", patch.process_group_id);
-    set("result_summary", patch.result_summary);
-    set("exit_code", patch.exit_code);
-    set("error", patch.error);
-    set("usage", patch.usage);
-    set("started_at", patch.started_at);
-    set("completed_at", patch.completed_at);
-
-    if (fields.length === 0) {
+    if (clause.fields.length === 0) {
       const existing = await this.findById(id);
       if (!existing) throw new Error(`Session not found: ${id}`);
       return existing;
     }
 
     const { rows } = await this.pool.query<SessionRow>(
-      `UPDATE session SET ${fields.join(", ")} WHERE id = $${i} RETURNING *`,
-      [...values, id],
+      `UPDATE session SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
+      [...clause.values, id],
     );
     if (!rows[0]) throw new Error(`Session not found: ${id}`);
     return rowToSession(rows[0]);

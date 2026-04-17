@@ -17,9 +17,11 @@ CREATE TABLE agent (
   name               TEXT NOT NULL,
   owner_id           TEXT NOT NULL REFERENCES person(id),
   parent_agent_id    TEXT REFERENCES agent(id),
-  hierarchy_level    TEXT NOT NULL DEFAULT 'ic',
+  hierarchy_level    TEXT NOT NULL DEFAULT 'ic'
+                       CHECK (hierarchy_level IN ('ic', 'team', 'org')),
   api_key            TEXT UNIQUE,
-  review_policy      TEXT,
+  review_policy      TEXT
+                       CHECK (review_policy IS NULL OR review_policy IN ('require_human', 'auto_done')),
   runtime_config     JSONB NOT NULL
                        DEFAULT '{"type":"claude-code","model":"claude-opus-4-7"}'::jsonb,
   max_task_sessions  INTEGER,
@@ -37,8 +39,11 @@ CREATE TABLE task (
   id                TEXT PRIMARY KEY,
   title             TEXT NOT NULL,
   description       TEXT,
-  status            TEXT NOT NULL DEFAULT 'pending',
-  priority          TEXT NOT NULL DEFAULT 'medium',
+  status            TEXT NOT NULL DEFAULT 'pending'
+                      CHECK (status IN ('pending', 'assigned', 'in_progress', 'review',
+                                        'revision', 'blocked', 'done', 'failed', 'cancelled')),
+  priority          TEXT NOT NULL DEFAULT 'medium'
+                      CHECK (priority IN ('low', 'medium', 'high', 'critical')),
 
   assignee_id       TEXT REFERENCES agent(id),
   creator_id        TEXT NOT NULL,
@@ -68,8 +73,10 @@ CREATE TABLE session (
   task_id            TEXT REFERENCES task(id),
   prior_session_id   TEXT REFERENCES session(id),
 
-  type               TEXT NOT NULL,
-  status             TEXT NOT NULL DEFAULT 'running',
+  type               TEXT NOT NULL
+                       CHECK (type IN ('task', 'mesh_ask', 'mesh_negotiate', 'blocker', 'chat')),
+  status             TEXT NOT NULL DEFAULT 'running'
+                       CHECK (status IN ('running', 'succeeded', 'failed', 'cancelled')),
   intent             TEXT NOT NULL,
 
   cli_session_id     TEXT,
@@ -118,7 +125,9 @@ CREATE TABLE work_product (
   id           TEXT PRIMARY KEY,
   task_id      TEXT NOT NULL REFERENCES task(id) ON DELETE CASCADE,
   agent_id     TEXT NOT NULL REFERENCES agent(id),
-  type         TEXT NOT NULL,
+  type         TEXT NOT NULL
+                 CHECK (type IN ('pull_request', 'branch', 'commit', 'document',
+                                 'analysis', 'report', 'design', 'artifact', 'preview')),
   title        TEXT NOT NULL,
   summary      TEXT,
   url          TEXT,
@@ -136,8 +145,9 @@ CREATE TABLE memory_fact (
   id                TEXT PRIMARY KEY,
   agent_id          TEXT NOT NULL REFERENCES agent(id) ON DELETE CASCADE,
   scope             TEXT NOT NULL CHECK (scope IN ('ic', 'team', 'org')),
-  category          TEXT NOT NULL DEFAULT 'archival',
-  fact_type         TEXT NOT NULL,
+  category          TEXT NOT NULL DEFAULT 'archival' CHECK (category IN ('archival')),
+  fact_type         TEXT NOT NULL
+                      CHECK (fact_type IN ('belief', 'pattern', 'gotcha', 'preference', 'decision')),
   content           TEXT NOT NULL,
   embedding         VECTOR(1536) NOT NULL,
   source_chain_ids  TEXT[] DEFAULT '{}',

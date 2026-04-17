@@ -1,6 +1,7 @@
 import type { Agent, HierarchyLevel, ReviewPolicy, RuntimeConfig } from "../../domain/agent.js";
 import type { AgentRepository, NewAgent, AgentPatch } from "../../ports/agent-repo.js";
 import type { Pool } from "./client.js";
+import { buildPatchClause } from "./pg-helpers.js";
 import type { AgentRow } from "./row-types.js";
 
 export class PostgresAgentRepository implements AgentRepository {
@@ -97,38 +98,29 @@ export class PostgresAgentRepository implements AgentRepository {
   }
 
   async update(id: string, patch: AgentPatch): Promise<Agent> {
-    const fields: string[] = [];
-    const values: unknown[] = [];
-    let i = 1;
+    const clause = buildPatchClause<AgentPatch>(patch, {
+      name: "name",
+      owner_id: "owner_id",
+      parent_agent_id: "parent_agent_id",
+      hierarchy_level: "hierarchy_level",
+      api_key: "api_key",
+      review_policy: "review_policy",
+      runtime_config: "runtime_config",
+      max_task_sessions: "max_task_sessions",
+      max_mesh_sessions: "max_mesh_sessions",
+    });
 
-    const set = <K extends keyof AgentPatch>(col: string, key: K) => {
-      if (patch[key] !== undefined) {
-        fields.push(`${col} = $${i++}`);
-        values.push(patch[key] ?? null);
-      }
-    };
-
-    set("name", "name");
-    set("owner_id", "owner_id");
-    set("parent_agent_id", "parent_agent_id");
-    set("hierarchy_level", "hierarchy_level");
-    set("api_key", "api_key");
-    set("review_policy", "review_policy");
-    set("runtime_config", "runtime_config");
-    set("max_task_sessions", "max_task_sessions");
-    set("max_mesh_sessions", "max_mesh_sessions");
-
-    if (fields.length === 0) {
+    if (clause.fields.length === 0) {
       const existing = await this.findById(id);
       if (!existing) throw new Error(`Agent not found: ${id}`);
       return existing;
     }
 
-    fields.push(`updated_at = NOW()`);
+    clause.fields.push(`updated_at = NOW()`);
 
     const { rows } = await this.pool.query<AgentRow>(
-      `UPDATE agent SET ${fields.join(", ")} WHERE id = $${i} RETURNING *`,
-      [...values, id],
+      `UPDATE agent SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
+      [...clause.values, id],
     );
     if (!rows[0]) throw new Error(`Agent not found: ${id}`);
     return rowToAgent(rows[0]);
