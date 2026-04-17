@@ -13,14 +13,19 @@
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test",
-    "clean": "turbo clean && rm -rf node_modules"
+    "clean": "turbo clean && rm -rf node_modules",
+    "migrate": "node-pg-migrate --envPath .env",
+    "migrate:test": "node-pg-migrate --envPath .env -d DATABASE_URL_TEST"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^7.18.0",
     "@typescript-eslint/parser": "^7.18.0",
+    "dotenv": "^17.4.2",
     "eslint": "^8.57.0",
     "eslint-import-resolver-typescript": "^3.6.3",
     "eslint-plugin-import": "^2.30.0",
+    "node-pg-migrate": "^7.7.1",
+    "pg": "^8.13.0",
     "prettier": "^3.3.3",
     "tsx": "^4.19.1",
     "turbo": "^2.1.3",

@@ -1,0 +1,16 @@
+import { customAlphabet } from "nanoid";
+
+const alphabet = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+const nanoid12 = customAlphabet(alphabet, 12);
+
+export function generateId(prefix: string): string {
+  return `${prefix}_${nanoid12()}`;
+}
+
+export const agentId = (): string => generateId("agent");
+export const taskId = (): string => generateId("task");
+export const sessionId = (): string => generateId("sess");
+export const personId = (): string => generateId("person");
+export const blockId = (): string => generateId("block");
+export const workProductId = (): string => generateId("wp");
+export const factId = (): string => generateId("fact");
