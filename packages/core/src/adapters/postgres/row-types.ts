@@ -92,7 +92,6 @@ export interface MemoryFactRow {
   id: string;
   agent_id: string;
   scope: string;
-  category: string;
   fact_type: string;
   content: string;
   /** pgvector returns vectors as string like "[0.1,0.2,…]"; adapters parse into number[]. */

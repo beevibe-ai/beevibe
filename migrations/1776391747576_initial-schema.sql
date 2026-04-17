@@ -145,7 +145,6 @@ CREATE TABLE memory_fact (
   id                TEXT PRIMARY KEY,
   agent_id          TEXT NOT NULL REFERENCES agent(id) ON DELETE CASCADE,
   scope             TEXT NOT NULL CHECK (scope IN ('ic', 'team', 'org')),
-  category          TEXT NOT NULL DEFAULT 'archival' CHECK (category IN ('archival')),
   fact_type         TEXT NOT NULL
                       CHECK (fact_type IN ('belief', 'pattern', 'gotcha', 'preference', 'decision')),
   content           TEXT NOT NULL,

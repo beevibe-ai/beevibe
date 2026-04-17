@@ -18,7 +18,6 @@ export interface MemoryFact {
   id: string;
   agent_id: string;
   scope: MemoryScope;
-  category: "archival";
   fact_type: FactType;
   content: string;
   embedding: number[];
