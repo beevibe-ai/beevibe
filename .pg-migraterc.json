@@ -1,0 +1,6 @@
+{
+  "migrations-dir": "migrations",
+  "migration-file-language": "sql",
+  "schema": "public",
+  "migrations-table": "pgmigrations"
+}

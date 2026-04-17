@@ -18,5 +18,13 @@
     "lint": "eslint src",
     "test": "vitest run",
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
+  },
+  "dependencies": {
+    "nanoid": "^5.0.7",
+    "pg": "^8.13.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10",
+    "dotenv": "^17.4.2"
   }
 }
