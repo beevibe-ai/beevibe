@@ -1,0 +1,238 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { RuntimeContext, RuntimeStep } from "../../ports/runtime.js";
+import { ClaudeCodeRuntime } from "./runtime.js";
+import type { CliProcessOptions, CliProcessResult } from "./spawn.js";
+import * as spawnModule from "./spawn.js";
+
+// We mock spawn.ts so tests verify the orchestration layer (arg building,
+// env stripping, path derivation, result mapping) without touching the
+// filesystem or spawning real processes. spawn.ts itself is tested with
+// real subprocesses in spawn.test.ts.
+
+const MOCK_OK: CliProcessResult = {
+  stdout:
+    JSON.stringify({
+      type: "result",
+      session_id: "cli_sess_mock",
+      total_cost_usd: 0.01,
+      model: "claude-opus-4-7",
+      usage: { input_tokens: 100, output_tokens: 50 },
+    }) + "\n",
+  stderr: "",
+  exitCode: 0,
+  timedOut: false,
+  aborted: false,
+  pid: 9999,
+  process_group_id: 9999,
+  truncated: false,
+};
+
+let runCliSpy: ReturnType<typeof vi.spyOn>;
+let lastOptions: CliProcessOptions | undefined;
+
+function mockRunCli(result: CliProcessResult = MOCK_OK): void {
+  runCliSpy.mockImplementation(async (options) => {
+    lastOptions = options;
+    // Simulate onSpawn firing, unless result.pid === null
+    if (result.pid !== null) {
+      options.onSpawn?.({ pid: result.pid, process_group_id: result.process_group_id ?? result.pid });
+    }
+    return result;
+  });
+}
+
+function ctx(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
+  return {
+    intent: "do a thing",
+    urgency: "normal",
+    workspace: { path: "/tmp/beevibe-test-ws" },
+    ...overrides,
+  };
+}
+
+beforeEach(() => {
+  lastOptions = undefined;
+  runCliSpy = vi.spyOn(spawnModule, "runCliProcess");
+});
+
+afterEach(() => {
+  runCliSpy.mockRestore();
+});
+
+describe("ClaudeCodeRuntime.execute", () => {
+  it("sets cwd to workspace.path and derives mcpConfigPath inside it", async () => {
+    mockRunCli();
+    const runtime = new ClaudeCodeRuntime();
+    await runtime.execute(ctx({ workspace: { path: "/sandbox/agent_xyz" } }));
+
+    expect(lastOptions?.cwd).toBe("/sandbox/agent_xyz");
+    const mcpIdx = lastOptions!.args!.indexOf("--mcp-config");
+    expect(mcpIdx).toBeGreaterThan(-1);
+    expect(lastOptions!.args![mcpIdx + 1]).toBe("/sandbox/agent_xyz/mcp-config.json");
+  });
+
+  it("includes --print -, stream-json, verbose, dangerously-skip-permissions, strict-mcp-config", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime().execute(ctx());
+    const args = lastOptions!.args!.join(" ");
+    expect(args).toContain("--print -");
+    expect(args).toContain("--output-format stream-json");
+    expect(args).toContain("--verbose");
+    expect(args).toContain("--dangerously-skip-permissions");
+    expect(args).toContain("--strict-mcp-config");
+  });
+
+  it("passes --model and --max-turns when configured", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime({ model: "claude-opus-4-7", maxTurns: 5 }).execute(ctx());
+    expect(lastOptions!.args).toContain("--model");
+    expect(lastOptions!.args).toContain("claude-opus-4-7");
+    expect(lastOptions!.args).toContain("--max-turns");
+    expect(lastOptions!.args).toContain("5");
+  });
+
+  it("omits --model and --max-turns when not configured", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime().execute(ctx());
+    expect(lastOptions!.args).not.toContain("--model");
+    expect(lastOptions!.args).not.toContain("--max-turns");
+  });
+
+  it("passes --resume when context.resume_session_id is set", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime().execute(ctx({ resume_session_id: "cli_prev_123" }));
+    expect(lastOptions!.args).toContain("--resume");
+    expect(lastOptions!.args).toContain("cli_prev_123");
+  });
+
+  it("strips Claude nesting-guard env vars", async () => {
+    mockRunCli();
+    const original = { ...process.env };
+    process.env.CLAUDECODE = "1";
+    process.env.CLAUDE_CODE_ENTRYPOINT = "cli";
+    process.env.CLAUDE_CODE_SESSION = "sess";
+    try {
+      await new ClaudeCodeRuntime().execute(ctx());
+      expect(lastOptions!.env!.CLAUDECODE).toBeUndefined();
+      expect(lastOptions!.env!.CLAUDE_CODE_ENTRYPOINT).toBeUndefined();
+      expect(lastOptions!.env!.CLAUDE_CODE_SESSION).toBeUndefined();
+    } finally {
+      process.env = original;
+    }
+  });
+
+  it("forwards context.intent to spawn as stdin", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime().execute(ctx({ intent: "fix bug X" }));
+    expect(lastOptions!.stdin).toBe("fix bug X");
+  });
+
+  it("wires onSpawn with renamed process_pid/process_group_id fields", async () => {
+    mockRunCli({
+      ...MOCK_OK,
+      pid: 12345,
+      process_group_id: 12345,
+    });
+    const spawnEvents: Array<{ process_pid: number; process_group_id: number }> = [];
+    await new ClaudeCodeRuntime().execute(
+      ctx({ onSpawn: (meta) => spawnEvents.push(meta) }),
+    );
+    expect(spawnEvents).toEqual([{ process_pid: 12345, process_group_id: 12345 }]);
+  });
+
+  it("wires onStep by running stdout chunks through stream-json parser", async () => {
+    const steps: RuntimeStep[] = [];
+    runCliSpy.mockImplementation(async (options) => {
+      // Simulate a tool_use event arriving mid-stream
+      options.onLog?.(
+        "stdout",
+        JSON.stringify({
+          type: "tool_use",
+          name: "Read",
+          input: { file_path: "/src/x.ts" },
+        }) + "\n",
+      );
+      return MOCK_OK;
+    });
+    await new ClaudeCodeRuntime().execute(
+      ctx({ onStep: (step) => steps.push(step) }),
+    );
+    expect(steps).toHaveLength(1);
+    expect(steps[0]!.tool).toBe("Read");
+    expect(steps[0]!.description).toBe("/src/x.ts");
+  });
+
+  it("maps aborted result → status: 'cancelled' (distinct from failed)", async () => {
+    mockRunCli({ ...MOCK_OK, exitCode: null, aborted: true, stdout: "" });
+    const result = await new ClaudeCodeRuntime().execute(ctx());
+    expect(result.status).toBe("cancelled");
+    expect(result.output).toBe("Session cancelled.");
+  });
+
+  it("maps exit 0 → status: 'completed'", async () => {
+    mockRunCli();
+    const result = await new ClaudeCodeRuntime().execute(ctx());
+    expect(result.status).toBe("completed");
+    expect(result.cli_session_id).toBe("cli_sess_mock");
+    expect(result.usage).toEqual({
+      input_tokens: 100,
+      output_tokens: 50,
+      cost_usd: 0.01,
+      model: "claude-opus-4-7",
+    });
+  });
+
+  it("maps non-zero exit → status: 'failed'", async () => {
+    mockRunCli({ ...MOCK_OK, exitCode: 1, stdout: "" });
+    const result = await new ClaudeCodeRuntime().execute(ctx());
+    expect(result.status).toBe("failed");
+  });
+
+  it("logs a warning when stdout is truncated", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    mockRunCli({ ...MOCK_OK, truncated: true });
+    await new ClaudeCodeRuntime().execute(ctx());
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("truncated at 4MB"),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("surfaces process_pid + process_group_id on the result", async () => {
+    mockRunCli({ ...MOCK_OK, pid: 7777, process_group_id: 7777 });
+    const result = await new ClaudeCodeRuntime().execute(ctx());
+    expect(result.process_pid).toBe(7777);
+    expect(result.process_group_id).toBe(7777);
+  });
+});
+
+describe("ClaudeCodeRuntime.healthCheck", () => {
+  it("returns healthy when CLI exits 0", async () => {
+    mockRunCli({ ...MOCK_OK, stdout: "", exitCode: 0 });
+    const runtime = new ClaudeCodeRuntime();
+    const health = await runtime.healthCheck();
+    expect(health.healthy).toBe(true);
+  });
+
+  it("returns unhealthy on non-zero exit", async () => {
+    mockRunCli({ ...MOCK_OK, stdout: "", exitCode: 1 });
+    const health = await new ClaudeCodeRuntime().healthCheck();
+    expect(health.healthy).toBe(false);
+  });
+
+  it("uses graceMs: 0 so a broken CLI fails fast", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime().healthCheck();
+    expect(lastOptions!.graceMs).toBe(0);
+    expect(lastOptions!.timeoutMs).toBe(5000);
+  });
+
+  it("returns unhealthy with error message when spawn throws", async () => {
+    runCliSpy.mockImplementation(() => {
+      throw new Error("ENOENT");
+    });
+    const health = await new ClaudeCodeRuntime({ command: "not-claude" }).healthCheck();
+    expect(health.healthy).toBe(false);
+    expect(health.error).toContain("not-claude");
+  });
+});
