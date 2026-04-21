@@ -40,6 +40,7 @@ export interface Task {
   result_summary?: string;
   blocker_agent_id?: string;
   blocker_reason?: string;
+  repo_url?: string;
   created_at: Date;
   updated_at: Date;
 }

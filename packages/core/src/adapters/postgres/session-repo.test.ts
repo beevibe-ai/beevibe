@@ -75,15 +75,14 @@ describe("PostgresSessionRepository", () => {
     const s = await sessions.create(
       newSession({
         task_id: task,
-        worktree_path: "/tmp/x",
-        branch_name: "agent/test",
+        workspace_path: "/tmp/x",
         process_pid: 12345,
         process_group_id: 12345,
       }),
     );
-    expect(s.worktree_path).toBe("/tmp/x");
-    expect(s.branch_name).toBe("agent/test");
+    expect(s.workspace_path).toBe("/tmp/x");
     expect(s.process_pid).toBe(12345);
+    expect(s.process_group_id).toBe(12345);
   });
 
   it("findLatestForTask returns newest by created_at", async () => {

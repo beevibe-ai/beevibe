@@ -33,8 +33,7 @@ export interface Session {
   status: SessionStatus;
   intent: string;
   cli_session_id?: string;
-  worktree_path?: string;
-  branch_name?: string;
+  workspace_path?: string;
   process_pid?: number;
   process_group_id?: number;
   result_summary?: string;
