@@ -14,10 +14,10 @@ import { extractStepEvent, parseClaudeStreamJson, parseStreamJsonLine } from "./
  *
  * Spawns the `claude` binary with the agent's sandbox as cwd, streams
  * `--output-format stream-json`, derives the `--mcp-config` path from the
- * workspace (written by M5 executor), and maps the result to RuntimeResult.
+ * workspace, and maps the result to RuntimeResult.
  *
- * Does NOT manage MCP config files, workspaces, git, or persistence —
- * those are M5 / agent concerns. Stateless; no cleanup required.
+ * Does not manage MCP config files, workspaces, git, or persistence.
+ * Stateless; no cleanup required.
  */
 export interface ClaudeCodeRuntimeConfig {
   /** Override CLI command (defaults to "claude" on PATH). */
@@ -29,8 +29,8 @@ export interface ClaudeCodeRuntimeConfig {
 }
 
 /**
- * Env vars that Claude Code uses to detect being launched from another
- * Claude session and refuse to start. We strip them because the executor
+ * Env vars the Claude CLI inspects to detect being launched from another
+ * Claude session (and refuse to start). We strip them because the executor
  * itself may be running inside Claude Code during development.
  */
 const NESTING_GUARD_VARS = [
@@ -64,8 +64,6 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     if (this.config.maxTurns) args.push("--max-turns", String(this.config.maxTurns));
     if (context.resume_session_id) args.push("--resume", context.resume_session_id);
 
-    // Strip Claude nesting-guard env vars so the CLI doesn't refuse to start
-    // when the executor itself is running inside Claude Code.
     const env: Record<string, string | undefined> = { ...process.env };
     for (const key of NESTING_GUARD_VARS) delete env[key];
 
@@ -115,13 +113,13 @@ export class ClaudeCodeRuntime implements AgentRuntime {
 
   async healthCheck(): Promise<RuntimeHealth> {
     try {
+      // graceMs: 0 so a broken binary fails fast rather than waiting the
+      // default 20s after SIGTERM.
       const result = await runCliProcess({
         command: this.config.command ?? "claude",
         args: ["--version"],
         cwd: tmpdir(),
         timeoutMs: 5_000,
-        // healthCheck should fail fast — don't wait the default 20s after
-        // SIGTERM for a broken binary.
         graceMs: 0,
       });
       return { healthy: result.exitCode === 0 };
@@ -134,6 +132,6 @@ export class ClaudeCodeRuntime implements AgentRuntime {
   }
 
   async shutdown(): Promise<void> {
-    // Stateless — each session is a separate process.
+    /* stateless — each session is a separate process */
   }
 }

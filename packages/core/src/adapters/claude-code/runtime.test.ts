@@ -4,11 +4,6 @@ import { ClaudeCodeRuntime } from "./runtime.js";
 import type { CliProcessOptions, CliProcessResult } from "./spawn.js";
 import * as spawnModule from "./spawn.js";
 
-// We mock spawn.ts so tests verify the orchestration layer (arg building,
-// env stripping, path derivation, result mapping) without touching the
-// filesystem or spawning real processes. spawn.ts itself is tested with
-// real subprocesses in spawn.test.ts.
-
 const MOCK_OK: CliProcessResult = {
   stdout:
     JSON.stringify({

@@ -5,9 +5,8 @@ import type { Workspace } from "./runtime.js";
  *
  * The platform's entire filesystem responsibility for agent execution:
  * give the agent a directory it owns, and remove it when the agent is
- * deleted. Everything else — cloning repos, creating git worktrees for
- * parallel tasks, committing, opening PRs — is the agent's own job
- * (handled via Claude Code's native Bash tool, guided by Skills in M9).
+ * deleted. Cloning repos, creating git worktrees for parallel tasks,
+ * committing, and opening PRs are all the agent's responsibility.
  *
  * Scope: per-AGENT, not per-task. The workspace persists across tasks so
  * repo clones and cached state accumulate naturally. Revision sessions

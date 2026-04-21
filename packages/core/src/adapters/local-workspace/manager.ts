@@ -13,8 +13,7 @@ import type { WorkspaceManager } from "../../ports/workspace.js";
  * their credentials (`.git/config`, possibly GitHub tokens).
  *
  * The adapter does nothing more than mkdir + rm — all git operations
- * (clone, worktree, commit, push, PR) are the agent's responsibility
- * via Claude Code's native Bash tool, guided by M9 skills.
+ * are the agent's responsibility.
  */
 export interface LocalWorkspaceManagerConfig {
   /** Defaults to `~/.beevibe/workspaces`. */

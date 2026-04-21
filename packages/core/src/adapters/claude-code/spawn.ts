@@ -1,43 +1,23 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import type { Readable } from "node:stream";
 
-/**
- * Guarded CLI subprocess runner. Used by `ClaudeCodeRuntime` to spawn the
- * `claude` binary with process-group lifecycle, chunked output capture,
- * abort-signal handling, and graceful shutdown (SIGTERM → grace → SIGKILL).
- *
- * Unix-only: we rely on detached process groups (`process.kill(-pid)`) to
- * ensure the entire CLI child tree dies on abort. Windows has different
- * process semantics and is out of v1 scope — `runCliProcess` throws on
- * win32 rather than silently leaking child processes.
- */
-
-/** Max accumulated stdout/stderr before truncation (4MB). */
 const MAX_CAPTURE_BYTES = 4 * 1024 * 1024;
 
 export interface CliProcessOptions {
   command: string;
   args?: string[];
   cwd: string;
-  /**
-   * Full env for the child. Caller is responsible for any stripping
-   * (e.g. Claude nesting-guard vars belong in ClaudeCodeRuntime, not here —
-   * this helper is generic).
-   */
   env?: Record<string, string | undefined>;
-  /** Pipe this string to stdin once then close. */
   stdin?: string;
-  /** Abort signal — sends SIGTERM then SIGKILL after graceMs. */
   abortSignal?: AbortSignal;
-  /** Optional hard timeout (no default — runs until done or aborted). */
   timeoutMs?: number;
   /** Grace period between SIGTERM and SIGKILL (default: 20s). */
   graceMs?: number;
-  /** Streaming callback — fires with each stdout/stderr chunk as it arrives. */
   onLog?: (stream: "stdout" | "stderr", chunk: string) => void;
   /**
-   * Fires once after spawn with the OS pid + process-group id. NOT called
-   * when spawn fails synchronously (pid === null) — the promise still
-   * resolves with pid: null so M5 can detect and skip pid-persistence.
+   * Fires once after spawn only when pid is non-null. On synchronous spawn
+   * failure pid is null and this callback does NOT fire — the promise still
+   * resolves so the caller can observe the failure via stderr + pid: null.
    */
   onSpawn?: (meta: { pid: number; process_group_id: number }) => void;
 }
@@ -49,10 +29,38 @@ export interface CliProcessResult {
   timedOut: boolean;
   aborted: boolean;
   pid: number | null;
-  /** pgid == pid for detached processes on Unix; null if spawn failed. */
+  /** pgid equals pid for detached Unix processes; null if spawn failed. */
   process_group_id: number | null;
-  /** True if stdout or stderr hit the 4MB cap — downstream parsers may be incomplete. */
+  /** True if stdout or stderr hit MAX_CAPTURE_BYTES. */
   truncated: boolean;
+}
+
+/** Accumulates chunks with a size cap. Defers concatenation to `join()` to
+ * avoid O(n²) string growth on buffers that are appended in many small pieces. */
+class CappedBuffer {
+  private readonly chunks: string[] = [];
+  private len = 0;
+  truncated = false;
+
+  append(chunk: string): void {
+    if (this.len >= MAX_CAPTURE_BYTES) {
+      this.truncated = true;
+      return;
+    }
+    const remaining = MAX_CAPTURE_BYTES - this.len;
+    if (chunk.length > remaining) {
+      this.chunks.push(chunk.slice(0, remaining));
+      this.len = MAX_CAPTURE_BYTES;
+      this.truncated = true;
+    } else {
+      this.chunks.push(chunk);
+      this.len += chunk.length;
+    }
+  }
+
+  join(): string {
+    return this.chunks.join("");
+  }
 }
 
 export function runCliProcess(options: CliProcessOptions): Promise<CliProcessResult> {
@@ -67,38 +75,22 @@ export function runCliProcess(options: CliProcessOptions): Promise<CliProcessRes
   const graceMs = options.graceMs ?? 20_000;
 
   return new Promise<CliProcessResult>((resolve) => {
-    let stdout = "";
-    let stderr = "";
+    const stdout = new CappedBuffer();
+    const stderr = new CappedBuffer();
     let settled = false;
-    let truncated = false;
 
     const proc: ChildProcess = spawn(options.command, options.args ?? [], {
       env: (options.env ?? process.env) as NodeJS.ProcessEnv,
       cwd: options.cwd,
       stdio: ["pipe", "pipe", "pipe"],
-      detached: true, // Process group for tree-kill
+      detached: true,
       shell: false,
     });
 
     const pid = proc.pid ?? null;
-    // pgid equals pid for detached Unix processes (child is the pg leader).
-    const processGroupId = pid;
 
     if (pid !== null && options.onSpawn) {
-      options.onSpawn({ pid, process_group_id: processGroupId! });
-    }
-
-    function appendCapped(existing: string, chunk: string): string {
-      if (existing.length >= MAX_CAPTURE_BYTES) {
-        truncated = true;
-        return existing;
-      }
-      const remaining = MAX_CAPTURE_BYTES - existing.length;
-      if (chunk.length > remaining) {
-        truncated = true;
-        return existing + chunk.slice(0, remaining);
-      }
-      return existing + chunk;
+      options.onSpawn({ pid, process_group_id: pid });
     }
 
     function killProc(signal: NodeJS.Signals): void {
@@ -109,14 +101,20 @@ export function runCliProcess(options: CliProcessOptions): Promise<CliProcessRes
       }
     }
 
-    function settleWith(partial: Omit<CliProcessResult, "pid" | "process_group_id" | "truncated">): void {
+    function settleWith(partial: Omit<CliProcessResult, "pid" | "process_group_id" | "truncated" | "stdout" | "stderr">): void {
       if (settled) return;
       settled = true;
       if (timer) clearTimeout(timer);
-      resolve({ ...partial, pid, process_group_id: processGroupId, truncated });
+      resolve({
+        ...partial,
+        stdout: stdout.join(),
+        stderr: stderr.join(),
+        pid,
+        process_group_id: pid,
+        truncated: stdout.truncated || stderr.truncated,
+      });
     }
 
-    // stdin
     proc.stdin!.on("error", () => {
       /* suppress EPIPE if child closes stdin early */
     });
@@ -125,41 +123,32 @@ export function runCliProcess(options: CliProcessOptions): Promise<CliProcessRes
     }
     proc.stdin!.end();
 
-    // Sequential log chain ensures onLog callbacks don't interleave
+    // Sequential log chain ensures async onLog callbacks don't interleave.
     let logChain = Promise.resolve();
-    proc.stdout!.on("data", (chunk: Buffer) => {
-      const text = chunk.toString();
-      stdout = appendCapped(stdout, text);
-      if (options.onLog) {
-        const cb = options.onLog;
-        logChain = logChain.then(() => {
-          try {
-            cb("stdout", text);
-          } catch {
-            /* callback errors don't break execution */
-          }
-        });
-      }
-    });
-    proc.stderr!.on("data", (chunk: Buffer) => {
-      const text = chunk.toString();
-      stderr = appendCapped(stderr, text);
-      if (options.onLog) {
-        const cb = options.onLog;
-        logChain = logChain.then(() => {
-          try {
-            cb("stderr", text);
-          } catch {
-            /* swallow */
-          }
-        });
-      }
-    });
+    function attachStreamHandler(stream: Readable, kind: "stdout" | "stderr", buf: CappedBuffer): void {
+      stream.on("data", (chunk: Buffer) => {
+        const text = chunk.toString();
+        buf.append(text);
+        if (options.onLog) {
+          const cb = options.onLog;
+          logChain = logChain.then(() => {
+            try {
+              cb(kind, text);
+            } catch {
+              /* swallow callback errors */
+            }
+          }).catch(() => {
+            /* swallow rejected async callbacks to avoid unhandledRejection */
+          });
+        }
+      });
+    }
+    attachStreamHandler(proc.stdout!, "stdout", stdout);
+    attachStreamHandler(proc.stderr!, "stderr", stderr);
 
-    // Outer flags so the `close` handler knows whether exit was caused by
-    // abort or timeout. Most children respond to SIGTERM before the SIGKILL
-    // grace period fires — without these flags, a clean SIGTERM exit looks
-    // like a normal completion.
+    // The close handler can't know whether exit was clean or forced by
+    // abort/timeout — SIGTERM often produces a normal exit code before
+    // SIGKILL fires. These flags disambiguate.
     let abortFired = false;
     let timeoutFired = false;
 
@@ -189,25 +178,12 @@ export function runCliProcess(options: CliProcessOptions): Promise<CliProcessRes
     }
 
     proc.on("close", (code) => {
-      settleWith({
-        stdout,
-        stderr,
-        exitCode: code,
-        timedOut: timeoutFired,
-        aborted: abortFired,
-      });
+      settleWith({ exitCode: code, timedOut: timeoutFired, aborted: abortFired });
     });
 
     proc.on("error", (err) => {
-      // Synchronous spawn failures (ENOENT, EACCES, etc.) — pid was never
-      // set, so onSpawn did not fire. Resolve with a clear failure.
-      settleWith({
-        stdout,
-        stderr: err.message,
-        exitCode: null,
-        timedOut: timeoutFired,
-        aborted: abortFired,
-      });
+      stderr.append(err.message);
+      settleWith({ exitCode: null, timedOut: timeoutFired, aborted: abortFired });
     });
   });
 }

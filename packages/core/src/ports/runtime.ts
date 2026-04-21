@@ -3,11 +3,11 @@ import type { SessionUsage } from "../domain/session.js";
 /**
  * Universal agent-execution contract.
  *
- * Every runtime adapter (ClaudeCodeRuntime in M2; future: OpenCode, etc.)
- * implements this shape. AgentSession (M3) delegates to the runtime after
+ * Every runtime adapter (ClaudeCodeRuntime; future: OpenCode, etc.)
+ * implements this shape. The orchestrator delegates to the runtime after
  * assembling context and provisioning the workspace.
  *
- * The runtime does NOT manage git, state, or persistence. It spawns the CLI,
+ * The runtime does not manage git, state, or persistence. It spawns the CLI,
  * interprets its output, and returns a typed RuntimeResult. All file-system
  * side effects happen inside the provided workspace.
  */
@@ -62,9 +62,9 @@ export interface RuntimeContext {
 
   /**
    * Fires once immediately after the subprocess spawns with a non-null pid.
-   * M5 executor uses this to persist pid/pgid to the session row for
-   * crash-recovery liveness probes. If pid is null (spawn failed), the
-   * callback is NOT fired — the rejected promise carries the failure.
+   * Consumers persist pid/pgid to the session row for crash-recovery
+   * liveness probes. If pid is null (synchronous spawn failure), the
+   * callback is not fired — the resolved result carries pid: null.
    */
   onSpawn?: (meta: { process_pid: number; process_group_id: number }) => void;
 }

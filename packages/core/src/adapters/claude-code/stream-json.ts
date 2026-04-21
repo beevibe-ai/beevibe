@@ -1,15 +1,23 @@
 import type { RuntimeResult, RuntimeStep } from "../../ports/runtime.js";
 
 /**
- * Parser for Claude Code's `--output-format stream-json` output.
- *
- * Each line of stdout is a JSON message with a `type` discriminator.
- * We parse two ways:
- *  - Line-at-a-time (`parseStreamJsonLine`) for streaming step extraction
- *    via `RuntimeContext.onStep`.
- *  - Whole-stdout (`parseClaudeStreamJson`) after process exit to produce
- *    a `RuntimeResult`.
+ * Parser for Claude Code's `--output-format stream-json` output. Each line
+ * is a JSON message with a `type` discriminator.
  */
+
+export const STREAM_TYPE = {
+  System: "system",
+  Assistant: "assistant",
+  ToolUse: "tool_use",
+  ToolResult: "tool_result",
+  Result: "result",
+  ContentBlockStart: "content_block_start",
+} as const;
+
+export const BLOCK_TYPE = {
+  Text: "text",
+  ToolUse: "tool_use",
+} as const;
 
 interface ContentBlock {
   type: string;
@@ -30,6 +38,8 @@ export interface StreamJsonMessage {
   };
   name?: string;
   input?: Record<string, unknown>;
+  tool_use_id?: string;
+  content?: unknown;
   session_id?: string;
   cost_usd?: number;
   total_cost_usd?: number;
@@ -44,10 +54,8 @@ export interface StreamJsonMessage {
   model?: string;
   result?: string;
   content_block?: ContentBlock;
-  [key: string]: unknown;
 }
 
-/** Parse a single stream-json line. Returns null for empty/invalid input. */
 export function parseStreamJsonLine(line: string): StreamJsonMessage | null {
   const trimmed = line.trim();
   if (!trimmed || !trimmed.startsWith("{")) return null;
@@ -58,32 +66,22 @@ export function parseStreamJsonLine(line: string): StreamJsonMessage | null {
   }
 }
 
-/**
- * Extract a RuntimeStep from a stream-json message. Returns null if the
- * message isn't a tool-use event.
- */
 export function extractStepEvent(msg: StreamJsonMessage): RuntimeStep | null {
-  // Direct tool_use message
-  if (msg.type === "tool_use" || msg.subtype === "tool_use") {
-    const toolName = msg.name ?? "unknown";
-    const input = msg.input ?? {};
+  if (msg.type === STREAM_TYPE.ToolUse || msg.subtype === STREAM_TYPE.ToolUse) {
     return {
-      tool: toolName,
-      description: describeToolInput(input),
+      tool: msg.name ?? "unknown",
+      description: describeToolInput(msg.input ?? {}),
       timestamp: new Date().toISOString(),
     };
   }
 
-  // Content-block-start with a tool_use block inside
-  if (msg.type === "content_block_start" && msg.content_block) {
+  if (msg.type === STREAM_TYPE.ContentBlockStart && msg.content_block?.type === BLOCK_TYPE.ToolUse) {
     const block = msg.content_block;
-    if (block.type === "tool_use") {
-      return {
-        tool: block.name ?? "unknown",
-        description: describeToolInput((block.input ?? {}) as Record<string, unknown>),
-        timestamp: new Date().toISOString(),
-      };
-    }
+    return {
+      tool: block.name ?? "unknown",
+      description: describeToolInput((block.input ?? {}) as Record<string, unknown>),
+      timestamp: new Date().toISOString(),
+    };
   }
 
   return null;
@@ -97,88 +95,79 @@ function describeToolInput(input: Record<string, unknown>): string {
 }
 
 /**
- * Post-hoc parse of accumulated stdout into a RuntimeResult.
+ * Build RuntimeResult from accumulated stdout after the process exits.
  *
- * Extracts the last assistant text as `output`, the final `result` message
- * for cli_session_id + cost + usage + model, and builds a human-readable
- * transcript with tool_use/tool_result correlation via tool_use_id.
- *
- * Note: does not decide between `completed` / `cancelled` — caller
- * (ClaudeCodeRuntime) supplies `cancelled` when the process was aborted
- * before exit. This function only distinguishes `completed` (exit 0) from
- * `failed` (non-zero).
+ * Does NOT set `status: "cancelled"` — that's the caller's job when an
+ * abort caused the exit. This function only distinguishes "completed"
+ * (exit 0) from "failed" (non-zero).
  */
 export function parseClaudeStreamJson(
   stdout: string,
   exitCode: number | null,
 ): Omit<RuntimeResult, "process_pid" | "process_group_id"> {
-  const lines = stdout.split("\n");
   const messages: StreamJsonMessage[] = [];
-  for (const line of lines) {
+  for (const line of stdout.split("\n")) {
     const msg = parseStreamJsonLine(line);
     if (msg) messages.push(msg);
   }
 
-  // Map tool_use_id → tool name so tool_result lines can say what tool
-  // they came from. Without this the transcript has opaque "[tool_result]"
-  // entries that mislead future LLM consumers.
+  // Correlate tool_use_id → tool name so tool_result transcript entries
+  // can show which tool they came from. Without this, [tool_result] would
+  // be opaque and misleading to downstream LLM consumers.
   const toolUseNames = new Map<string, string>();
   for (const msg of messages) {
-    if (msg.type === "assistant" && msg.message?.content && Array.isArray(msg.message.content)) {
+    if (msg.type === STREAM_TYPE.Assistant && Array.isArray(msg.message?.content)) {
       for (const block of msg.message.content) {
-        if (block.type === "tool_use" && block.id) {
+        if (block.type === BLOCK_TYPE.ToolUse && block.id) {
           toolUseNames.set(block.id, block.name ?? "unknown");
         }
       }
     }
   }
 
+  const transcriptParts: string[] = [];
   let output = "";
   let sessionId: string | undefined;
   let costUsd: number | undefined;
   let inputTokens = 0;
   let outputTokens = 0;
   let model: string | undefined;
-  let transcript = "";
 
   for (const msg of messages) {
-    if (msg.type === "assistant" && msg.message) {
+    if (msg.type === STREAM_TYPE.Assistant && msg.message) {
       const content = msg.message.content;
       if (typeof content === "string") {
-        transcript += `[assistant] ${content}\n`;
+        transcriptParts.push(`[assistant] ${content}\n`);
         output = content;
       } else if (Array.isArray(content)) {
         const texts: string[] = [];
         for (const block of content) {
-          if (block.type === "text" && typeof block.text === "string") {
-            transcript += `[assistant] ${block.text}\n`;
+          if (block.type === BLOCK_TYPE.Text && typeof block.text === "string") {
+            transcriptParts.push(`[assistant] ${block.text}\n`);
             texts.push(block.text);
-          } else if (block.type === "tool_use") {
-            transcript += `[tool_call] ${block.name ?? "unknown"}\n`;
+          } else if (block.type === BLOCK_TYPE.ToolUse) {
+            transcriptParts.push(`[tool_call] ${block.name ?? "unknown"}\n`);
           }
           // Skip thinking blocks + signatures — they bloat the transcript.
         }
         if (texts.length > 0) output = texts.join("\n");
       }
-    } else if (msg.type === "tool_use") {
-      transcript += `[tool_call] ${msg.name ?? "unknown"}\n`;
-    } else if (msg.type === "tool_result") {
-      const toolUseId = (msg as { tool_use_id?: string }).tool_use_id;
-      const toolName = toolUseId ? toolUseNames.get(toolUseId) : undefined;
+    } else if (msg.type === STREAM_TYPE.ToolUse) {
+      transcriptParts.push(`[tool_call] ${msg.name ?? "unknown"}\n`);
+    } else if (msg.type === STREAM_TYPE.ToolResult) {
+      const toolName = msg.tool_use_id ? toolUseNames.get(msg.tool_use_id) : undefined;
       const resultContent =
-        typeof msg.content === "string"
-          ? msg.content.slice(0, 200).replace(/\n/g, " ")
-          : "";
+        typeof msg.content === "string" ? msg.content.slice(0, 200).replace(/\n/g, " ") : "";
       if (toolName) {
-        transcript += resultContent
-          ? `[tool_result from ${toolName}] ${resultContent}\n`
-          : `[tool_result from ${toolName}]\n`;
+        transcriptParts.push(
+          resultContent
+            ? `[tool_result from ${toolName}] ${resultContent}\n`
+            : `[tool_result from ${toolName}]\n`,
+        );
       } else {
-        transcript += "[tool_result]\n";
+        transcriptParts.push("[tool_result]\n");
       }
-    }
-
-    if (msg.type === "result") {
+    } else if (msg.type === STREAM_TYPE.Result) {
       sessionId = msg.session_id;
       costUsd = msg.total_cost_usd ?? msg.cost_usd;
       if (msg.result) output = msg.result;
@@ -191,6 +180,7 @@ export function parseClaudeStreamJson(
   }
 
   const succeeded = exitCode === 0;
+  const transcript = transcriptParts.join("");
   const usage = inputTokens || outputTokens || costUsd !== undefined
     ? {
         input_tokens: inputTokens,
