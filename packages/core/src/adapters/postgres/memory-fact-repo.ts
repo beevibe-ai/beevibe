@@ -76,10 +76,8 @@ export class PostgresMemoryFactRepository implements MemoryFactRepository {
       values.push(vectorToPgLiteral(patch.embedding));
     }
     if (patch.source_session_ids !== undefined) {
-      // Atomic union: merge the passed ids into the existing array server-side
-      // so concurrent merges from parallel sessions never lose a session id.
-      // (Two parallel read-modify-write calls would race; this closed-form
-      // SQL is lock-free and preserves every id from every caller.)
+      // Atomic union: two parallel updates can't lose a session id — the
+      // merge happens server-side, not via read-modify-write.
       fields.push(
         `source_session_ids = ARRAY(` +
           `SELECT DISTINCT elem FROM unnest(memory_fact.source_session_ids || $${i++}::text[]) elem` +

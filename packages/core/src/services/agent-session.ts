@@ -85,11 +85,9 @@ export class AgentSession {
         urgency: input.urgency,
         workspace: input.workspace,
         system_prompt_append,
-        // Session-scoped env — rides on the CLI process env and propagates
-        // to stdio MCP server subprocesses. Only BEEVIBE_SESSION_ID is set
-        // here; the caller's agent identity is carried canonically by the
-        // bv_ OAuth token in the MCP config, so there's no need to duplicate
-        // agent_id on the env side (would just risk divergence).
+        // Session-scoped env — inherited by stdio MCP server subprocesses.
+        // Agent identity rides on the bv_ OAuth token in the MCP config,
+        // not here (would risk divergence).
         env: { BEEVIBE_SESSION_ID: sid },
         resume_session_id: priorCliSessionId,
         abort_signal: input.abortSignal,
