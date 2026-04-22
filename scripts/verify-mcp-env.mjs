@@ -24,7 +24,6 @@ writeFileSync(
 import { writeFileSync } from "node:fs";
 writeFileSync(${JSON.stringify(dumpPath)}, JSON.stringify({
   BEEVIBE_SESSION_ID: process.env.BEEVIBE_SESSION_ID ?? null,
-  BEEVIBE_AGENT_ID:   process.env.BEEVIBE_AGENT_ID   ?? null,
   PATH_preserved:     Boolean(process.env.PATH),
   pid:                process.pid,
   ppid:               process.ppid,
@@ -51,11 +50,9 @@ writeFileSync(
 
 // 3. Spawn `claude` with test env vars set.
 const TEST_SESSION = `sess_probe_${Date.now()}`;
-const TEST_AGENT = `agent_probe_${Date.now()}`;
 
 console.log(`Test env:
   BEEVIBE_SESSION_ID=${TEST_SESSION}
-  BEEVIBE_AGENT_ID=${TEST_AGENT}
 workspace: ${ws}
 `);
 
@@ -66,7 +63,6 @@ delete childEnv.CLAUDE_CODE_ENTRYPOINT;
 delete childEnv.CLAUDE_CODE_SESSION;
 delete childEnv.CLAUDE_CODE_PARENT_SESSION;
 childEnv.BEEVIBE_SESSION_ID = TEST_SESSION;
-childEnv.BEEVIBE_AGENT_ID = TEST_AGENT;
 
 const child = spawn(
   "claude",
@@ -118,18 +114,13 @@ console.log("\n=== MCP server (stub subprocess) saw env ===");
 console.log(JSON.stringify(dump, null, 2));
 console.log("\n=== Expected ===");
 console.log(`  BEEVIBE_SESSION_ID: ${TEST_SESSION}`);
-console.log(`  BEEVIBE_AGENT_ID:   ${TEST_AGENT}`);
 
-const sessionOk = dump.BEEVIBE_SESSION_ID === TEST_SESSION;
-const agentOk = dump.BEEVIBE_AGENT_ID === TEST_AGENT;
-
-if (sessionOk && agentOk) {
+if (dump.BEEVIBE_SESSION_ID === TEST_SESSION) {
   console.log(
-    "\n✓ Env vars propagated from `claude` CLI → stdio MCP server subprocess.",
+    "\n✓ Env var propagated from `claude` CLI → stdio MCP server subprocess.",
   );
   process.exit(0);
 } else {
-  console.error("\n✗ Env vars did NOT propagate.");
-  console.error(`  session matched: ${sessionOk}, agent matched: ${agentOk}`);
+  console.error("\n✗ Env var did NOT propagate.");
   process.exit(1);
 }

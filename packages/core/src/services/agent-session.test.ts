@@ -219,7 +219,7 @@ describe("AgentSession.run", () => {
     expect(failPatch![1].error).toContain("spawn ENOENT");
   });
 
-  it("passes BEEVIBE_SESSION_ID + BEEVIBE_AGENT_ID via RuntimeContext.env", async () => {
+  it("passes BEEVIBE_SESSION_ID via RuntimeContext.env (agent id rides on the bv_ token, not env)", async () => {
     let capturedSessionId = "";
     vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
     vi.mocked(sessionRepo.create).mockImplementation(async (input) => {
@@ -238,10 +238,7 @@ describe("AgentSession.run", () => {
     });
 
     const ctx = vi.mocked(runtime.execute).mock.calls[0]![0];
-    expect(ctx.env).toEqual({
-      BEEVIBE_SESSION_ID: capturedSessionId,
-      BEEVIBE_AGENT_ID: "agent_1",
-    });
+    expect(ctx.env).toEqual({ BEEVIBE_SESSION_ID: capturedSessionId });
   });
 
   it("resolves --resume via priorSessionId's cli_session_id", async () => {

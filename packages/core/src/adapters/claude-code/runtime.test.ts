@@ -118,18 +118,13 @@ describe("ClaudeCodeRuntime.execute", () => {
     expect(lastOptions!.args).not.toContain("--append-system-prompt");
   });
 
-  it("merges context.env into the spawned process env (session/agent ids reach MCP subprocesses)", async () => {
+  it("merges context.env into the spawned process env (session id reaches MCP subprocesses)", async () => {
     mockRunCli();
     await new ClaudeCodeRuntime().execute(
-      ctx({
-        env: {
-          BEEVIBE_SESSION_ID: "sess_test_123",
-          BEEVIBE_AGENT_ID: "agent_test_xyz",
-        },
-      }),
+      ctx({ env: { BEEVIBE_SESSION_ID: "sess_test_123", CUSTOM_KEY: "xyz" } }),
     );
     expect(lastOptions!.env!.BEEVIBE_SESSION_ID).toBe("sess_test_123");
-    expect(lastOptions!.env!.BEEVIBE_AGENT_ID).toBe("agent_test_xyz");
+    expect(lastOptions!.env!.CUSTOM_KEY).toBe("xyz");
     // Baseline env is still present (e.g. PATH from process.env) and nesting
     // guards are still stripped.
     expect(lastOptions!.env!.CLAUDECODE).toBeUndefined();
