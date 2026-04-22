@@ -107,8 +107,8 @@ export class PostgresTaskRepository implements TaskRepository {
       `INSERT INTO task (
          id, title, description, status, priority,
          assignee_id, creator_id, creator_type, parent_task_id,
-         result_summary, blocker_agent_id, blocker_reason
-       ) VALUES ($1, $2, $3, COALESCE($4, 'pending'), $5, $6, $7, $8, $9, $10, $11, $12)
+         result_summary, blocker_agent_id, blocker_reason, repo_url
+       ) VALUES ($1, $2, $3, COALESCE($4, 'pending'), $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         input.id,
@@ -123,6 +123,7 @@ export class PostgresTaskRepository implements TaskRepository {
         input.result_summary ?? null,
         input.blocker_agent_id ?? null,
         input.blocker_reason ?? null,
+        input.repo_url ?? null,
       ],
     );
     return rowToTask(rows[0]!);
@@ -141,6 +142,7 @@ export class PostgresTaskRepository implements TaskRepository {
       result_summary: "result_summary",
       blocker_agent_id: "blocker_agent_id",
       blocker_reason: "blocker_reason",
+      repo_url: "repo_url",
     });
 
     if (clause.fields.length === 0) {
@@ -222,6 +224,7 @@ function rowToTask(row: TaskRow): Task {
     result_summary: row.result_summary ?? undefined,
     blocker_agent_id: row.blocker_agent_id ?? undefined,
     blocker_reason: row.blocker_reason ?? undefined,
+    repo_url: row.repo_url ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

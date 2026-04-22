@@ -37,6 +37,7 @@ export interface TaskRow {
   result_summary: string | null;
   blocker_agent_id: string | null;
   blocker_reason: string | null;
+  repo_url: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -50,8 +51,7 @@ export interface SessionRow {
   status: string;
   intent: string;
   cli_session_id: string | null;
-  worktree_path: string | null;
-  branch_name: string | null;
+  workspace_path: string | null;
   process_pid: number | null;
   process_group_id: number | null;
   result_summary: string | null;

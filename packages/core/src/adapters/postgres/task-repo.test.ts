@@ -65,6 +65,19 @@ describe("PostgresTaskRepository", () => {
     expect(t.status).toBe("assigned");
   });
 
+  it("repo_url round-trips: null by default, set via create, updatable", async () => {
+    const t1 = await tasks.create(newTask({ title: "no-repo" }));
+    expect(t1.repo_url).toBeUndefined();
+
+    const t2 = await tasks.create(
+      newTask({ title: "with-repo", repo_url: "https://github.com/org/repo" }),
+    );
+    expect(t2.repo_url).toBe("https://github.com/org/repo");
+
+    const t3 = await tasks.update(t1.id, { repo_url: "https://github.com/org/repo2" });
+    expect(t3.repo_url).toBe("https://github.com/org/repo2");
+  });
+
   it("list with no filter returns all rows, newest first", async () => {
     const t1 = await tasks.create(newTask({ title: "first" }));
     await new Promise((r) => setTimeout(r, 5));

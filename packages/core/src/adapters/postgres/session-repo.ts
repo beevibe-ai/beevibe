@@ -81,17 +81,17 @@ export class PostgresSessionRepository implements SessionRepository {
       `INSERT INTO session (
          id, agent_id, task_id, prior_session_id,
          type, status, intent,
-         cli_session_id, worktree_path, branch_name,
+         cli_session_id, workspace_path,
          process_pid, process_group_id,
          result_summary, exit_code, error, usage,
          started_at, completed_at
        ) VALUES (
          $1, $2, $3, $4,
          $5, COALESCE($6, 'running'), $7,
-         $8, $9, $10,
-         $11, $12,
-         $13, $14, $15, $16,
-         $17, NULL
+         $8, $9,
+         $10, $11,
+         $12, $13, $14, $15,
+         $16, NULL
        )
        RETURNING *`,
       [
@@ -103,8 +103,7 @@ export class PostgresSessionRepository implements SessionRepository {
         input.status ?? null,
         input.intent,
         input.cli_session_id ?? null,
-        input.worktree_path ?? null,
-        input.branch_name ?? null,
+        input.workspace_path ?? null,
         input.process_pid ?? null,
         input.process_group_id ?? null,
         input.result_summary ?? null,
@@ -123,8 +122,7 @@ export class PostgresSessionRepository implements SessionRepository {
       status: "status",
       intent: "intent",
       cli_session_id: "cli_session_id",
-      worktree_path: "worktree_path",
-      branch_name: "branch_name",
+      workspace_path: "workspace_path",
       process_pid: "process_pid",
       process_group_id: "process_group_id",
       result_summary: "result_summary",
@@ -160,8 +158,7 @@ function rowToSession(row: SessionRow): Session {
     status: row.status as SessionStatus,
     intent: row.intent,
     cli_session_id: row.cli_session_id ?? undefined,
-    worktree_path: row.worktree_path ?? undefined,
-    branch_name: row.branch_name ?? undefined,
+    workspace_path: row.workspace_path ?? undefined,
     process_pid: row.process_pid ?? undefined,
     process_group_id: row.process_group_id ?? undefined,
     result_summary: row.result_summary ?? undefined,

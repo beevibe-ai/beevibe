@@ -11,5 +11,9 @@ export default defineConfig({
     poolOptions: {
       forks: { singleFork: true },
     },
+    // Test files share the beevibe_test DB; parallel file execution would
+    // interleave TRUNCATE + queries and cause FK violations. Serial is
+    // mandatory for integration tests, not just single-fork.
+    fileParallelism: false,
   },
 });
