@@ -7,7 +7,12 @@ import type {
   RuntimeResult,
 } from "../../ports/runtime.js";
 import { runCliProcess } from "./spawn.js";
-import { extractStepEvent, parseClaudeStreamJson, parseStreamJsonLine } from "./stream-json.js";
+import {
+  extractStepEvent,
+  parseClaudeMessages,
+  parseStreamJsonLine,
+  type StreamJsonMessage,
+} from "./stream-json.js";
 
 /**
  * Claude Code CLI subprocess runtime.
@@ -67,6 +72,21 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     const env: Record<string, string | undefined> = { ...process.env };
     for (const key of NESTING_GUARD_VARS) delete env[key];
 
+    // Parse messages incrementally during streaming so we don't re-parse
+    // the entire stdout after close. A line buffer handles chunk boundaries
+    // (a single JSON message can arrive split across multiple chunks).
+    const messages: StreamJsonMessage[] = [];
+    let pending = "";
+    const handleLine = (line: string): void => {
+      const msg = parseStreamJsonLine(line);
+      if (!msg) return;
+      messages.push(msg);
+      if (context.onStep) {
+        const step = extractStepEvent(msg);
+        if (step) context.onStep(step);
+      }
+    };
+
     const result = await runCliProcess({
       command: this.config.command ?? "claude",
       args,
@@ -78,15 +98,18 @@ export class ClaudeCodeRuntime implements AgentRuntime {
         context.onSpawn?.({ process_pid: pid, process_group_id });
       },
       onLog: (stream, chunk) => {
-        if (stream !== "stdout" || !context.onStep) return;
-        for (const line of chunk.split("\n")) {
-          const msg = parseStreamJsonLine(line);
-          if (!msg) continue;
-          const step = extractStepEvent(msg);
-          if (step) context.onStep(step);
+        if (stream !== "stdout") return;
+        pending += chunk;
+        let nl: number;
+        while ((nl = pending.indexOf("\n")) !== -1) {
+          handleLine(pending.slice(0, nl));
+          pending = pending.slice(nl + 1);
         }
       },
     });
+
+    // Flush any final partial line (stream without trailing \n)
+    if (pending) handleLine(pending);
 
     if (result.truncated) {
       console.warn(
@@ -103,7 +126,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       };
     }
 
-    const parsed = parseClaudeStreamJson(result.stdout, result.exitCode);
+    const parsed = parseClaudeMessages(messages, result.exitCode);
     return {
       ...parsed,
       process_pid: result.pid ?? undefined,

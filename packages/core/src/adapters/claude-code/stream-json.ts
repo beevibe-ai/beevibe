@@ -95,22 +95,20 @@ function describeToolInput(input: Record<string, unknown>): string {
 }
 
 /**
- * Build RuntimeResult from accumulated stdout after the process exits.
+ * Build RuntimeResult from an array of pre-parsed messages.
  *
  * Does NOT set `status: "cancelled"` — that's the caller's job when an
  * abort caused the exit. This function only distinguishes "completed"
  * (exit 0) from "failed" (non-zero).
+ *
+ * Callers that parsed messages during streaming (e.g. ClaudeCodeRuntime
+ * via a line buffer) pass `messages` directly. Callers that only have
+ * the accumulated stdout use `parseClaudeStreamJson` instead.
  */
-export function parseClaudeStreamJson(
-  stdout: string,
+export function parseClaudeMessages(
+  messages: StreamJsonMessage[],
   exitCode: number | null,
 ): Omit<RuntimeResult, "process_pid" | "process_group_id"> {
-  const messages: StreamJsonMessage[] = [];
-  for (const line of stdout.split("\n")) {
-    const msg = parseStreamJsonLine(line);
-    if (msg) messages.push(msg);
-  }
-
   // Correlate tool_use_id → tool name so tool_result transcript entries
   // can show which tool they came from. Without this, [tool_result] would
   // be opaque and misleading to downstream LLM consumers.
@@ -197,4 +195,21 @@ export function parseClaudeStreamJson(
     usage,
     cli_session_id: sessionId,
   };
+}
+
+/**
+ * Convenience wrapper: split stdout on \n, parse each line, then build
+ * the RuntimeResult. Use this when messages weren't already collected
+ * during streaming (e.g. tests, or future non-streaming callers).
+ */
+export function parseClaudeStreamJson(
+  stdout: string,
+  exitCode: number | null,
+): Omit<RuntimeResult, "process_pid" | "process_group_id"> {
+  const messages: StreamJsonMessage[] = [];
+  for (const line of stdout.split("\n")) {
+    const msg = parseStreamJsonLine(line);
+    if (msg) messages.push(msg);
+  }
+  return parseClaudeMessages(messages, exitCode);
 }

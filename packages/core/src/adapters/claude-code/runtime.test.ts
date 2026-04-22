@@ -28,10 +28,12 @@ let lastOptions: CliProcessOptions | undefined;
 function mockRunCli(result: CliProcessResult = MOCK_OK): void {
   runCliSpy.mockImplementation(async (options) => {
     lastOptions = options;
-    // Simulate onSpawn firing, unless result.pid === null
     if (result.pid !== null) {
       options.onSpawn?.({ pid: result.pid, process_group_id: result.process_group_id ?? result.pid });
     }
+    // The runtime parses incrementally via onLog now — replay stdout
+    // through onLog so mocks don't have to do it themselves.
+    if (result.stdout) options.onLog?.("stdout", result.stdout);
     return result;
   });
 }
@@ -138,7 +140,6 @@ describe("ClaudeCodeRuntime.execute", () => {
   it("wires onStep by running stdout chunks through stream-json parser", async () => {
     const steps: RuntimeStep[] = [];
     runCliSpy.mockImplementation(async (options) => {
-      // Simulate a tool_use event arriving mid-stream
       options.onLog?.(
         "stdout",
         JSON.stringify({
@@ -155,6 +156,77 @@ describe("ClaudeCodeRuntime.execute", () => {
     expect(steps).toHaveLength(1);
     expect(steps[0]!.tool).toBe("Read");
     expect(steps[0]!.description).toBe("/src/x.ts");
+  });
+
+  it("line buffer handles JSON messages split across chunks", async () => {
+    // A single message delivered in two pieces, neither containing a
+    // complete line on its own. Without buffering, both halves would
+    // fail to parse and the cli_session_id would be lost.
+    const fullLine =
+      JSON.stringify({
+        type: "result",
+        session_id: "cli_sess_split",
+        total_cost_usd: 0.001,
+        model: "claude-opus-4-7",
+        usage: { input_tokens: 10, output_tokens: 5 },
+      }) + "\n";
+    const split = Math.floor(fullLine.length / 2);
+
+    runCliSpy.mockImplementation(async (options) => {
+      options.onLog?.("stdout", fullLine.slice(0, split));
+      options.onLog?.("stdout", fullLine.slice(split));
+      // Empty result.stdout to prove we're NOT falling back to a post-hoc
+      // parse of the full buffer — parsing must happen via the live messages.
+      return { ...MOCK_OK, stdout: "" };
+    });
+
+    const result = await new ClaudeCodeRuntime().execute(ctx());
+    expect(result.status).toBe("completed");
+    expect(result.cli_session_id).toBe("cli_sess_split");
+    expect(result.usage?.input_tokens).toBe(10);
+  });
+
+  it("line buffer flushes trailing partial line without newline at end", async () => {
+    // No trailing \n. A naive implementation that only emits on \n would
+    // drop this final line.
+    const msg = JSON.stringify({
+      type: "result",
+      session_id: "cli_sess_noNL",
+      total_cost_usd: 0,
+      model: "x",
+      usage: { input_tokens: 1, output_tokens: 1 },
+    });
+
+    runCliSpy.mockImplementation(async (options) => {
+      options.onLog?.("stdout", msg);
+      return { ...MOCK_OK, stdout: "" };
+    });
+
+    const result = await new ClaudeCodeRuntime().execute(ctx());
+    expect(result.cli_session_id).toBe("cli_sess_noNL");
+  });
+
+  it("onStep fires exactly once per tool_use even when chunked mid-line", async () => {
+    const steps: RuntimeStep[] = [];
+    const fullLine =
+      JSON.stringify({
+        type: "tool_use",
+        name: "Bash",
+        input: { command: "ls" },
+      }) + "\n";
+    const split = Math.floor(fullLine.length / 2);
+
+    runCliSpy.mockImplementation(async (options) => {
+      options.onLog?.("stdout", fullLine.slice(0, split));
+      options.onLog?.("stdout", fullLine.slice(split));
+      return MOCK_OK;
+    });
+
+    await new ClaudeCodeRuntime().execute(
+      ctx({ onStep: (step) => steps.push(step) }),
+    );
+    expect(steps).toHaveLength(1);
+    expect(steps[0]!.tool).toBe("Bash");
   });
 
   it("maps aborted result → status: 'cancelled' (distinct from failed)", async () => {

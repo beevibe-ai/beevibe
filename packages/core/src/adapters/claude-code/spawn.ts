@@ -123,24 +123,43 @@ export function runCliProcess(options: CliProcessOptions): Promise<CliProcessRes
     }
     proc.stdin!.end();
 
-    // Sequential log chain ensures async onLog callbacks don't interleave.
-    let logChain = Promise.resolve();
+    // Most onLog consumers are synchronous — calling them directly avoids
+    // a microtask + retained closure per chunk. We only fall back to a
+    // serial Promise chain once a callback actually returns a Promise,
+    // at which point ordering across async callbacks matters.
+    let asyncMode = false;
+    let logChain: Promise<unknown> = Promise.resolve();
+    function invokeLog(kind: "stdout" | "stderr", text: string): void {
+      if (!options.onLog) return;
+      const cb = options.onLog;
+      if (asyncMode) {
+        logChain = logChain
+          .then(() => {
+            try {
+              return cb(kind, text);
+            } catch {
+              return undefined;
+            }
+          })
+          .catch(() => undefined);
+        return;
+      }
+      let ret: unknown;
+      try {
+        ret = cb(kind, text);
+      } catch {
+        return;
+      }
+      if (ret && typeof (ret as { then?: unknown }).then === "function") {
+        asyncMode = true;
+        logChain = (ret as Promise<unknown>).catch(() => undefined);
+      }
+    }
     function attachStreamHandler(stream: Readable, kind: "stdout" | "stderr", buf: CappedBuffer): void {
       stream.on("data", (chunk: Buffer) => {
         const text = chunk.toString();
         buf.append(text);
-        if (options.onLog) {
-          const cb = options.onLog;
-          logChain = logChain.then(() => {
-            try {
-              cb(kind, text);
-            } catch {
-              /* swallow callback errors */
-            }
-          }).catch(() => {
-            /* swallow rejected async callbacks to avoid unhandledRejection */
-          });
-        }
+        invokeLog(kind, text);
       });
     }
     attachStreamHandler(proc.stdout!, "stdout", stdout);
