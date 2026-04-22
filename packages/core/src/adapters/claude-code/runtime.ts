@@ -74,6 +74,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
 
     const env: Record<string, string | undefined> = { ...process.env };
     for (const key of NESTING_GUARD_VARS) delete env[key];
+    if (context.env) Object.assign(env, context.env);
 
     // Parse messages incrementally during streaming so we don't re-parse
     // the entire stdout after close. A line buffer handles chunk boundaries

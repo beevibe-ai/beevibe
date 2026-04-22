@@ -85,6 +85,13 @@ export class AgentSession {
         urgency: input.urgency,
         workspace: input.workspace,
         system_prompt_append,
+        // Session-scoped env vars — ride on the CLI process env and
+        // propagate to any stdio MCP server subprocess. Tool handlers
+        // read these to stamp session/agent ids on their writes.
+        env: {
+          BEEVIBE_SESSION_ID: sid,
+          BEEVIBE_AGENT_ID: input.agentId,
+        },
         resume_session_id: priorCliSessionId,
         abort_signal: input.abortSignal,
         onStep: input.onStep,
