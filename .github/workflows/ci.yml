@@ -75,19 +75,8 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Wait for Postgres
-        run: |
-          for i in {1..30}; do
-            if PGPASSWORD=beevibe psql -h localhost -p 5433 -U beevibe -d beevibe -c '\q' 2>/dev/null; then
-              echo "Postgres ready"
-              exit 0
-            fi
-            echo "Waiting for Postgres..."
-            sleep 2
-          done
-          echo "Postgres never became ready"
-          exit 1
-
+      # GitHub Actions blocks job steps until services report healthy
+      # (via the --health-cmd option above), so no manual wait loop needed.
       - name: Create test database
         run: PGPASSWORD=beevibe psql -h localhost -p 5433 -U beevibe -c 'CREATE DATABASE beevibe_test;'
 
