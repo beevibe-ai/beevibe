@@ -18,9 +18,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Version is read from package.json's "packageManager" field.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
@@ -63,9 +62,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Version is read from package.json's "packageManager" field.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 9
 
       - uses: actions/setup-node@v4
         with:
