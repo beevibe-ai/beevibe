@@ -20,6 +20,12 @@ const PROMOTE_SYSTEM_PROMPT =
   "is not personal to one user, and is not redundant with common knowledge. Err on keeping " +
   "narrow scope when uncertain.";
 
+/**
+ * JSON schema — target_scope uses the sentinel "none" instead of null because
+ * Anthropic's strict structured-output validator rejects mixed-type enums
+ * (['string', 'null'] with enum containing both strings and null). The
+ * app-level code translates "none" → null when building PromotionResult.
+ */
 const PROMOTE_SCHEMA = {
   type: "object",
   properties: {
@@ -28,10 +34,10 @@ const PROMOTE_SCHEMA = {
       description: "Whether the fact should move to a wider scope.",
     },
     target_scope: {
-      type: ["string", "null"],
-      enum: ["team", "org", null],
+      type: "string",
+      enum: ["team", "org", "none"],
       description:
-        "The scope the fact should move to. Null when promoted=false, or when the current scope has no higher target.",
+        "The scope the fact should move to. 'none' when not promoting or when the current scope has no higher target.",
     },
     reason: {
       type: "string",
@@ -41,6 +47,12 @@ const PROMOTE_SCHEMA = {
   required: ["promoted", "target_scope", "reason"],
   additionalProperties: false,
 } as const;
+
+interface RawPromotionDecision {
+  promoted: boolean;
+  target_scope: "team" | "org" | "none";
+  reason: string;
+}
 
 const PROMOTE_MAX_TOKENS = 300;
 const PROMOTE_TEMPERATURE = 0;
@@ -70,7 +82,7 @@ export class FactPromoter {
       };
     }
 
-    const { value } = await this.deps.llm.completeStructured<PromotionResult>({
+    const { value } = await this.deps.llm.completeStructured<RawPromotionDecision>({
       system: PROMOTE_SYSTEM_PROMPT,
       prompt: buildPrompt(fact),
       maxTokens: PROMOTE_MAX_TOKENS,
@@ -80,16 +92,23 @@ export class FactPromoter {
       schema: PROMOTE_SCHEMA as unknown as Record<string, unknown>,
     });
 
+    const normalizedTarget: MemoryScope | null =
+      value.target_scope === "none" ? null : value.target_scope;
+
     // Defensive: reject promotions that would not actually widen the scope.
-    if (value.promoted && !isValidUpward(fact.scope, value.target_scope)) {
+    if (value.promoted && !isValidUpward(fact.scope, normalizedTarget)) {
       return {
         promoted: false,
         target_scope: null,
-        reason: `LLM proposed invalid promotion ${fact.scope} → ${value.target_scope ?? "null"}; skipping.`,
+        reason: `LLM proposed invalid promotion ${fact.scope} → ${value.target_scope}; skipping.`,
       };
     }
 
-    return value;
+    return {
+      promoted: value.promoted,
+      target_scope: normalizedTarget,
+      reason: value.reason,
+    };
   }
 }
 

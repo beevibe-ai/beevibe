@@ -43,9 +43,9 @@ describe("FactPromoter.evaluate", () => {
     vi.mocked(llm.completeStructured).mockResolvedValue({
       value: {
         promoted: false,
-        target_scope: null,
+        target_scope: "none",
         reason: "narrow detail",
-      } satisfies PromotionResult,
+      },
       usage: { input_tokens: 10, output_tokens: 10, model: "fake" },
     });
 
@@ -71,17 +71,31 @@ describe("FactPromoter.evaluate", () => {
       usage: { input_tokens: 10, output_tokens: 10, model: "fake" },
     });
 
-    const result = await promoter.evaluate(makeFact({ scope: "ic" }));
+    const result: PromotionResult = await promoter.evaluate(makeFact({ scope: "ic" }));
     expect(result.promoted).toBe(true);
     expect(result.target_scope).toBe("team");
     expect(result.reason).toContain("useful");
   });
 
-  it("rejects an LLM proposal that does not widen scope (ic → ic) as invalid", async () => {
+  it("translates 'none' sentinel to null in PromotionResult", async () => {
+    vi.mocked(llm.completeStructured).mockResolvedValue({
+      value: {
+        promoted: false,
+        target_scope: "none",
+        reason: "narrow",
+      },
+      usage: { input_tokens: 1, output_tokens: 1, model: "fake" },
+    });
+    const result = await promoter.evaluate(makeFact({ scope: "ic" }));
+    expect(result.promoted).toBe(false);
+    expect(result.target_scope).toBeNull();
+  });
+
+  it("rejects an LLM proposal that does not widen scope (ic → none while promoted=true) as invalid", async () => {
     vi.mocked(llm.completeStructured).mockResolvedValue({
       value: {
         promoted: true,
-        target_scope: null, // invalid
+        target_scope: "none",
         reason: "noisy",
       },
       usage: { input_tokens: 1, output_tokens: 1, model: "fake" },
