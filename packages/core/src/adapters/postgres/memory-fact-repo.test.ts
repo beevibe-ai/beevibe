@@ -287,11 +287,78 @@ describe("PostgresMemoryFactRepository", () => {
     const updated = await facts.update(f.id, {
       content: "merged",
       embedding: unitVector(7),
-      source_session_ids: [sA, sB],
+      source_session_ids: [sB],
     });
     expect(updated.content).toBe("merged");
     expect(updated.embedding[7]).toBeCloseTo(1.0, 5);
-    expect(updated.source_session_ids).toEqual([sA, sB]);
+    // Union semantics: old [sA] merged with new [sB] → {sA, sB} (order undefined).
+    expect(new Set(updated.source_session_ids)).toEqual(new Set([sA, sB]));
+  });
+
+  it("source_session_ids update is atomic union under concurrent writes", async () => {
+    const sA = sessionId();
+    const sB = sessionId();
+    const sC = sessionId();
+    const f = await facts.create({
+      id: factId(),
+      agent_id: aid,
+      scope: "ic",
+      fact_type: "belief",
+      content: "shared fact",
+      embedding: unitVector(0),
+      source_session_ids: [sA],
+    });
+
+    // Two parallel updates, each adding a different session id. With a naive
+    // patch-overwrite implementation, one would clobber the other. With
+    // atomic SQL union, every id must land.
+    await Promise.all([
+      facts.update(f.id, { source_session_ids: [sB] }),
+      facts.update(f.id, { source_session_ids: [sC] }),
+    ]);
+
+    const final = await facts.findById(f.id);
+    expect(final).toBeDefined();
+    expect(new Set(final!.source_session_ids)).toEqual(new Set([sA, sB, sC]));
+  });
+
+  it("source_session_ids update dedupes: passing an id that already exists is a no-op on that id", async () => {
+    const sA = sessionId();
+    const f = await facts.create({
+      id: factId(),
+      agent_id: aid,
+      scope: "ic",
+      fact_type: "belief",
+      content: "x",
+      embedding: unitVector(0),
+      source_session_ids: [sA],
+    });
+    const updated = await facts.update(f.id, { source_session_ids: [sA] });
+    expect(updated.source_session_ids).toEqual([sA]);
+  });
+
+  it("heavy concurrency: 10 parallel updates each adding its own session id land every id", async () => {
+    const sA = sessionId();
+    const f = await facts.create({
+      id: factId(),
+      agent_id: aid,
+      scope: "ic",
+      fact_type: "belief",
+      content: "hotly contested fact",
+      embedding: unitVector(0),
+      source_session_ids: [sA],
+    });
+
+    const newIds = Array.from({ length: 10 }, () => sessionId());
+    await Promise.all(
+      newIds.map((sid) => facts.update(f.id, { source_session_ids: [sid] })),
+    );
+
+    const final = await facts.findById(f.id);
+    expect(final).toBeDefined();
+    expect(new Set(final!.source_session_ids)).toEqual(new Set([sA, ...newIds]));
+    // Exactly 11 entries — no duplicates, no drops.
+    expect(final!.source_session_ids).toHaveLength(11);
   });
 
   it("update with only scope promotes a fact (IC → team)", async () => {
