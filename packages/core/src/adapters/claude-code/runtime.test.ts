@@ -43,6 +43,7 @@ function ctx(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
     intent: "do a thing",
     urgency: "normal",
     workspace: { path: "/tmp/beevibe-test-ws" },
+    system_prompt_append: "",
     ...overrides,
   };
 }
@@ -100,6 +101,21 @@ describe("ClaudeCodeRuntime.execute", () => {
     await new ClaudeCodeRuntime().execute(ctx({ resume_session_id: "cli_prev_123" }));
     expect(lastOptions!.args).toContain("--resume");
     expect(lastOptions!.args).toContain("cli_prev_123");
+  });
+
+  it("forwards context.system_prompt_append as --append-system-prompt arg", async () => {
+    mockRunCli();
+    const briefing = "<core_memory><block name=\"persona\">Senior infra engineer.</block></core_memory>";
+    await new ClaudeCodeRuntime().execute(ctx({ system_prompt_append: briefing }));
+    const idx = lastOptions!.args!.indexOf("--append-system-prompt");
+    expect(idx).toBeGreaterThan(-1);
+    expect(lastOptions!.args![idx + 1]).toBe(briefing);
+  });
+
+  it("omits --append-system-prompt when system_prompt_append is empty", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime().execute(ctx({ system_prompt_append: "" }));
+    expect(lastOptions!.args).not.toContain("--append-system-prompt");
   });
 
   it("strips Claude nesting-guard env vars", async () => {

@@ -51,6 +51,16 @@ export interface RuntimeContext {
   /** Agent's sandbox. Runtime sets cwd to `workspace.path`. */
   workspace: Workspace;
 
+  /**
+   * Content appended to Claude Code's baseline system prompt via
+   * `--append-system-prompt`. Required: AgentSession composes this from the
+   * agent's `runtime_config.system_prompt_addition` baseline plus the memory
+   * briefing (core memory blocks + top-k archival fact retrieval). Pass an
+   * empty string only for non-session direct invocations (tests, health
+   * checks) where no briefing exists.
+   */
+  system_prompt_append: string;
+
   /** Signal for cancelling the in-flight session. */
   abort_signal?: AbortSignal;
 

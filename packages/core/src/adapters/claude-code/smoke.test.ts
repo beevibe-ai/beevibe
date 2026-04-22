@@ -40,6 +40,7 @@ describe.skipIf(!RUN)("ClaudeCodeRuntime (smoke)", () => {
         intent: "Reply with the literal word 'ok' and nothing else.",
         urgency: "low",
         workspace: { path: workspacePath },
+        system_prompt_append: "",
       });
 
       expect(result.status).toBe("completed");

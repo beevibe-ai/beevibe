@@ -33,18 +33,13 @@ export interface MemoryFactRepository {
    */
   searchByVector(params: VectorSearchParams): Promise<MemoryFact[]>;
 
-  /** Non-vector structured query: by agent + scope, for enumeration/consolidation. */
+  /** Non-vector structured query: by agent + scope, for enumeration. */
   listByAgentScope(agentId: string, scope: MemoryScope, limit?: number): Promise<MemoryFact[]>;
 
   /**
-   * Reduce confidence by `decay_rate_per_day` × age (in days) for facts older than
-   * `max_age_days`. Return count of facts updated. Facts below `min_confidence`
-   * are not further decayed. M3 MemoryAgent calls this as part of consolidation.
+   * Fetch every fact whose `source_session_ids` contains the given session id.
+   * Used by MemoryAgent.onTaskComplete to enumerate facts touched during a
+   * session for promotion evaluation. SQL: `WHERE $1 = ANY(source_session_ids)`.
    */
-  decay(
-    agentId: string,
-    max_age_days: number,
-    decay_rate_per_day: number,
-    min_confidence: number,
-  ): Promise<number>;
+  listBySessionId(sessionId: string): Promise<MemoryFact[]>;
 }

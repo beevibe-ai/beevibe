@@ -12,8 +12,6 @@ export const FACT_TYPES: readonly FactType[] = [
   "decision",
 ] as const;
 
-export type FactOperation = "ADD" | "UPDATE" | "DELETE" | "NOOP";
-
 export interface MemoryFact {
   id: string;
   agent_id: string;
@@ -21,24 +19,12 @@ export interface MemoryFact {
   fact_type: FactType;
   content: string;
   embedding: number[];
-  source_chain_ids: string[];
-  confidence: number;
-  valid_from: Date;
-  tags: string[];
-  metadata?: Record<string, unknown>;
+  /**
+   * Every session that created, updated, or merged into this fact. Used by
+   * MemoryAgent.onTaskComplete(sessionId) to find facts touched during a
+   * session for promotion evaluation — the executor queries by session_id
+   * because the MCP server (which does the writes) lives in a separate process.
+   */
+  source_session_ids: string[];
   created_at: Date;
-}
-
-/**
- * Proposal from FactExtractor (LLM) about what to do with a fact.
- * Consumed by MemoryAgent service (M3) which applies the operation
- * against the MemoryFactRepository.
- */
-export interface FactCandidate {
-  content: string;
-  fact_type: FactType;
-  operation: FactOperation;
-  existing_fact_id?: string;
-  tags: string[];
-  reason: string;
 }

@@ -68,6 +68,9 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     if (this.config.model) args.push("--model", this.config.model);
     if (this.config.maxTurns) args.push("--max-turns", String(this.config.maxTurns));
     if (context.resume_session_id) args.push("--resume", context.resume_session_id);
+    if (context.system_prompt_append.length > 0) {
+      args.push("--append-system-prompt", context.system_prompt_append);
+    }
 
     const env: Record<string, string | undefined> = { ...process.env };
     for (const key of NESTING_GUARD_VARS) delete env[key];
