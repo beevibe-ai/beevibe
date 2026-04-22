@@ -21,6 +21,7 @@
   },
   "dependencies": {
     "nanoid": "^5.0.7",
+    "openai": "^6.34.0",
     "pg": "^8.13.0"
   },
   "devDependencies": {

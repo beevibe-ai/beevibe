@@ -15,3 +15,4 @@ export { PostgresCoreMemoryRepository } from "./core-memory-repo.js";
 export { PostgresTaskRepository } from "./task-repo.js";
 export { PostgresSessionRepository } from "./session-repo.js";
 export { PostgresWorkProductRepository } from "./work-product-repo.js";
+export { PostgresMemoryFactRepository } from "./memory-fact-repo.js";
