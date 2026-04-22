@@ -96,10 +96,6 @@ export interface MemoryFactRow {
   content: string;
   /** pgvector returns vectors as string like "[0.1,0.2,…]"; adapters parse into number[]. */
   embedding: string;
-  source_chain_ids: string[];
-  confidence: number;
-  valid_from: Date;
-  tags: string[];
-  metadata: Record<string, unknown> | null;
+  source_session_ids: string[];
   created_at: Date;
 }

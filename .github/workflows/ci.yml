@@ -42,6 +42,12 @@ jobs:
     name: Unit + Integration Tests
     runs-on: ubuntu-latest
 
+    # Bind to the `production` GitHub Environment so the step below can
+    # read `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` from environment
+    # secrets. These keys gate the live embedding + LLM integration tests
+    # (no describe.skipIf — missing keys fail the suite loudly, per design).
+    environment: production
+
     # Postgres 16 with the pgvector extension preinstalled. Matches the
     # local docker-compose.yml image so tests exercise the same engine.
     services:
@@ -79,10 +85,15 @@ jobs:
         run: PGPASSWORD=beevibe psql -h localhost -p 5433 -U beevibe -c 'CREATE DATABASE beevibe_test;'
 
       - name: Write .env for migrations + tests
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           cat > .env <<EOF
           DATABASE_URL=postgresql://beevibe:beevibe@localhost:5433/beevibe
           DATABASE_URL_TEST=postgresql://beevibe:beevibe@localhost:5433/beevibe_test
+          OPENAI_API_KEY=${OPENAI_API_KEY}
+          ANTHROPIC_API_KEY=${ANTHROPIC_API_KEY}
           EOF
 
       - name: Run migrations (dev DB)

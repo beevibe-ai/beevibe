@@ -7,3 +7,5 @@ export * from "./work-product-repo.js";
 export * from "./memory-fact-repo.js";
 export * from "./runtime.js";
 export * from "./workspace.js";
+export * from "./embedding-service.js";
+export * from "./llm-provider.js";

@@ -43,6 +43,7 @@ function ctx(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
     intent: "do a thing",
     urgency: "normal",
     workspace: { path: "/tmp/beevibe-test-ws" },
+    system_prompt_append: "",
     ...overrides,
   };
 }
@@ -100,6 +101,47 @@ describe("ClaudeCodeRuntime.execute", () => {
     await new ClaudeCodeRuntime().execute(ctx({ resume_session_id: "cli_prev_123" }));
     expect(lastOptions!.args).toContain("--resume");
     expect(lastOptions!.args).toContain("cli_prev_123");
+  });
+
+  it("forwards context.system_prompt_append as --append-system-prompt arg", async () => {
+    mockRunCli();
+    const briefing = "<core_memory><block name=\"persona\">Senior infra engineer.</block></core_memory>";
+    await new ClaudeCodeRuntime().execute(ctx({ system_prompt_append: briefing }));
+    const idx = lastOptions!.args!.indexOf("--append-system-prompt");
+    expect(idx).toBeGreaterThan(-1);
+    expect(lastOptions!.args![idx + 1]).toBe(briefing);
+  });
+
+  it("omits --append-system-prompt when system_prompt_append is empty", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime().execute(ctx({ system_prompt_append: "" }));
+    expect(lastOptions!.args).not.toContain("--append-system-prompt");
+  });
+
+  it("merges context.env into the spawned process env (session id reaches MCP subprocesses)", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime().execute(
+      ctx({ env: { BEEVIBE_SESSION_ID: "sess_test_123", CUSTOM_KEY: "xyz" } }),
+    );
+    expect(lastOptions!.env!.BEEVIBE_SESSION_ID).toBe("sess_test_123");
+    expect(lastOptions!.env!.CUSTOM_KEY).toBe("xyz");
+    // Baseline env is still present (e.g. PATH from process.env) and nesting
+    // guards are still stripped.
+    expect(lastOptions!.env!.CLAUDECODE).toBeUndefined();
+  });
+
+  it("context.env overrides process.env keys with the same name", async () => {
+    mockRunCli();
+    const original = { ...process.env };
+    process.env.BEEVIBE_SESSION_ID = "from_process_env";
+    try {
+      await new ClaudeCodeRuntime().execute(
+        ctx({ env: { BEEVIBE_SESSION_ID: "from_context" } }),
+      );
+      expect(lastOptions!.env!.BEEVIBE_SESSION_ID).toBe("from_context");
+    } finally {
+      process.env = original;
+    }
   });
 
   it("strips Claude nesting-guard env vars", async () => {

@@ -51,6 +51,29 @@ export interface RuntimeContext {
   /** Agent's sandbox. Runtime sets cwd to `workspace.path`. */
   workspace: Workspace;
 
+  /**
+   * Content appended to Claude Code's baseline system prompt via
+   * `--append-system-prompt`. Required: AgentSession composes this from the
+   * agent's `runtime_config.system_prompt_addition` baseline plus the memory
+   * briefing (core memory blocks + top-k archival fact retrieval). Pass an
+   * empty string only for non-session direct invocations (tests, health
+   * checks) where no briefing exists.
+   */
+  system_prompt_append: string;
+
+  /**
+   * Extra env vars to merge into the spawned CLI process env. These are
+   * inherited by any stdio MCP servers the CLI spawns (and by any child
+   * processes the CLI itself spawns). AgentSession uses this to pass
+   * `BEEVIBE_SESSION_ID` + `BEEVIBE_AGENT_ID` to the MCP-side tool handlers
+   * so `save_memory(content, fact_type)` can stamp the right session id
+   * on the fact without the caller needing to pass it explicitly.
+   *
+   * Merged on top of the adapter's baseline env (process.env minus the
+   * Claude nesting guards); duplicate keys in this map override.
+   */
+  env?: Record<string, string>;
+
   /** Signal for cancelling the in-flight session. */
   abort_signal?: AbortSignal;
 
