@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+# Cancel an in-flight run when a new commit is pushed to the same ref.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Build, Typecheck, Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Version is read from package.json's "packageManager" field.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      - name: Typecheck
+        run: pnpm typecheck
+
+      - name: Lint
+        run: pnpm lint
+
+  test:
+    name: Unit + Integration Tests
+    runs-on: ubuntu-latest
+
+    # Postgres 16 with the pgvector extension preinstalled. Matches the
+    # local docker-compose.yml image so tests exercise the same engine.
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: beevibe
+          POSTGRES_PASSWORD: beevibe
+          POSTGRES_DB: beevibe
+        ports:
+          - 5433:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # Version is read from package.json's "packageManager" field.
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "pnpm"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # GitHub Actions blocks job steps until services report healthy
+      # (via the --health-cmd option above), so no manual wait loop needed.
+      - name: Create test database
+        run: PGPASSWORD=beevibe psql -h localhost -p 5433 -U beevibe -c 'CREATE DATABASE beevibe_test;'
+
+      - name: Write .env for migrations + tests
+        run: |
+          cat > .env <<EOF
+          DATABASE_URL=postgresql://beevibe:beevibe@localhost:5433/beevibe
+          DATABASE_URL_TEST=postgresql://beevibe:beevibe@localhost:5433/beevibe_test
+          EOF
+
+      - name: Run migrations (dev DB)
+        run: pnpm run migrate up
+
+      - name: Run migrations (test DB)
+        run: pnpm run migrate:test up
+
+      - name: Test
+        run: pnpm test
+
+# --- Not included in CI ---
+#
+# Smoke test (RUN_CLAUDE_SMOKE=1) — requires a real `claude` CLI binary
+# on PATH plus Anthropic API access. Running it on every PR would:
+#   - Need the binary installed and updated in the runner
+#   - Need an ANTHROPIC_API_KEY secret (real billing per run)
+#   - Add a live network dependency to every merge
+# Mocked runtime tests already cover arg building, env stripping, stream
+# parsing, and result mapping — the smoke only validates that the real
+# CLI still speaks the protocol we assume. Run manually pre-release:
+#
+#   RUN_CLAUDE_SMOKE=1 pnpm --filter @beevibe/core test smoke
+#
+# If a scheduled verification workflow is needed later, add a separate
+# `smoke.yml` with `on: workflow_dispatch` so it's opt-in.
