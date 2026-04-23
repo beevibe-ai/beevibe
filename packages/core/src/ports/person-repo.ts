@@ -9,6 +9,12 @@ export interface PersonRepository {
 
   findByEmail(email: string): Promise<Person | undefined>;
 
+  /**
+   * Resolve a person by their human-scoped bv_u_ API key.
+   * Used by auth.lookupApiKey to dispatch bv_u_-prefixed tokens.
+   */
+  findByApiKey(apiKey: string): Promise<Person | undefined>;
+
   /** Batch lookup for hydrating names in task lists, etc. */
   findManyByIds(ids: string[]): Promise<Person[]>;
 

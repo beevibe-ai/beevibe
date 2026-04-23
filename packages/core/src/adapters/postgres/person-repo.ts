@@ -23,6 +23,14 @@ export class PostgresPersonRepository implements PersonRepository {
     return rows[0] ? rowToPerson(rows[0]) : undefined;
   }
 
+  async findByApiKey(apiKey: string): Promise<Person | undefined> {
+    const { rows } = await this.pool.query<PersonRow>(
+      `SELECT * FROM person WHERE api_key = $1 LIMIT 1`,
+      [apiKey],
+    );
+    return rows[0] ? rowToPerson(rows[0]) : undefined;
+  }
+
   async findManyByIds(ids: string[]): Promise<Person[]> {
     if (ids.length === 0) return [];
     const { rows } = await this.pool.query<PersonRow>(
@@ -34,10 +42,10 @@ export class PostgresPersonRepository implements PersonRepository {
 
   async create(input: NewPerson): Promise<Person> {
     const { rows } = await this.pool.query<PersonRow>(
-      `INSERT INTO person (id, name, email)
-       VALUES ($1, $2, $3)
+      `INSERT INTO person (id, name, email, api_key)
+       VALUES ($1, $2, $3, $4)
        RETURNING *`,
-      [input.id, input.name, input.email ?? null],
+      [input.id, input.name, input.email ?? null, input.api_key ?? null],
     );
     return rowToPerson(rows[0]!);
   }
@@ -46,6 +54,7 @@ export class PostgresPersonRepository implements PersonRepository {
     const clause = buildPatchClause<PersonPatch>(patch, {
       name: "name",
       email: "email",
+      api_key: "api_key",
     });
 
     if (clause.fields.length === 0) {
@@ -74,6 +83,7 @@ function rowToPerson(row: PersonRow): Person {
     id: row.id,
     name: row.name,
     email: row.email ?? undefined,
+    api_key: row.api_key ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
