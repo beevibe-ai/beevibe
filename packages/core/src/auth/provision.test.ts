@@ -6,6 +6,11 @@ import type { AgentRepository } from "../ports/agent-repo.js";
 import type { CoreMemoryBlockRepository } from "../ports/core-memory-repo.js";
 import type { PersonRepository } from "../ports/person-repo.js";
 import { provisionAgent, provisionUser } from "./provision.js";
+import {
+  makeAgentRepoFake,
+  makeCoreMemoryRepoFake,
+  makePersonRepoFake,
+} from "./test-fakes.js";
 
 function makeBlocks(agentId: string): CoreMemoryBlock[] {
   return ["persona", "domain", "active_context", "constraints"].map((name) => ({
@@ -25,34 +30,9 @@ let coreMemoryRepo: CoreMemoryBlockRepository;
 let personRepo: PersonRepository;
 
 beforeEach(() => {
-  agentRepo = {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findByOwnerId: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findByLevel: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-  coreMemoryRepo = {
-    findByAgentId: vi.fn(),
-    findByNames: vi.fn(),
-    upsert: vi.fn(),
-    updateContent: vi.fn(),
-    initDefaults: vi.fn(),
-  } as unknown as CoreMemoryBlockRepository;
-  personRepo = {
-    findById: vi.fn(),
-    findByEmail: vi.fn(),
-    findByApiKey: vi.fn(),
-    findManyByIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
+  agentRepo = makeAgentRepoFake();
+  coreMemoryRepo = makeCoreMemoryRepoFake();
+  personRepo = makePersonRepoFake();
 });
 
 describe("provisionAgent", () => {

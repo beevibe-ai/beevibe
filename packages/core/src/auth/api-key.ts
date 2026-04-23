@@ -7,8 +7,8 @@ import { findUserAgent } from "./find-user-agent.js";
 const KEY_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
 const nanoid24 = customAlphabet(KEY_ALPHABET, 24);
 
-const AGENT_KEY_PREFIX = "bv_a_";
-const USER_KEY_PREFIX = "bv_u_";
+export const AGENT_KEY_PREFIX = "bv_a_";
+export const USER_KEY_PREFIX = "bv_u_";
 
 /** Generate a bv_a_-prefixed agent API key. One per agent. Plaintext for v1. */
 export function generateAgentApiKey(): string {
@@ -39,7 +39,7 @@ export async function lookupApiKey(
   deps: LookupApiKeyDeps,
   token: string,
 ): Promise<ResolvedCaller | undefined> {
-  if (!token || typeof token !== "string") return undefined;
+  if (!token) return undefined;
 
   if (token.startsWith(AGENT_KEY_PREFIX)) {
     const agent = await deps.agentRepo.findByApiKey(token);

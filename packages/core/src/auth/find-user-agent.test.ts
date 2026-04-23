@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent } from "../domain/agent.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import { findUserAgent } from "./find-user-agent.js";
+import { makeAgentRepoFake } from "./test-fakes.js";
 
 function makeAgent(overrides: Partial<Agent> = {}): Agent {
   return {
@@ -19,18 +20,7 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
 let agentRepo: AgentRepository;
 
 beforeEach(() => {
-  agentRepo = {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findByOwnerId: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findByLevel: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
+  agentRepo = makeAgentRepoFake();
 });
 
 describe("findUserAgent", () => {

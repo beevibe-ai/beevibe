@@ -4,10 +4,13 @@ import type { Person } from "../domain/person.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type { PersonRepository } from "../ports/person-repo.js";
 import {
+  AGENT_KEY_PREFIX,
+  USER_KEY_PREFIX,
   generateAgentApiKey,
   generateUserApiKey,
   lookupApiKey,
 } from "./api-key.js";
+import { makeAgentRepoFake, makePersonRepoFake } from "./test-fakes.js";
 
 function makeAgent(overrides: Partial<Agent> = {}): Agent {
   return {
@@ -36,32 +39,14 @@ let agentRepo: AgentRepository;
 let personRepo: PersonRepository;
 
 beforeEach(() => {
-  agentRepo = {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findByOwnerId: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findByLevel: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-  personRepo = {
-    findById: vi.fn(),
-    findByEmail: vi.fn(),
-    findByApiKey: vi.fn(),
-    findManyByIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
+  agentRepo = makeAgentRepoFake();
+  personRepo = makePersonRepoFake();
 });
 
 describe("generateAgentApiKey", () => {
-  it("starts with bv_a_ and has 24 chars of entropy", () => {
+  it("starts with the agent prefix and has 24 chars of entropy", () => {
     const key = generateAgentApiKey();
+    expect(key.startsWith(AGENT_KEY_PREFIX)).toBe(true);
     expect(key).toMatch(/^bv_a_[0-9A-Za-z]{24}$/);
   });
 
@@ -71,14 +56,15 @@ describe("generateAgentApiKey", () => {
 });
 
 describe("generateUserApiKey", () => {
-  it("starts with bv_u_ and has 24 chars of entropy", () => {
+  it("starts with the user prefix and has 24 chars of entropy", () => {
     const key = generateUserApiKey();
+    expect(key.startsWith(USER_KEY_PREFIX)).toBe(true);
     expect(key).toMatch(/^bv_u_[0-9A-Za-z]{24}$/);
   });
 
   it("agent and user keys have distinct, non-overlapping prefixes", () => {
-    expect(generateAgentApiKey().startsWith("bv_u_")).toBe(false);
-    expect(generateUserApiKey().startsWith("bv_a_")).toBe(false);
+    expect(generateAgentApiKey().startsWith(USER_KEY_PREFIX)).toBe(false);
+    expect(generateUserApiKey().startsWith(AGENT_KEY_PREFIX)).toBe(false);
   });
 });
 
