@@ -45,7 +45,7 @@ import { PostgresPersonRepository } from "../packages/core/src/adapters/postgres
 import { PostgresSessionRepository } from "../packages/core/src/adapters/postgres/session-repo.js";
 import { DEFAULT_RUNTIME_CONFIG } from "../packages/core/src/domain/agent.js";
 import { agentId, personId } from "../packages/core/src/domain/ids.js";
-import { AgentService } from "../packages/core/src/services/agent-service.js";
+import { provisionAgent } from "../packages/core/src/auth/provision.js";
 import { AgentSession } from "../packages/core/src/services/agent-session.js";
 import { CoreMemory } from "../packages/core/src/services/memory/core-memory.js";
 import { FactPromoter } from "../packages/core/src/services/memory/fact-promoter.js";
@@ -91,7 +91,7 @@ async function main(): Promise<void> {
     step(1, "Truncate test DB");
     await pool.query(`TRUNCATE ${TABLES.join(", ")} RESTART IDENTITY CASCADE`);
 
-    step(2, "Create person + IC agent (via AgentService → initDefaults)");
+    step(2, "Create person + IC agent (via provisionAgent → initDefaults)");
     const persons = new PostgresPersonRepository(pool);
     const agents = new PostgresAgentRepository(pool);
     const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
@@ -99,20 +99,20 @@ async function main(): Promise<void> {
     const sessions = new PostgresSessionRepository(pool);
 
     const owner = await persons.create({ id: personId(), name: "E2E Owner" });
-    const agentService = new AgentService({
-      agentRepo: agents,
-      coreMemoryRepo,
-    });
-    const { agent, blocks } = await agentService.create({
-      id: agentId(),
-      name: "E2E IC",
-      owner_id: owner.id,
-      hierarchy_level: "ic",
-      runtime_config: DEFAULT_RUNTIME_CONFIG,
-    });
+    const { agent, blocks, apiKey } = await provisionAgent(
+      { agentRepo: agents, coreMemoryRepo },
+      {
+        id: agentId(),
+        name: "E2E IC",
+        owner_id: owner.id,
+        hierarchy_level: "ic",
+        runtime_config: DEFAULT_RUNTIME_CONFIG,
+      },
+    );
     const blockNames = blocks.map((b) => b.block_name).sort();
-    console.log(`   agent ${agent.id} created with blocks: ${blockNames.join(", ")}`);
+    console.log(`   agent ${agent.id} created with key ${apiKey.slice(0, 10)}… and blocks: ${blockNames.join(", ")}`);
     assert(blockNames.length === 4, "expected 4 IC default blocks");
+    assert(apiKey.startsWith("bv_a_"), "agent key should have bv_a_ prefix");
 
     step(3, "Write identity into the persona block (CoreMemory.applyUpdate append)");
     const coreMemory = new CoreMemory({ repo: coreMemoryRepo });

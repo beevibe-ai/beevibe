@@ -3,3 +3,4 @@
 // Adapters are composed by binaries directly; not re-exported via the barrel.
 export * from "./domain/index.js";
 export * from "./ports/index.js";
+export * from "./auth/index.js";
