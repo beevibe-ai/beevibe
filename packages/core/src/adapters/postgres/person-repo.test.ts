@@ -60,6 +60,42 @@ describe("PostgresPersonRepository", () => {
     ).rejects.toThrow();
   });
 
+  it("findByApiKey round-trips an assigned key", async () => {
+    const p = await repo.create({
+      id: personId(),
+      name: "Keyed",
+      api_key: "bv_u_test_token",
+    });
+    const found = await repo.findByApiKey("bv_u_test_token");
+    expect(found?.id).toBe(p.id);
+    expect(found?.api_key).toBe("bv_u_test_token");
+  });
+
+  it("findByApiKey returns undefined when the key is not set", async () => {
+    await repo.create({ id: personId(), name: "NoKey" });
+    expect(await repo.findByApiKey("bv_u_missing")).toBeUndefined();
+  });
+
+  it("api_key UNIQUE constraint is enforced", async () => {
+    await repo.create({ id: personId(), name: "A", api_key: "bv_u_dup" });
+    await expect(
+      repo.create({ id: personId(), name: "B", api_key: "bv_u_dup" }),
+    ).rejects.toThrow();
+  });
+
+  it("update can set and rotate api_key", async () => {
+    const p = await repo.create({ id: personId(), name: "Rotator" });
+    expect(p.api_key).toBeUndefined();
+
+    const withKey = await repo.update(p.id, { api_key: "bv_u_first" });
+    expect(withKey.api_key).toBe("bv_u_first");
+
+    const rotated = await repo.update(p.id, { api_key: "bv_u_second" });
+    expect(rotated.api_key).toBe("bv_u_second");
+    expect(await repo.findByApiKey("bv_u_first")).toBeUndefined();
+    expect((await repo.findByApiKey("bv_u_second"))?.id).toBe(p.id);
+  });
+
   it("findManyByIds returns rows for given IDs, empty array for empty input", async () => {
     const a = await repo.create({ id: personId(), name: "A" });
     const b = await repo.create({ id: personId(), name: "B" });
