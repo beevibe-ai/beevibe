@@ -75,6 +75,13 @@ importers:
       '@beevibe/core':
         specifier: workspace:*
         version: link:../core
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      dotenv:
+        specifier: ^17.4.2
+        version: 17.4.2
 
   packages/mcp-server:
     dependencies:

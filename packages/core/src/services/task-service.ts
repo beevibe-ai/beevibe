@@ -1,5 +1,6 @@
 import type { Task, TaskStatus } from "../domain/task.js";
 import type { WorkProduct } from "../domain/work-product.js";
+import type { AgentRepository } from "../ports/agent-repo.js";
 import type {
   NewWorkProduct,
   WorkProductRepository,
@@ -26,11 +27,18 @@ export class InvalidTaskTransitionError extends Error {
 const APPROVAL_TRANSITIONS: Record<"approve" | "reject" | "revise", TaskStatus> = {
   approve: "done",
   reject: "cancelled",
-  revise: "revision",
+  // "revise" queues the task for re-work; the executor's claim will then
+  // transition needs_revision → revision (running as re-work).
+  revise: "needs_revision",
 };
 
-/** Statuses from which an approval action is legal. */
-const APPROVABLE_FROM: readonly TaskStatus[] = ["review", "revision"];
+/**
+ * Statuses from which an approval action is legal. `review` is the natural
+ * case (agent finished, waiting for human). `needs_revision` lets a reviewer
+ * change their mind about a re-work request before the executor picks it
+ * up — not allowed once the task is actively re-running (`revision`).
+ */
+const APPROVABLE_FROM: readonly TaskStatus[] = ["review", "needs_revision"];
 
 /** Cancellation from these requires `force: true`. */
 const TERMINAL_STATUSES: readonly TaskStatus[] = ["done", "cancelled"];
@@ -41,6 +49,8 @@ const COMPLETE_STATUSES: readonly TaskStatus[] = ["done", "cancelled", "failed"]
 export interface TaskServiceDeps {
   taskRepo: TaskRepository;
   workProductRepo: WorkProductRepository;
+  /** Looked up on `updateProgress` to apply the agent's `review_policy`. */
+  agentRepo: AgentRepository;
 }
 
 /**
@@ -64,14 +74,32 @@ export interface TaskServiceDeps {
 export class TaskService {
   constructor(private deps: TaskServiceDeps) {}
 
-  /** Update progress — used by the `update_progress` MCP tool (M6). */
+  /**
+   * Update progress — used by the `update_progress` MCP tool (M6).
+   *
+   * Applies the agent's `review_policy` as a gate: when the agent declares
+   * `done` and its policy is `require_human`, the task is transitioned to
+   * `review` instead so a human can sign off before it's truly closed.
+   * Undefined policy and `auto_done` both pass `done` through. Other
+   * statuses (`failed`, `blocked`, etc.) are never gated — those aren't
+   * "I'm finished" claims and don't need review.
+   */
   async updateProgress(
     taskId: string,
     status: TaskStatus,
     summary: string,
   ): Promise<Task> {
-    await this.requireTask(taskId);
-    return this.deps.taskRepo.updateProgress(taskId, status, summary);
+    const task = await this.requireTask(taskId);
+
+    let finalStatus = status;
+    if (status === "done" && task.assignee_id) {
+      const agent = await this.deps.agentRepo.findById(task.assignee_id);
+      if (agent?.review_policy === "require_human") {
+        finalStatus = "review";
+      }
+    }
+
+    return this.deps.taskRepo.updateProgress(taskId, finalStatus, summary);
   }
 
   /** Mark blocked (set blocker agent + reason). Used by the `report_blocker` mesh tool (M6). */
@@ -92,7 +120,8 @@ export class TaskService {
 
   /**
    * Approve / reject / revise a task awaiting review. Valid only when the
-   * task is currently in `review` or `revision`.
+   * task is currently in `review` or `needs_revision` (latter lets a
+   * reviewer undo a re-work request before the executor claims it).
    */
   async approveTask(
     taskId: string,

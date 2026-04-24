@@ -65,8 +65,10 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       "--mcp-config",
       mcpConfigPath,
     ];
-    if (this.config.model) args.push("--model", this.config.model);
-    if (this.config.maxTurns) args.push("--max-turns", String(this.config.maxTurns));
+    const model = context.model ?? this.config.model;
+    if (model) args.push("--model", model);
+    const maxTurns = context.max_turns ?? this.config.maxTurns;
+    if (maxTurns) args.push("--max-turns", String(maxTurns));
     if (context.resume_session_id) args.push("--resume", context.resume_session_id);
     if (context.system_prompt_append.length > 0) {
       args.push("--append-system-prompt", context.system_prompt_append);

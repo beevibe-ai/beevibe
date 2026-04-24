@@ -118,7 +118,6 @@ describe("AgentSession.run", () => {
     const out = await service.run({
       agentId: "agent_1",
       intent: "Reply with 'ok'.",
-      urgency: "normal",
       workspace: WORKSPACE,
       taskId: "task_1",
     });
@@ -161,7 +160,6 @@ describe("AgentSession.run", () => {
     await service.run({
       agentId: "agent_1",
       intent: "x",
-      urgency: "normal",
       workspace: WORKSPACE,
     });
 
@@ -188,7 +186,6 @@ describe("AgentSession.run", () => {
     const out = await service.run({
       agentId: "agent_1",
       intent: "x",
-      urgency: "normal",
       workspace: WORKSPACE,
     });
     expect(out.status).toBe("cancelled");
@@ -207,8 +204,7 @@ describe("AgentSession.run", () => {
       service.run({
         agentId: "agent_1",
         intent: "x",
-        urgency: "normal",
-        workspace: WORKSPACE,
+          workspace: WORKSPACE,
       }),
     ).rejects.toThrow(/spawn ENOENT/);
 
@@ -217,6 +213,31 @@ describe("AgentSession.run", () => {
       .mock.calls.find((c) => (c[1] as { status?: string }).status === "failed");
     expect(failPatch).toBeDefined();
     expect(failPatch![1].error).toContain("spawn ENOENT");
+  });
+
+  it("passes agent.runtime_config.model + max_turns into RuntimeContext (per-agent override)", async () => {
+    vi.mocked(agentRepo.findById).mockResolvedValue(
+      makeAgent({
+        runtime_config: {
+          type: "claude-code",
+          model: "claude-haiku-4-5",
+          max_turns: 7,
+        },
+      }),
+    );
+    vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue("");
+    vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
+    vi.mocked(sessionRepo.update).mockImplementation(async (id) => makeSession(id));
+
+    await service.run({
+      agentId: "agent_1",
+      intent: "x",
+      workspace: WORKSPACE,
+    });
+    const ctx = vi.mocked(runtime.execute).mock.calls[0]![0];
+    expect(ctx.model).toBe("claude-haiku-4-5");
+    expect(ctx.max_turns).toBe(7);
   });
 
   it("passes BEEVIBE_SESSION_ID via RuntimeContext.env (agent id rides on the bv_ token, not env)", async () => {
@@ -233,7 +254,6 @@ describe("AgentSession.run", () => {
     await service.run({
       agentId: "agent_1",
       intent: "x",
-      urgency: "normal",
       workspace: WORKSPACE,
     });
 
@@ -254,7 +274,6 @@ describe("AgentSession.run", () => {
     await service.run({
       agentId: "agent_1",
       intent: "x",
-      urgency: "normal",
       workspace: WORKSPACE,
       priorSessionId: "sess_prev",
     });
@@ -278,7 +297,6 @@ describe("AgentSession.run", () => {
     await service.run({
       agentId: "agent_1",
       intent: "x",
-      urgency: "normal",
       workspace: WORKSPACE,
     });
     // Yield to microtask queue so the void-awaited promotion fires
@@ -292,8 +310,7 @@ describe("AgentSession.run", () => {
       service.run({
         agentId: "agent_missing",
         intent: "x",
-        urgency: "normal",
-        workspace: WORKSPACE,
+          workspace: WORKSPACE,
       }),
     ).rejects.toThrow(/agent not found/);
   });
@@ -308,7 +325,6 @@ describe("AgentSession.run", () => {
     await service.run({
       agentId: "agent_1",
       intent: "x",
-      urgency: "normal",
       workspace: WORKSPACE,
     });
     expect(vi.mocked(sessionRepo.create).mock.calls[0]![0].type).toBe("chat");
@@ -317,7 +333,6 @@ describe("AgentSession.run", () => {
     await service.run({
       agentId: "agent_1",
       intent: "y",
-      urgency: "normal",
       workspace: WORKSPACE,
       taskId: "task_xyz",
     });

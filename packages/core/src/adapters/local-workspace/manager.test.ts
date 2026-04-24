@@ -1,8 +1,34 @@
-import { existsSync, mkdtempSync, readdirSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { Agent } from "../../domain/agent.js";
 import { LocalWorkspaceManager } from "./manager.js";
+
+const MCP_URL = "http://mcp.example/";
+
+function makeAgent(overrides: Partial<Agent> = {}): Agent {
+  return {
+    id: "agent_abc",
+    name: "Test Agent",
+    owner_id: "person_owner",
+    hierarchy_level: "ic",
+    api_key: "bv_a_testkey123",
+    runtime_config: { type: "claude-code", model: "claude-opus-4-7" },
+    created_at: new Date(),
+    updated_at: new Date(),
+    ...overrides,
+  };
+}
 
 describe("LocalWorkspaceManager", () => {
   let workspaceRoot: string;
@@ -10,7 +36,7 @@ describe("LocalWorkspaceManager", () => {
 
   beforeEach(() => {
     workspaceRoot = mkdtempSync(join(tmpdir(), "beevibe-ws-test-"));
-    manager = new LocalWorkspaceManager({ workspaceRoot });
+    manager = new LocalWorkspaceManager({ workspaceRoot, mcpServerUrl: MCP_URL });
   });
 
   afterEach(() => {
@@ -18,7 +44,7 @@ describe("LocalWorkspaceManager", () => {
   });
 
   it("ensureWorkspace creates the agent dir under workspaceRoot", async () => {
-    const ws = await manager.ensureWorkspace({ agent_id: "agent_abc" });
+    const ws = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_abc" }) });
     expect(ws.path).toBe(join(workspaceRoot, "agent_abc"));
     expect(existsSync(ws.path)).toBe(true);
     expect(statSync(ws.path).isDirectory()).toBe(true);
@@ -27,47 +53,49 @@ describe("LocalWorkspaceManager", () => {
   it.skipIf(process.platform === "win32")(
     "dir is created with 0o700 (user-only) permissions",
     async () => {
-      const ws = await manager.ensureWorkspace({ agent_id: "agent_perms" });
+      const ws = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_perms" }) });
       const mode = statSync(ws.path).mode & 0o777;
       expect(mode).toBe(0o700);
     },
   );
 
   it("ensureWorkspace is idempotent: second call returns same path, doesn't error", async () => {
-    const ws1 = await manager.ensureWorkspace({ agent_id: "agent_idem" });
-    const ws2 = await manager.ensureWorkspace({ agent_id: "agent_idem" });
+    const ws1 = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_idem" }) });
+    const ws2 = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_idem" }) });
     expect(ws2.path).toBe(ws1.path);
   });
 
   it("ensureWorkspace preserves existing files inside the dir (persistence)", async () => {
-    const ws = await manager.ensureWorkspace({ agent_id: "agent_persist" });
+    const ws = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_persist" }) });
     writeFileSync(join(ws.path, "notes.md"), "# notes\n");
     writeFileSync(join(ws.path, "cloned-repo.txt"), "repo data");
 
-    // Second call should NOT wipe the dir
-    await manager.ensureWorkspace({ agent_id: "agent_persist" });
+    await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_persist" }) });
 
     const files = readdirSync(ws.path).sort();
-    expect(files).toEqual(["cloned-repo.txt", "notes.md"]);
+    // mcp-config.json was written on first ensure; preserved along with the user-created files.
+    expect(files).toEqual(["cloned-repo.txt", "mcp-config.json", "notes.md"]);
   });
 
   it("recursive mkdir creates missing parent dirs", async () => {
     const deepRoot = join(workspaceRoot, "nested", "deeper");
-    const deepManager = new LocalWorkspaceManager({ workspaceRoot: deepRoot });
-    const ws = await deepManager.ensureWorkspace({ agent_id: "agent_deep" });
+    const deepManager = new LocalWorkspaceManager({
+      workspaceRoot: deepRoot,
+      mcpServerUrl: MCP_URL,
+    });
+    const ws = await deepManager.ensureWorkspace({ agent: makeAgent({ id: "agent_deep" }) });
     expect(existsSync(ws.path)).toBe(true);
     expect(ws.path).toBe(join(deepRoot, "agent_deep"));
   });
 
   it("defaults workspaceRoot to ~/.beevibe/workspaces when not provided", () => {
-    const m = new LocalWorkspaceManager();
-    // Inspecting private field via cast — acceptable for a sanity test
+    const m = new LocalWorkspaceManager({ mcpServerUrl: MCP_URL });
     const root = (m as unknown as { root: string }).root;
     expect(root).toMatch(/\/\.beevibe\/workspaces$/);
   });
 
   it("removeWorkspace deletes the dir and all contents", async () => {
-    const ws = await manager.ensureWorkspace({ agent_id: "agent_rm" });
+    const ws = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_rm" }) });
     writeFileSync(join(ws.path, "file.txt"), "x");
     await manager.removeWorkspace(ws);
     expect(existsSync(ws.path)).toBe(false);
@@ -80,12 +108,88 @@ describe("LocalWorkspaceManager", () => {
   });
 
   it("different agents get isolated dirs", async () => {
-    const a = await manager.ensureWorkspace({ agent_id: "agent_a" });
-    const b = await manager.ensureWorkspace({ agent_id: "agent_b" });
+    const a = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_a" }) });
+    const b = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_b" }) });
     expect(a.path).not.toBe(b.path);
 
     writeFileSync(join(a.path, "a-only.txt"), "a");
     expect(existsSync(join(a.path, "a-only.txt"))).toBe(true);
     expect(existsSync(join(b.path, "a-only.txt"))).toBe(false);
+  });
+
+  describe("mcp-config.json writeback", () => {
+    it("first ensureWorkspace writes mcp-config.json with Bearer token + session-id placeholder", async () => {
+      const ws = await manager.ensureWorkspace({
+        agent: makeAgent({ id: "agent_cfg", api_key: "bv_a_XyZ" }),
+      });
+      const configPath = join(ws.path, "mcp-config.json");
+      expect(existsSync(configPath)).toBe(true);
+
+      const parsed = JSON.parse(readFileSync(configPath, "utf-8"));
+      expect(parsed.mcpServers.beevibe.type).toBe("http");
+      expect(parsed.mcpServers.beevibe.url).toBe(MCP_URL);
+      expect(parsed.mcpServers.beevibe.headers.Authorization).toBe("Bearer bv_a_XyZ");
+      expect(parsed.mcpServers.beevibe.headers["X-Beevibe-Session"]).toBe(
+        "${BEEVIBE_SESSION_ID}",
+      );
+    });
+
+    it.skipIf(process.platform === "win32")(
+      "mcp-config.json is written with mode 0o600 (file contains secrets)",
+      async () => {
+        const ws = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_mode" }) });
+        const mode = statSync(join(ws.path, "mcp-config.json")).mode & 0o777;
+        expect(mode).toBe(0o600);
+      },
+    );
+
+    it("second ensureWorkspace does NOT rewrite the config file (file-exists check)", async () => {
+      const ws = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_noredo" }) });
+      const configPath = join(ws.path, "mcp-config.json");
+      const firstMtime = statSync(configPath).mtimeMs;
+
+      // Tiny wait to ensure mtime resolution would catch a rewrite
+      await new Promise((r) => setTimeout(r, 10));
+      await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_noredo" }) });
+
+      const secondMtime = statSync(configPath).mtimeMs;
+      expect(secondMtime).toBe(firstMtime);
+    });
+
+    it("ensureWorkspace re-creates the config after it's deleted (self-heals)", async () => {
+      const ws = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_heal" }) });
+      const configPath = join(ws.path, "mcp-config.json");
+      unlinkSync(configPath);
+      expect(existsSync(configPath)).toBe(false);
+
+      await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_heal" }) });
+      expect(existsSync(configPath)).toBe(true);
+    });
+
+    it("new instance with different mcpServerUrl does NOT auto-refresh a stale file (documented limitation)", async () => {
+      await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_stale" }) });
+      const configPath = join(workspaceRoot, "agent_stale", "mcp-config.json");
+      const original = readFileSync(configPath, "utf-8");
+
+      const different = new LocalWorkspaceManager({
+        workspaceRoot,
+        mcpServerUrl: "http://different.example/",
+      });
+      await different.ensureWorkspace({ agent: makeAgent({ id: "agent_stale" }) });
+
+      // File persists unchanged — operator must rm to force refresh.
+      const after = readFileSync(configPath, "utf-8");
+      expect(after).toBe(original);
+      expect(after).toContain(MCP_URL);
+      expect(after).not.toContain("different.example");
+    });
+
+    it("throws when agent has no api_key", async () => {
+      await expect(
+        manager.ensureWorkspace({
+          agent: makeAgent({ id: "agent_nokey", api_key: undefined }),
+        }),
+      ).rejects.toThrow(/api_key is missing/);
+    });
   });
 });

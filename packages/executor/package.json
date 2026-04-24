@@ -19,5 +19,9 @@
   },
   "dependencies": {
     "@beevibe/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10",
+    "dotenv": "^17.4.2"
   }
 }

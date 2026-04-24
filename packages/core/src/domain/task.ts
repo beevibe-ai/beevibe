@@ -2,8 +2,9 @@ export type TaskStatus =
   | "pending"
   | "assigned"
   | "in_progress"
-  | "review"
+  | "needs_revision"
   | "revision"
+  | "review"
   | "blocked"
   | "done"
   | "failed"
@@ -13,8 +14,9 @@ export const TASK_STATUSES: readonly TaskStatus[] = [
   "pending",
   "assigned",
   "in_progress",
-  "review",
+  "needs_revision",
   "revision",
+  "review",
   "blocked",
   "done",
   "failed",

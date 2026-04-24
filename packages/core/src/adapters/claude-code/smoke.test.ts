@@ -38,7 +38,6 @@ describe.skipIf(!RUN)("ClaudeCodeRuntime (smoke)", () => {
       const runtime = new ClaudeCodeRuntime({ maxTurns: 1 });
       const result = await runtime.execute({
         intent: "Reply with the literal word 'ok' and nothing else.",
-        urgency: "low",
         workspace: { path: workspacePath },
         system_prompt_append: "",
       });

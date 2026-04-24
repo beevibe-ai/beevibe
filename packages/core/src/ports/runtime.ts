@@ -45,11 +45,22 @@ export interface RuntimeContext {
   /** What the agent should do — prompt text (task description, mesh message, etc.). */
   intent: string;
 
-  /** Urgency hint passed through to the runtime (may influence scheduling). */
-  urgency: "low" | "normal" | "high" | "critical";
-
   /** Agent's sandbox. Runtime sets cwd to `workspace.path`. */
   workspace: Workspace;
+
+  /**
+   * Per-agent model override. AgentSession passes `agent.runtime_config.model`
+   * here so each spawn uses the model configured for that agent (e.g. one
+   * executor can serve claude-opus-4-7 agents and claude-haiku-4-5 agents
+   * concurrently). Adapter falls back to its constructor config when unset.
+   */
+  model?: string;
+
+  /**
+   * Per-agent turn cap. AgentSession passes `agent.runtime_config.max_turns`
+   * here. Adapter falls back to constructor config when unset.
+   */
+  max_turns?: number;
 
   /**
    * Content appended to Claude Code's baseline system prompt via
@@ -145,3 +156,10 @@ export interface RuntimeHealth {
   latency_ms?: number;
   error?: string;
 }
+
+/**
+ * Shared registry type — maps `agent.runtime_config.type` to its runtime
+ * instance. Both the executor (M5) and the MCP server (M6) compose an
+ * `AgentRuntime` per dispatch by looking up the agent's declared type.
+ */
+export type RuntimeRegistry = Record<string, AgentRuntime>;
