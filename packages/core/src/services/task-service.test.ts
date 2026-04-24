@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { Agent, ReviewPolicy } from "../domain/agent.js";
 import type { Task, TaskStatus } from "../domain/task.js";
 import type { WorkProduct } from "../domain/work-product.js";
+import type { AgentRepository } from "../ports/agent-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
 import type { WorkProductRepository } from "../ports/work-product-repo.js";
 import {
@@ -35,8 +37,22 @@ function makeWorkProduct(overrides: Partial<WorkProduct> = {}): WorkProduct {
   };
 }
 
+function makeAgent(review_policy?: ReviewPolicy): Agent {
+  return {
+    id: "agent_1",
+    name: "A",
+    owner_id: "person_1",
+    hierarchy_level: "ic",
+    runtime_config: { type: "claude-code" },
+    review_policy,
+    created_at: new Date(),
+    updated_at: new Date(),
+  };
+}
+
 let taskRepo: TaskRepository;
 let workProductRepo: WorkProductRepository;
+let agentRepo: AgentRepository;
 let service: TaskService;
 
 beforeEach(() => {
@@ -44,6 +60,8 @@ beforeEach(() => {
     findById: vi.fn(),
     list: vi.fn(),
     listByAssignee: vi.fn(),
+    listAssignable: vi.fn(),
+    claimById: vi.fn(),
     listReviewQueue: vi.fn(),
     countChildrenNotComplete: vi.fn(),
     create: vi.fn(),
@@ -60,7 +78,19 @@ beforeEach(() => {
     create: vi.fn(),
     delete: vi.fn(),
   };
-  service = new TaskService({ taskRepo, workProductRepo });
+  agentRepo = {
+    findById: vi.fn(),
+    findByApiKey: vi.fn(),
+    findByOwnerId: vi.fn(),
+    findTopLevelForOwner: vi.fn(),
+    findSubordinates: vi.fn(),
+    findPeers: vi.fn(),
+    findByLevel: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    delete: vi.fn(),
+  };
+  service = new TaskService({ taskRepo, workProductRepo, agentRepo });
 });
 
 describe("TaskService.updateProgress", () => {
@@ -85,6 +115,90 @@ describe("TaskService.updateProgress", () => {
     await expect(
       service.updateProgress("task_x", "in_progress", "x"),
     ).rejects.toBeInstanceOf(TaskNotFoundError);
+  });
+
+  describe("review_policy gating", () => {
+    it("agent.review_policy='require_human' + status='done' → transitions to 'review'", async () => {
+      vi.mocked(taskRepo.findById).mockResolvedValue(
+        makeTask({ assignee_id: "agent_1" }),
+      );
+      vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent("require_human"));
+      vi.mocked(taskRepo.updateProgress).mockImplementation(async (id, status, summary) =>
+        makeTask({ id, status, result_summary: summary }),
+      );
+
+      const out = await service.updateProgress("task_1", "done", "finished it");
+      expect(out.status).toBe("review");
+      // Critical: the REPO is called with "review", not "done" — the gate
+      // rewrites the status before persisting.
+      expect(taskRepo.updateProgress).toHaveBeenCalledWith("task_1", "review", "finished it");
+    });
+
+    it("agent.review_policy='auto_done' + status='done' → passes through as 'done'", async () => {
+      vi.mocked(taskRepo.findById).mockResolvedValue(
+        makeTask({ assignee_id: "agent_1" }),
+      );
+      vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent("auto_done"));
+      vi.mocked(taskRepo.updateProgress).mockImplementation(async (id, status, summary) =>
+        makeTask({ id, status, result_summary: summary }),
+      );
+
+      const out = await service.updateProgress("task_1", "done", "finished it");
+      expect(out.status).toBe("done");
+      expect(taskRepo.updateProgress).toHaveBeenCalledWith("task_1", "done", "finished it");
+    });
+
+    it("agent.review_policy=undefined + status='done' → passes through as 'done' (default is auto_done)", async () => {
+      vi.mocked(taskRepo.findById).mockResolvedValue(
+        makeTask({ assignee_id: "agent_1" }),
+      );
+      vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent(undefined));
+      vi.mocked(taskRepo.updateProgress).mockImplementation(async (id, status, summary) =>
+        makeTask({ id, status, result_summary: summary }),
+      );
+
+      const out = await service.updateProgress("task_1", "done", "finished it");
+      expect(out.status).toBe("done");
+    });
+
+    it("agent.review_policy='require_human' + status='failed' → NOT gated (failed stays failed)", async () => {
+      vi.mocked(taskRepo.findById).mockResolvedValue(
+        makeTask({ assignee_id: "agent_1" }),
+      );
+      vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent("require_human"));
+      vi.mocked(taskRepo.updateProgress).mockImplementation(async (id, status, summary) =>
+        makeTask({ id, status, result_summary: summary }),
+      );
+
+      const out = await service.updateProgress("task_1", "failed", "it broke");
+      expect(out.status).toBe("failed");
+    });
+
+    it("agent.review_policy='require_human' + status='blocked' → NOT gated", async () => {
+      vi.mocked(taskRepo.findById).mockResolvedValue(
+        makeTask({ assignee_id: "agent_1" }),
+      );
+      vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent("require_human"));
+      vi.mocked(taskRepo.updateProgress).mockImplementation(async (id, status, summary) =>
+        makeTask({ id, status, result_summary: summary }),
+      );
+
+      const out = await service.updateProgress("task_1", "blocked", "waiting on x");
+      expect(out.status).toBe("blocked");
+    });
+
+    it("task has no assignee_id → skips policy lookup, passes status through", async () => {
+      vi.mocked(taskRepo.findById).mockResolvedValue(
+        makeTask({ assignee_id: undefined }),
+      );
+      vi.mocked(taskRepo.updateProgress).mockImplementation(async (id, status, summary) =>
+        makeTask({ id, status, result_summary: summary }),
+      );
+
+      await service.updateProgress("task_1", "done", "finished");
+      expect(agentRepo.findById).not.toHaveBeenCalled();
+      expect(taskRepo.updateProgress).toHaveBeenCalledWith("task_1", "done", "finished");
+    });
   });
 });
 

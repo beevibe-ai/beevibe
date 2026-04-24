@@ -1,5 +1,6 @@
 import type { Task, TaskStatus } from "../domain/task.js";
 import type { WorkProduct } from "../domain/work-product.js";
+import type { AgentRepository } from "../ports/agent-repo.js";
 import type {
   NewWorkProduct,
   WorkProductRepository,
@@ -48,6 +49,8 @@ const COMPLETE_STATUSES: readonly TaskStatus[] = ["done", "cancelled", "failed"]
 export interface TaskServiceDeps {
   taskRepo: TaskRepository;
   workProductRepo: WorkProductRepository;
+  /** Looked up on `updateProgress` to apply the agent's `review_policy`. */
+  agentRepo: AgentRepository;
 }
 
 /**
@@ -71,14 +74,32 @@ export interface TaskServiceDeps {
 export class TaskService {
   constructor(private deps: TaskServiceDeps) {}
 
-  /** Update progress — used by the `update_progress` MCP tool (M6). */
+  /**
+   * Update progress — used by the `update_progress` MCP tool (M6).
+   *
+   * Applies the agent's `review_policy` as a gate: when the agent declares
+   * `done` and its policy is `require_human`, the task is transitioned to
+   * `review` instead so a human can sign off before it's truly closed.
+   * Undefined policy and `auto_done` both pass `done` through. Other
+   * statuses (`failed`, `blocked`, etc.) are never gated — those aren't
+   * "I'm finished" claims and don't need review.
+   */
   async updateProgress(
     taskId: string,
     status: TaskStatus,
     summary: string,
   ): Promise<Task> {
-    await this.requireTask(taskId);
-    return this.deps.taskRepo.updateProgress(taskId, status, summary);
+    const task = await this.requireTask(taskId);
+
+    let finalStatus = status;
+    if (status === "done" && task.assignee_id) {
+      const agent = await this.deps.agentRepo.findById(task.assignee_id);
+      if (agent?.review_policy === "require_human") {
+        finalStatus = "review";
+      }
+    }
+
+    return this.deps.taskRepo.updateProgress(taskId, finalStatus, summary);
   }
 
   /** Mark blocked (set blocker agent + reason). Used by the `report_blocker` mesh tool (M6). */
