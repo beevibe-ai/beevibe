@@ -26,11 +26,18 @@ export class InvalidTaskTransitionError extends Error {
 const APPROVAL_TRANSITIONS: Record<"approve" | "reject" | "revise", TaskStatus> = {
   approve: "done",
   reject: "cancelled",
-  revise: "revision",
+  // "revise" queues the task for re-work; the executor's claim will then
+  // transition needs_revision → revision (running as re-work).
+  revise: "needs_revision",
 };
 
-/** Statuses from which an approval action is legal. */
-const APPROVABLE_FROM: readonly TaskStatus[] = ["review", "revision"];
+/**
+ * Statuses from which an approval action is legal. `review` is the natural
+ * case (agent finished, waiting for human). `needs_revision` lets a reviewer
+ * change their mind about a re-work request before the executor picks it
+ * up — not allowed once the task is actively re-running (`revision`).
+ */
+const APPROVABLE_FROM: readonly TaskStatus[] = ["review", "needs_revision"];
 
 /** Cancellation from these requires `force: true`. */
 const TERMINAL_STATUSES: readonly TaskStatus[] = ["done", "cancelled"];
@@ -92,7 +99,8 @@ export class TaskService {
 
   /**
    * Approve / reject / revise a task awaiting review. Valid only when the
-   * task is currently in `review` or `revision`.
+   * task is currently in `review` or `needs_revision` (latter lets a
+   * reviewer undo a re-work request before the executor claims it).
    */
   async approveTask(
     taskId: string,

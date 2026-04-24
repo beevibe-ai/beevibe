@@ -204,7 +204,7 @@ describe("createTaskDispatcher", () => {
     expect(arg.intent).toBe("just a title");
   });
 
-  it("revision task: looks up latest prior session and passes priorSessionId", async () => {
+  it("task in `revision` (post-claim re-work): looks up latest prior session and passes priorSessionId", async () => {
     vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue({
       id: "sess_prior",
       agent_id: "agent_test",
@@ -233,7 +233,7 @@ describe("createTaskDispatcher", () => {
     expect(arg.priorSessionId).toBe("sess_prior");
   });
 
-  it("non-revision task: does NOT call findLatestForTask + priorSessionId is undefined", async () => {
+  it("fresh (in_progress) task: does NOT call findLatestForTask + priorSessionId is undefined", async () => {
     const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
     const dispatch = createTaskDispatcher({
       agentRepo,
@@ -244,7 +244,9 @@ describe("createTaskDispatcher", () => {
         onTaskComplete: vi.fn(),
       }) as unknown as MemoryAgent),
     });
-    await dispatch(makeTask({ status: "assigned" }), makeAgent(), WORKSPACE, SIGNAL);
+    // Post-claim status for fresh work is `in_progress`; dispatch must not
+    // trigger the --resume path for this.
+    await dispatch(makeTask({ status: "in_progress" }), makeAgent(), WORKSPACE, SIGNAL);
     expect(sessionRepo.findLatestForTask).not.toHaveBeenCalled();
     const arg = runSpy.mock.calls[0]![0] as Parameters<AgentSession["run"]>[0];
     expect(arg.priorSessionId).toBeUndefined();

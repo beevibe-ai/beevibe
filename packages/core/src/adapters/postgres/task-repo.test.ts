@@ -118,12 +118,17 @@ describe("PostgresTaskRepository", () => {
     expect(got.map((t) => t.id)).toEqual([mine.id]);
   });
 
-  it("listReviewQueue returns only review/revision, priority desc then updated_at asc", async () => {
-    const a = await tasks.create(newTask({ status: "review", priority: "high" }));
-    const b = await tasks.create(newTask({ status: "revision", priority: "critical" }));
+  it("listReviewQueue returns only review, priority desc then updated_at asc", async () => {
+    const high = await tasks.create(newTask({ status: "review", priority: "high" }));
+    const critical = await tasks.create(newTask({ status: "review", priority: "critical" }));
+    // needs_revision (queued for re-work) and revision (actively running
+    // re-work) are NOT in the human review queue — those are executor-side
+    // states now, not awaiting-human-decision states.
+    await tasks.create(newTask({ status: "needs_revision", priority: "critical" }));
+    await tasks.create(newTask({ status: "revision", priority: "critical" }));
     await tasks.create(newTask({ status: "done" }));
     const queue = await tasks.listReviewQueue();
-    expect(queue.map((t) => t.id)).toEqual([b.id, a.id]);
+    expect(queue.map((t) => t.id)).toEqual([critical.id, high.id]);
   });
 
   it("countChildrenNotComplete counts sub-tasks in non-terminal states", async () => {
@@ -234,21 +239,25 @@ describe("PostgresTaskRepository", () => {
       expect(list.map((t) => t.id)).toEqual([first.id, second.id]);
     });
 
-    it("listAssignable includes both assigned and revision status", async () => {
+    it("listAssignable includes both assigned and needs_revision status", async () => {
       const assigned = await tasks.create(
         newTask({ status: "assigned", assignee_id: assigneeAgentId }),
       );
-      const revision = await tasks.create(
-        newTask({ status: "revision", assignee_id: assigneeAgentId }),
+      const needsRevision = await tasks.create(
+        newTask({ status: "needs_revision", assignee_id: assigneeAgentId }),
       );
       const list = await tasks.listAssignable();
       const ids = list.map((t) => t.id).sort();
-      expect(ids).toEqual([assigned.id, revision.id].sort());
+      expect(ids).toEqual([assigned.id, needsRevision.id].sort());
     });
 
-    it("listAssignable excludes pending/in_progress/done/failed/cancelled", async () => {
+    it("listAssignable excludes running states (in_progress, revision) and terminal states", async () => {
       await tasks.create(newTask({ status: "pending", assignee_id: assigneeAgentId }));
       await tasks.create(newTask({ status: "in_progress", assignee_id: assigneeAgentId }));
+      // `revision` is a running state (actively re-working) — must NOT appear
+      // in the assignable queue, or a worker would re-claim it mid-run.
+      await tasks.create(newTask({ status: "revision", assignee_id: assigneeAgentId }));
+      await tasks.create(newTask({ status: "review", assignee_id: assigneeAgentId }));
       await tasks.create(newTask({ status: "done", assignee_id: assigneeAgentId }));
       await tasks.create(newTask({ status: "failed", assignee_id: assigneeAgentId }));
       await tasks.create(newTask({ status: "cancelled", assignee_id: assigneeAgentId }));
@@ -273,15 +282,17 @@ describe("PostgresTaskRepository", () => {
       expect(reread?.status).toBe("in_progress");
     });
 
-    it("claimById also accepts revision → in_progress", async () => {
+    it("claimById transitions needs_revision → revision (re-work running state)", async () => {
       const t = await tasks.create(
-        newTask({ status: "revision", assignee_id: assigneeAgentId }),
+        newTask({ status: "needs_revision", assignee_id: assigneeAgentId }),
       );
       const claimed = await tasks.claimById(t.id);
-      expect(claimed?.status).toBe("in_progress");
+      expect(claimed?.status).toBe("revision");
+      const reread = await tasks.findById(t.id);
+      expect(reread?.status).toBe("revision");
     });
 
-    it("claimById returns undefined when the row is no longer assigned/revision (race loser)", async () => {
+    it("claimById returns undefined when the row is no longer in a queue state (race loser)", async () => {
       const t = await tasks.create(
         newTask({ status: "assigned", assignee_id: assigneeAgentId }),
       );
@@ -298,6 +309,16 @@ describe("PostgresTaskRepository", () => {
       const [a, b] = await Promise.all([tasks.claimById(t.id), tasks.claimById(t.id)]);
       const winners = [a, b].filter((r) => r !== undefined);
       expect(winners).toHaveLength(1);
+    });
+
+    it("two concurrent claimById on a needs_revision task yield exactly one winner (revision path too)", async () => {
+      const t = await tasks.create(
+        newTask({ status: "needs_revision", assignee_id: assigneeAgentId }),
+      );
+      const [a, b] = await Promise.all([tasks.claimById(t.id), tasks.claimById(t.id)]);
+      const winners = [a, b].filter((r) => r !== undefined);
+      expect(winners).toHaveLength(1);
+      expect(winners[0]?.status).toBe("revision");
     });
   });
 

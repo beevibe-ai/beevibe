@@ -114,7 +114,7 @@ describe("TaskService.approveTask", () => {
   it.each([
     ["approve", "done"],
     ["reject", "cancelled"],
-    ["revise", "revision"],
+    ["revise", "needs_revision"],
   ] as const)(
     "transitions review → %s via %s",
     async (action, expectedStatus) => {
@@ -131,13 +131,20 @@ describe("TaskService.approveTask", () => {
     },
   );
 
-  it("allows approving from 'revision' too", async () => {
-    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "revision" }));
+  it("allows approving from 'needs_revision' too (reviewer changes mind before executor picks up re-work)", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "needs_revision" }));
     vi.mocked(taskRepo.update).mockImplementation(async (id, patch) =>
-      makeTask({ id, ...patch, status: patch.status ?? "revision" }),
+      makeTask({ id, ...patch, status: patch.status ?? "needs_revision" }),
     );
     const out = await service.approveTask("task_1", "approve");
     expect(out.status).toBe("done");
+  });
+
+  it("rejects approval from 'revision' (actively running re-work — can't approve mid-run)", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "revision" }));
+    await expect(
+      service.approveTask("task_1", "approve"),
+    ).rejects.toBeInstanceOf(InvalidTaskTransitionError);
   });
 
   it("rejects approval from an invalid status", async () => {

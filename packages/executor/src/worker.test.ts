@@ -367,14 +367,52 @@ describe("TaskExecutionWorker", () => {
     expect(abortedFromSignal).toBe(true);
   });
 
-  it("revision-status tasks are also picked up", async () => {
+  it("needs_revision tasks are picked up and claimed into revision state", async () => {
     const agent = await seedAgent();
-    const task = await seedTask(agent.id, { status: "revision" });
+    const task = await seedTask(agent.id, { status: "needs_revision" });
     const { worker, dispatchTask } = makeWorker();
     await worker.start();
     await worker.stop();
     expect(dispatchTask).toHaveBeenCalledTimes(1);
-    expect((dispatchTask.mock.calls[0]![0] as Task).id).toBe(task.id);
+    const dispatched = dispatchTask.mock.calls[0]![0] as Task;
+    expect(dispatched.id).toBe(task.id);
+    // Post-claim status signals dispatch to set priorSessionId for --resume.
+    expect(dispatched.status).toBe("revision");
+  });
+
+  it("reap of a dead session whose task is in `revision` resets task to `needs_revision` (not `assigned`)", async () => {
+    const agent = await seedAgent();
+    // Task in running re-work state, no assignee so dispatch doesn't reclaim
+    // in the same poll (mirrors the trick used by the assigned-reap test).
+    const task = await tasks.create({
+      id: taskId(),
+      title: "orphaned revision",
+      priority: "medium",
+      creator_id: ownerPersonId,
+      creator_type: "person",
+      status: "revision",
+    });
+    const deadPid = 99_999_999;
+    const sess = await sessions.create({
+      id: sessionId(),
+      agent_id: agent.id,
+      task_id: task.id,
+      type: "task",
+      intent: "x",
+      process_pid: deadPid,
+      process_group_id: deadPid,
+      status: "running",
+      started_at: new Date(),
+    });
+
+    const { worker } = makeWorker();
+    await worker.start();
+    await worker.stop();
+
+    const rereadSession = await sessions.findById(sess.id);
+    expect(rereadSession?.status).toBe("failed");
+    const rereadTask = await tasks.findById(task.id);
+    expect(rereadTask?.status).toBe("needs_revision");
   });
 
   it("default poll interval is 30_000ms when not configured", async () => {

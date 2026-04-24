@@ -73,10 +73,13 @@ export class PostgresTaskRepository implements TaskRepository {
   }
 
   async listAssignable(): Promise<Task[]> {
-    // Matches idx_task_dispatch expression index (migrations/..._fix-task-dispatch-index.sql).
+    // Matches idx_task_dispatch (migrations/..._add-task-needs-revision-status.sql).
+    // The queue states are `assigned` (first dispatch) and `needs_revision`
+    // (re-work requested). Tasks in `in_progress` / `revision` are currently
+    // running, not assignable.
     const { rows } = await this.pool.query<TaskRow>(
       `SELECT * FROM task
-        WHERE status IN ('assigned', 'revision')
+        WHERE status IN ('assigned', 'needs_revision')
           AND assignee_id IS NOT NULL
         ORDER BY
           (CASE priority
@@ -93,11 +96,19 @@ export class PostgresTaskRepository implements TaskRepository {
 
   async claimById(taskId: string): Promise<Task | undefined> {
     // Row-level MVCC atomic: under concurrent executors, one UPDATE wins and
-    // others see the row already at status='in_progress' and match nothing.
+    // the other sees the row with a status no longer in the WHERE predicate
+    // and returns empty. The CASE preserves the semantic distinction between
+    // fresh work (assigned → in_progress) and re-work (needs_revision →
+    // revision). Dispatch reads post-claim status=="revision" to decide on
+    // priorSessionId (--resume).
     const { rows } = await this.pool.query<TaskRow>(
       `UPDATE task
-          SET status = 'in_progress', updated_at = NOW()
-        WHERE id = $1 AND status IN ('assigned', 'revision')
+          SET status = CASE
+                         WHEN status = 'assigned'       THEN 'in_progress'
+                         WHEN status = 'needs_revision' THEN 'revision'
+                       END,
+              updated_at = NOW()
+        WHERE id = $1 AND status IN ('assigned', 'needs_revision')
         RETURNING *`,
       [taskId],
     );
@@ -105,12 +116,13 @@ export class PostgresTaskRepository implements TaskRepository {
   }
 
   async listReviewQueue(): Promise<Task[]> {
-    // Semantic priority ordering: critical > high > medium > low (not alphabetical).
-    // The dispatch partial index (M5 concern) will get a matching expression index
-    // when the executor's dispatch query is written.
+    // Tasks awaiting a human review decision. `review` is the only state
+    // where a reviewer action is needed — `needs_revision` means the human
+    // already decided "re-work" and the executor will pick it up;
+    // `revision` means the agent is actively re-working.
     const { rows } = await this.pool.query<TaskRow>(
       `SELECT * FROM task
-        WHERE status IN ('review', 'revision')
+        WHERE status = 'review'
         ORDER BY
           CASE priority
             WHEN 'critical' THEN 4

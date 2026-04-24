@@ -396,8 +396,9 @@ const revisionResume: Scenario = async (deps) => {
     assert(first.cli_session_id, "first cli_session_id missing");
     log(`  first session=${first.id} cli=${first.cli_session_id}`);
 
-    // Mark task back to revision; next poll re-dispatches.
-    await deps.tasks.update(task.id, { status: "revision" });
+    // Queue task for re-work. Worker's next poll picks it up; claimById
+    // transitions needs_revision → revision before dispatching.
+    await deps.tasks.update(task.id, { status: "needs_revision" });
 
     const second = await waitForSession(
       deps.sessions,
@@ -408,6 +409,15 @@ const revisionResume: Scenario = async (deps) => {
     );
     assert(second.status === "succeeded", `second session status=${second.status}`);
     log(`  second session=${second.id} cli=${second.cli_session_id}`);
+
+    // Verify task reached status="revision" during re-work dispatch — this
+    // is the semantic distinction the needs_revision ↔ revision split
+    // preserves.
+    const taskDuringOrAfterRework = await deps.tasks.findById(task.id);
+    assert(
+      taskDuringOrAfterRework?.status === "revision",
+      `task.status during re-work should be "revision", got "${taskDuringOrAfterRework?.status}"`,
+    );
 
     // Core assertions: CLI session was resumed (same id), DB rows are
     // distinct, and prior_session_id links them.

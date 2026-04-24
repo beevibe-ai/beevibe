@@ -136,16 +136,30 @@ export class TaskExecutionWorker {
       if (isProcessAlive(session.process_pid)) continue;
 
       // CLI process is gone. Mark session failed; re-queue the task (if any)
-      // so the next poll picks it up again. Crash recovery only — this is
-      // different from the M6 post-dispatch retry, which handles the agent
-      // exiting cleanly without calling update_progress.
+      // back to the matching queue status so the next poll picks it up
+      // again. Crash recovery only — this is different from the M6
+      // post-dispatch retry, which handles the agent exiting cleanly
+      // without calling update_progress.
       await this.config.sessionRepo.update(session.id, {
         status: "failed",
         error: "process_lost",
         completed_at: new Date(),
       });
       if (session.task_id) {
-        await this.config.taskRepo.update(session.task_id, { status: "assigned" });
+        // Mirror the claim transition: in_progress → assigned,
+        // revision → needs_revision. Anything else (e.g., already done or
+        // cancelled) we leave alone — reap shouldn't overwrite a terminal
+        // state set by the agent or an operator.
+        const current = await this.config.taskRepo.findById(session.task_id);
+        const next =
+          current?.status === "in_progress"
+            ? "assigned"
+            : current?.status === "revision"
+            ? "needs_revision"
+            : undefined;
+        if (next) {
+          await this.config.taskRepo.update(session.task_id, { status: next });
+        }
       }
     }
   }
@@ -176,15 +190,12 @@ export class TaskExecutionWorker {
       this.inFlight.set(task.id, ac);
       runningByAgent.set(agent.id, (runningByAgent.get(agent.id) ?? 0) + 1);
 
-      // Pre-claim task (status=assigned|revision) goes to dispatch — the
-      // post-claim row has status=in_progress, erasing the revision signal
-      // dispatch uses to decide whether to set priorSessionId for --resume.
-      // `claimed` is only useful as proof the row was in fact transitioned.
-      void claimed;
-
       // Fire-and-forget. The promise chain always cleans up inFlight.
+      // Dispatch receives the post-claim row: status=in_progress for fresh
+      // work, status=revision for re-work. Dispatch checks task.status ===
+      // "revision" to decide on priorSessionId (--resume).
       void Promise.resolve()
-        .then(() => this.config.dispatchTask(task, agent, workspace, ac.signal))
+        .then(() => this.config.dispatchTask(claimed, agent, workspace, ac.signal))
         .catch((err: unknown) =>
           this.onError(err instanceof Error ? err : new Error(String(err))),
         )
