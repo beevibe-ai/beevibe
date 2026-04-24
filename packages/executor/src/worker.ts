@@ -176,9 +176,15 @@ export class TaskExecutionWorker {
       this.inFlight.set(task.id, ac);
       runningByAgent.set(agent.id, (runningByAgent.get(agent.id) ?? 0) + 1);
 
+      // Pre-claim task (status=assigned|revision) goes to dispatch — the
+      // post-claim row has status=in_progress, erasing the revision signal
+      // dispatch uses to decide whether to set priorSessionId for --resume.
+      // `claimed` is only useful as proof the row was in fact transitioned.
+      void claimed;
+
       // Fire-and-forget. The promise chain always cleans up inFlight.
       void Promise.resolve()
-        .then(() => this.config.dispatchTask(claimed, agent, workspace, ac.signal))
+        .then(() => this.config.dispatchTask(task, agent, workspace, ac.signal))
         .catch((err: unknown) =>
           this.onError(err instanceof Error ? err : new Error(String(err))),
         )
