@@ -10,6 +10,38 @@
     ".": {
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
+    },
+    "./adapters/postgres": {
+      "types": "./dist/adapters/postgres/index.d.ts",
+      "import": "./dist/adapters/postgres/index.js"
+    },
+    "./adapters/claude-code": {
+      "types": "./dist/adapters/claude-code/index.d.ts",
+      "import": "./dist/adapters/claude-code/index.js"
+    },
+    "./adapters/local-workspace": {
+      "types": "./dist/adapters/local-workspace/index.d.ts",
+      "import": "./dist/adapters/local-workspace/index.js"
+    },
+    "./adapters/openai": {
+      "types": "./dist/adapters/openai/index.d.ts",
+      "import": "./dist/adapters/openai/index.js"
+    },
+    "./adapters/anthropic": {
+      "types": "./dist/adapters/anthropic/index.d.ts",
+      "import": "./dist/adapters/anthropic/index.js"
+    },
+    "./adapters/runtime-registry": {
+      "types": "./dist/adapters/runtime-registry.d.ts",
+      "import": "./dist/adapters/runtime-registry.js"
+    },
+    "./services/agent-session": {
+      "types": "./dist/services/agent-session.d.ts",
+      "import": "./dist/services/agent-session.js"
+    },
+    "./services/memory": {
+      "types": "./dist/services/memory/index.d.ts",
+      "import": "./dist/services/memory/index.js"
     }
   },
   "scripts": {
