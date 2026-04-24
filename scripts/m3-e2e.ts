@@ -189,7 +189,6 @@ async function main(): Promise<void> {
     const result = await session.run({
       agentId: agent.id,
       intent: "Reply with the single word 'ok'.",
-      urgency: "low",
       workspace: { path: workspacePath },
     });
     console.log(

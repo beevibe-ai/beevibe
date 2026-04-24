@@ -6,7 +6,14 @@ export type ReviewPolicy = "require_human" | "auto_done";
 
 export interface RuntimeConfig {
   type: "claude-code";
-  model: string;
+  /**
+   * Model alias passed to the CLI via `--model`. Optional: when unset, the
+   * CLI uses its own default. Claude Code CLI accepts short aliases (`opus`,
+   * `sonnet`, `haiku`) that resolve dynamically to the latest version, or
+   * full API model names (`claude-opus-4-7`, etc.) pinned to a specific
+   * release.
+   */
+  model?: string;
   max_turns?: number;
   timeout_ms?: number;
   system_prompt_addition?: string;
@@ -14,7 +21,7 @@ export interface RuntimeConfig {
 
 export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   type: "claude-code",
-  model: "claude-opus-4-7",
+  model: "opus",
 };
 
 export interface Agent {
