@@ -4,6 +4,7 @@ import type {
   SessionRepository,
   Task,
   TaskRepository,
+  TaskStatus,
   Workspace,
   WorkspaceManager,
 } from "@beevibe/core";
@@ -146,17 +147,15 @@ export class TaskExecutionWorker {
         completed_at: new Date(),
       });
       if (session.task_id) {
-        // Mirror the claim transition: in_progress → assigned,
-        // revision → needs_revision. Anything else (e.g., already done or
-        // cancelled) we leave alone — reap shouldn't overwrite a terminal
-        // state set by the agent or an operator.
+        // Mirror the claim transition. Anything else (done, cancelled, …)
+        // we leave alone — reap shouldn't overwrite a terminal state set
+        // by the agent or an operator.
+        const REAP_REQUEUE: Partial<Record<TaskStatus, TaskStatus>> = {
+          in_progress: "assigned",
+          revision: "needs_revision",
+        };
         const current = await this.config.taskRepo.findById(session.task_id);
-        const next =
-          current?.status === "in_progress"
-            ? "assigned"
-            : current?.status === "revision"
-            ? "needs_revision"
-            : undefined;
+        const next = current && REAP_REQUEUE[current.status];
         if (next) {
           await this.config.taskRepo.update(session.task_id, { status: next });
         }
@@ -190,10 +189,7 @@ export class TaskExecutionWorker {
       this.inFlight.set(task.id, ac);
       runningByAgent.set(agent.id, (runningByAgent.get(agent.id) ?? 0) + 1);
 
-      // Fire-and-forget. The promise chain always cleans up inFlight.
-      // Dispatch receives the post-claim row: status=in_progress for fresh
-      // work, status=revision for re-work. Dispatch checks task.status ===
-      // "revision" to decide on priorSessionId (--resume).
+      // Fire-and-forget. `.finally` always clears inFlight.
       void Promise.resolve()
         .then(() => this.config.dispatchTask(claimed, agent, workspace, ac.signal))
         .catch((err: unknown) =>
@@ -209,13 +205,11 @@ export class TaskExecutionWorker {
     agent: Agent,
     runningByAgent: Map<string, number>,
   ): Promise<boolean> {
-    if (!runningByAgent.has(agent.id)) {
-      runningByAgent.set(
-        agent.id,
-        await this.config.sessionRepo.countRunningByAgent(agent.id, ["task"]),
-      );
+    let current = runningByAgent.get(agent.id);
+    if (current === undefined) {
+      current = await this.config.sessionRepo.countRunningByAgent(agent.id, ["task"]);
+      runningByAgent.set(agent.id, current);
     }
-    const current = runningByAgent.get(agent.id)!;
     const cap = agent.max_task_sessions ?? DEFAULT_TASK_CAP;
     return current < cap;
   }

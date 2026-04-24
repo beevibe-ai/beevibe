@@ -3,10 +3,8 @@ import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
   PostgresMemoryFactRepository,
-  PostgresPersonRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
-  PostgresWorkProductRepository,
   createPool,
 } from "@beevibe/core/adapters/postgres";
 import { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
@@ -57,15 +55,13 @@ export interface BootstrapResult {
 export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> {
   const pool = createPool({ connectionString: cfg.databaseUrl });
 
-  // Repositories
+  // Repositories (only the ones the executor actually drives; person + work-
+  // product are managed by M6's MCP server and M8's web API respectively).
   const agentRepo = new PostgresAgentRepository(pool);
   const taskRepo = new PostgresTaskRepository(pool);
   const sessionRepo = new PostgresSessionRepository(pool);
   const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
   const memoryFactRepo = new PostgresMemoryFactRepository(pool);
-  // Held to force adapter instantiation — exercised by E2E flows.
-  void new PostgresPersonRepository(pool);
-  void new PostgresWorkProductRepository(pool);
 
   // External-service adapters
   const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });

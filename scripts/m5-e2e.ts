@@ -1,31 +1,13 @@
 /**
- * M5 end-to-end smoke for the executor binary. Exercises the full
- * poll → claim → dispatch → session-completion pipeline plus six
- * targeted scenarios that catch integration behavior unit tests can't.
+ * M5 end-to-end smoke for the executor binary.
  *
- * Requires:
- * - `RUN_M5_E2E=1`
- * - `DATABASE_URL_TEST` — pgvector-enabled Postgres (M0 schema + all migrations)
- * - `OPENAI_API_KEY` — embeddings for briefing retrieval
- * - `ANTHROPIC_API_KEY` — memory LLM (FactPromoter, FactStore merge)
- * - `claude` CLI on PATH (M2 runtime dependency)
+ * Gated by `RUN_M5_E2E=1`. Requires `DATABASE_URL_TEST`, `OPENAI_API_KEY`,
+ * `ANTHROPIC_API_KEY`, and `claude` on PATH.
  *
- * Usage:
  *   RUN_M5_E2E=1 pnpm tsx scripts/m5-e2e.ts
  *
- * Scenarios:
- *   0. Happy path — 1 agent, trivial task, full plumbing.
- *   A. Cancel mid-flight — long-running task, cancelTask aborts CLI.
- *   B. Orphan reap — session in DB with dead PID → failed + task re-queued.
- *   C. Revision resume — second session resumes first via --resume
- *      (same cli_session_id, distinct beevibe rows, prior_session_id linked).
- *   D. Priority ordering — critical > medium > low dispatched in that order.
- *   E. Per-agent capacity — max_task_sessions=1 serializes 2 tasks for one agent.
- *   F. Multi-agent parallel — 2 agents each get a task; sessions overlap in time.
- *
- * Deferred to M6 E2E: task.status='done' (update_progress tool),
- * work_product rows (create_work_product tool), memory_fact.source_session_ids
- * content (save_memory tool).
+ * Seven scenarios: happy path, cancel mid-flight, orphan reap, revision
+ * resume, priority ordering, per-agent capacity, multi-agent parallel.
  */
 
 import { config as loadEnv } from "dotenv";
