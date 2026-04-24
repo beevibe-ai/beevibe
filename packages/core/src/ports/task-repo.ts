@@ -21,6 +21,21 @@ export interface TaskRepository {
 
   listByAssignee(assigneeId: string): Promise<Task[]>;
 
+  /**
+   * All assignable tasks — `status IN ('assigned','revision')` with a non-null
+   * assignee — ordered by semantic priority DESC (critical > high > medium > low)
+   * then created_at ASC. Cheap read, index-backed. No limit arg: capacity
+   * gating in the worker bounds throughput naturally.
+   */
+  listAssignable(): Promise<Task[]>;
+
+  /**
+   * Atomically transition one task from `assigned`/`revision` → `in_progress`.
+   * Returns `undefined` if the row's status changed since `listAssignable`
+   * (race loser under multiple concurrent executors).
+   */
+  claimById(taskId: string): Promise<Task | undefined>;
+
   /** Tasks awaiting human decision: status ∈ {review, revision}. */
   listReviewQueue(): Promise<Task[]>;
 

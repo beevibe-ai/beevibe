@@ -199,6 +199,108 @@ describe("PostgresTaskRepository", () => {
     expect(child.parent_task_id).toBe(parent.id);
   });
 
+  describe("listAssignable + claimById (M5.0 dispatch API)", () => {
+    it("listAssignable orders critical > high > medium > low then by created_at ASC", async () => {
+      const low = await tasks.create(
+        newTask({ status: "assigned", priority: "low", assignee_id: assigneeAgentId }),
+      );
+      await new Promise((r) => setTimeout(r, 5));
+      const critical = await tasks.create(
+        newTask({ status: "assigned", priority: "critical", assignee_id: assigneeAgentId }),
+      );
+      await new Promise((r) => setTimeout(r, 5));
+      const high = await tasks.create(
+        newTask({ status: "assigned", priority: "high", assignee_id: assigneeAgentId }),
+      );
+      await new Promise((r) => setTimeout(r, 5));
+      const medium = await tasks.create(
+        newTask({ status: "assigned", priority: "medium", assignee_id: assigneeAgentId }),
+      );
+
+      const list = await tasks.listAssignable();
+      expect(list.map((t) => t.id)).toEqual([critical.id, high.id, medium.id, low.id]);
+    });
+
+    it("listAssignable uses created_at ASC to break ties within the same priority (FIFO)", async () => {
+      const first = await tasks.create(
+        newTask({ status: "assigned", priority: "high", assignee_id: assigneeAgentId }),
+      );
+      await new Promise((r) => setTimeout(r, 5));
+      const second = await tasks.create(
+        newTask({ status: "assigned", priority: "high", assignee_id: assigneeAgentId }),
+      );
+
+      const list = await tasks.listAssignable();
+      expect(list.map((t) => t.id)).toEqual([first.id, second.id]);
+    });
+
+    it("listAssignable includes both assigned and revision status", async () => {
+      const assigned = await tasks.create(
+        newTask({ status: "assigned", assignee_id: assigneeAgentId }),
+      );
+      const revision = await tasks.create(
+        newTask({ status: "revision", assignee_id: assigneeAgentId }),
+      );
+      const list = await tasks.listAssignable();
+      const ids = list.map((t) => t.id).sort();
+      expect(ids).toEqual([assigned.id, revision.id].sort());
+    });
+
+    it("listAssignable excludes pending/in_progress/done/failed/cancelled", async () => {
+      await tasks.create(newTask({ status: "pending", assignee_id: assigneeAgentId }));
+      await tasks.create(newTask({ status: "in_progress", assignee_id: assigneeAgentId }));
+      await tasks.create(newTask({ status: "done", assignee_id: assigneeAgentId }));
+      await tasks.create(newTask({ status: "failed", assignee_id: assigneeAgentId }));
+      await tasks.create(newTask({ status: "cancelled", assignee_id: assigneeAgentId }));
+      const list = await tasks.listAssignable();
+      expect(list).toHaveLength(0);
+    });
+
+    it("listAssignable excludes tasks with null assignee_id", async () => {
+      await tasks.create(newTask({ status: "assigned" })); // no assignee
+      const list = await tasks.listAssignable();
+      expect(list).toHaveLength(0);
+    });
+
+    it("claimById transitions assigned → in_progress and returns the row", async () => {
+      const t = await tasks.create(
+        newTask({ status: "assigned", assignee_id: assigneeAgentId }),
+      );
+      const claimed = await tasks.claimById(t.id);
+      expect(claimed?.id).toBe(t.id);
+      expect(claimed?.status).toBe("in_progress");
+      const reread = await tasks.findById(t.id);
+      expect(reread?.status).toBe("in_progress");
+    });
+
+    it("claimById also accepts revision → in_progress", async () => {
+      const t = await tasks.create(
+        newTask({ status: "revision", assignee_id: assigneeAgentId }),
+      );
+      const claimed = await tasks.claimById(t.id);
+      expect(claimed?.status).toBe("in_progress");
+    });
+
+    it("claimById returns undefined when the row is no longer assigned/revision (race loser)", async () => {
+      const t = await tasks.create(
+        newTask({ status: "assigned", assignee_id: assigneeAgentId }),
+      );
+      const first = await tasks.claimById(t.id);
+      expect(first?.status).toBe("in_progress");
+      const second = await tasks.claimById(t.id);
+      expect(second).toBeUndefined();
+    });
+
+    it("two concurrent claimById calls on the same task yield exactly one winner", async () => {
+      const t = await tasks.create(
+        newTask({ status: "assigned", assignee_id: assigneeAgentId }),
+      );
+      const [a, b] = await Promise.all([tasks.claimById(t.id), tasks.claimById(t.id)]);
+      const winners = [a, b].filter((r) => r !== undefined);
+      expect(winners).toHaveLength(1);
+    });
+  });
+
   it("delete removes the row", async () => {
     const t = await tasks.create(newTask());
     await tasks.delete(t.id);

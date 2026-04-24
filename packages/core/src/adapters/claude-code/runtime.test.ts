@@ -41,7 +41,6 @@ function mockRunCli(result: CliProcessResult = MOCK_OK): void {
 function ctx(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
   return {
     intent: "do a thing",
-    urgency: "normal",
     workspace: { path: "/tmp/beevibe-test-ws" },
     system_prompt_append: "",
     ...overrides,
@@ -94,6 +93,27 @@ describe("ClaudeCodeRuntime.execute", () => {
     await new ClaudeCodeRuntime().execute(ctx());
     expect(lastOptions!.args).not.toContain("--model");
     expect(lastOptions!.args).not.toContain("--max-turns");
+  });
+
+  it("passes context.model + context.max_turns (per-agent override wins over constructor)", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime({ model: "ctor-default", maxTurns: 99 }).execute(
+      ctx({ model: "claude-haiku-4-5", max_turns: 7 }),
+    );
+    // Context wins.
+    const modelIdx = lastOptions!.args!.indexOf("--model");
+    expect(lastOptions!.args![modelIdx + 1]).toBe("claude-haiku-4-5");
+    const turnsIdx = lastOptions!.args!.indexOf("--max-turns");
+    expect(lastOptions!.args![turnsIdx + 1]).toBe("7");
+  });
+
+  it("falls back to constructor config when context.model / context.max_turns are unset", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime({ model: "fallback", maxTurns: 3 }).execute(ctx());
+    const modelIdx = lastOptions!.args!.indexOf("--model");
+    expect(lastOptions!.args![modelIdx + 1]).toBe("fallback");
+    const turnsIdx = lastOptions!.args!.indexOf("--max-turns");
+    expect(lastOptions!.args![turnsIdx + 1]).toBe("3");
   });
 
   it("passes --resume when context.resume_session_id is set", async () => {

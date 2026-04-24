@@ -72,6 +72,38 @@ export class PostgresTaskRepository implements TaskRepository {
     return rows.map(rowToTask);
   }
 
+  async listAssignable(): Promise<Task[]> {
+    // Matches idx_task_dispatch expression index (migrations/..._fix-task-dispatch-index.sql).
+    const { rows } = await this.pool.query<TaskRow>(
+      `SELECT * FROM task
+        WHERE status IN ('assigned', 'revision')
+          AND assignee_id IS NOT NULL
+        ORDER BY
+          (CASE priority
+             WHEN 'critical' THEN 4
+             WHEN 'high'     THEN 3
+             WHEN 'medium'   THEN 2
+             WHEN 'low'      THEN 1
+             ELSE 0
+           END) DESC,
+          created_at ASC`,
+    );
+    return rows.map(rowToTask);
+  }
+
+  async claimById(taskId: string): Promise<Task | undefined> {
+    // Row-level MVCC atomic: under concurrent executors, one UPDATE wins and
+    // others see the row already at status='in_progress' and match nothing.
+    const { rows } = await this.pool.query<TaskRow>(
+      `UPDATE task
+          SET status = 'in_progress', updated_at = NOW()
+        WHERE id = $1 AND status IN ('assigned', 'revision')
+        RETURNING *`,
+      [taskId],
+    );
+    return rows[0] ? rowToTask(rows[0]) : undefined;
+  }
+
   async listReviewQueue(): Promise<Task[]> {
     // Semantic priority ordering: critical > high > medium > low (not alphabetical).
     // The dispatch partial index (M5 concern) will get a matching expression index

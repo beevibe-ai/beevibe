@@ -20,7 +20,6 @@ export interface AgentSessionDeps {
 export interface AgentSessionRunInput {
   agentId: string;
   intent: string;
-  urgency: "low" | "normal" | "high" | "critical";
   workspace: Workspace;
   /** Task this session is working on. Required for `type="task"` sessions. */
   taskId?: string;
@@ -82,9 +81,13 @@ export class AgentSession {
     try {
       result = await this.deps.runtime.execute({
         intent: input.intent,
-        urgency: input.urgency,
         workspace: input.workspace,
         system_prompt_append,
+        // Per-agent runtime config flows here. ClaudeCodeRuntime reads these
+        // on the execute() call with constructor fallback, so one executor
+        // process can serve agents configured for different models.
+        model: agent.runtime_config.model,
+        max_turns: agent.runtime_config.max_turns,
         // Session-scoped env — inherited by stdio MCP server subprocesses.
         // Agent identity rides on the bv_ OAuth token in the MCP config,
         // not here (would risk divergence).
