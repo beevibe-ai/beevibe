@@ -23,9 +23,10 @@ export const metadata: Metadata = {
 const themeInitScript = `
   (function () {
     try {
-      if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
-        document.documentElement.classList.add('dark');
-      }
+      var stored = localStorage.getItem('theme');
+      var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+      var isDark = stored === 'dark' || (stored === null && prefersDark);
+      if (isDark) document.documentElement.classList.add('dark');
     } catch (_) {}
   })();
 `;
