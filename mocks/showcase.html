@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>beevibe — bounded specialists, curated commons, mesh asks</title>
+  <title>beevibe — where context flows between every person and every agent</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -218,21 +218,21 @@
       <div class="max-w-3xl mb-12">
         <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-secondary text-xs text-muted-foreground mb-5">
           <span class="h-1.5 w-1.5 rounded-full bg-primary"></span>
-          <span>Open source · MIT · self-host or hosted</span>
+          <span>Open source · self-host or hosted</span>
         </div>
         <h1 class="text-4xl md:text-5xl font-bold tracking-tight leading-[1.1] mb-5">
-          The agent runtime with the right opinion about <span class="bg-primary text-primary-foreground px-1.5 -mx-0.5 rounded-sm">multi-agent shape</span>.
+          Where context flows between every person and every <span class="bg-primary text-primary-foreground px-1.5 -mx-0.5 rounded-sm">agent on your team</span>.
         </h1>
         <p class="text-lg text-muted-foreground leading-relaxed max-w-2xl">
-          Bounded domain-expert agents that accumulate real depth, share what genuinely generalizes through a curated commons, and ask each other for the rest. Drop into your stack and your agents start composing like a team — not averaging into one mediocre brain.
+          beevibe coordinates work across people and AI agents in one shared workspace. Each agent stays in its own context; when it needs another specialist's input, it asks. Humans approve, redirect, or hand off. Context flows at the crossings — every ask, every handoff, every review, with provenance preserved — so nothing gets lost between sessions, between agents, or between people.
         </p>
         <div class="mt-7 flex flex-wrap items-center gap-3">
-          <a href="#" class="inline-flex items-center gap-2 h-10 px-4 rounded bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition-all duration-150">
-            <i data-lucide="terminal" class="h-4 w-4"></i>
-            <span class="font-mono">npm i @beevibe/core</span>
+          <a href="home.html" class="inline-flex items-center gap-2 h-10 px-4 rounded bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition-all duration-150">
+            <i data-lucide="layout-dashboard" class="h-4 w-4"></i>
+            Open the workspace
           </a>
           <a href="#moments" class="inline-flex items-center gap-1.5 h-10 px-4 rounded text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-            See the three magic moments
+            See it in action
             <i data-lucide="arrow-right" class="h-4 w-4"></i>
           </a>
         </div>
@@ -406,60 +406,63 @@
     </div>
   </section>
 
-  <!-- THE THREE PROMISES -->
+  <!-- THREE THINGS THAT MAKE A HYBRID TEAM WORK -->
   <section id="promise" class="border-b border-border">
     <div class="max-w-6xl mx-auto px-6 py-20">
       <div class="max-w-2xl mb-12">
         <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">How it works</div>
-        <h2 class="text-2xl font-bold tracking-tight mb-3">Three architectural commitments. Verifiable in your terminal.</h2>
+        <h2 class="text-2xl font-bold tracking-tight mb-3">Three things that make a hybrid team actually work.</h2>
         <p class="text-muted-foreground leading-relaxed">
-          beevibe is not a chat product. It's an opinionated runtime for multi-agent systems — open source, MIT-licensed, drop-in for any MCP-speaking agent (Claude Code, Cursor, Codex, whatever ships next).
+          beevibe is the open-source platform for organizations where humans and AI agents work together in one workspace. Drop in via MCP — works with Claude Code, Cursor, Codex, and any tool that speaks the protocol.
         </p>
       </div>
 
       <div class="grid md:grid-cols-3 gap-6">
 
-        <div class="rounded-lg border border-border bg-card p-5">
-          <div class="h-9 w-9 rounded-full bg-hier-ic/10 flex items-center justify-center text-hier-ic mb-4">
-            <i data-lucide="square-stack" class="h-5 w-5"></i>
-          </div>
-          <h3 class="text-base font-semibold mb-2">Bounded specialists</h3>
-          <p class="text-sm text-muted-foreground leading-relaxed mb-3">
-            Each agent has its own bounded core memory and fact store. Sessions accumulate depth via merge-on-similarity — the same observation hit twice consolidates, doesn't duplicate. No global pool exists anywhere in the runtime.
-          </p>
-          <code class="block text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded px-2 py-1.5 mb-3">memory_fact.agent_id NOT NULL</code>
-          <a href="agent-detail.html" class="text-xs font-medium text-foreground hover:underline inline-flex items-center gap-1">
-            See an agent's memory
-            <i data-lucide="arrow-right" class="h-3 w-3"></i>
-          </a>
-        </div>
-
-        <div class="rounded-lg border border-border bg-card p-5">
-          <div class="h-9 w-9 rounded-full bg-hier-team/10 flex items-center justify-center text-hier-team mb-4">
-            <i data-lucide="trending-up" class="h-5 w-5"></i>
-          </div>
-          <h3 class="text-base font-semibold mb-2">Curated commons</h3>
-          <p class="text-sm text-muted-foreground leading-relaxed mb-3">
-            Facts earn wider scope through an editorial promoter — an LLM classifier that decides per-fact whether <span class="font-mono text-xs">ic → team</span> or <span class="font-mono text-xs">team → org</span> movement is warranted, with a stated reason. Default is to keep narrow.
-          </p>
-          <code class="block text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded px-2 py-1.5 mb-3">FactPromoter.evaluate(fact)</code>
-          <a href="promotions.html" class="text-xs font-medium text-foreground hover:underline inline-flex items-center gap-1">
-            Read promotion log
-            <i data-lucide="arrow-right" class="h-3 w-3"></i>
-          </a>
-        </div>
-
+        <!-- Pillar 1 — Agents ask each other -->
         <div class="rounded-lg border border-border bg-card p-5">
           <div class="h-9 w-9 rounded-full bg-status-running/10 flex items-center justify-center text-status-running mb-4">
             <i data-lucide="link" class="h-5 w-5"></i>
           </div>
-          <h3 class="text-base font-semibold mb-2">Mesh asks</h3>
+          <h3 class="text-base font-semibold mb-2">Agents ask each other</h3>
           <p class="text-sm text-muted-foreground leading-relaxed mb-3">
-            When a specialist doesn't know, it asks. <span class="font-mono text-xs">ask</span>, <span class="font-mono text-xs">negotiate</span>, <span class="font-mono text-xs">report_blocker</span> are first-class tools with chain-budget guards against runaway loops. The target answers from <em>its own bounded memory</em>.
+            When one specialist needs another's input, it asks. <span class="font-mono text-xs">ask</span>, <span class="font-mono text-xs">negotiate</span>, <span class="font-mono text-xs">report_blocker</span> are first-class operations between agents, with chain-budget guards against runaway loops. Each target answers from its own context — no merging into one chatbot.
           </p>
           <code class="block text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded px-2 py-1.5 mb-3">ask(target_agent_id, question)</code>
           <a href="mesh.html" class="text-xs font-medium text-foreground hover:underline inline-flex items-center gap-1">
             See the live mesh
+            <i data-lucide="arrow-right" class="h-3 w-3"></i>
+          </a>
+        </div>
+
+        <!-- Pillar 2 — Humans steer, review, hand off -->
+        <div class="rounded-lg border border-border bg-card p-5">
+          <div class="h-9 w-9 rounded-full bg-primary/15 flex items-center justify-center text-primary mb-4">
+            <i data-lucide="user-check" class="h-5 w-5"></i>
+          </div>
+          <h3 class="text-base font-semibold mb-2">Humans review, redirect, hand off</h3>
+          <p class="text-sm text-muted-foreground leading-relaxed mb-3">
+            People and agents share one workspace. Agents send work for review; humans approve, request revision, or reassign. Blockers escalate up the chain to the right teammate — agent or human. The whole loop is visible to everyone who needs to see it.
+          </p>
+          <code class="block text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded px-2 py-1.5 mb-3">task.review_policy = 'require_human'</code>
+          <a href="task-detail.html" class="text-xs font-medium text-foreground hover:underline inline-flex items-center gap-1">
+            See a review flow
+            <i data-lucide="arrow-right" class="h-3 w-3"></i>
+          </a>
+        </div>
+
+        <!-- Pillar 3 — Context crosses, doesn't pool -->
+        <div class="rounded-lg border border-border bg-card p-5">
+          <div class="h-9 w-9 rounded-full bg-hier-ic/10 flex items-center justify-center text-hier-ic mb-4">
+            <i data-lucide="workflow" class="h-5 w-5"></i>
+          </div>
+          <h3 class="text-base font-semibold mb-2">Context crosses at the seams</h3>
+          <p class="text-sm text-muted-foreground leading-relaxed mb-3">
+            Every ask, handoff, and review carries the right slice of context to where it's needed — with provenance preserved. No shared pool, no universal knowledge graph. Agents stay bounded and specialized; nothing gets lost between them.
+          </p>
+          <code class="block text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded px-2 py-1.5 mb-3">memory_fact.agent_id NOT NULL</code>
+          <a href="agent-detail.html" class="text-xs font-medium text-foreground hover:underline inline-flex items-center gap-1">
+            See an agent's context
             <i data-lucide="arrow-right" class="h-3 w-3"></i>
           </a>
         </div>
@@ -604,9 +607,9 @@
     <div class="max-w-6xl mx-auto px-6 py-20">
       <div class="max-w-2xl mb-8">
         <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Where this fits</div>
-        <h2 class="text-2xl font-bold tracking-tight mb-3">Library-shaped. Drop-in. Self-host or hosted.</h2>
+        <h2 class="text-2xl font-bold tracking-tight mb-3">One workspace. Drops in alongside the agents your team already uses.</h2>
         <p class="text-muted-foreground leading-relaxed">
-          beevibe is not an app users open. It's the opinionated cognition layer that sits under your agent stack, exposed via MCP for any tool that speaks it.
+          beevibe is the shared workspace where humans and agents coordinate. Agents connect to it from whatever runtime they live in — Claude Code, Cursor, Codex, anything that speaks MCP — and start collaborating with each other and with the humans on the team.
         </p>
       </div>
 
@@ -643,7 +646,10 @@ claude mcp add beevibe http://localhost:3002</pre>
     <div class="max-w-6xl mx-auto px-6 py-20">
       <div class="max-w-2xl mb-8">
         <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Compared to</div>
-        <h2 class="text-2xl font-bold tracking-tight mb-3">Where the architectural opinion lives.</h2>
+        <h2 class="text-2xl font-bold tracking-tight mb-3">How beevibe differs from the field.</h2>
+        <p class="text-muted-foreground leading-relaxed mt-3">
+          mem0 ships memory. Multica ships task tracking. Mastra ships an agent framework. None of them ship the workspace where humans and their agents coordinate as one team.
+        </p>
       </div>
 
       <div class="rounded-lg border border-border bg-card overflow-hidden">
@@ -702,9 +708,9 @@ claude mcp add beevibe http://localhost:3002</pre>
   <!-- CTA -->
   <section>
     <div class="max-w-3xl mx-auto px-6 py-20 text-center">
-      <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4">Try it in five minutes.</h2>
+      <h2 class="text-2xl md:text-3xl font-bold tracking-tight mb-4">Bring your team into one workspace.</h2>
       <p class="text-muted-foreground leading-relaxed mb-7">
-        Run the runtime locally, point Claude Code at the MCP server, work in your repo for a session. Open the dashboard. Watch your agent get visibly sharper.
+        Spin up the workspace locally, invite your teammates, and point each person's agents at it via MCP. Watch context start flowing where it needs to — across asks, handoffs, and reviews — without dissolving into one shared brain.
       </p>
       <div class="flex flex-wrap items-center justify-center gap-3">
         <a href="#" class="inline-flex items-center gap-2 h-10 px-5 rounded bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition-all duration-150">
@@ -712,7 +718,7 @@ claude mcp add beevibe http://localhost:3002</pre>
           Quickstart
         </a>
         <a href="home.html" class="inline-flex items-center gap-1.5 h-10 px-5 rounded text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-          Open the dashboard
+          Open the workspace
           <i data-lucide="arrow-right" class="h-4 w-4"></i>
         </a>
       </div>
