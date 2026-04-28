@@ -654,14 +654,14 @@ claude mcp add beevibe http://localhost:3002</pre>
     </div>
   </section>
 
-  <!-- POSITIONING vs the field -->
+  <!-- POSITIONING — Multica vs Paperclip vs beevibe -->
   <section class="border-b border-border">
     <div class="max-w-6xl mx-auto px-6 py-20">
-      <div class="max-w-2xl mb-8">
+      <div class="max-w-2xl mb-10">
         <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Compared to</div>
-        <h2 class="text-2xl font-bold tracking-tight mb-3">How beevibe differs from the field.</h2>
-        <p class="text-muted-foreground leading-relaxed mt-3">
-          mem0 ships memory. Multica ships task tracking. Mastra ships an agent framework. None of them ship the workspace where humans and their agents coordinate as one team.
+        <h2 class="text-2xl font-bold tracking-tight mb-3">How beevibe differs from Multica and Paperclip.</h2>
+        <p class="text-muted-foreground leading-relaxed">
+          Multica ships team task-tracking with agents as routing targets. Paperclip ships solo company simulation with agents as scheduled workers. beevibe ships a hybrid team where each agent is a persistent specialist that grows expertise over time and asks other agents when it needs help.
         </p>
       </div>
 
@@ -669,51 +669,71 @@ claude mcp add beevibe http://localhost:3002</pre>
         <table class="w-full text-sm">
           <thead class="bg-secondary/60 text-xs uppercase tracking-wider text-muted-foreground">
             <tr>
-              <th class="text-left px-4 py-3 font-medium">Stack layer</th>
-              <th class="text-left px-4 py-3 font-medium">mem0</th>
+              <th class="text-left px-4 py-3 font-medium">Axis</th>
               <th class="text-left px-4 py-3 font-medium">Multica</th>
-              <th class="text-left px-4 py-3 font-medium">Mastra</th>
+              <th class="text-left px-4 py-3 font-medium">Paperclip</th>
               <th class="text-left px-4 py-3 font-medium bg-primary/10">beevibe</th>
             </tr>
           </thead>
           <tbody>
             <tr class="border-t border-border">
-              <td class="px-4 py-3 text-muted-foreground">Per-agent bounded memory</td>
-              <td class="px-4 py-3 text-status-failed/70"><i data-lucide="x" class="h-4 w-4 inline"></i> flat per-user pool</td>
-              <td class="px-4 py-3 text-muted-foreground">none</td>
-              <td class="px-4 py-3 text-muted-foreground">none</td>
-              <td class="px-4 py-3 text-status-done bg-primary/5"><i data-lucide="check" class="h-4 w-4 inline"></i> bounded + char-limited</td>
+              <td class="px-4 py-3 font-medium text-foreground">Focus</td>
+              <td class="px-4 py-3 text-muted-foreground">Team AI agent collaboration platform</td>
+              <td class="px-4 py-3 text-muted-foreground">Solo AI agent company simulator</td>
+              <td class="px-4 py-3 text-foreground bg-primary/5">Hybrid team of humans + persistent agent specialists</td>
             </tr>
             <tr class="border-t border-border">
-              <td class="px-4 py-3 text-muted-foreground">Editorial promotion / scope gradient</td>
-              <td class="px-4 py-3 text-muted-foreground">no scope</td>
-              <td class="px-4 py-3 text-muted-foreground">no memory</td>
-              <td class="px-4 py-3 text-muted-foreground">no memory</td>
-              <td class="px-4 py-3 text-status-done bg-primary/5"><i data-lucide="check" class="h-4 w-4 inline"></i> ic / team / org + LLM gate</td>
+              <td class="px-4 py-3 font-medium text-foreground">User model</td>
+              <td class="px-4 py-3 text-muted-foreground">Multi-user teams with roles + permissions</td>
+              <td class="px-4 py-3 text-muted-foreground">Single board operator</td>
+              <td class="px-4 py-3 text-foreground bg-primary/5">Multi-human; agents form lasting roles in a hierarchy</td>
+            </tr>
+            <!-- THE LOAD-BEARING DIFFERENTIATION ROW -->
+            <tr class="border-t border-border">
+              <td class="px-4 py-3 font-medium text-foreground">Agent identity</td>
+              <td class="px-4 py-3 text-muted-foreground">Routing target — expertise lives in shared workspace skills</td>
+              <td class="px-4 py-3 text-muted-foreground">Scheduled worker — expertise lives in plugin code</td>
+              <td class="px-4 py-3 text-foreground bg-primary/5"><strong>Persistent specialist</strong> — expertise lives in the agent's own bounded memory and grows session over session</td>
             </tr>
             <tr class="border-t border-border">
-              <td class="px-4 py-3 text-muted-foreground">Agent-to-agent ask protocol</td>
-              <td class="px-4 py-3 text-muted-foreground">none</td>
-              <td class="px-4 py-3 text-status-review/70">work routing only</td>
-              <td class="px-4 py-3 text-muted-foreground">none</td>
-              <td class="px-4 py-3 text-status-done bg-primary/5"><i data-lucide="check" class="h-4 w-4 inline"></i> ask / negotiate / blocker</td>
+              <td class="px-4 py-3 font-medium text-foreground">Agent interaction</td>
+              <td class="px-4 py-3 text-muted-foreground">Issues + chat conversations</td>
+              <td class="px-4 py-3 text-muted-foreground">Issues + heartbeats</td>
+              <td class="px-4 py-3 text-foreground bg-primary/5">Tasks + agent-to-agent asks (mesh)</td>
             </tr>
             <tr class="border-t border-border">
-              <td class="px-4 py-3 text-muted-foreground">Provenance preserved through promotion</td>
-              <td class="px-4 py-3 text-muted-foreground">no provenance</td>
-              <td class="px-4 py-3 text-muted-foreground">n/a</td>
-              <td class="px-4 py-3 text-muted-foreground">n/a</td>
-              <td class="px-4 py-3 text-status-done bg-primary/5"><i data-lucide="check" class="h-4 w-4 inline"></i> agent_id non-null at every scope</td>
+              <td class="px-4 py-3 font-medium text-foreground">Deployment</td>
+              <td class="px-4 py-3 text-muted-foreground">Cloud-first</td>
+              <td class="px-4 py-3 text-muted-foreground">Local-first</td>
+              <td class="px-4 py-3 text-foreground bg-primary/5">Self-host or hosted</td>
             </tr>
             <tr class="border-t border-border">
-              <td class="px-4 py-3 text-muted-foreground">Self-host + open source</td>
-              <td class="px-4 py-3 text-status-done"><i data-lucide="check" class="h-4 w-4 inline"></i></td>
-              <td class="px-4 py-3 text-status-done"><i data-lucide="check" class="h-4 w-4 inline"></i></td>
-              <td class="px-4 py-3 text-status-done"><i data-lucide="check" class="h-4 w-4 inline"></i></td>
-              <td class="px-4 py-3 text-status-done bg-primary/5"><i data-lucide="check" class="h-4 w-4 inline"></i> MIT</td>
+              <td class="px-4 py-3 font-medium text-foreground">Management depth</td>
+              <td class="px-4 py-3 text-muted-foreground">Lightweight (Issues / Projects / Labels)</td>
+              <td class="px-4 py-3 text-muted-foreground">Heavy governance (Org chart / Approvals / Budgets)</td>
+              <td class="px-4 py-3 text-foreground bg-primary/5">Hierarchy + escalation routing + reviewable work products</td>
+            </tr>
+            <tr class="border-t border-border">
+              <td class="px-4 py-3 font-medium text-foreground">Extensibility</td>
+              <td class="px-4 py-3 text-muted-foreground">Skills system</td>
+              <td class="px-4 py-3 text-muted-foreground">Skills + plugin system</td>
+              <td class="px-4 py-3 text-foreground bg-primary/5">Skills + bounded per-agent memory + mesh ask protocol</td>
             </tr>
           </tbody>
         </table>
+      </div>
+
+      <!-- Differentiation callout — the thesis the table is making -->
+      <div class="mt-8 rounded-lg border-l-4 border-primary bg-primary/5 px-5 py-4">
+        <div class="flex items-start gap-3">
+          <i data-lucide="quote" class="h-5 w-5 text-primary shrink-0 mt-0.5"></i>
+          <div class="text-sm leading-relaxed">
+            <span class="font-semibold text-foreground">The key difference.</span>
+            <span class="text-muted-foreground"> Multica and Paperclip agents are largely one-off — assignment targets that pull from a shared static skills library or run a heartbeat-triggered script. </span>
+            <span class="text-foreground">beevibe agents are persistent specialists.</span>
+            <span class="text-muted-foreground"> Each agent has its own bounded memory that grows session over session via merge-on-similarity. Same observation rediscovered → consolidated, not duplicated. Their expertise compounds; their identity persists; their collaborations form the team's actual shape.</span>
+          </div>
+        </div>
       </div>
     </div>
   </section>
