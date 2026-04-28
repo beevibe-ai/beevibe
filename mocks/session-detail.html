@@ -1,0 +1,596 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>beevibe — session sess_3a8c · ic-agent-1</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script>
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <style>
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 240 10% 4%;
+      --card: 240 5% 98%;
+      --card-foreground: 240 10% 4%;
+      --primary: 48 96% 53%;
+      --primary-foreground: 240 10% 4%;
+      --secondary: 240 5% 96%;
+      --secondary-foreground: 240 6% 10%;
+      --muted: 240 5% 96%;
+      --muted-foreground: 240 4% 46%;
+      --border: 240 6% 90%;
+      --input: 240 6% 90%;
+      --ring: 47 96% 47%;
+      --radius: 0.375rem;
+
+      --status-pending:   240 4% 46%;
+      --status-running:   217 91% 60%;
+      --status-review:    38 92% 50%;
+      --status-blocked:   25 95% 53%;
+      --status-done:      160 84% 39%;
+      --status-failed:    0 84% 60%;
+
+      --hier-ic:   240 4% 46%;
+      --hier-team: 262 83% 58%;
+      --hier-org:  38 92% 50%;
+    }
+    .dark {
+      --background: 240 10% 4%;
+      --foreground: 0 0% 98%;
+      --card: 240 6% 10%;
+      --card-foreground: 0 0% 98%;
+      --primary: 48 96% 53%;
+      --primary-foreground: 240 10% 4%;
+      --secondary: 240 4% 16%;
+      --secondary-foreground: 0 0% 98%;
+      --muted: 240 4% 16%;
+      --muted-foreground: 240 5% 65%;
+      --border: 240 4% 16%;
+      --input: 240 4% 16%;
+      --ring: 48 96% 53%;
+    }
+
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+      font-feature-settings: 'cv11', 'ss01';
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+      -webkit-font-smoothing: antialiased;
+    }
+    .font-mono { font-family: 'JetBrains Mono', ui-monospace, 'Menlo', monospace; }
+
+    @keyframes pulse-breathe {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.55; transform: scale(0.92); }
+    }
+    .pulse-dot { animation: pulse-breathe 2s ease-in-out infinite; }
+
+    @keyframes spin-slow { to { transform: rotate(360deg); } }
+    .spin-slow { animation: spin-slow 2.5s linear infinite; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pulse-dot, .spin-slow { animation: none; }
+    }
+
+    button:focus-visible, a:focus-visible {
+      outline: 2px solid hsl(var(--ring));
+      outline-offset: 2px;
+      border-radius: var(--radius);
+    }
+
+    /* Transcript timeline rail */
+    .timeline-rail {
+      position: relative;
+    }
+    .timeline-rail::before {
+      content: '';
+      position: absolute;
+      left: 13px;
+      top: 8px;
+      bottom: 8px;
+      width: 1px;
+      background: hsl(var(--border));
+    }
+
+    /* Message bubble for agent transcript turns */
+    .turn-agent {
+      background: hsl(var(--secondary) / 0.4);
+    }
+    .turn-tool {
+      background: hsl(var(--card));
+      border: 1px dashed hsl(var(--border));
+    }
+  </style>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'Menlo', 'monospace'],
+          },
+          colors: {
+            border: 'hsl(var(--border))',
+            input: 'hsl(var(--input))',
+            ring: 'hsl(var(--ring))',
+            background: 'hsl(var(--background))',
+            foreground: 'hsl(var(--foreground))',
+            primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+            secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+            muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+            card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+            status: {
+              pending:   'hsl(var(--status-pending))',
+              running:   'hsl(var(--status-running))',
+              review:    'hsl(var(--status-review))',
+              blocked:   'hsl(var(--status-blocked))',
+              done:      'hsl(var(--status-done))',
+              failed:    'hsl(var(--status-failed))',
+            },
+            hier: {
+              ic:   'hsl(var(--hier-ic))',
+              team: 'hsl(var(--hier-team))',
+              org:  'hsl(var(--hier-org))',
+            },
+          },
+          borderRadius: {
+            DEFAULT: 'var(--radius)',
+            md: 'var(--radius)',
+            lg: 'calc(var(--radius) + 2px)',
+            xl: 'calc(var(--radius) + 6px)',
+          },
+        },
+      },
+    };
+  </script>
+</head>
+<body class="min-h-screen">
+  <div class="flex min-h-screen">
+
+    <!-- Sidebar (Tasks active — session is a sub-page of a task) -->
+    <aside class="w-[220px] shrink-0 bg-card flex flex-col">
+      <div class="h-14 flex items-center gap-2.5 px-4">
+        <div class="h-6 w-6 rounded bg-primary flex items-center justify-center">
+          <span class="text-primary-foreground text-sm font-bold leading-none">b</span>
+        </div>
+        <span class="font-semibold tracking-tight">beevibe</span>
+      </div>
+      <nav class="flex-1 p-2 space-y-0.5 text-sm">
+        <a href="home.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="home" class="h-4 w-4"></i>
+          <span>Home</span>
+        </a>
+        <a href="tasks-list.html" class="flex items-center gap-3 px-3 py-2 rounded bg-secondary text-foreground font-medium">
+          <i data-lucide="list-checks" class="h-4 w-4"></i>
+          <span>Tasks</span>
+        </a>
+        <a href="agents-list.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="circle-dot" class="h-4 w-4"></i>
+          <span>Agents</span>
+        </a>
+        <a href="threads.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="message-square" class="h-4 w-4"></i>
+          <span>Threads</span>
+        </a>
+        <a href="memory.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="sparkles" class="h-4 w-4"></i>
+          <span>Memory</span>
+        </a>
+      </nav>
+
+      <div class="p-3">
+        <div class="flex items-center gap-1">
+          <button class="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 rounded hover:bg-secondary cursor-pointer transition-colors text-left">
+            <div class="h-7 w-7 rounded-full bg-secondary border border-border flex items-center justify-center text-xs font-medium shrink-0">W</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium truncate leading-tight">Weijia</div>
+              <div class="text-[10px] text-muted-foreground flex items-center gap-1 leading-tight mt-0.5">
+                <span class="pulse-dot inline-block h-1 w-1 rounded-full bg-status-running"></span>
+                live
+              </div>
+            </div>
+            <i data-lucide="chevrons-up-down" class="h-3.5 w-3.5 text-muted-foreground shrink-0"></i>
+          </button>
+          <button id="theme-toggle" class="h-8 w-8 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors shrink-0" title="Toggle theme">
+            <i data-lucide="sun" class="h-4 w-4 hidden dark:block"></i>
+            <i data-lucide="moon" class="h-4 w-4 block dark:hidden"></i>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main — DETAIL density (max-w-5xl, space-y-5) -->
+    <main class="flex-1 min-w-0 flex flex-col">
+      <div class="flex-1 overflow-auto">
+        <div class="max-w-5xl mx-auto pt-8 pb-12 px-6">
+
+          <!-- Breadcrumb -->
+          <div class="text-xs text-muted-foreground mb-4 flex items-center gap-1.5">
+            <a href="tasks-list.html" class="hover:text-foreground transition-colors">Tasks</a>
+            <i data-lucide="chevron-right" class="h-3 w-3"></i>
+            <a href="task-detail.html" class="hover:text-foreground transition-colors">T-1014 · OAuth provider configuration</a>
+            <i data-lucide="chevron-right" class="h-3 w-3"></i>
+            <span class="text-foreground font-mono">sess_3a8c</span>
+          </div>
+
+          <!-- Header -->
+          <header class="mb-6">
+            <div class="flex items-start gap-3">
+              <div class="h-10 w-10 rounded-full bg-status-done/10 flex items-center justify-center text-status-done shrink-0">
+                <i data-lucide="check" class="h-5 w-5"></i>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <h1 class="text-base font-semibold leading-tight">Wire OAuth refresh-token rotation</h1>
+                  <span class="inline-flex items-center h-5 px-2 rounded text-[10px] font-medium bg-status-done/10 text-status-done">succeeded</span>
+                </div>
+                <div class="text-sm text-muted-foreground flex items-center gap-2">
+                  <a href="agent-detail.html" class="font-mono text-foreground hover:underline">ic-agent-1</a>
+                  <span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic">ic</span>
+                  <span class="text-border">·</span>
+                  <span>type <span class="font-mono text-foreground">task</span></span>
+                  <span class="text-border">·</span>
+                  <span>started 18m ago, ran 2m 14s</span>
+                </div>
+              </div>
+              <div class="flex items-center gap-1 shrink-0">
+                <button class="inline-flex items-center gap-1.5 h-8 px-3 rounded text-xs font-medium hover:bg-secondary cursor-pointer transition-colors text-muted-foreground hover:text-foreground">
+                  <i data-lucide="repeat" class="h-3.5 w-3.5"></i>
+                  Re-run
+                </button>
+                <button class="h-8 w-8 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors">
+                  <i data-lucide="download" class="h-4 w-4"></i>
+                </button>
+              </div>
+            </div>
+          </header>
+
+          <!-- BRIEFING COMPOSER — show what went INTO this session's system prompt.
+               This is the surface mem0/Letta dashboards do NOT have. -->
+          <section class="rounded-lg border border-border bg-card overflow-hidden mb-5">
+            <button class="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/40 transition-colors text-left cursor-pointer">
+              <div class="flex items-center gap-2.5">
+                <i data-lucide="layers" class="h-4 w-4 text-primary"></i>
+                <span class="text-sm font-semibold">Briefing</span>
+                <span class="text-xs text-muted-foreground">— what this session was told before it started</span>
+              </div>
+              <div class="flex items-center gap-3 text-xs text-muted-foreground">
+                <span class="font-mono tabular-nums">3 blocks · 5 facts · 2,847 tokens</span>
+                <i data-lucide="chevron-up" class="h-4 w-4"></i>
+              </div>
+            </button>
+
+            <div class="border-t border-border p-4 space-y-4">
+
+              <!-- Core blocks pulled in -->
+              <div>
+                <div class="flex items-center gap-2 mb-2 text-xs">
+                  <i data-lucide="square-stack" class="h-3.5 w-3.5 text-muted-foreground"></i>
+                  <span class="font-medium text-foreground">Core memory blocks</span>
+                  <span class="text-muted-foreground">— bounded persona/domain/constraints, agent-edited</span>
+                </div>
+                <div class="space-y-1.5 ml-5 text-xs">
+                  <div class="flex items-center gap-2 text-muted-foreground">
+                    <span class="font-mono text-foreground">persona</span>
+                    <span class="text-border">·</span>
+                    <span class="tabular-nums">1,376 chars</span>
+                    <span class="text-foreground/70 italic truncate">"You are a senior engineer specialized in authentication flows…"</span>
+                  </div>
+                  <div class="flex items-center gap-2 text-muted-foreground">
+                    <span class="font-mono text-foreground">domain</span>
+                    <span class="text-border">·</span>
+                    <span class="tabular-nums">1,728 chars</span>
+                    <span class="text-foreground/70 italic truncate">"Auth surface for this codebase: bv_a_ agent keys + bv_u_ user keys…"</span>
+                  </div>
+                  <div class="flex items-center gap-2 text-muted-foreground">
+                    <span class="font-mono text-foreground">constraints</span>
+                    <span class="text-border">·</span>
+                    <span class="tabular-nums">1,860 chars</span>
+                    <span class="text-foreground/70 italic truncate">"Never log full bearer tokens — log first-8-chars with hash suffix…"</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Retrieved facts. Each shows scope chip — proves bounded retrieval. -->
+              <div>
+                <div class="flex items-center gap-2 mb-2 text-xs">
+                  <i data-lucide="search" class="h-3.5 w-3.5 text-muted-foreground"></i>
+                  <span class="font-medium text-foreground">Retrieved facts</span>
+                  <span class="text-muted-foreground">— top-5 by cosine similarity to task intent · scope ≤ ic</span>
+                </div>
+                <div class="space-y-2 ml-5">
+                  <div class="text-xs flex items-start gap-2">
+                    <span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic shrink-0 mt-0.5">ic</span>
+                    <span class="text-foreground/85 leading-relaxed">OAuth 2.1 strict mode rejects implicit grant entirely. For Claude Code CLI integration, use authorization-code-with-PKCE; bv_ keys exchange for short-lived bearer tokens via the token endpoint.</span>
+                    <span class="text-muted-foreground tabular-nums shrink-0">0.91</span>
+                  </div>
+                  <div class="text-xs flex items-start gap-2">
+                    <span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-team/10 text-hier-team shrink-0 mt-0.5">team</span>
+                    <span class="text-foreground/85 leading-relaxed">Postgres NOTIFY payload is capped at 8KB. Keep payloads to id, status, and timestamps; clients refetch full rows via HTTP after the event.</span>
+                    <span class="text-muted-foreground tabular-nums shrink-0">0.87</span>
+                  </div>
+                  <div class="text-xs flex items-start gap-2">
+                    <span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic shrink-0 mt-0.5">ic</span>
+                    <span class="text-foreground/85 leading-relaxed">When the OAuth provider config drift, the failure surfaces as a 400 from /token, not a redirect failure. Log the upstream response body, not just status.</span>
+                    <span class="text-muted-foreground tabular-nums shrink-0">0.85</span>
+                  </div>
+                  <div class="text-xs flex items-start gap-2">
+                    <span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium border border-hier-org text-hier-org shrink-0 mt-0.5">org</span>
+                    <span class="text-foreground/85 leading-relaxed">All inter-agent communication flows through the task queue and mesh tools, not direct calls. Async dispatch + synchronous mesh ask are the only two primitives.</span>
+                    <span class="text-muted-foreground tabular-nums shrink-0">0.82</span>
+                  </div>
+                  <div class="text-xs flex items-start gap-2">
+                    <span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic shrink-0 mt-0.5">ic</span>
+                    <span class="text-foreground/85 leading-relaxed">Prefer Argon2id over bcrypt for new password hashes — Argon2 has tunable memory cost that resists GPU attack better.</span>
+                    <span class="text-muted-foreground tabular-nums shrink-0">0.78</span>
+                  </div>
+                </div>
+                <div class="mt-2 ml-5 text-[10px] text-muted-foreground italic">
+                  Only this agent's own facts + facts promoted to scopes it can read (team-alpha, root-org). No global pool.
+                </div>
+              </div>
+
+              <!-- CLI args -->
+              <div>
+                <div class="flex items-center gap-2 mb-2 text-xs">
+                  <i data-lucide="terminal" class="h-3.5 w-3.5 text-muted-foreground"></i>
+                  <span class="font-medium text-foreground">Runtime invocation</span>
+                </div>
+                <pre class="ml-5 text-[11px] font-mono text-muted-foreground leading-relaxed whitespace-pre-wrap">claude code --model claude-opus-4-7 \
+  --append-system-prompt &lt;briefing above&gt; \
+  --max-turns 12 \
+  --mcp-config ~/.beevibe/workspaces/ic-agent-1/mcp-config.json</pre>
+              </div>
+
+            </div>
+          </section>
+
+          <!-- TRANSCRIPT — agent turns + tool calls + cross-agent asks inline -->
+          <section class="space-y-4">
+            <div class="flex items-baseline justify-between">
+              <h2 class="text-sm font-semibold">Transcript</h2>
+              <span class="text-xs text-muted-foreground">12 turns · 2 mesh asks</span>
+            </div>
+
+            <!-- intent (the task description) -->
+            <div class="rounded-lg p-4 turn-tool">
+              <div class="flex items-center gap-2 mb-2 text-xs">
+                <i data-lucide="target" class="h-3.5 w-3.5 text-primary"></i>
+                <span class="font-medium">Intent</span>
+                <span class="text-muted-foreground">— from task <a href="task-detail.html" class="text-foreground hover:underline">T-1014</a></span>
+              </div>
+              <p class="text-sm leading-relaxed">
+                Wire OAuth refresh-token rotation end-to-end. Token table exists; we need: (1) the rotation endpoint, (2) the encryption-at-rest layer, (3) update the auth middleware to swap on near-expiry. Production-safe with concurrent-rotation handling.
+              </p>
+            </div>
+
+            <!-- Turn 1: agent thinks -->
+            <div class="rounded-lg p-4 turn-agent">
+              <div class="flex items-center gap-2 mb-2 text-xs">
+                <span class="font-mono text-foreground font-medium">ic-agent-1</span>
+                <span class="text-muted-foreground">turn 1 · 4s</span>
+              </div>
+              <p class="text-sm leading-relaxed text-foreground/85">
+                Reading the existing token table schema and middleware. The encryption layer needs a KMS-backed key — let me check whether the project has one configured before assuming.
+              </p>
+            </div>
+
+            <!-- Tool call: read file -->
+            <div class="rounded-lg p-3 turn-tool">
+              <div class="flex items-center gap-2 text-xs font-mono">
+                <i data-lucide="wrench" class="h-3.5 w-3.5 text-muted-foreground"></i>
+                <span class="text-muted-foreground">Read</span>
+                <span class="text-foreground">packages/core/src/auth/api-key.ts</span>
+                <span class="text-muted-foreground ml-auto">280 lines</span>
+              </div>
+            </div>
+
+            <!-- Turn 2: agent decides to ask db-agent -->
+            <div class="rounded-lg p-4 turn-agent">
+              <div class="flex items-center gap-2 mb-2 text-xs">
+                <span class="font-mono text-foreground font-medium">ic-agent-1</span>
+                <span class="text-muted-foreground">turn 4 · 31s</span>
+              </div>
+              <p class="text-sm leading-relaxed text-foreground/85">
+                Schema for storing the rotation state isn't obvious from this codebase — the existing token table doesn't have rotation columns yet. Asking db-agent how they'd shape the schema, since they own data-layer decisions for team-data.
+              </p>
+            </div>
+
+            <!-- INLINE ASK THREAD — proves mesh is real, not just diagram -->
+            <div class="rounded-lg border border-status-running/30 bg-status-running/5 p-4">
+              <div class="flex items-center gap-2 mb-3 text-xs">
+                <i data-lucide="link" class="h-3.5 w-3.5 text-status-running"></i>
+                <span class="font-medium">Mesh ask</span>
+                <span class="font-mono text-foreground">ic-agent-1</span>
+                <i data-lucide="arrow-right" class="h-3 w-3 text-muted-foreground"></i>
+                <span class="font-mono text-foreground">db-agent</span>
+                <span class="ml-auto inline-flex items-center gap-1 h-5 px-2 rounded text-[10px] font-medium bg-status-done/10 text-status-done">
+                  <i data-lucide="check" class="h-3 w-3"></i>
+                  resolved · 8s
+                </span>
+              </div>
+
+              <div class="space-y-2.5 pl-1">
+                <!-- request -->
+                <div class="flex items-start gap-2">
+                  <i data-lucide="arrow-up-right" class="h-3 w-3 text-muted-foreground mt-1.5 shrink-0"></i>
+                  <div class="flex-1">
+                    <p class="text-sm leading-relaxed text-foreground/85">
+                      Schema for refresh-token storage? Need a column for the encrypted blob plus rotation metadata (last_rotated_at, rotation_count) with a unique index by user_id. Concurrent rotation has to be safe.
+                    </p>
+                  </div>
+                </div>
+                <!-- response -->
+                <div class="flex items-start gap-2">
+                  <i data-lucide="arrow-down-right" class="h-3 w-3 text-muted-foreground mt-1.5 shrink-0"></i>
+                  <div class="flex-1">
+                    <div class="text-[10px] text-muted-foreground mb-1">
+                      <span class="font-mono text-foreground">db-agent</span>
+                      <span> · answered from its own bounded memory</span>
+                    </div>
+                    <p class="text-sm leading-relaxed text-foreground/85">
+                      Add <span class="font-mono text-xs">refresh_token</span> table — columns: <span class="font-mono text-xs">id, user_id (UQ), encrypted_blob BYTEA, last_rotated_at TIMESTAMPTZ, rotation_count INT</span>. Read with <span class="font-mono text-xs">FOR UPDATE SKIP LOCKED</span> in the rotation flow, or two concurrent rotations race the increment. Migration template at <span class="font-mono text-xs">migrations/_template_with_partial_index.sql</span>.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-3 flex items-center gap-3 text-[10px] text-muted-foreground font-mono">
+                <span>chain depth 1/4</span>
+                <span class="text-border">·</span>
+                <span>session sess_a4f9 spawned for db-agent</span>
+                <span class="text-border">·</span>
+                <span>1,128 tokens used of chain budget</span>
+              </div>
+            </div>
+
+            <!-- Turn 5: agent integrates the answer -->
+            <div class="rounded-lg p-4 turn-agent">
+              <div class="flex items-center gap-2 mb-2 text-xs">
+                <span class="font-mono text-foreground font-medium">ic-agent-1</span>
+                <span class="text-muted-foreground">turn 5 · 47s</span>
+              </div>
+              <p class="text-sm leading-relaxed text-foreground/85">
+                Got it. Writing the migration with that schema, plus the rotation endpoint that uses <span class="font-mono text-xs">SELECT … FOR UPDATE SKIP LOCKED</span> on read. Encryption layer will pull the KMS key id from <span class="font-mono text-xs">BV_ROTATION_KMS_KEY</span> env var — failing closed if absent.
+              </p>
+            </div>
+
+            <!-- Tool call: write -->
+            <div class="rounded-lg p-3 turn-tool">
+              <div class="flex items-center gap-2 text-xs font-mono">
+                <i data-lucide="wrench" class="h-3.5 w-3.5 text-muted-foreground"></i>
+                <span class="text-muted-foreground">Write</span>
+                <span class="text-foreground">migrations/1777800000000_refresh_token_rotation.sql</span>
+                <span class="text-status-done ml-auto">+42</span>
+              </div>
+            </div>
+
+            <!-- Tool call: write 2 -->
+            <div class="rounded-lg p-3 turn-tool">
+              <div class="flex items-center gap-2 text-xs font-mono">
+                <i data-lucide="wrench" class="h-3.5 w-3.5 text-muted-foreground"></i>
+                <span class="text-muted-foreground">Edit</span>
+                <span class="text-foreground">packages/core/src/auth/refresh-rotation.ts</span>
+                <span class="text-status-done ml-auto">+118</span>
+              </div>
+            </div>
+
+            <!-- Turn 8: agent decides to ask team-alpha for safety review -->
+            <div class="rounded-lg p-4 turn-agent">
+              <div class="flex items-center gap-2 mb-2 text-xs">
+                <span class="font-mono text-foreground font-medium">ic-agent-1</span>
+                <span class="text-muted-foreground">turn 8 · 1m 23s</span>
+              </div>
+              <p class="text-sm leading-relaxed text-foreground/85">
+                Implementation in place. Before I claim done, asking team-alpha to sanity-check the rotation flow — this is production-critical and my constraints block say "escalate when unsure on cross-tree mesh."
+              </p>
+            </div>
+
+            <!-- INLINE ASK THREAD 2 -->
+            <div class="rounded-lg border border-border bg-card p-4">
+              <div class="flex items-center gap-2 mb-3 text-xs">
+                <i data-lucide="link" class="h-3.5 w-3.5 text-muted-foreground"></i>
+                <span class="font-medium">Mesh ask</span>
+                <span class="font-mono text-foreground">ic-agent-1</span>
+                <i data-lucide="arrow-up" class="h-3 w-3 text-muted-foreground"></i>
+                <span class="font-mono text-foreground">team-alpha</span>
+                <span class="ml-auto inline-flex items-center gap-1 h-5 px-2 rounded text-[10px] font-medium bg-status-done/10 text-status-done">
+                  <i data-lucide="check" class="h-3 w-3"></i>
+                  resolved · 14s
+                </span>
+              </div>
+
+              <div class="space-y-2.5 pl-1">
+                <div class="flex items-start gap-2">
+                  <i data-lucide="arrow-up-right" class="h-3 w-3 text-muted-foreground mt-1.5 shrink-0"></i>
+                  <div class="flex-1">
+                    <p class="text-sm leading-relaxed text-foreground/85">
+                      Sanity check the OAuth refresh-token rotation: KMS-backed encryption, FOR UPDATE SKIP LOCKED on read, increment-on-rotate, fails closed if KMS key missing. Sound for prod?
+                    </p>
+                  </div>
+                </div>
+                <div class="flex items-start gap-2">
+                  <i data-lucide="arrow-down-right" class="h-3 w-3 text-muted-foreground mt-1.5 shrink-0"></i>
+                  <div class="flex-1">
+                    <div class="text-[10px] text-muted-foreground mb-1">
+                      <span class="font-mono text-foreground">team-alpha</span>
+                      <span> · approved with one note</span>
+                    </div>
+                    <p class="text-sm leading-relaxed text-foreground/85">
+                      Sound. Add a metric on <span class="font-mono text-xs">rotation_count</span> per user — anomalous spikes are how we'll catch a stolen-token replay. Open a follow-up task; not blocking this one.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-3 flex items-center gap-3 text-[10px] text-muted-foreground font-mono">
+                <span>chain depth 1/4</span>
+                <span class="text-border">·</span>
+                <span>session sess_b8c3 spawned for team-alpha</span>
+              </div>
+            </div>
+
+            <!-- Final turn: update_progress -->
+            <div class="rounded-lg p-3 turn-tool">
+              <div class="flex items-center gap-2 text-xs font-mono">
+                <i data-lucide="wrench" class="h-3.5 w-3.5 text-status-done"></i>
+                <span class="text-muted-foreground">update_progress</span>
+                <span class="text-foreground">status='done'</span>
+                <span class="text-muted-foreground">summary='OAuth refresh rotation wired with KMS encryption, FOR UPDATE SKIP LOCKED, fails closed.'</span>
+              </div>
+            </div>
+
+            <!-- Result -->
+            <div class="rounded-lg border border-status-done/30 bg-status-done/5 p-4">
+              <div class="flex items-center gap-2 mb-2 text-xs">
+                <i data-lucide="check-circle-2" class="h-4 w-4 text-status-done"></i>
+                <span class="font-semibold">Result</span>
+                <span class="ml-auto text-muted-foreground">exit 0 · 2m 14s · 12 turns · 8.4k tokens</span>
+              </div>
+              <p class="text-sm leading-relaxed text-foreground/85">
+                OAuth refresh rotation wired end-to-end. Migration <span class="font-mono text-xs">1777800000000_refresh_token_rotation</span> creates the table; <span class="font-mono text-xs">refresh-rotation.ts</span> implements the rotation flow with FOR UPDATE SKIP LOCKED and KMS-backed encryption. Fails closed if <span class="font-mono text-xs">BV_ROTATION_KMS_KEY</span> is missing. Opened follow-up task for the rotation_count anomaly metric per team-alpha's note.
+              </p>
+            </div>
+
+          </section>
+
+          <!-- Quiet footer — provenance + chain ledger -->
+          <div class="mt-10 pt-6 border-t border-border text-xs text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-2">
+            <button class="inline-flex items-center gap-1.5 hover:text-foreground transition-colors">
+              <i data-lucide="hash" class="h-3 w-3"></i>
+              <span class="font-mono">sess_3a8c2f9b1e</span>
+              <i data-lucide="copy" class="h-3 w-3"></i>
+            </button>
+            <span class="text-border">·</span>
+            <span>started Apr 28 2026 09:42 UTC</span>
+            <span class="text-border">·</span>
+            <span>worktree <span class="font-mono">~/.beevibe/workspaces/ic-agent-1/beevibe-T-1014</span></span>
+            <span class="text-border">·</span>
+            <span>cli session <span class="font-mono">cli_8e2a4c</span></span>
+            <span class="text-border">·</span>
+            <span>1 work product → <a href="task-detail.html" class="text-foreground/70 hover:text-foreground">PR #29</a></span>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>

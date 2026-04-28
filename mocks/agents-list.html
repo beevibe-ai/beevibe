@@ -431,6 +431,121 @@
             </div>
           </div>
 
+          <!-- Specialization depth panel — proves the org chart isn't just structural.
+               Each agent's accumulation is observable. mem0 / Multica / Mastra dashboards have no equivalent. -->
+          <div class="max-w-5xl mx-auto mt-10">
+            <div class="flex items-baseline justify-between mb-3">
+              <h2 class="text-[10px] uppercase tracking-wider text-muted-foreground">Specialization depth · per agent</h2>
+              <a href="memory.html" class="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+                Browse all facts <i data-lucide="arrow-right" class="h-3 w-3"></i>
+              </a>
+            </div>
+            <div class="rounded-lg border border-border bg-card overflow-hidden">
+              <table class="w-full text-sm">
+                <colgroup>
+                  <col />
+                  <col style="width: 80px" />
+                  <col style="width: 100px" />
+                  <col style="width: 100px" />
+                  <col style="width: 100px" />
+                  <col style="width: 60px" />
+                </colgroup>
+                <thead>
+                  <tr class="bg-secondary/40 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <th class="text-left px-4 py-2 font-medium">Agent</th>
+                    <th class="text-left px-3 py-2 font-medium">Tier</th>
+                    <th class="text-right px-3 py-2 font-medium">Sessions</th>
+                    <th class="text-right px-3 py-2 font-medium">Facts</th>
+                    <th class="text-right px-3 py-2 font-medium">Merges</th>
+                    <th class="text-right px-3 py-2 font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="agent-detail.html" class="font-mono text-foreground hover:underline">ic-agent-1</a>
+                      <span class="text-xs text-muted-foreground ml-2">auth · OAuth</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic">ic</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">47</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">23</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">8</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-status-done">+3 this wk</td>
+                  </tr>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="#" class="font-mono text-foreground hover:underline">ic-agent-2</a>
+                      <span class="text-xs text-muted-foreground ml-2">infra · logging</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic">ic</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">31</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">14</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">4</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-muted-foreground">+1</td>
+                  </tr>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="#" class="font-mono text-foreground hover:underline">ic-agent-3</a>
+                      <span class="text-xs text-muted-foreground ml-2">infra · refactor</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic">ic</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">23</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">11</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">2</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-status-done">+2</td>
+                  </tr>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="#" class="font-mono text-foreground hover:underline">db-agent</a>
+                      <span class="text-xs text-muted-foreground ml-2">data · migrations</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic">ic</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">19</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">17</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">5</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-muted-foreground">—</td>
+                  </tr>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="#" class="font-mono text-foreground hover:underline">team-alpha</a>
+                      <span class="text-xs text-muted-foreground ml-2">coordinator</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-team/10 text-hier-team">team</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">8</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">9</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">2</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-muted-foreground">+1</td>
+                  </tr>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="#" class="font-mono text-foreground hover:underline">team-data</a>
+                      <span class="text-xs text-muted-foreground ml-2">coordinator</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-team/10 text-hier-team">team</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">4</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">3</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">0</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-muted-foreground">—</td>
+                  </tr>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="#" class="font-mono text-foreground hover:underline">root-org</a>
+                      <span class="text-xs text-muted-foreground ml-2">strategy</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium border border-hier-org text-hier-org">org</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">2</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">4</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">1</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-muted-foreground">—</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="mt-2.5 text-[10px] text-muted-foreground">
+              Each agent's depth is bounded — no agent's facts dilute another's. Promoted facts (visible to wider scopes) preserve their originating agent_id. <a href="promotions.html" class="text-foreground/70 hover:text-foreground hover:underline transition-colors">14 promotions in last 30d →</a>
+            </p>
+          </div>
+
           <!-- Foot note -->
           <div class="max-w-5xl mx-auto mt-8 text-xs text-muted-foreground flex items-center gap-3">
             <span class="font-mono">mock</span>

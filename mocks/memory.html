@@ -248,6 +248,44 @@
       <div class="flex-1 overflow-auto">
         <div class="max-w-6xl mx-auto pt-8 pb-6 px-6">
 
+          <!-- Memory sub-nav tabs -->
+          <div class="flex items-center gap-1 mb-5 -mt-2 text-sm">
+            <a href="#" class="px-3 py-1.5 rounded bg-secondary text-foreground font-medium">All facts</a>
+            <a href="promotions.html" class="px-3 py-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">Promotions</a>
+            <a href="#" class="px-3 py-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">Merges</a>
+            <a href="#" class="px-3 py-1.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">Conflicts</a>
+          </div>
+
+          <!-- Scope tabs — Mine/Team/Org. The architectural opinion made literal: no global pool view exists.
+               This UI lets you filter by visibility radius, not by "see everything." -->
+          <div class="flex items-center gap-1.5 mb-4 text-xs">
+            <span class="text-muted-foreground mr-1">View:</span>
+            <button class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded bg-secondary text-foreground font-medium">
+              <i data-lucide="layers" class="h-3 w-3"></i>
+              <span>All scopes</span>
+              <span class="font-mono tabular-nums text-muted-foreground">47</span>
+            </button>
+            <button class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+              <span class="inline-flex items-center h-4 px-1 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic">ic</span>
+              <span>Mine</span>
+              <span class="font-mono tabular-nums">23</span>
+            </button>
+            <button class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+              <span class="inline-flex items-center h-4 px-1 rounded text-[10px] font-medium bg-hier-team/10 text-hier-team">team</span>
+              <span>Team</span>
+              <span class="font-mono tabular-nums">18</span>
+            </button>
+            <button class="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+              <span class="inline-flex items-center h-4 px-1 rounded text-[10px] font-medium border border-hier-org text-hier-org">org</span>
+              <span>Org</span>
+              <span class="font-mono tabular-nums">6</span>
+            </button>
+            <span class="ml-auto inline-flex items-center gap-1.5 text-muted-foreground">
+              <i data-lucide="info" class="h-3 w-3"></i>
+              <span>retrieved at brief-time per agent · no global pool view</span>
+            </span>
+          </div>
+
           <!-- Search + filter row, single line. Mem0 puts these together; we follow. -->
           <div class="flex items-center gap-2 mb-3">
             <div class="relative flex-1 max-w-lg">
