@@ -12,7 +12,7 @@
     "dev": "turbo dev",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
-    "test": "turbo test",
+    "test": "turbo test --concurrency=1",
     "clean": "turbo clean && rm -rf node_modules",
     "migrate": "node-pg-migrate --envPath .env",
     "migrate:test": "node-pg-migrate --envPath .env -d DATABASE_URL_TEST",

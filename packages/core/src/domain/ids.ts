@@ -14,3 +14,6 @@ export const personId = (): string => generateId("person");
 export const blockId = (): string => generateId("block");
 export const workProductId = (): string => generateId("wp");
 export const factId = (): string => generateId("fact");
+export const negotiationId = (): string => generateId("neg");
+export const negotiationRoundId = (): string => generateId("round");
+export const escalationId = (): string => generateId("esc");

@@ -91,8 +91,8 @@ export class PostgresAgentRepository implements AgentRepository {
       `INSERT INTO agent (
          id, name, owner_id, parent_agent_id, hierarchy_level,
          api_key, review_policy, runtime_config,
-         max_task_sessions, max_mesh_sessions
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+         max_task_sessions, max_mesh_sessions, max_negotiation_rounds
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
        RETURNING *`,
       [
         input.id,
@@ -105,6 +105,7 @@ export class PostgresAgentRepository implements AgentRepository {
         input.runtime_config,
         input.max_task_sessions ?? null,
         input.max_mesh_sessions ?? null,
+        input.max_negotiation_rounds ?? null,
       ],
     );
     return rowToAgent(rows[0]!);
@@ -121,6 +122,7 @@ export class PostgresAgentRepository implements AgentRepository {
       runtime_config: "runtime_config",
       max_task_sessions: "max_task_sessions",
       max_mesh_sessions: "max_mesh_sessions",
+      max_negotiation_rounds: "max_negotiation_rounds",
     });
 
     if (clause.fields.length === 0) {
@@ -156,6 +158,7 @@ function rowToAgent(row: AgentRow): Agent {
     runtime_config: row.runtime_config as RuntimeConfig,
     max_task_sessions: row.max_task_sessions ?? undefined,
     max_mesh_sessions: row.max_mesh_sessions ?? undefined,
+    max_negotiation_rounds: row.max_negotiation_rounds ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent, ReviewPolicy } from "../domain/agent.js";
 import type { Task, TaskStatus } from "../domain/task.js";
 import type { WorkProduct } from "../domain/work-product.js";
+import type { Session } from "../domain/session.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
+import type { SessionRepository } from "../ports/session-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
 import type { WorkProductRepository } from "../ports/work-product-repo.js";
 import {
@@ -33,6 +35,21 @@ function makeWorkProduct(overrides: Partial<WorkProduct> = {}): WorkProduct {
     type: "pull_request",
     title: "PR #42",
     created_at: new Date(),
+    updated_at: new Date(),
+    ...overrides,
+  };
+}
+
+function makeSession(overrides: Partial<Session> = {}): Session {
+  return {
+    id: "sess_prior",
+    agent_id: "agent_1",
+    type: "task",
+    status: "succeeded",
+    intent: "test",
+    cli_session_id: "cli_abc",
+    created_at: new Date(),
+    updated_at: new Date(),
     ...overrides,
   };
 }
@@ -53,6 +70,7 @@ function makeAgent(review_policy?: ReviewPolicy): Agent {
 let taskRepo: TaskRepository;
 let workProductRepo: WorkProductRepository;
 let agentRepo: AgentRepository;
+let sessionRepo: SessionRepository;
 let service: TaskService;
 
 beforeEach(() => {
@@ -76,6 +94,7 @@ beforeEach(() => {
     listByTask: vi.fn(),
     listByAgent: vi.fn(),
     create: vi.fn(),
+    update: vi.fn(),
     delete: vi.fn(),
   };
   agentRepo = {
@@ -85,12 +104,23 @@ beforeEach(() => {
     findTopLevelForOwner: vi.fn(),
     findSubordinates: vi.fn(),
     findPeers: vi.fn(),
+    findParent: vi.fn(),
     findByLevel: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
   };
-  service = new TaskService({ taskRepo, workProductRepo, agentRepo });
+  sessionRepo = {
+    findById: vi.fn(),
+    findLatestForTask: vi.fn(async () => undefined),
+    listForTask: vi.fn(),
+    listForAgent: vi.fn(),
+    countRunningByAgent: vi.fn(),
+    listRunningWithPid: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+  };
+  service = new TaskService({ taskRepo, workProductRepo, agentRepo, sessionRepo });
 });
 
 describe("TaskService.updateProgress", () => {
@@ -224,48 +254,41 @@ describe("TaskService.markBlocked + clearBlocker", () => {
   });
 });
 
-describe("TaskService.approveTask", () => {
-  it.each([
-    ["approve", "done"],
-    ["reject", "cancelled"],
-    ["revise", "needs_revision"],
-  ] as const)(
-    "transitions review → %s via %s",
-    async (action, expectedStatus) => {
-      vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "review" }));
-      vi.mocked(taskRepo.update).mockImplementation(async (id, patch) =>
-        makeTask({ id, ...patch, status: patch.status ?? "review" }),
-      );
-      const out = await service.approveTask("task_1", action, "wrapping up");
-      expect(out.status).toBe(expectedStatus as TaskStatus);
-      expect(taskRepo.update).toHaveBeenCalledWith("task_1", {
-        status: expectedStatus,
-        result_summary: "wrapping up",
-      });
-    },
-  );
+describe("TaskService.approveTask (M6.4 split)", () => {
+  it("transitions review → done with summary", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "review" }));
+    vi.mocked(taskRepo.update).mockImplementation(async (id, patch) =>
+      makeTask({ id, ...patch, status: patch.status ?? "review" }),
+    );
+    const out = await service.approveTask("task_1", "wrapping up");
+    expect(out.status).toBe("done");
+    expect(taskRepo.update).toHaveBeenCalledWith("task_1", {
+      status: "done",
+      result_summary: "wrapping up",
+    });
+  });
 
-  it("allows approving from 'needs_revision' too (reviewer changes mind before executor picks up re-work)", async () => {
+  it("allows approving from 'needs_revision' too", async () => {
     vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "needs_revision" }));
     vi.mocked(taskRepo.update).mockImplementation(async (id, patch) =>
       makeTask({ id, ...patch, status: patch.status ?? "needs_revision" }),
     );
-    const out = await service.approveTask("task_1", "approve");
+    const out = await service.approveTask("task_1");
     expect(out.status).toBe("done");
   });
 
-  it("rejects approval from 'revision' (actively running re-work — can't approve mid-run)", async () => {
-    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "revision" }));
-    await expect(
-      service.approveTask("task_1", "approve"),
-    ).rejects.toBeInstanceOf(InvalidTaskTransitionError);
+  it("rejects approval from 'blocked' (semantically weird)", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "blocked" }));
+    await expect(service.approveTask("task_1")).rejects.toBeInstanceOf(
+      InvalidTaskTransitionError,
+    );
   });
 
-  it("rejects approval from an invalid status", async () => {
+  it("rejects approval from 'in_progress'", async () => {
     vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "in_progress" }));
-    await expect(
-      service.approveTask("task_1", "approve"),
-    ).rejects.toBeInstanceOf(InvalidTaskTransitionError);
+    await expect(service.approveTask("task_1")).rejects.toBeInstanceOf(
+      InvalidTaskTransitionError,
+    );
   });
 
   it("preserves existing result_summary when none is passed", async () => {
@@ -275,10 +298,128 @@ describe("TaskService.approveTask", () => {
     vi.mocked(taskRepo.update).mockImplementation(async (id, patch) =>
       makeTask({ id, ...patch, status: patch.status ?? "review" }),
     );
-    await service.approveTask("task_1", "approve");
+    await service.approveTask("task_1");
     expect(taskRepo.update).toHaveBeenCalledWith("task_1", {
       status: "done",
       result_summary: "already done",
+    });
+  });
+});
+
+describe("TaskService.rejectTask (M6.4 split)", () => {
+  it.each([
+    ["review"],
+    ["needs_revision"],
+    ["blocked"],
+  ] as const)("transitions %s → cancelled", async (status) => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status }));
+    vi.mocked(taskRepo.update).mockImplementation(async (id, patch) =>
+      makeTask({ id, ...patch, status: patch.status ?? status }),
+    );
+    const out = await service.rejectTask("task_1", "scope changed");
+    expect(out.status).toBe("cancelled");
+    expect(taskRepo.update).toHaveBeenCalledWith("task_1", {
+      status: "cancelled",
+      result_summary: "scope changed",
+    });
+  });
+
+  it("rejects rejecting from 'in_progress'", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "in_progress" }));
+    await expect(service.rejectTask("task_1")).rejects.toBeInstanceOf(
+      InvalidTaskTransitionError,
+    );
+  });
+});
+
+describe("TaskService.reviseTask (M6.4 split — source-aware)", () => {
+  it("source='human' from 'review' → needs_revision + stamps next_dispatch_context", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "review" }));
+    vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue(makeSession());
+    vi.mocked(taskRepo.update).mockImplementation(async (id, patch) =>
+      makeTask({ id, ...patch, status: patch.status ?? "review" }),
+    );
+
+    const out = await service.reviseTask("task_1", "please add tests", { source: "human" });
+
+    expect(out.status).toBe("needs_revision");
+    expect(taskRepo.update).toHaveBeenCalledWith("task_1", {
+      status: "needs_revision",
+      next_dispatch_context: {
+        kind: "revision",
+        feedback: "please add tests",
+        source: "human",
+        from_status: "review",
+        reviser_agent_id: undefined,
+        prior_session_id: "sess_prior",
+      },
+    });
+  });
+
+  it("source='human' from 'needs_revision' (re-revise) is allowed", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "needs_revision" }));
+    vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue(makeSession());
+    vi.mocked(taskRepo.update).mockImplementation(async (id, patch) =>
+      makeTask({ id, ...patch, status: patch.status ?? "needs_revision" }),
+    );
+    const out = await service.reviseTask("task_1", "more changes", { source: "human" });
+    expect(out.status).toBe("needs_revision");
+  });
+
+  it("source='human' from 'blocked' is REJECTED (humans don't fix blockers via revise)", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "blocked" }));
+    await expect(
+      service.reviseTask("task_1", "x", { source: "human" }),
+    ).rejects.toBeInstanceOf(InvalidTaskTransitionError);
+  });
+
+  it("source='parent_agent' from 'blocked' → needs_revision + stamps reviser_agent_id", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "blocked" }));
+    vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue(makeSession());
+    vi.mocked(taskRepo.update).mockImplementation(async (id, patch) =>
+      makeTask({ id, ...patch, status: patch.status ?? "blocked" }),
+    );
+
+    const out = await service.reviseTask(
+      "task_1",
+      "use the existing pool",
+      { source: "parent_agent", reviserAgentId: "agent_parent" },
+    );
+
+    expect(out.status).toBe("needs_revision");
+    expect(taskRepo.update).toHaveBeenCalledWith("task_1", {
+      status: "needs_revision",
+      next_dispatch_context: {
+        kind: "revision",
+        feedback: "use the existing pool",
+        source: "parent_agent",
+        from_status: "blocked",
+        reviser_agent_id: "agent_parent",
+        prior_session_id: "sess_prior",
+      },
+    });
+  });
+
+  it("source='parent_agent' from 'review' is REJECTED (parents don't review-cycle revise)", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "review" }));
+    await expect(
+      service.reviseTask("task_1", "x", { source: "parent_agent" }),
+    ).rejects.toBeInstanceOf(InvalidTaskTransitionError);
+  });
+
+  it("prior_session_id undefined when prior session has no cli_session_id (mode E)", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "review" }));
+    vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue(
+      makeSession({ cli_session_id: undefined }),
+    );
+    vi.mocked(taskRepo.update).mockImplementation(async (id, patch) =>
+      makeTask({ id, ...patch, status: patch.status ?? "review" }),
+    );
+    await service.reviseTask("task_1", "x", { source: "human" });
+    const call = vi.mocked(taskRepo.update).mock.calls[0]![1];
+    expect(call.next_dispatch_context).toMatchObject({
+      kind: "revision",
+      prior_session_id: undefined,
     });
   });
 });

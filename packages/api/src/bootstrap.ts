@@ -76,8 +76,15 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const factStore = new FactStore({ repo: memoryFactRepo, embed, llm });
   const promoter = new FactPromoter({ llm });
 
-  // M3 task service (review_policy gate, work-product CRUD, parent rollup)
-  const taskService = new TaskService({ taskRepo, workProductRepo, agentRepo });
+  // M3+M6.4 task service (review_policy gate, work-product CRUD, parent
+  // rollup, plus the M6.4 approve/reject/revise split — reviseTask needs
+  // sessionRepo to look up priorSessionId for next_dispatch_context).
+  const taskService = new TaskService({
+    taskRepo,
+    workProductRepo,
+    agentRepo,
+    sessionRepo,
+  });
 
   /**
    * Per-agent MemoryAgent factory. Closed over shared services. Used by:

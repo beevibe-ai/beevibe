@@ -13,6 +13,9 @@ const repoRootEnv = resolve(here, "../../../.env");
 loadEnv({ path: repoRootEnv });
 
 const ALL_TABLES = [
+  "escalation",
+  "negotiation_round",
+  "negotiation",
   "memory_fact",
   "work_product",
   "core_memory_block",

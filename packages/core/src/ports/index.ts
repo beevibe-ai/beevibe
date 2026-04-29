@@ -9,3 +9,5 @@ export * from "./runtime.js";
 export * from "./workspace.js";
 export * from "./embedding-service.js";
 export * from "./llm-provider.js";
+export * from "./negotiation-repo.js";
+export * from "./escalation-repo.js";

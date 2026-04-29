@@ -47,6 +47,10 @@
       "types": "./dist/services/task-service.d.ts",
       "default": "./dist/services/task-service.js"
     },
+    "./services/escalation-service": {
+      "types": "./dist/services/escalation-service.d.ts",
+      "default": "./dist/services/escalation-service.js"
+    },
     "./auth": {
       "types": "./dist/auth/index.d.ts",
       "default": "./dist/auth/index.js"
