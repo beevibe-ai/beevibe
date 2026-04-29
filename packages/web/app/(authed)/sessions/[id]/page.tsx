@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
@@ -15,6 +16,11 @@ import { HierChip } from "@/components/hier-chip";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { findSessionById } from "@/lib/fixtures/sessions";
 import { formatRelativeTime } from "@/lib/format";
+
+export function generateMetadata({ params }: { params: { id: string } }): Metadata {
+  const session = findSessionById(params.id);
+  return { title: session ? session.intent : "Session" };
+}
 
 const STATUS_AVATAR = {
   succeeded: { Icon: Check, bg: "bg-status-done/10 text-status-done" },
@@ -84,7 +90,10 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
                 <Repeat className="h-3.5 w-3.5" />
                 Re-run
               </button>
-              <button className="h-8 w-8 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors">
+              <button
+                aria-label="Download session log"
+                className="h-8 w-8 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
+              >
                 <Download className="h-4 w-4" />
               </button>
             </div>

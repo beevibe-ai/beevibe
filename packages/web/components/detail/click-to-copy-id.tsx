@@ -14,6 +14,7 @@ export function ClickToCopyId({ id }: { id: string }) {
       }}
       className="inline-flex items-center gap-1.5 font-mono hover:text-foreground transition-colors cursor-pointer"
       title="Copy ID"
+      aria-label={copied ? "ID copied" : `Copy ID ${id}`}
     >
       <Hash className="h-3 w-3" />
       {id}

@@ -12,6 +12,8 @@ export function BriefingComposer({ briefing }: { briefing: SessionDisplay["brief
     <section className="rounded-lg border border-border bg-card overflow-hidden mb-5">
       <button
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
+        aria-controls="briefing-composer-body"
         className="w-full flex items-center justify-between px-4 py-3 hover:bg-secondary/40 transition-colors text-left cursor-pointer"
       >
         <div className="flex items-center gap-2.5">
@@ -31,7 +33,7 @@ export function BriefingComposer({ briefing }: { briefing: SessionDisplay["brief
       </button>
 
       {open ? (
-        <div className="border-t border-border p-4 space-y-4">
+        <div id="briefing-composer-body" className="border-t border-border p-4 space-y-4">
           <div>
             <div className="flex items-center gap-2 mb-2 text-xs">
               <SquareStack className="h-3.5 w-3.5 text-muted-foreground" />

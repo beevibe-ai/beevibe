@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Inbox } from "lucide-react";
 import type { TaskStatus } from "@beevibe/core";
 import { LifecycleTabs, type Lifecycle } from "@/components/tasks/lifecycle-tabs";
 import { FilterBar } from "@/components/tasks/filter-bar";
 import { TaskRow } from "@/components/tasks/task-row";
+import { EmptyState } from "@/components/empty-state";
 import { fixtureCounts, fixtureTasks, type TaskListItem } from "@/lib/fixtures/tasks";
 import { cn } from "@/lib/utils";
 
@@ -61,13 +62,26 @@ export function TasksClient() {
 
         <FilterBar query={query} onQueryChange={setQuery} />
 
-        <ul>
-          {visible.map((t, i) => (
-            <TaskRow key={t.id} task={t} flash={i === 0} />
-          ))}
-        </ul>
-
-        <Pagination total={fixtureCounts.active} shown={visible.length} />
+        {visible.length === 0 ? (
+          <EmptyState
+            icon={Inbox}
+            title="No tasks match"
+            description={
+              query
+                ? `No ${lifecycle} tasks match "${query}".`
+                : `No ${lifecycle} tasks right now.`
+            }
+          />
+        ) : (
+          <>
+            <ul>
+              {visible.map((t, i) => (
+                <TaskRow key={t.id} task={t} flash={i === 0} />
+              ))}
+            </ul>
+            <Pagination total={fixtureCounts.active} shown={visible.length} />
+          </>
+        )}
       </div>
     </div>
   );
@@ -80,9 +94,10 @@ function Pagination({ shown, total }: { shown: number; total: number }) {
         Showing <span className="text-foreground">1–{shown}</span> of{" "}
         <span className="text-foreground">{total}</span> active
       </span>
-      <div className="flex items-center gap-1">
+      <nav className="flex items-center gap-1" aria-label="Pagination">
         <button
           disabled
+          aria-label="Previous page"
           className="h-7 w-7 rounded inline-flex items-center justify-center hover:bg-secondary cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
         >
           <ChevronLeft className="h-3.5 w-3.5" />
@@ -90,6 +105,8 @@ function Pagination({ shown, total }: { shown: number; total: number }) {
         {[1, 2, 3].map((n) => (
           <button
             key={n}
+            aria-label={`Page ${n}`}
+            aria-current={n === 1 ? "page" : undefined}
             className={cn(
               "h-7 min-w-7 px-2 rounded cursor-pointer transition-colors",
               n === 1 ? "text-foreground bg-secondary font-medium" : "hover:bg-secondary",
@@ -98,10 +115,13 @@ function Pagination({ shown, total }: { shown: number; total: number }) {
             {n}
           </button>
         ))}
-        <button className="h-7 w-7 rounded inline-flex items-center justify-center hover:bg-secondary cursor-pointer transition-colors">
+        <button
+          aria-label="Next page"
+          className="h-7 w-7 rounded inline-flex items-center justify-center hover:bg-secondary cursor-pointer transition-colors"
+        >
           <ChevronRight className="h-3.5 w-3.5" />
         </button>
-      </div>
+      </nav>
     </div>
   );
 }

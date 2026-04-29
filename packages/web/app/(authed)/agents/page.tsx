@@ -1,6 +1,9 @@
+import type { Metadata } from "next";
 import { Plus } from "lucide-react";
 import { OrgChart } from "@/components/agents/org-chart";
 import { fixtureFleetCounts } from "@/lib/fixtures/agents";
+
+export const metadata: Metadata = { title: "Agents" };
 
 export default function AgentsPage() {
   return (

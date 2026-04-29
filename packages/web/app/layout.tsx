@@ -16,7 +16,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "beevibe",
+  title: { template: "%s — beevibe", default: "beevibe" },
   description: "Human control plane for AI agents",
 };
 

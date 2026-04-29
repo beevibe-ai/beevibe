@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { Hash, Info } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { ChannelRail } from "@/components/threads/channel-rail";
 import { ThreadTimeline } from "@/components/threads/timeline";
 import { fixtureActiveChannel } from "@/lib/fixtures/thread-messages";
+
+export const metadata: Metadata = { title: "Threads" };
 
 export default function ThreadsPage() {
   return (
@@ -49,6 +52,7 @@ export default function ThreadsPage() {
             <button
               className="h-7 w-7 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
               title="Thread details"
+              aria-label="Thread details"
             >
               <Info className="h-4 w-4" />
             </button>

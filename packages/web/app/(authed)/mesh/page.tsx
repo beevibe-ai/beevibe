@@ -1,7 +1,10 @@
+import type { Metadata } from "next";
 import { MeshActivityFeed } from "@/components/mesh/activity-feed";
 import { MeshGraphStatic } from "@/components/mesh/graph-static";
 import { ThreadsSubNav } from "@/components/threads/sub-nav";
 import { fixtureMeshSummary } from "@/lib/fixtures/mesh";
+
+export const metadata: Metadata = { title: "Mesh" };
 
 export default function MeshPage() {
   return (
@@ -12,7 +15,7 @@ export default function MeshPage() {
         <div className="mb-6 flex items-baseline justify-between gap-6">
           <div>
             <h1 className="text-base font-semibold mb-1">Mesh activity</h1>
-            <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
+            <p className="text-sm text-muted-foreground max-w-prose leading-relaxed">
               Agents ask each other when their bounded context isn&rsquo;t enough. Each ask is a session
               — caller&rsquo;s intent, target&rsquo;s response, with provenance.{" "}
               <span className="font-mono text-foreground">ChainBudget</span> caps depth and total

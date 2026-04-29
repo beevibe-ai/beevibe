@@ -28,7 +28,10 @@ export function CoreBlockCard({ block }: { block: CoreBlockDisplay }) {
             <span className="text-[10px] text-muted-foreground">
               {block.char_count.toLocaleString()} / {block.char_limit.toLocaleString()} chars
             </span>
-            <button className="ml-auto h-5 w-5 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+            <button
+              aria-label={`Edit ${block.block_name} block`}
+              className="ml-auto h-5 w-5 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors"
+            >
               <Pencil className="h-3 w-3" />
             </button>
           </div>

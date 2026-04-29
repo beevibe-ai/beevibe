@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { AlertCircle, ArrowRight, Ban, XCircle } from "lucide-react";
+
+export const metadata: Metadata = { title: "Home" };
 import { KpiTile } from "@/components/home/kpi-tile";
 import { StatusBreakdownBar } from "@/components/home/status-breakdown";
 import { FleetBars } from "@/components/home/fleet-bars";

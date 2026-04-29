@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Check, ChevronLeft, RotateCcw, X } from "lucide-react";
@@ -7,6 +8,11 @@ import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { HierChip } from "@/components/hier-chip";
 import { findTaskById } from "@/lib/fixtures/tasks";
 import { formatRelativeTime, shortId } from "@/lib/format";
+
+export function generateMetadata({ params }: { params: { id: string } }): Metadata {
+  const task = findTaskById(params.id);
+  return { title: task ? task.title : "Task" };
+}
 
 export default function TaskDetailPage({ params }: { params: { id: string } }) {
   const task = findTaskById(params.id);

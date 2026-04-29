@@ -1,5 +1,8 @@
+import type { Metadata } from "next";
 import { MemorySubNav } from "@/components/memory/sub-nav";
 import { MemoryClient } from "./memory-client";
+
+export const metadata: Metadata = { title: "Memory" };
 
 export default function MemoryPage() {
   return (

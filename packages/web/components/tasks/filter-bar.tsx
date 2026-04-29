@@ -26,10 +26,11 @@ export function FilterBar({ query, onQueryChange }: Props) {
       <div className="relative flex-1 max-w-md ml-2">
         <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
         <input
-          type="text"
+          type="search"
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           placeholder="Search tasks…"
+          aria-label="Search tasks"
           className="w-full h-7 pl-8 pr-3 text-xs rounded border border-border bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-1 transition-shadow"
         />
       </div>

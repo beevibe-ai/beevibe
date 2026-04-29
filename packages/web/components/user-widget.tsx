@@ -8,6 +8,7 @@ export function UserWidget() {
   return (
     <button
       type="button"
+      aria-label="User menu — Weijia"
       className="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 rounded hover:bg-secondary cursor-pointer transition-colors text-left"
     >
       <div className="h-7 w-7 rounded-full bg-secondary border border-border flex items-center justify-center text-xs font-medium shrink-0">

@@ -1,8 +1,11 @@
+import type { Metadata } from "next";
 import { ArrowRight, ArrowUpDown } from "lucide-react";
 import { MemorySubNav } from "@/components/memory/sub-nav";
 import { PromotionEventRow } from "@/components/promotions/event-row";
 import { ScopeChip } from "@/components/scope-chip";
 import { fixturePromotions } from "@/lib/fixtures/promotion-events";
+
+export const metadata: Metadata = { title: "Promotions" };
 
 export default function PromotionsPage() {
   return (
@@ -13,7 +16,7 @@ export default function PromotionsPage() {
         <div className="mb-6 flex items-baseline justify-between gap-6">
           <div>
             <h1 className="text-base font-semibold mb-1">Promotions</h1>
-            <p className="text-sm text-muted-foreground max-w-2xl leading-relaxed">
+            <p className="text-sm text-muted-foreground max-w-prose leading-relaxed">
               When the same observation reappears across sessions,{" "}
               <span className="font-mono text-foreground">FactPromoter</span> evaluates whether it has
               earned a wider scope. Each event below is the LLM&rsquo;s per-fact decision with its stated

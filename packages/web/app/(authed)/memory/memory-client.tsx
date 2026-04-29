@@ -1,10 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronDown, ChevronLeft, ChevronRight, Search, ArrowUpDown, BookText, Bot, Clock, Layers, MoreHorizontal, Tags } from "lucide-react";
+import { ChevronDown, ChevronLeft, ChevronRight, Search, ArrowUpDown, BookText, Bot, Clock, Layers, MoreHorizontal, Sparkles, Tags } from "lucide-react";
 import { ScopeTabs, type ScopeFilter } from "@/components/memory/scope-tabs";
 import { ScopeChip } from "@/components/scope-chip";
 import { FactTypeTag } from "@/components/fact-type-tag";
+import { EmptyState } from "@/components/empty-state";
 import { formatRelativeTime } from "@/lib/format";
 import { fixtureFactCounts, fixtureFacts } from "@/lib/fixtures/memory-facts";
 import { cn } from "@/lib/utils";
@@ -49,10 +50,11 @@ export function MemoryClient() {
           <div className="relative flex-1 max-w-lg">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
-              type="text"
+              type="search"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search memory — semantic + keyword"
+              aria-label="Search memory"
               className="w-full h-9 pl-10 pr-3 text-sm rounded-md bg-secondary placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-shadow"
             />
           </div>
@@ -102,6 +104,23 @@ export function MemoryClient() {
               </tr>
             </thead>
             <tbody>
+              {visible.length === 0 ? (
+                <tr>
+                  <td colSpan={7}>
+                    <EmptyState
+                      icon={Sparkles}
+                      title="No facts in this scope"
+                      description={
+                        query
+                          ? `No facts match "${query}".`
+                          : scope === "all"
+                            ? "No facts have been learned yet."
+                            : `No ${scope}-scope facts retrieved at brief-time. Per-agent retrieval intentionally avoids a global pool.`
+                      }
+                    />
+                  </td>
+                </tr>
+              ) : null}
               {visible.map((fact) => (
                 <tr key={fact.id} className="hover:bg-secondary/30 transition-colors">
                   <td className="px-3 py-3 align-top">
@@ -131,7 +150,10 @@ export function MemoryClient() {
                     {formatRelativeTime(fact.created_at)}
                   </td>
                   <td className="px-3 py-3 align-middle">
-                    <button className="h-6 w-6 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors">
+                    <button
+                      aria-label={`Actions for fact ${fact.id}`}
+                      className="h-6 w-6 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
+                    >
                       <MoreHorizontal className="h-3.5 w-3.5" />
                     </button>
                   </td>
@@ -221,9 +243,10 @@ function Checkbox({
 
 function Pagination() {
   return (
-    <div className="flex items-center gap-1">
+    <nav className="flex items-center gap-1" aria-label="Pagination">
       <button
         disabled
+        aria-label="Previous page"
         className="h-7 w-7 rounded inline-flex items-center justify-center hover:bg-secondary cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
       >
         <ChevronLeft className="h-3.5 w-3.5" />
@@ -231,6 +254,8 @@ function Pagination() {
       {[1, 2, 3, 4, 5].map((n) => (
         <button
           key={n}
+          aria-label={`Page ${n}`}
+          aria-current={n === 1 ? "page" : undefined}
           className={cn(
             "h-7 min-w-7 px-2 rounded cursor-pointer transition-colors",
             n === 1 ? "text-foreground bg-secondary font-medium" : "hover:bg-secondary",
@@ -239,9 +264,12 @@ function Pagination() {
           {n}
         </button>
       ))}
-      <button className="h-7 w-7 rounded inline-flex items-center justify-center hover:bg-secondary cursor-pointer transition-colors">
+      <button
+        aria-label="Next page"
+        className="h-7 w-7 rounded inline-flex items-center justify-center hover:bg-secondary cursor-pointer transition-colors"
+      >
         <ChevronRight className="h-3.5 w-3.5" />
       </button>
-    </div>
+    </nav>
   );
 }

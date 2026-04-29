@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ChevronLeft, KeyRound, Loader2, Settings2 } from "lucide-react";
@@ -11,6 +12,11 @@ import { fixtureAgentMetrics, fixtureCoreBlocks } from "@/lib/fixtures/core-memo
 import { fixtureFacts } from "@/lib/fixtures/memory-facts";
 import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+export function generateMetadata({ params }: { params: { id: string } }): Metadata {
+  const agent = fixtureAgents.find((a) => a.id === params.id || a.name === params.id);
+  return { title: agent ? agent.name : "Agent" };
+}
 
 const HIER_AVATAR_BG = {
   ic: "bg-hier-ic/10 text-hier-ic",
