@@ -28,6 +28,14 @@ module.exports = {
     ],
     "@typescript-eslint/no-explicit-any": "warn",
 
+    // The MCP SDK uses wildcard package.json exports ("./*": ...) that
+    // resolve fine for tsc but eslint-plugin-import's TS resolver doesn't
+    // follow. Skip the unresolved check for those deep imports specifically.
+    "import/no-unresolved": [
+      "error",
+      { ignore: ["^@modelcontextprotocol/sdk/"] },
+    ],
+
     // Hexagonal dep rules for packages/core/
     // domain/ → nothing
     // ports/ → domain only

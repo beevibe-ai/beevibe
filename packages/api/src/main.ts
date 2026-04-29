@@ -2,7 +2,7 @@
 import { config as loadEnv } from "dotenv";
 import { bootstrap } from "./bootstrap.js";
 
-const REQUIRED_ENV = ["DATABASE_URL"] as const;
+const REQUIRED_ENV = ["DATABASE_URL", "OPENAI_API_KEY", "ANTHROPIC_API_KEY"] as const;
 
 async function main(): Promise<void> {
   loadEnv();
@@ -17,6 +17,8 @@ async function main(): Promise<void> {
   const port = process.env.BEEVIBE_API_PORT ? Number(process.env.BEEVIBE_API_PORT) : 3000;
   const { server, shutdown } = await bootstrap({
     databaseUrl: process.env.DATABASE_URL!,
+    openaiApiKey: process.env.OPENAI_API_KEY!,
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
     port,
   });
 
