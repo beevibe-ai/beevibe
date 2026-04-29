@@ -18,6 +18,13 @@
     "clean": "rm -rf dist .turbo *.tsbuildinfo"
   },
   "dependencies": {
-    "@beevibe/core": "workspace:*"
+    "@beevibe/core": "workspace:*",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "express": "^5.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "supertest": "^7.0.0",
+    "@types/supertest": "^6.0.2"
   }
 }
