@@ -7,11 +7,14 @@ import {
   type ThreadChannel,
 } from "@/lib/fixtures/thread-messages";
 
-const STATUS_ICON = {
+const STATUS_ICON: Record<
+  ThreadChannel["status"],
+  { Icon: typeof AlertCircle; color: string; spin?: boolean }
+> = {
   review: { Icon: AlertCircle, color: "text-status-review" },
   running: { Icon: Loader2, color: "text-status-running", spin: true },
   blocked: { Icon: Ban, color: "text-status-blocked" },
-} as const;
+};
 
 export function ChannelRail() {
   return (
@@ -94,10 +97,7 @@ function Section({
 }
 
 function ChannelLink({ channel }: { channel: ThreadChannel }) {
-  const { Icon, color, spin } = {
-    spin: false,
-    ...STATUS_ICON[channel.status],
-  };
+  const { Icon, color, spin } = STATUS_ICON[channel.status];
   return (
     <Link
       href="#"

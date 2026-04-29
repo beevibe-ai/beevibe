@@ -33,15 +33,12 @@ export function MemoryClient() {
     setSelected(next);
   }
   function toggleAll() {
-    if (allChecked) {
-      const next = new Set(selected);
-      for (const f of visible) next.delete(f.id);
-      setSelected(next);
-    } else {
-      const next = new Set(selected);
-      for (const f of visible) next.add(f.id);
-      setSelected(next);
+    const next = new Set(selected);
+    for (const f of visible) {
+      if (allChecked) next.delete(f.id);
+      else next.add(f.id);
     }
+    setSelected(next);
   }
 
   return (

@@ -146,11 +146,12 @@ function EventRow({ event }: { event: ThreadEvent }) {
               {event.timestamp}
             </span>
           </div>
-          <p className={cn("mt-0.5 text-sm leading-6")}>{event.content}</p>
+          <p className="mt-0.5 text-sm leading-6">{event.content}</p>
         </div>
       </div>
     );
   }
 
-  return null;
+  const _exhaustive: never = event;
+  return _exhaustive;
 }

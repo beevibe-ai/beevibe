@@ -95,26 +95,25 @@ function AskCard({ ask }: { ask: MeshAsk }) {
   );
 }
 
+const BADGE_VARIANT: Record<
+  MeshAsk["status"],
+  { Icon: typeof Loader2; tone: string; spin?: boolean }
+> = {
+  in_flight: { Icon: Loader2, tone: "bg-status-running/10 text-status-running", spin: true },
+  blocked: { Icon: Ban, tone: "bg-status-blocked/10 text-status-blocked" },
+  succeeded: { Icon: Check, tone: "bg-status-done/10 text-status-done" },
+};
+
 function StatusBadge({ ask }: { ask: MeshAsk }) {
-  if (ask.status === "in_flight") {
-    return (
-      <span className="ml-auto inline-flex items-center gap-1 h-5 px-2 rounded text-[10px] font-medium bg-status-running/10 text-status-running">
-        <Loader2 className="animate-spin-slow h-3 w-3" />
-        {ask.duration_label}
-      </span>
-    );
-  }
-  if (ask.status === "blocked") {
-    return (
-      <span className="ml-auto inline-flex items-center gap-1 h-5 px-2 rounded text-[10px] font-medium bg-status-blocked/10 text-status-blocked">
-        <Ban className="h-3 w-3" />
-        {ask.duration_label}
-      </span>
-    );
-  }
+  const { Icon, tone, spin } = BADGE_VARIANT[ask.status];
   return (
-    <span className="ml-auto inline-flex items-center gap-1 h-5 px-2 rounded text-[10px] font-medium bg-status-done/10 text-status-done">
-      <Check className="h-3 w-3" />
+    <span
+      className={cn(
+        "ml-auto inline-flex items-center gap-1 h-5 px-2 rounded text-[10px] font-medium",
+        tone,
+      )}
+    >
+      <Icon className={cn("h-3 w-3", spin && "animate-spin-slow")} />
       {ask.duration_label}
     </span>
   );

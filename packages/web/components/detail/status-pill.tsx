@@ -1,7 +1,7 @@
 import type { TaskStatus, SessionStatus } from "@beevibe/core";
 import { cn } from "@/lib/utils";
 
-const TASK_PILL: Partial<Record<TaskStatus, { dot: string; bg: string; text: string; label: string }>> = {
+const TASK_PILL: Record<TaskStatus, { dot: string; bg: string; text: string; label: string }> = {
   review: { dot: "bg-status-review", bg: "bg-status-review/10", text: "text-status-review", label: "review" },
   blocked: { dot: "bg-status-blocked", bg: "bg-status-blocked/10", text: "text-status-blocked", label: "blocked" },
   in_progress: { dot: "bg-status-running animate-pulse-breathe", bg: "bg-status-running/10", text: "text-status-running", label: "in progress" },
@@ -23,7 +23,6 @@ const SESSION_PILL: Record<SessionStatus, { bg: string; text: string; label: str
 
 export function TaskStatusPill({ status, className }: { status: TaskStatus; className?: string }) {
   const config = TASK_PILL[status];
-  if (!config) return null;
   return (
     <span
       className={cn(
