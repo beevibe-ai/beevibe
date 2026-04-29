@@ -83,6 +83,17 @@ export function createTaskDispatcher(deps: DispatchDeps): TaskDispatcher {
   };
 }
 
+/**
+ * Wrap task body in a `<task id="...">` envelope so the agent has a stable
+ * reference for tools that need task_id (`update_progress`,
+ * `create_work_product`, etc.). Lives in stdin (user message) so the system
+ * prompt — which is prompt-cached — stays stable across sessions.
+ *
+ * M6.5 generalizes this via the `buildIntent(task, reason)` helper in core,
+ * but for now this just wraps the body. The envelope shape matches what
+ * `buildIntent` produces for `kind: 'fresh'` so the M6.5 swap is a no-op.
+ */
 function composeIntent(task: Task): string {
-  return task.description ? `${task.title}\n\n${task.description}` : task.title;
+  const body = task.description ? `${task.title}\n\n${task.description}` : task.title;
+  return `<task id="${task.id}">\n${body}\n</task>`;
 }

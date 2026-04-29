@@ -11,8 +11,14 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { ResolvedCaller } from "@beevibe/core/auth";
 import type { CoreMemory, FactStore, MemoryAgent } from "@beevibe/core/services/memory";
-import type { SessionRepository } from "@beevibe/core";
+import type {
+  AgentRepository,
+  SessionRepository,
+  TaskRepository,
+  WorkProductRepository,
+} from "@beevibe/core";
 import { sessionId as makeBeevibeSid } from "@beevibe/core";
+import type { TaskService } from "@beevibe/core/services/task-service";
 import { assembleTools } from "../tools/assemble.js";
 import { buildInstructions } from "../tools/instructions.js";
 import type { AgentTool } from "../tools/types.js";
@@ -24,6 +30,10 @@ export interface McpRouterDeps {
   coreMemory: CoreMemory;
   sessionCache: SessionCache;
   sessionRepo: SessionRepository;
+  agentRepo: AgentRepository;
+  taskRepo: TaskRepository;
+  workProductRepo: WorkProductRepository;
+  taskService: TaskService;
   makeMemoryAgent: (agentId: string) => MemoryAgent;
 }
 
@@ -175,13 +185,24 @@ async function handleMcpRequest(
     });
   }
 
-  // Build instructions + tools for this caller.
+  // Build instructions + tools for this caller. Each MCP session gets its own
+  // MemoryAgent (closed over caller.agentId) so search_context queries hit
+  // the right agent's archival memory.
+  const memoryAgent = deps.makeMemoryAgent(caller.agentId);
   const instructions = await buildInstructions(caller, {
     makeMemoryAgent: deps.makeMemoryAgent,
   });
   const tools = assembleTools(
     { caller, beevibeSid },
-    { factStore: deps.factStore, coreMemory: deps.coreMemory },
+    {
+      factStore: deps.factStore,
+      coreMemory: deps.coreMemory,
+      agentRepo: deps.agentRepo,
+      taskRepo: deps.taskRepo,
+      workProductRepo: deps.workProductRepo,
+      taskService: deps.taskService,
+      memoryAgent,
+    },
   );
 
   const server = new McpLowLevelServer(

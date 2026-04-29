@@ -3,6 +3,7 @@ import type { WorkProduct } from "../domain/work-product.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type {
   NewWorkProduct,
+  WorkProductPatch,
   WorkProductRepository,
 } from "../ports/work-product-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
@@ -170,6 +171,22 @@ export class TaskService {
   /** List work products for a task (chronological order is the repo's concern). */
   async listWorkProducts(taskId: string): Promise<WorkProduct[]> {
     return this.deps.workProductRepo.listByTask(taskId);
+  }
+
+  /**
+   * Amend a work product (used by the `update_work_product` MCP tool — see M9
+   * for the agent skill that decides between create vs update). Mutable
+   * subset is `summary | url | provider | external_id | metadata`; identity
+   * (`type`, `title`, `task_id`, `agent_id`) is fixed at creation.
+   *
+   * Bumps `updated_at = NOW()` via the repo. Throws if the row doesn't
+   * exist (`work_product <id> not found`).
+   */
+  async updateWorkProduct(
+    id: string,
+    patch: WorkProductPatch,
+  ): Promise<WorkProduct> {
+    return this.deps.workProductRepo.update(id, patch);
   }
 
   /**

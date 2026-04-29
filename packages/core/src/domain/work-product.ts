@@ -33,4 +33,6 @@ export interface WorkProduct {
   external_id?: string;
   metadata?: Record<string, unknown>;
   created_at: Date;
+  /** Bumped on every UPDATE via the update_work_product MCP tool. */
+  updated_at: Date;
 }

@@ -104,6 +104,27 @@ describe("PostgresAgentRepository", () => {
     expect(peersOfA.map((a) => a.id)).toEqual([peerB.id]);
   });
 
+  it("findParent returns the direct parent", async () => {
+    const parent = await agents.create(newAgent({ hierarchy_level: "team", name: "parent" }));
+    const child = await agents.create(
+      newAgent({ parent_agent_id: parent.id, hierarchy_level: "ic", name: "child" }),
+    );
+
+    const found = await agents.findParent(child.id);
+    expect(found?.id).toBe(parent.id);
+  });
+
+  it("findParent returns undefined for top-level agents", async () => {
+    const top = await agents.create(newAgent({ hierarchy_level: "team", name: "top" }));
+    const found = await agents.findParent(top.id);
+    expect(found).toBeUndefined();
+  });
+
+  it("findParent returns undefined for unknown agent id", async () => {
+    const found = await agents.findParent("agent_nonexistent_xxx");
+    expect(found).toBeUndefined();
+  });
+
   it("findByLevel returns all agents at that level", async () => {
     const t1 = await agents.create(newAgent({ hierarchy_level: "team", name: "t1" }));
     const t2 = await agents.create(newAgent({ hierarchy_level: "team", name: "t2" }));

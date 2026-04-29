@@ -1,3 +1,4 @@
+import type { ResolutionProposal } from "../domain/escalation.js";
 import type { Session, SessionType } from "../domain/session.js";
 import { sessionId as newSessionId } from "../domain/ids.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
@@ -149,3 +150,102 @@ export class AgentSession {
     return finalSession;
   }
 }
+
+// ── ResumeReason + buildIntent (added in M6.3, wired to dispatch in M6.5) ──
+
+/**
+ * The reason a session is being spawned, with all per-reason context the
+ * intent prompt needs. Set by composition roots (executor's dispatch.ts and
+ * api's EscalationService.resolve in M6.4) and consumed by `buildIntent`.
+ *
+ * The dispatch path (M6.5) reads `task.next_dispatch_context` (a JSONB
+ * column) for the explicit-context kinds; `fresh` and `crash_recovery` are
+ * inferred from session-row state.
+ */
+export type ResumeReason =
+  | { kind: "fresh" }
+  | { kind: "crash_recovery" }
+  | {
+      kind: "revision";
+      feedback: string;
+      source: "human" | "parent_agent";
+      from_status: "review" | "needs_revision" | "blocked";
+      reviser_agent_id?: string;
+      prior_session_id?: string;
+    }
+  | {
+      kind: "post_escalation";
+      role: "initiator" | "counterparty";
+      resolution: ResolutionProposal;
+      notes?: string;
+      prior_session_id?: string;
+    };
+
+/**
+ * The minimal Task fields buildIntent needs. Avoids importing the full Task
+ * type to keep this helper portable and the dependency graph narrow.
+ */
+export interface IntentTask {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+/**
+ * Compose the stdin (user-message) payload for a CLI invocation. The
+ * system prompt comes from `--append-system-prompt` (briefing + persona);
+ * task-specific data lives here so prompt cache stays warm across sessions.
+ *
+ * For non-`fresh` reasons the agent has the task body via `--resume`
+ * conversation history, so we emit a self-closing `<task id="..."/>`
+ * anchor (used by tools like `update_progress(task_id, ...)`) plus a
+ * scenario-specific `<context type="...">` block. Only `fresh` includes
+ * the full title+description.
+ */
+export function buildIntent(
+  task: IntentTask | null,
+  reason: ResumeReason,
+): string {
+  const taskAnchor =
+    task === null
+      ? ""
+      : reason.kind === "fresh"
+        ? `<task id="${task.id}">\n${task.title}${task.description ? "\n\n" + task.description : ""}\n</task>`
+        : `<task id="${task.id}"/>`;
+
+  switch (reason.kind) {
+    case "fresh":
+      return taskAnchor;
+
+    case "crash_recovery":
+      return `<context type="crash_recovery">Your previous session ended unexpectedly. Pick up where you left off.</context>\n${taskAnchor}`;
+
+    case "revision": {
+      const fb = reason.feedback || "(no specific feedback provided)";
+      // Two valid combinations enforced by TaskService.reviseTask:
+      //   - source='parent_agent' + from_status='blocked' (post-blocker fix)
+      //   - source='human'        + from_status='review' or 'needs_revision'
+      const preamble =
+        reason.source === "parent_agent"
+          ? "Your parent agent has resolved the blocker you reported. Their guidance for proceeding:"
+          : "A human reviewer requested changes:";
+      return `<context type="revision" source="${reason.source}" from="${reason.from_status}">${preamble}\n${fb}\n\nAddress the feedback and re-submit via update_progress.</context>\n${taskAnchor}`;
+    }
+
+    case "post_escalation": {
+      const notesLine = reason.notes
+        ? `\nAdditional guidance: ${reason.notes}`
+        : "";
+      const roleLine =
+        reason.role === "counterparty"
+          ? "\nYour peer is continuing their task with this guidance. Update your memory with anything notable, complete any related follow-up, then exit."
+          : "\nContinue your task using this resolution.";
+      return `<context type="post_escalation" role="${reason.role}">A negotiation about this task was resolved by a human reviewer.\nResolution: ${reason.resolution.title} — ${reason.resolution.description}${notesLine}${roleLine}</context>\n${taskAnchor}`;
+    }
+  }
+}
+
+// Re-export the escalation domain types this helper consumes so consumers
+// (executor's dispatch in M6.5, EscalationService in M6.4) can import them
+// through the same subpath as buildIntent.
+export type { ResolutionProposal, Proposal } from "../domain/escalation.js";

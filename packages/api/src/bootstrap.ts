@@ -4,6 +4,8 @@ import {
   PostgresMemoryFactRepository,
   PostgresPersonRepository,
   PostgresSessionRepository,
+  PostgresTaskRepository,
+  PostgresWorkProductRepository,
   createPool,
 } from "@beevibe/core/adapters/postgres";
 import type { Pool } from "@beevibe/core/adapters/postgres";
@@ -16,6 +18,7 @@ import {
   createMemoryAgent,
   type MemoryAgent,
 } from "@beevibe/core/services/memory";
+import { TaskService } from "@beevibe/core/services/task-service";
 import { BeevibeApiServer } from "./server.js";
 import { SessionCache } from "./session-cache.js";
 import { createMcpRouter } from "./routes/mcp.js";
@@ -49,6 +52,9 @@ export interface BootstrapResult {
  * M6.2: + memory services (FactStore, CoreMemory, FactPromoter) + per-agent
  *       MemoryAgent factory + MCP router with `save_memory` /
  *       `update_core_memory` tools mounted at /mcp.
+ * M6.3: + task + work-product repos + TaskService. The MCP router now
+ *       assembles 14 tools (2 memory + 8 IC-shared hierarchy + 4 team-only)
+ *       per session, tier-gated by caller.hierarchyLevel.
  */
 export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> {
   const pool = createPool({ connectionString: cfg.databaseUrl });
@@ -56,6 +62,8 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const agentRepo = new PostgresAgentRepository(pool);
   const personRepo = new PostgresPersonRepository(pool);
   const sessionRepo = new PostgresSessionRepository(pool);
+  const taskRepo = new PostgresTaskRepository(pool);
+  const workProductRepo = new PostgresWorkProductRepository(pool);
   const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
   const memoryFactRepo = new PostgresMemoryFactRepository(pool);
 
@@ -67,6 +75,9 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const coreMemory = new CoreMemory({ repo: coreMemoryRepo });
   const factStore = new FactStore({ repo: memoryFactRepo, embed, llm });
   const promoter = new FactPromoter({ llm });
+
+  // M3 task service (review_policy gate, work-product CRUD, parent rollup)
+  const taskService = new TaskService({ taskRepo, workProductRepo, agentRepo });
 
   /**
    * Per-agent MemoryAgent factory. Closed over shared services. Used by:
@@ -113,6 +124,10 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     coreMemory,
     sessionCache,
     sessionRepo,
+    agentRepo,
+    taskRepo,
+    workProductRepo,
+    taskService,
     makeMemoryAgent,
   });
   server.getApp().use("/mcp", mcpRouter);

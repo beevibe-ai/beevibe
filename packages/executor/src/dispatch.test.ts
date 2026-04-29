@@ -153,7 +153,7 @@ describe("createTaskDispatcher", () => {
     expect(makeMemoryAgent).toHaveBeenCalledWith("agent_XYZ");
   });
 
-  it("calls AgentSession.run with { agentId, taskId, intent (title+description), workspace, abortSignal }", async () => {
+  it("calls AgentSession.run with { agentId, taskId, intent (<task id> envelope around title+description), workspace, abortSignal }", async () => {
     const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
     const dispatch = createTaskDispatcher({
       agentRepo,
@@ -176,14 +176,18 @@ describe("createTaskDispatcher", () => {
     const arg = runSpy.mock.calls[0]![0] as Parameters<AgentSession["run"]>[0];
     expect(arg.agentId).toBe("agent_run");
     expect(arg.taskId).toBe("task_run");
-    expect(arg.intent).toBe("Fix auth\n\nFind and fix the login bug.");
+    // M6.3: stdin payload wraps body in <task id="..."/> envelope. The system
+    // prompt (briefing) stays cache-friendly — task-specific data lives here.
+    expect(arg.intent).toBe(
+      '<task id="task_run">\nFix auth\n\nFind and fix the login bug.\n</task>',
+    );
     expect(arg.workspace).toBe(WORKSPACE);
     expect(arg.abortSignal).toBe(SIGNAL);
     // No urgency field — M5.0 dropped it.
     expect(arg).not.toHaveProperty("urgency");
   });
 
-  it("intent is just the title when description is missing", async () => {
+  it("intent is just the title in the envelope when description is missing", async () => {
     const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
     const dispatch = createTaskDispatcher({
       agentRepo,
@@ -195,13 +199,13 @@ describe("createTaskDispatcher", () => {
       }) as unknown as MemoryAgent),
     });
     await dispatch(
-      makeTask({ title: "just a title", description: undefined }),
+      makeTask({ id: "task_t", title: "just a title", description: undefined }),
       makeAgent(),
       WORKSPACE,
       SIGNAL,
     );
     const arg = runSpy.mock.calls[0]![0] as Parameters<AgentSession["run"]>[0];
-    expect(arg.intent).toBe("just a title");
+    expect(arg.intent).toBe('<task id="task_t">\njust a title\n</task>');
   });
 
   it("task in `revision` (post-claim re-work): looks up latest prior session and passes priorSessionId", async () => {

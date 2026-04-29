@@ -87,6 +87,7 @@ export interface WorkProductRow {
   external_id: string | null;
   metadata: Record<string, unknown> | null;
   created_at: Date;
+  updated_at: Date;
 }
 
 export interface MemoryFactRow {

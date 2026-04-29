@@ -65,6 +65,19 @@ export class PostgresAgentRepository implements AgentRepository {
     return rows.map(rowToAgent);
   }
 
+  async findParent(agentId: string): Promise<Agent | undefined> {
+    // Single query via self-join: parent.id = self.parent_agent_id.
+    // Returns nothing for top-level agents (parent_agent_id IS NULL).
+    const { rows } = await this.pool.query<AgentRow>(
+      `SELECT parent.* FROM agent self
+         JOIN agent parent ON parent.id = self.parent_agent_id
+        WHERE self.id = $1
+        LIMIT 1`,
+      [agentId],
+    );
+    return rows[0] ? rowToAgent(rows[0]) : undefined;
+  }
+
   async findByLevel(level: HierarchyLevel): Promise<Agent[]> {
     const { rows } = await this.pool.query<AgentRow>(
       `SELECT * FROM agent WHERE hierarchy_level = $1 ORDER BY name ASC`,
