@@ -9,6 +9,20 @@ export interface TaskListItem extends Task {
   assignee_hierarchy?: "ic" | "team" | "org";
   assignee_label?: string;
   creator_label?: string;
+  description?: string;
+  result_summary?: string;
+  session_count?: number;
+  work_product_count?: number;
+  latest_session?: {
+    short_id: string;
+    status: "running" | "succeeded" | "failed" | "cancelled";
+    elapsed: string;
+    agent_label: string;
+  };
+}
+
+export function findTaskById(id: string): TaskListItem | undefined {
+  return fixtureTasks.find((t) => t.id === id);
 }
 
 export const fixtureTasks: TaskListItem[] = [
@@ -23,7 +37,19 @@ export const fixtureTasks: TaskListItem[] = [
     assignee_id: "agt_ic1",
     assignee_label: "ic-agent-1",
     assignee_hierarchy: "ic",
-    created_at: hoursAgo(8),
+    description:
+      "Add an OAuth 2.0 authorization code flow to the API so external clients can authenticate as a person without sharing their bv_u_* API key.\n\nProvider: Google. Tokens stored in person.oauth_tokens (JSONB). PKCE required.",
+    result_summary:
+      "Implemented the authorization code + PKCE flow against Google. Tokens stored on person.oauth_tokens. Refresh handled in middleware on 401. Added integration tests covering success, denied-consent, expired-state, and refresh paths.",
+    session_count: 3,
+    work_product_count: 1,
+    latest_session: {
+      short_id: "9c1f4b2a",
+      status: "running",
+      elapsed: "4m elapsed",
+      agent_label: "ic-agent-1",
+    },
+    created_at: daysAgo(2),
     updated_at: minutesAgo(2),
   },
   {
