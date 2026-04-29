@@ -40,6 +40,13 @@ async function main(): Promise<void> {
   console.log(`[api-share] booting @beevibe/api on port ${PORT}`);
   const { server, shutdown } = await bootstrap({
     databaseUrl: process.env.DATABASE_URL!,
+    // For local dev: use the local URL; the cloudflared tunnel only
+    // matters for HUMAN bv_u_ traffic, not for mesh-spawned agent CLIs
+    // which connect to mcp-config.json's URL field. M6 keeps this simple
+    // by using a localhost URL for mesh; tunnel URL gets printed for the
+    // user to paste into THEIR own mcp-config.
+    mcpServerUrl:
+      process.env.BEEVIBE_MCP_SERVER_URL ?? `http://localhost:${PORT}/mcp`,
     openaiApiKey: process.env.OPENAI_API_KEY!,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
     port: PORT,

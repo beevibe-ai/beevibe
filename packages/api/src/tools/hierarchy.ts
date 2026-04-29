@@ -33,7 +33,12 @@ import {
   type TaskStatus,
   type WorkProductRepository,
 } from "@beevibe/core";
-import type { TaskService } from "@beevibe/core/services/task-service";
+import type { Pool } from "@beevibe/core/adapters/postgres";
+import {
+  type TaskService,
+  InvalidTaskTransitionError,
+} from "@beevibe/core/services/task-service";
+import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 import type { AgentTool, AgentToolResult } from "./types.js";
 
@@ -62,6 +67,13 @@ export interface HierarchyToolServices {
   taskService: TaskService;
   /** For search_context — lets the agent re-query archival memory mid-session. */
   memoryAgent: MemoryAgent;
+  /** M6.4: backs `revise_task` (parent unblocks subordinate via reviseTask). */
+  // (taskService.reviseTask is the actual call; same dep as above.)
+
+  /** M6.4: backs `add_to_escalation` (peer adds their slot to existing row). */
+  escalationService: EscalationService;
+  /** M6.4: pg_notify on add_to_escalation for future M8 web subscribers. */
+  pool: Pool;
 }
 
 export interface HierarchyToolContext {
@@ -655,6 +667,175 @@ function checkWorkStatusTool(
   };
 }
 
+// ── revise_task (M6.4) — parent-only authz ───────────────────────────────
+
+function reviseTaskTool(
+  ctx: HierarchyToolContext,
+  services: HierarchyToolServices,
+): AgentTool {
+  return {
+    name: "revise_task",
+    description:
+      "Revise a subordinate's blocked task — the canonical post-blocker " +
+      "unblock path. Authz: caller must be the assignee's direct parent; " +
+      "the subordinate must currently be blocked. Transitions task " +
+      "blocked → needs_revision and stamps next_dispatch_context with " +
+      "your feedback. Executor picks up within ≤30s; the lower agent's " +
+      "session resumes via --resume with your guidance injected as the " +
+      "<context type=\"revision\" source=\"parent_agent\" from=\"blocked\"> " +
+      "block (M9 skill: post-blocker-revision).",
+    schema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "The subordinate's blocked task to revise." },
+        feedback: {
+          type: "string",
+          description: "Guidance on how to proceed past the blocker.",
+        },
+      },
+      required: ["task_id", "feedback"],
+    },
+    handler: async (input) => {
+      try {
+        const taskId = String(input.task_id ?? "");
+        const feedback = String(input.feedback ?? "");
+        if (!taskId || !feedback) {
+          return { content: { error: "task_id and feedback required" }, isError: true };
+        }
+
+        const task = await services.taskRepo.findById(taskId);
+        if (!task) {
+          return { content: { error: "task_not_found", task_id: taskId }, isError: true };
+        }
+        if (!task.assignee_id) {
+          return {
+            content: { error: "task_unassigned", message: "task has no assignee" },
+            isError: true,
+          };
+        }
+
+        // Authz: caller must be the assignee's direct parent.
+        const assignee = await services.agentRepo.findById(task.assignee_id);
+        if (!assignee) {
+          return { content: { error: "assignee_not_found" }, isError: true };
+        }
+        if (assignee.parent_agent_id !== ctx.agentId) {
+          return {
+            content: {
+              error: "not_parent",
+              message: `caller ${ctx.agentId} is not the parent of task assignee ${task.assignee_id}`,
+            },
+            isError: true,
+          };
+        }
+
+        const updated = await services.taskService.reviseTask(taskId, feedback, {
+          source: "parent_agent",
+          reviserAgentId: ctx.agentId,
+        });
+        return {
+          content: {
+            revised: true,
+            task_id: updated.id,
+            status: updated.status,
+            from_status: task.status,
+          },
+        };
+      } catch (err) {
+        if (err instanceof InvalidTaskTransitionError) {
+          return { content: { error: "invalid_transition", message: err.message }, isError: true };
+        }
+        return asError(err);
+      }
+    },
+  };
+}
+
+// ── add_to_escalation (M6.4) — populate the OTHER party's slot ──────────
+
+function addToEscalationTool(
+  ctx: HierarchyToolContext,
+  services: HierarchyToolServices,
+): AgentTool {
+  return {
+    name: "add_to_escalation",
+    description:
+      "Contribute your perspective to a peer-initiated escalation. After " +
+      "your blocked respond_negotiate returns the 'escalated' sentinel, " +
+      "call this with YOUR proposals + open questions for the human " +
+      "reviewer. NO summary arg — the initiator already set it (immutable). " +
+      "Your slot is determined by your role on the negotiation; you can't " +
+      "submit twice. Exit your session after this call.",
+    schema: {
+      type: "object",
+      properties: {
+        escalation_id: {
+          type: "string",
+          description: "The escalation id (from the 'escalated' sentinel).",
+        },
+        proposals: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              title: { type: "string" },
+              description: { type: "string" },
+              tradeoffs: { type: "string" },
+            },
+            required: ["title", "description"],
+          },
+          description: "Your proposals for the human (different from initiator's).",
+        },
+        open_questions: {
+          type: "array",
+          items: { type: "string" },
+          description: "Questions in your domain that humans should know about.",
+        },
+      },
+      required: ["escalation_id"],
+    },
+    handler: async (input) => {
+      try {
+        const escalationId = String(input.escalation_id ?? "");
+        if (!escalationId) {
+          return { content: { error: "escalation_id required" }, isError: true };
+        }
+        const proposals = Array.isArray(input.proposals)
+          ? (input.proposals as Array<{ title: string; description: string; tradeoffs?: string }>)
+          : undefined;
+        const openQuestions = Array.isArray(input.open_questions)
+          ? (input.open_questions as string[]).filter((q) => typeof q === "string")
+          : undefined;
+
+        const updated = await services.escalationService.addContribution({
+          escalationId,
+          callerAgentId: ctx.agentId,
+          proposals,
+          openQuestions,
+        });
+
+        // Refresh notification for any future M8 web UI listening.
+        await services.pool.query(`SELECT pg_notify('escalation_updated', $1)`, [
+          escalationId,
+        ]);
+
+        const bothSubmitted =
+          updated.initiator_submitted_at !== undefined &&
+          updated.counterparty_submitted_at !== undefined;
+        return {
+          content: {
+            escalation_id: updated.id,
+            status: updated.status,
+            both_sides_submitted: bothSubmitted,
+          },
+        };
+      } catch (err) {
+        return asError(err);
+      }
+    },
+  };
+}
+
 // ── Assemble per tier ────────────────────────────────────────────────────
 
 /**
@@ -677,8 +858,9 @@ function buildSharedTools(
 }
 
 /**
- * Tools available only to team / org callers (those with subordinates).
- * 4 additional tools.
+ * Team / org tier additions — tools that need subordinates or that
+ * participate in mesh-state lifecycle (revise_task, add_to_escalation).
+ * 6 additional tools (M6.4).
  */
 function buildTeamOnlyTools(
   ctx: HierarchyToolContext,
@@ -689,16 +871,22 @@ function buildTeamOnlyTools(
     findPeersTool(ctx, services),
     createTaskTool(ctx, services),
     checkWorkStatusTool(ctx, services),
+    reviseTaskTool(ctx, services),
+    addToEscalationTool(ctx, services),
   ];
 }
 
 /**
- * Build the full hierarchy/work-product tool set for a caller. Picks IC vs
- * team set based on `ctx.hierarchyLevel`. Team and org both get the team
- * set (org-tier agents have subordinates too).
+ * Build the full hierarchy/work-product/state-mgmt tool set for a caller.
+ * Picks IC vs team set based on `ctx.hierarchyLevel`. Team and org both
+ * get the team set (org-tier agents have subordinates too).
  *
- * M6.4 will add the 13th tool `revise_task` to the team/org set with
- * parent-only authz (caller.agentId === assignee.parent_agent_id).
+ * M6.4 totals:
+ *   IC tier:   8 shared tools.
+ *   Team/org: 14 tools (8 shared + 6 team-only — find_subordinates,
+ *                       find_peers, create_task, check_work_status,
+ *                       revise_task [parent unblock subordinate],
+ *                       add_to_escalation [populate peer slot]).
  */
 export function buildHierarchyTools(
   ctx: HierarchyToolContext,

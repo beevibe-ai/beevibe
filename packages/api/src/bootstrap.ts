@@ -1,7 +1,10 @@
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
+  PostgresEscalationRepository,
   PostgresMemoryFactRepository,
+  PostgresNegotiationRepository,
+  PostgresNegotiationRoundRepository,
   PostgresPersonRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
@@ -11,6 +14,8 @@ import {
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import { OpenAIEmbeddingService } from "@beevibe/core/adapters/openai";
 import { AnthropicLlmProvider } from "@beevibe/core/adapters/anthropic";
+import { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
+import { createDefaultRuntimeRegistry } from "@beevibe/core/adapters/runtime-registry";
 import {
   CoreMemory,
   FactPromoter,
@@ -19,6 +24,8 @@ import {
   type MemoryAgent,
 } from "@beevibe/core/services/memory";
 import { TaskService } from "@beevibe/core/services/task-service";
+import { EscalationService } from "@beevibe/core/services/escalation-service";
+import { MeshServer } from "./mesh/server.js";
 import { BeevibeApiServer } from "./server.js";
 import { SessionCache } from "./session-cache.js";
 import { createMcpRouter } from "./routes/mcp.js";
@@ -27,6 +34,14 @@ export interface BootstrapConfig {
   databaseUrl: string;
   openaiApiKey: string;
   anthropicApiKey: string;
+  /**
+   * MCP server URL embedded in per-agent mcp-config.json files. Used by
+   * mesh-spawned target agents to call back into this api server. Same
+   * value as the executor's BEEVIBE_MCP_SERVER_URL env (so both binaries
+   * write identical mcp-config.json contents — file-existence-check makes
+   * both processes safe).
+   */
+  mcpServerUrl: string;
   /** Default 3000. */
   port?: number;
   /** Default 5 minutes. */
@@ -35,6 +50,8 @@ export interface BootstrapConfig {
   sessionCacheMaxEntries?: number;
   /** Default 30 minutes. */
   sessionCacheIdleTimeoutMs?: number;
+  /** Default `~/.beevibe/workspaces`. */
+  workspaceRoot?: string;
 }
 
 export interface BootstrapResult {
@@ -66,6 +83,9 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const workProductRepo = new PostgresWorkProductRepository(pool);
   const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
   const memoryFactRepo = new PostgresMemoryFactRepository(pool);
+  const negotiationRepo = new PostgresNegotiationRepository(pool);
+  const negotiationRoundRepo = new PostgresNegotiationRoundRepository(pool);
+  const escalationRepo = new PostgresEscalationRepository(pool);
 
   // External services (LLM + embeddings) for memory pipeline
   const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
@@ -86,6 +106,27 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     sessionRepo,
   });
 
+  // M6.4 escalation service: DB-only writes (no spawning). Re-queues
+  // initiator's task + creates synthetic task for counterparty on resolve;
+  // executor picks both up.
+  const escalationService = new EscalationService({
+    escalationRepo,
+    negotiationRepo,
+    taskRepo,
+    agentRepo,
+  });
+
+  // M6.4 mesh server: in-process A2A broker. Reuses LocalWorkspaceManager
+  // + runtime registry from M5 (shared across executor + api per the M6
+  // composition-root design — both processes can spawn target agent CLIs
+  // and the mcp-config.json file-existence guard handles cross-process
+  // contention).
+  const workspaceManager = new LocalWorkspaceManager({
+    workspaceRoot: cfg.workspaceRoot,
+    mcpServerUrl: cfg.mcpServerUrl,
+  });
+  const runtimeRegistry = createDefaultRuntimeRegistry();
+
   /**
    * Per-agent MemoryAgent factory. Closed over shared services. Used by:
    *   - `buildInstructions` for human callers (full briefing on initialize)
@@ -94,6 +135,17 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
    */
   const makeMemoryAgent = (agentId: string): MemoryAgent =>
     createMemoryAgent({ agentId, coreMemory, factStore, promoter, embed });
+
+  // M6.4 mesh server (depends on makeMemoryAgent for spawned target sessions).
+  const mesh = new MeshServer({
+    agentRepo,
+    sessionRepo,
+    negotiationRepo,
+    negotiationRoundRepo,
+    workspaceManager,
+    runtimeRegistry,
+    makeMemoryAgent,
+  });
 
   /**
    * The session cache's onEvict needs to call `onTaskComplete(beevibeSid)`,
@@ -135,6 +187,9 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     taskRepo,
     workProductRepo,
     taskService,
+    escalationService,
+    mesh,
+    pool,
     makeMemoryAgent,
   });
   server.getApp().use("/mcp", mcpRouter);

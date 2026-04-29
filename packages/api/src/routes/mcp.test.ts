@@ -56,6 +56,7 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
 
     api = await bootstrap({
       databaseUrl: process.env.DATABASE_URL_TEST!,
+      mcpServerUrl: `http://localhost:${port}/mcp`,
       openaiApiKey: process.env.OPENAI_API_KEY!,
       anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
       port,
@@ -132,18 +133,27 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
       });
 
       // Initialize was called inside connect. Inspect server info + tools.
-      // Team-tier caller gets 14 tools (2 memory + 12 hierarchy/work-product).
+      // Team-tier caller gets 22 tools (M6.4 final):
+      //   2 memory + 14 hierarchy + 6 mesh.
       const tools = await client.listTools();
       expect(tools.tools.map((t) => t.name).sort()).toEqual([
+        "add_to_escalation",
+        "ask",
         "check_work_status",
         "create_task",
         "create_work_product",
+        "escalate_to_humans",
         "find_peers",
         "find_subordinates",
         "find_up",
         "get_agent_profile",
         "get_task",
         "list_work_products",
+        "negotiate",
+        "report_blocker",
+        "respond_ask",
+        "respond_negotiate",
+        "revise_task",
         "save_memory",
         "search_context",
         "update_core_memory",
@@ -179,12 +189,18 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
       const mcpSid = transport.sessionId;
       expect(mcpSid).toBeTruthy();
 
-      // tools/list — human caller, agent is team-tier → 14 tools.
+      // tools/list — human caller, agent is team-tier → 22 tools.
       const tools = await client.listTools();
-      expect(tools.tools.map((t) => t.name)).toContain("save_memory");
-      expect(tools.tools.map((t) => t.name)).toContain("update_core_memory");
-      expect(tools.tools.map((t) => t.name)).toContain("find_subordinates");
-      expect(tools.tools.length).toBe(14);
+      const names = tools.tools.map((t) => t.name);
+      expect(names).toContain("save_memory");
+      expect(names).toContain("update_core_memory");
+      expect(names).toContain("find_subordinates");
+      expect(names).toContain("ask");
+      expect(names).toContain("negotiate");
+      expect(names).toContain("escalate_to_humans");
+      expect(names).toContain("add_to_escalation");
+      expect(names).toContain("revise_task");
+      expect(tools.tools.length).toBe(22);
 
       // tools/call save_memory — should write a fact stamped with the auto-
       // created beevibe chat session id. We don't know the sid client-side;

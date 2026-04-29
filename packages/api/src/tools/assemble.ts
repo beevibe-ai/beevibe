@@ -4,8 +4,12 @@ import type {
   TaskRepository,
   WorkProductRepository,
 } from "@beevibe/core";
+import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { CoreMemory, FactStore, MemoryAgent } from "@beevibe/core/services/memory";
 import type { TaskService } from "@beevibe/core/services/task-service";
+import type { EscalationService } from "@beevibe/core/services/escalation-service";
+import type { MeshServer } from "../mesh/server.js";
+import { buildIcMeshTools, buildTeamMeshTools } from "../mesh/tools.js";
 import { buildHierarchyTools } from "./hierarchy.js";
 import { createSaveMemoryTool } from "./save-memory.js";
 import { createUpdateCoreMemoryTool } from "./update-core-memory.js";
@@ -18,21 +22,14 @@ export interface AssembleToolsServices {
   taskRepo: TaskRepository;
   workProductRepo: WorkProductRepository;
   taskService: TaskService;
-  /**
-   * Per-caller MemoryAgent — used by `search_context` for in-session vector
-   * recall. Each session passes the MemoryAgent it was built with so the
-   * agentId is already baked in.
-   */
+  escalationService: EscalationService;
+  mesh: MeshServer;
+  pool: Pool;
   memoryAgent: MemoryAgent;
 }
 
 export interface AssembleToolsContext {
   caller: ResolvedCaller;
-  /**
-   * The beevibe session id this MCP session is bound to. For agents:
-   * extracted from `X-Beevibe-Session` header at session-init time.
-   * For humans: minted when the chat session row is created at initialize.
-   */
   beevibeSid: string;
 }
 
@@ -41,18 +38,23 @@ export interface AssembleToolsContext {
  * fresh closure over `(ctx, services)` so handlers see the right caller +
  * sid without async-storage threading.
  *
- * Composition (M6.3):
- *   - 2 memory tools: save_memory, update_core_memory
- *   - 8 shared hierarchy tools (IC + team): search_context, update_progress,
- *     find_up, get_agent_profile, get_task, create_work_product,
- *     list_work_products, update_work_product
- *   - 4 team-only tools: find_subordinates, find_peers, create_task,
- *     check_work_status
+ * Tier breakdown (M6.4 final):
  *
- * IC agents get 10 tools total (2 memory + 8 shared hierarchy).
- * Team / org agents get 14 (2 memory + 12 hierarchy/work-product).
+ *   IC (10 tools):
+ *     2 memory: save_memory, update_core_memory
+ *     8 hierarchy (shared): search_context, update_progress, find_up,
+ *       get_agent_profile, get_task, create_work_product,
+ *       list_work_products, update_work_product
+ *     0 mesh — except report_blocker (parent escalation path).
+ *     Effectively IC = 11 (memory + 8 shared + report_blocker).
  *
- * M6.4 adds 6 mesh tools + add_to_escalation + revise_task to the team set.
+ *   Team / org (22 tools):
+ *     2 memory + 14 hierarchy (8 shared + 6 team-only) +
+ *     6 mesh (ask, respond_ask, negotiate, respond_negotiate,
+ *             report_blocker, escalate_to_humans).
+ *
+ * Team-only hierarchy adds: find_subordinates, find_peers, create_task,
+ *   check_work_status, revise_task, add_to_escalation.
  */
 export function assembleTools(
   ctx: AssembleToolsContext,
@@ -80,8 +82,24 @@ export function assembleTools(
       workProductRepo: services.workProductRepo,
       taskService: services.taskService,
       memoryAgent: services.memoryAgent,
+      escalationService: services.escalationService,
+      pool: services.pool,
     },
   );
 
-  return [...memoryTools, ...hierarchyTools];
+  const meshCtx = { caller: ctx.caller, beevibeSid: ctx.beevibeSid };
+  const meshServices = {
+    mesh: services.mesh,
+    agentRepo: services.agentRepo,
+    taskRepo: services.taskRepo,
+    taskService: services.taskService,
+    escalationService: services.escalationService,
+    pool: services.pool,
+  };
+  const meshTools =
+    ctx.caller.hierarchyLevel === "ic"
+      ? buildIcMeshTools(meshCtx, meshServices)
+      : buildTeamMeshTools(meshCtx, meshServices);
+
+  return [...memoryTools, ...hierarchyTools, ...meshTools];
 }

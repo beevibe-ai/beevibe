@@ -26,6 +26,13 @@ export interface AgentSessionRunInput {
   taskId?: string;
   /** Session kind. Defaults to "task" when taskId is set, else "chat". */
   type?: SessionType;
+  /**
+   * Optional pre-generated session id. If provided, AgentSession uses it
+   * instead of minting a new one. Used by MeshServer (M6.4) which needs to
+   * stamp the counterparty's session id on the negotiation row BEFORE the
+   * CLI subprocess spawns (so escalation flows can reference it).
+   */
+  sessionId?: string;
   /** Resume-chain pointer. Used to set `--resume <cli_session_id>` on the CLI. */
   priorSessionId?: string;
   /** Caller-controlled cancellation. */
@@ -54,8 +61,10 @@ export class AgentSession {
     const agent = await this.deps.agentRepo.findById(input.agentId);
     if (!agent) throw new Error(`AgentSession: agent not found: ${input.agentId}`);
 
-    // 2. Session row
-    const sid = newSessionId();
+    // 2. Session row — caller may pre-supply an id (M6.4 mesh path needs to
+    // know B's sid before spawn so it can stamp counterparty_session_id on
+    // the negotiation row).
+    const sid = input.sessionId ?? newSessionId();
     const session = await this.deps.sessionRepo.create({
       id: sid,
       agent_id: input.agentId,

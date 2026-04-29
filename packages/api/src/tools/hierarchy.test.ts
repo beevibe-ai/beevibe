@@ -16,6 +16,8 @@ import type {
 } from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 import type { TaskService } from "@beevibe/core/services/task-service";
+import type { EscalationService } from "@beevibe/core/services/escalation-service";
+import type { Pool } from "@beevibe/core/adapters/postgres";
 import { buildHierarchyTools } from "./hierarchy.js";
 import type { AgentTool, AgentToolResult } from "./types.js";
 
@@ -67,6 +69,7 @@ function buildServices(overrides: {
   workProductRepo?: Partial<WorkProductRepository>;
   taskService?: Partial<TaskService>;
   memoryAgent?: Partial<MemoryAgent>;
+  escalationService?: Partial<EscalationService>;
 } = {}) {
   const agentRepo = {
     findById: vi.fn(async () => undefined),
@@ -91,6 +94,7 @@ function buildServices(overrides: {
 
   const taskService = {
     updateProgress: vi.fn(async () => fakeTask({ status: "done" })),
+    reviseTask: vi.fn(async () => fakeTask({ status: "needs_revision" })),
     createWorkProduct: vi.fn(async (input) => fakeWp(input as Partial<WorkProduct>)),
     listWorkProducts: vi.fn(async () => []),
     updateWorkProduct: vi.fn(async (id) => fakeWp({ id })),
@@ -103,7 +107,26 @@ function buildServices(overrides: {
     ...overrides.memoryAgent,
   } as unknown as MemoryAgent;
 
-  return { agentRepo, taskRepo, workProductRepo, taskService, memoryAgent };
+  const escalationService = {
+    create: vi.fn(),
+    addContribution: vi.fn(async () => ({ id: "esc_1", status: "pending" })),
+    resolve: vi.fn(),
+    ...overrides.escalationService,
+  } as unknown as EscalationService;
+
+  const pool = {
+    query: vi.fn(async () => ({ rows: [] })),
+  } as unknown as Pool;
+
+  return {
+    agentRepo,
+    taskRepo,
+    workProductRepo,
+    taskService,
+    memoryAgent,
+    escalationService,
+    pool,
+  };
 }
 
 function findTool(tools: AgentTool[], name: string): AgentTool {
@@ -141,25 +164,27 @@ describe("buildHierarchyTools — IC vs team gating", () => {
     ]);
   });
 
-  it("team tier exposes all 12 tools", () => {
+  it("team tier exposes all 14 tools (8 shared + 6 team-only incl revise_task + add_to_escalation)", () => {
     const tools = buildHierarchyTools(
       { agentId: "agent_t", hierarchyLevel: "team" },
       buildServices(),
     );
     const names = tools.map((t) => t.name);
-    expect(names.length).toBe(12);
+    expect(names.length).toBe(14);
     expect(names).toContain("find_subordinates");
     expect(names).toContain("find_peers");
     expect(names).toContain("create_task");
     expect(names).toContain("check_work_status");
+    expect(names).toContain("revise_task");
+    expect(names).toContain("add_to_escalation");
   });
 
-  it("org tier also gets all 12 (parents have subordinates too)", () => {
+  it("org tier also gets all 14 (parents have subordinates too)", () => {
     const tools = buildHierarchyTools(
       { agentId: "agent_o", hierarchyLevel: "org" },
       buildServices(),
     );
-    expect(tools.length).toBe(12);
+    expect(tools.length).toBe(14);
   });
 });
 

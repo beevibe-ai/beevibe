@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent, ReviewPolicy } from "../domain/agent.js";
-import type { Task, TaskStatus } from "../domain/task.js";
+import type { Task } from "../domain/task.js";
 import type { WorkProduct } from "../domain/work-product.js";
 import type { Session } from "../domain/session.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
