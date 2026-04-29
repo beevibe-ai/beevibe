@@ -48,6 +48,12 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@25.6.0)
 
+  packages/api:
+    dependencies:
+      '@beevibe/core':
+        specifier: workspace:*
+        version: link:../core
+
   packages/core:
     dependencies:
       '@anthropic-ai/sdk':
@@ -82,12 +88,6 @@ importers:
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2
-
-  packages/mcp-server:
-    dependencies:
-      '@beevibe/core':
-        specifier: workspace:*
-        version: link:../core
 
 packages:
 
