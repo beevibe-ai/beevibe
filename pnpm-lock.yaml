@@ -63,6 +63,9 @@ importers:
         specifier: ^8.13.0
         version: 8.20.0
     devDependencies:
+      '@types/node':
+        specifier: ^20.16.0
+        version: 20.19.39
       '@types/pg':
         specifier: ^8.11.10
         version: 8.20.0
@@ -3138,10 +3141,11 @@ snapshots:
   '@types/node@25.6.0':
     dependencies:
       undici-types: 7.19.2
+    optional: true
 
   '@types/pg@8.20.0':
     dependencies:
-      '@types/node': 25.6.0
+      '@types/node': 20.19.39
       pg-protocol: 1.13.0
       pg-types: 2.2.0
 
@@ -5196,7 +5200,8 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  undici-types@7.19.2: {}
+  undici-types@7.19.2:
+    optional: true
 
   unrs-resolver@1.11.1:
     dependencies:
