@@ -1,7 +1,13 @@
+import { MemorySubNav } from "@/components/memory/sub-nav";
+import { MemoryClient } from "./memory-client";
+
 export default function MemoryPage() {
   return (
-    <div className="max-w-3xl mx-auto pt-8 pb-12 px-6">
-      <p className="text-sm text-muted-foreground">Memory — coming next stage.</p>
+    <div className="flex-1 overflow-auto">
+      <div className="max-w-6xl mx-auto pt-8 pb-6 px-6">
+        <MemorySubNav />
+        <MemoryClient />
+      </div>
     </div>
   );
 }

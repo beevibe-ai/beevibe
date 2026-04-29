@@ -36,6 +36,17 @@
     --hier-ic: 240 4% 46%;
     --hier-team: 262 83% 58%;
     --hier-org: 38 92% 50%;
+
+    --type-belief-bg: 240 5% 92%;
+    --type-belief-fg: 240 6% 30%;
+    --type-pattern-bg: 217 80% 92%;
+    --type-pattern-fg: 217 80% 35%;
+    --type-gotcha-bg: 25 90% 92%;
+    --type-gotcha-fg: 25 80% 35%;
+    --type-preference-bg: 262 60% 94%;
+    --type-preference-fg: 262 60% 40%;
+    --type-decision-bg: 160 50% 92%;
+    --type-decision-fg: 160 70% 25%;
   }
 
   .dark {
@@ -58,6 +69,17 @@
     --border: 240 4% 16%;
     --input: 240 4% 16%;
     --ring: 48 96% 53%;
+
+    --type-belief-bg: 240 4% 18%;
+    --type-belief-fg: 240 5% 75%;
+    --type-pattern-bg: 217 60% 22%;
+    --type-pattern-fg: 217 91% 75%;
+    --type-gotcha-bg: 25 60% 22%;
+    --type-gotcha-fg: 25 95% 70%;
+    --type-preference-bg: 262 50% 24%;
+    --type-preference-fg: 262 80% 80%;
+    --type-decision-bg: 160 50% 18%;
+    --type-decision-fg: 160 70% 65%;
   }
 
   body {
@@ -73,6 +95,19 @@
     outline-offset: 2px;
     border-radius: var(--radius);
   }
+}
+
+.timeline-rail {
+  position: relative;
+}
+.timeline-rail::before {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 8px;
+  bottom: 8px;
+  width: 1px;
+  background: hsl(var(--border));
 }
 
 @media (prefers-reduced-motion: reduce) {

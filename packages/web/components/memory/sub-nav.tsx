@@ -1,0 +1,37 @@
+"use client";
+
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
+
+const ENTRIES: { href: string; label: string }[] = [
+  { href: "/memory", label: "All facts" },
+  { href: "/promotions", label: "Promotions" },
+  { href: "/memory/merges", label: "Merges" },
+  { href: "/memory/conflicts", label: "Conflicts" },
+];
+
+export function MemorySubNav() {
+  const pathname = usePathname();
+  return (
+    <div className="flex items-center gap-1 mb-5 -mt-2 text-sm">
+      {ENTRIES.map(({ href, label }) => {
+        const active = pathname === href;
+        return (
+          <Link
+            key={href}
+            href={href}
+            className={cn(
+              "px-3 py-1.5 rounded transition-colors",
+              active
+                ? "bg-secondary text-foreground font-medium"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary",
+            )}
+          >
+            {label}
+          </Link>
+        );
+      })}
+    </div>
+  );
+}

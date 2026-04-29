@@ -45,7 +45,7 @@ const NAV: NavEntry[] = [
     href: "/memory",
     label: "Memory",
     icon: Sparkles,
-    isActive: (p) => p.startsWith("/memory"),
+    isActive: (p) => p.startsWith("/memory") || p.startsWith("/promotions"),
   },
 ];
 
