@@ -2,13 +2,14 @@
 
 import { useMemo, useState } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import type { TaskStatus } from "@beevibe/core";
 import { LifecycleTabs, type Lifecycle } from "@/components/tasks/lifecycle-tabs";
 import { FilterBar } from "@/components/tasks/filter-bar";
 import { TaskRow } from "@/components/tasks/task-row";
 import { fixtureCounts, fixtureTasks, type TaskListItem } from "@/lib/fixtures/tasks";
 import { cn } from "@/lib/utils";
 
-const STATUS_PRIORITY: Record<string, number> = {
+const STATUS_PRIORITY: Record<TaskStatus, number> = {
   review: 0,
   blocked: 1,
   in_progress: 2,
@@ -20,6 +21,8 @@ const STATUS_PRIORITY: Record<string, number> = {
   failed: 6,
   cancelled: 7,
 };
+
+const ARCHIVED_STATUSES: readonly TaskStatus[] = ["done", "failed", "cancelled"];
 
 function sortTasks(tasks: TaskListItem[]): TaskListItem[] {
   return [...tasks].sort((a, b) => {
@@ -34,10 +37,12 @@ export function TasksClient() {
   const [query, setQuery] = useState("");
 
   const visible = useMemo(() => {
+    const lowerQuery = query.toLowerCase();
     const filtered = fixtureTasks.filter((t) => {
-      if (query && !t.title.toLowerCase().includes(query.toLowerCase())) return false;
-      if (lifecycle === "active") return !["done", "failed", "cancelled"].includes(t.status);
-      if (lifecycle === "archive") return ["done", "failed", "cancelled"].includes(t.status);
+      if (lowerQuery && !t.title.toLowerCase().includes(lowerQuery)) return false;
+      const archived = ARCHIVED_STATUSES.includes(t.status);
+      if (lifecycle === "active") return !archived;
+      if (lifecycle === "archive") return archived;
       return true;
     });
     return sortTasks(filtered);

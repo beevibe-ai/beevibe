@@ -58,35 +58,20 @@ function MetaLine({ task }: { task: TaskListItem }) {
 }
 
 function ActorPart({ task, time }: { task: TaskListItem; time: string }) {
-  if (task.status === "assigned" && task.assignee_label) {
-    return (
-      <>
-        <span>{time} to</span>
-        <span className="font-mono text-foreground">{task.assignee_label}</span>
-        {task.assignee_hierarchy ? <HierChip hier={task.assignee_hierarchy} /> : null}
-      </>
-    );
-  }
+  // pending tasks with no assignee aren't "updated by" anyone — they were just created
   if (task.status === "pending" && !task.assignee_id) {
     return <span>created {time} by {task.creator_label ?? "—"}</span>;
   }
-  if (task.status === "blocked") {
-    return (
-      <>
-        <span>{time} by</span>
-        <span className="font-mono text-foreground">
-          {task.assignee_label ?? task.creator_label ?? "—"}
-        </span>
-        {task.assignee_hierarchy ? <HierChip hier={task.assignee_hierarchy} /> : null}
-      </>
-    );
-  }
+
+  const isAssigned = task.status === "assigned" && task.assignee_label;
+  const verb = task.status === "blocked" ? "" : isAssigned ? "" : "updated ";
+  const preposition = isAssigned ? "to" : "by";
+  const actor = task.assignee_label ?? task.creator_label ?? "—";
+
   return (
     <>
-      <span>updated {time} by</span>
-      <span className="font-mono text-foreground">
-        {task.assignee_label ?? task.creator_label ?? "—"}
-      </span>
+      <span>{verb}{time} {preposition}</span>
+      <span className="font-mono text-foreground">{actor}</span>
       {task.assignee_hierarchy ? <HierChip hier={task.assignee_hierarchy} /> : null}
     </>
   );
