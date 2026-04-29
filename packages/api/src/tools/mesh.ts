@@ -16,15 +16,15 @@ import type {
 } from "@beevibe/core/services/escalation-service";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { ResolvedCaller } from "@beevibe/core/auth";
-import type { AgentTool, AgentToolResult } from "../tools/types.js";
-import type { MeshServer } from "./server.js";
+import type { AgentTool, AgentToolResult } from "./types.js";
+import type { MeshServer } from "../mesh/server.js";
 import {
   MeshCapacityError,
   MeshMaxRoundsError,
   type AskResponse,
   type EscalatedSentinel,
   type NegotiateResponse,
-} from "./types.js";
+} from "../mesh/types.js";
 
 const NEGOTIATE_DECISIONS = ["counter", "accept", "reject"] as const;
 

@@ -9,7 +9,7 @@ import type { CoreMemory, FactStore, MemoryAgent } from "@beevibe/core/services/
 import type { TaskService } from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { MeshServer } from "../mesh/server.js";
-import { buildIcMeshTools, buildTeamMeshTools } from "../mesh/tools.js";
+import { buildIcMeshTools, buildTeamMeshTools } from "./mesh.js";
 import { buildHierarchyTools } from "./hierarchy.js";
 import { createSaveMemoryTool } from "./save-memory.js";
 import { createUpdateCoreMemoryTool } from "./update-core-memory.js";
