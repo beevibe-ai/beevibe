@@ -11,3 +11,4 @@ coverage/
 *.log
 .vscode/
 .idea/
+.claude/
