@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { personId } from "../../domain/ids.js";
 import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "./test-helpers.js";
+import { createTestPool, truncateAll } from "../../test-helpers.js";
 import { PostgresPersonRepository } from "./person-repo.js";
 
 describe("PostgresPersonRepository", () => {

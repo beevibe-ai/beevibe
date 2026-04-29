@@ -8,7 +8,7 @@ import { PostgresAgentRepository } from "../adapters/postgres/agent-repo.js";
 import type { Pool } from "../adapters/postgres/client.js";
 import { PostgresCoreMemoryRepository } from "../adapters/postgres/core-memory-repo.js";
 import { PostgresPersonRepository } from "../adapters/postgres/person-repo.js";
-import { createTestPool, truncateAll } from "../adapters/postgres/test-helpers.js";
+import { createTestPool, truncateAll } from "../test-helpers.js";
 import { DEFAULT_RUNTIME_CONFIG } from "../domain/agent.js";
 import { agentId, personId } from "../domain/ids.js";
 import { lookupApiKey } from "./api-key.js";

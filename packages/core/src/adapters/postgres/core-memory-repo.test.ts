@@ -3,7 +3,7 @@ import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
 import { DEFAULT_BLOCK_TEMPLATES } from "../../domain/core-memory.js";
 import { agentId, blockId, personId } from "../../domain/ids.js";
 import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "./test-helpers.js";
+import { createTestPool, truncateAll } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresCoreMemoryRepository } from "./core-memory-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
