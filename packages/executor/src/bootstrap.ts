@@ -5,6 +5,7 @@ import {
   PostgresMemoryFactRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
+  PostgresWorkProductRepository,
   createPool,
 } from "@beevibe/core/adapters/postgres";
 import { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
@@ -17,8 +18,10 @@ import {
   FactStore,
   createMemoryAgent,
 } from "@beevibe/core/services/memory";
+import { TaskService } from "@beevibe/core/services/task-service";
 import { CancelListener } from "./cancel-listener.js";
 import { createTaskDispatcher } from "./dispatch.js";
+import { buildPostDispatchHook } from "./post-dispatch.js";
 import { TaskExecutionWorker } from "./worker.js";
 
 export interface BootstrapConfig {
@@ -62,6 +65,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const agentRepo = new PostgresAgentRepository(pool);
   const taskRepo = new PostgresTaskRepository(pool);
   const sessionRepo = new PostgresSessionRepository(pool);
+  const workProductRepo = new PostgresWorkProductRepository(pool);
   const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
   const memoryFactRepo = new PostgresMemoryFactRepository(pool);
 
@@ -84,12 +88,33 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const makeMemoryAgent = (agentId: string) =>
     createMemoryAgent({ agentId, coreMemory, factStore, promoter, embed });
 
+  const taskService = new TaskService({
+    taskRepo,
+    workProductRepo,
+    agentRepo,
+    sessionRepo,
+  });
+
+  // M6.5: post-dispatch hook fires after every task session terminates. The
+  // hook is fire-and-forget from AgentSession's POV; it runs the parent
+  // rollup + leaf retry-once on missing update_progress.
+  const onSessionComplete = buildPostDispatchHook({
+    agentRepo,
+    sessionRepo,
+    taskRepo,
+    taskService,
+    runtimeRegistry,
+    workspaceManager,
+    makeMemoryAgent,
+  });
+
   // Dispatcher + worker
   const dispatchTask = createTaskDispatcher({
     agentRepo,
     sessionRepo,
     runtimeRegistry,
     makeMemoryAgent,
+    onSessionComplete,
   });
   const worker = new TaskExecutionWorker({
     agentRepo,

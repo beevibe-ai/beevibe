@@ -47,6 +47,14 @@ export interface TaskRepository {
   /** Count of sub-tasks of `parentId` whose status is NOT in {done, cancelled, failed}. */
   countChildrenNotComplete(parentId: string): Promise<number>;
 
+  /**
+   * Count of all sub-tasks of `parentId` regardless of status. Used by
+   * postDispatchCheck (M6.5) to distinguish leaf tasks (childTotal=0,
+   * eligible for nudge-completion retry) from parents (childTotal>0, leave
+   * alone).
+   */
+  countChildren(parentId: string): Promise<number>;
+
   create(input: NewTask): Promise<Task>;
 
   /** Generic patch update. Sets updated_at = NOW() automatically. */

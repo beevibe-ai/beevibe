@@ -121,6 +121,26 @@ async function waitForSession(
   );
 }
 
+/**
+ * Simulate the agent's `update_progress(done)` call. M5's mock agents
+ * just reply "ok" without calling MCP tools (the test connects to an
+ * unreachable mcp-config), so without this the task stays
+ * `status='in_progress'` after session exit. M6.5's post-dispatch sleeps
+ * 2s then spawns a retry CLI subprocess on any in_progress leaf — those
+ * retries race waitForSession's polling, especially in concurrent
+ * scenarios. Calling this immediately after a successful waitForSession
+ * pre-empts the retry path (post-dispatch wakes to find status='done',
+ * runs checkAndCompleteParent which is a no-op for parentless leaves,
+ * and exits without spawning a retry).
+ */
+async function simulateUpdateProgressDone(
+  tasks: PostgresTaskRepository,
+  taskId: string,
+  summary = "M5 mock agent: simulated update_progress(done)",
+): Promise<void> {
+  await tasks.update(taskId, { status: "done", result_summary: summary });
+}
+
 type Deps = {
   pool: Pool;
   persons: PostgresPersonRepository;
@@ -230,6 +250,7 @@ const happyPath: Scenario = async (deps) => {
       (s) => s.status === "succeeded" || s.status === "failed",
       "terminal",
     );
+    await simulateUpdateProgressDone(deps.tasks, task.id);
     log(`  session=${session.id} status=${session.status} cli_session=${session.cli_session_id}`);
     assert(session.status === "succeeded", `session ended with status=${session.status}`);
     assert(session.cli_session_id, "cli_session_id missing");
@@ -354,6 +375,7 @@ const orphanReap: Scenario = async (deps) => {
       followup.status === "succeeded",
       `re-dispatched session ended with status=${followup.status}`,
     );
+    await simulateUpdateProgressDone(deps.tasks, task.id);
   } finally {
     await shutdown();
   }
@@ -400,6 +422,9 @@ const revisionResume: Scenario = async (deps) => {
       taskDuringOrAfterRework?.status === "revision",
       `task.status during re-work should be "revision", got "${taskDuringOrAfterRework?.status}"`,
     );
+    // Pre-empt the second session's post-dispatch retry path now that the
+    // re-work assertion has landed.
+    await simulateUpdateProgressDone(deps.tasks, task.id);
 
     // Core assertions: CLI session was resumed (same id), DB rows are
     // distinct, and prior_session_id links them.
@@ -494,6 +519,7 @@ const priorityOrdering: Scenario = async (deps) => {
         (s) => s.status === "succeeded" || s.status === "failed",
         `${name} terminal`,
       );
+      await simulateUpdateProgressDone(deps.tasks, id);
       assert(s.status === "succeeded", `${name} session status=${s.status}`);
     }
   } finally {
@@ -517,6 +543,7 @@ const perAgentCapacity: Scenario = async (deps) => {
       (s) => s.status === "succeeded" || s.status === "failed",
       "task1 terminal",
     );
+    await simulateUpdateProgressDone(deps.tasks, t1.id);
     const s2 = await waitForSession(
       deps.sessions,
       t2.id,
@@ -524,6 +551,7 @@ const perAgentCapacity: Scenario = async (deps) => {
       (s) => s.status === "succeeded" || s.status === "failed",
       "task2 terminal",
     );
+    await simulateUpdateProgressDone(deps.tasks, t2.id);
     assert(s1.status === "succeeded" && s2.status === "succeeded", "both sessions should succeed");
     log(`  t1 started=${s1.started_at?.toISOString()} completed=${s1.completed_at?.toISOString()}`);
     log(`  t2 started=${s2.started_at?.toISOString()} completed=${s2.completed_at?.toISOString()}`);
@@ -557,6 +585,7 @@ const multiAgentParallel: Scenario = async (deps) => {
       (s) => s.status === "succeeded" || s.status === "failed",
       "task1 terminal",
     );
+    await simulateUpdateProgressDone(deps.tasks, t1.id);
     const s2 = await waitForSession(
       deps.sessions,
       t2.id,
@@ -564,6 +593,7 @@ const multiAgentParallel: Scenario = async (deps) => {
       (s) => s.status === "succeeded" || s.status === "failed",
       "task2 terminal",
     );
+    await simulateUpdateProgressDone(deps.tasks, t2.id);
     assert(s1.status === "succeeded" && s2.status === "succeeded", "both sessions should succeed");
     log(`  t1 [${s1.started_at?.toISOString()}, ${s1.completed_at?.toISOString()}]`);
     log(`  t2 [${s2.started_at?.toISOString()}, ${s2.completed_at?.toISOString()}]`);

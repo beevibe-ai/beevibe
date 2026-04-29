@@ -7,7 +7,11 @@ import type {
   Task,
   Workspace,
 } from "@beevibe/core";
-import { AgentSession } from "@beevibe/core/services/agent-session";
+import {
+  AgentSession,
+  buildIntent,
+  type ResumeReason,
+} from "@beevibe/core/services/agent-session";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 
 /** Factory for a per-agent `MemoryAgent`, closing over the shared memory services. */
@@ -22,6 +26,12 @@ export interface DispatchDeps {
    */
   runtimeRegistry: RuntimeRegistry;
   makeMemoryAgent: MakeMemoryAgent;
+  /**
+   * Optional fire-and-forget hook fired on every terminal session. Wired by
+   * the executor's bootstrap to call `postDispatchCheck`. AgentSession passes
+   * this through its own `onSessionComplete` dep.
+   */
+  onSessionComplete?: (session: Session) => Promise<void>;
 }
 
 /**
@@ -42,15 +52,21 @@ export type TaskDispatcher = (
 /**
  * Build the per-task dispatcher closed over shared deps.
  *
- * Flow:
- *   1. Resolve runtime from `runtimeRegistry[agent.runtime_config.type]`.
- *      Throws `Unsupported runtime: <type>` if not registered.
- *   2. Build a per-agent `MemoryAgent` (agentId baked in).
- *   3. Construct `AgentSession` with the resolved runtime + memory agent.
- *   4. For revision tasks, look up the latest prior session so AgentSession
- *      can issue `--resume` to continue the conversation.
- *   5. Call `agentSession.run({...})`. All session-row lifecycle, briefing,
- *      runtime spawn, and post-session promotion happen inside.
+ * Resume + intent decision (M6.5):
+ *
+ *   priorSession    = sessionRepo.findLatestForTask(task.id)
+ *   priorSessionId  = task.next_dispatch_context?.prior_session_id
+ *                  ?? (priorSession?.cli_session_id ? priorSession.id : undefined)
+ *   reason          = task.next_dispatch_context
+ *                  ?? (priorSessionId ? { kind: 'crash_recovery' } : { kind: 'fresh' })
+ *   intent          = buildIntent(task, reason)
+ *
+ * Two coalesces, no decision tree. `next_dispatch_context` (set by
+ * `TaskService.reviseTask` and `EscalationService.resolve`) takes precedence
+ * for the explicit revision/post-escalation kinds, including B-side synthetic
+ * tasks that have no own prior session row. Fallback resume only fires when
+ * the prior session actually started a CLI subprocess (`cli_session_id IS NOT
+ * NULL`); crashes before CLI startup → fresh dispatch.
  */
 export function createTaskDispatcher(deps: DispatchDeps): TaskDispatcher {
   return async (task, agent, workspace, abortSignal) => {
@@ -65,35 +81,26 @@ export function createTaskDispatcher(deps: DispatchDeps): TaskDispatcher {
       sessionRepo: deps.sessionRepo,
       runtime,
       memoryAgent,
+      onSessionComplete: deps.onSessionComplete,
     });
 
+    const priorSession = await deps.sessionRepo.findLatestForTask(task.id);
     const priorSessionId =
-      task.status === "revision"
-        ? (await deps.sessionRepo.findLatestForTask(task.id))?.id
-        : undefined;
+      task.next_dispatch_context?.prior_session_id ??
+      (priorSession?.cli_session_id ? priorSession.id : undefined);
+
+    const reason: ResumeReason =
+      task.next_dispatch_context ??
+      (priorSessionId ? { kind: "crash_recovery" } : { kind: "fresh" });
 
     return agentSession.run({
       agentId: agent.id,
       taskId: task.id,
-      intent: composeIntent(task),
+      type: "task",
+      intent: buildIntent(task, reason),
       workspace,
       priorSessionId,
       abortSignal,
     });
   };
-}
-
-/**
- * Wrap task body in a `<task id="...">` envelope so the agent has a stable
- * reference for tools that need task_id (`update_progress`,
- * `create_work_product`, etc.). Lives in stdin (user message) so the system
- * prompt — which is prompt-cached — stays stable across sessions.
- *
- * M6.5 generalizes this via the `buildIntent(task, reason)` helper in core,
- * but for now this just wraps the body. The envelope shape matches what
- * `buildIntent` produces for `kind: 'fresh'` so the M6.5 swap is a no-op.
- */
-function composeIntent(task: Task): string {
-  const body = task.description ? `${task.title}\n\n${task.description}` : task.title;
-  return `<task id="${task.id}">\n${body}\n</task>`;
 }

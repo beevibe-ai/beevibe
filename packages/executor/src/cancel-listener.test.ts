@@ -3,7 +3,7 @@
  * Fires pg_notify('cancel_task', task_id) and verifies worker.cancelTask
  * gets invoked with the task id.
  */
-import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createTestPool } from "@beevibe/core/test-helpers";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import { CancelListener } from "./cancel-listener.js";

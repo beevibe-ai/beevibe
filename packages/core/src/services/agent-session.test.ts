@@ -8,7 +8,13 @@ import type {
   Workspace,
 } from "../ports/runtime.js";
 import type { SessionRepository } from "../ports/session-repo.js";
-import { AgentSession } from "./agent-session.js";
+import {
+  AgentSession,
+  type AgentSessionDeps,
+  buildIntent,
+  type IntentTask,
+  type ResumeReason,
+} from "./agent-session.js";
 import type { MemoryAgent } from "./memory/memory-agent.js";
 
 const WORKSPACE: Workspace = { path: "/tmp/ws" };
@@ -338,11 +344,89 @@ describe("AgentSession.run", () => {
     });
     expect(vi.mocked(sessionRepo.create).mock.calls[0]![0].type).toBe("task");
   });
+
+  it("fires onSessionComplete with the terminal session row (fire-and-forget)", async () => {
+    const onSessionComplete = vi.fn<NonNullable<AgentSessionDeps["onSessionComplete"]>>().mockResolvedValue();
+    const svc = new AgentSession({
+      agentRepo,
+      sessionRepo,
+      runtime,
+      memoryAgent,
+      onSessionComplete,
+    });
+    vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
+    vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue("");
+    vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
+    vi.mocked(sessionRepo.update).mockImplementation(async (id, patch) =>
+      makeSession(id, patch as Partial<Session>),
+    );
+
+    await svc.run({ agentId: "agent_1", intent: "x", workspace: WORKSPACE });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(onSessionComplete).toHaveBeenCalledTimes(1);
+    expect(onSessionComplete.mock.calls[0]![0].status).toBe("succeeded");
+  });
+
+  it("skips onSessionComplete when input.skipOnComplete is true (used by post-dispatch retry)", async () => {
+    const onSessionComplete = vi.fn<NonNullable<AgentSessionDeps["onSessionComplete"]>>().mockResolvedValue();
+    const svc = new AgentSession({
+      agentRepo,
+      sessionRepo,
+      runtime,
+      memoryAgent,
+      onSessionComplete,
+    });
+    vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
+    vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue("");
+    vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
+    vi.mocked(sessionRepo.update).mockImplementation(async (id) => makeSession(id));
+
+    await svc.run({
+      agentId: "agent_1",
+      intent: "x",
+      workspace: WORKSPACE,
+      skipOnComplete: true,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(onSessionComplete).not.toHaveBeenCalled();
+  });
+
+  it("hook errors are caught and logged, never propagated to the caller", async () => {
+    const onSessionComplete = vi
+      .fn<NonNullable<AgentSessionDeps["onSessionComplete"]>>()
+      .mockRejectedValue(new Error("hook blew up"));
+    const svc = new AgentSession({
+      agentRepo,
+      sessionRepo,
+      runtime,
+      memoryAgent,
+      onSessionComplete,
+    });
+    vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
+    vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue("");
+    vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
+    vi.mocked(sessionRepo.update).mockImplementation(async (id) => makeSession(id));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      svc.run({ agentId: "agent_1", intent: "x", workspace: WORKSPACE }),
+    ).resolves.toBeDefined();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(errSpy).toHaveBeenCalledWith(
+      "[AgentSession] onSessionComplete failed:",
+      "hook blew up",
+    );
+    errSpy.mockRestore();
+  });
 });
 
 // ── buildIntent helper (M6.3, wired to dispatch in M6.5) ──────────────────
-
-import { buildIntent, type IntentTask, type ResumeReason } from "./agent-session.js";
 
 const INTENT_TASK: IntentTask = {
   id: "task_xyz",

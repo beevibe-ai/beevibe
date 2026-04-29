@@ -82,6 +82,7 @@ beforeEach(() => {
     claimById: vi.fn(),
     listReviewQueue: vi.fn(),
     countChildrenNotComplete: vi.fn(),
+    countChildren: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     updateProgress: vi.fn(),

@@ -77,6 +77,7 @@ beforeEach(() => {
     claimById: vi.fn(),
     listReviewQueue: vi.fn(),
     countChildrenNotComplete: vi.fn(),
+    countChildren: vi.fn(),
     create: vi.fn(async (input) => ({ ...input, status: input.status ?? "pending", priority: input.priority, created_at: new Date(), updated_at: new Date() }) as Task),
     update: vi.fn(),
     updateProgress: vi.fn(),

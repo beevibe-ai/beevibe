@@ -16,6 +16,14 @@ export interface AgentSessionDeps {
   sessionRepo: SessionRepository;
   runtime: AgentRuntime;
   memoryAgent: MemoryAgent;
+  /**
+   * Optional fire-and-forget hook fired once the terminal session row is
+   * written. Wired by composition roots — the executor uses it to call
+   * `postDispatchCheck` (M6.5: parent rollup + leaf retry-once on missing
+   * update_progress). Hook errors are caught and logged; they cannot affect
+   * the returned session.
+   */
+  onSessionComplete?: (session: Session) => Promise<void>;
 }
 
 export interface AgentSessionRunInput {
@@ -39,6 +47,12 @@ export interface AgentSessionRunInput {
   abortSignal?: AbortSignal;
   /** Step-by-step notifier for live UIs. */
   onStep?: (step: RuntimeStep) => void;
+  /**
+   * Skip the `onSessionComplete` hook for this run. Used by
+   * `postDispatchCheck`'s retry path to break the otherwise-recursive call
+   * (retry → hook → another postDispatchCheck → another retry → …).
+   */
+  skipOnComplete?: boolean;
 }
 
 /**
@@ -153,6 +167,19 @@ export class AgentSession {
         (err as Error).message,
       ),
     );
+
+    // 7. M6.5 hook for post-dispatch logic (parent rollup, leaf retry).
+    // Fire-and-forget; never blocks the caller's promise. Suppressed for the
+    // retry path (skipOnComplete) so the retry's own terminal write doesn't
+    // recursively re-trigger postDispatchCheck.
+    if (!input.skipOnComplete) {
+      void this.deps.onSessionComplete?.(finalSession).catch((err) =>
+        console.error(
+          "[AgentSession] onSessionComplete failed:",
+          (err as Error).message,
+        ),
+      );
+    }
 
     // Intentionally do NOT await session.id  — return updated session row.
     void session;

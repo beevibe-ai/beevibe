@@ -141,6 +141,21 @@ describe("PostgresTaskRepository", () => {
     expect(await tasks.countChildrenNotComplete(parent.id)).toBe(2);
   });
 
+  it("countChildren counts ALL sub-tasks regardless of status", async () => {
+    const parent = await tasks.create(newTask({ title: "parent" }));
+    await tasks.create(newTask({ parent_task_id: parent.id, status: "in_progress" }));
+    await tasks.create(newTask({ parent_task_id: parent.id, status: "done" }));
+    await tasks.create(newTask({ parent_task_id: parent.id, status: "failed" }));
+    // Unrelated task with no parent — must not count.
+    await tasks.create(newTask({ title: "leaf" }));
+    expect(await tasks.countChildren(parent.id)).toBe(3);
+  });
+
+  it("countChildren returns 0 for a leaf task (no children)", async () => {
+    const leaf = await tasks.create(newTask({ title: "leaf" }));
+    expect(await tasks.countChildren(leaf.id)).toBe(0);
+  });
+
   it("updateProgress sets status + result_summary atomically", async () => {
     const t = await tasks.create(newTask({ status: "in_progress" }));
     const updated = await tasks.updateProgress(t.id, "done", "all green");

@@ -146,6 +146,14 @@ export class PostgresTaskRepository implements TaskRepository {
     return Number(rows[0]?.count ?? 0);
   }
 
+  async countChildren(parentId: string): Promise<number> {
+    const { rows } = await this.pool.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM task WHERE parent_task_id = $1`,
+      [parentId],
+    );
+    return Number(rows[0]?.count ?? 0);
+  }
+
   async create(input: NewTask): Promise<Task> {
     const { rows } = await this.pool.query<TaskRow>(
       `INSERT INTO task (
