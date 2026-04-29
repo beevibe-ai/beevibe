@@ -86,11 +86,11 @@ export function OrgChart() {
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-1.5">
+                  <div className="flex items-center justify-between gap-1">
                     <span className="font-mono font-medium text-sm truncate">{node.name}</span>
                     <span
                       className={cn(
-                        "inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium shrink-0",
+                        "inline-flex items-center h-4 px-1 rounded text-[10px] font-medium shrink-0",
                         HIER_CHIP[node.hierarchy],
                       )}
                     >
