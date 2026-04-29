@@ -15,7 +15,8 @@
     "test": "turbo test",
     "clean": "turbo clean && rm -rf node_modules",
     "migrate": "node-pg-migrate --envPath .env",
-    "migrate:test": "node-pg-migrate --envPath .env -d DATABASE_URL_TEST"
+    "migrate:test": "node-pg-migrate --envPath .env -d DATABASE_URL_TEST",
+    "api:share": "tsx scripts/api-share.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
