@@ -21,7 +21,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const { worker, shutdown } = await bootstrap({
+  const { worker, cancelListener, shutdown } = await bootstrap({
     databaseUrl: process.env.DATABASE_URL!,
     mcpServerUrl: process.env.BEEVIBE_MCP_SERVER_URL!,
     openaiApiKey: process.env.OPENAI_API_KEY!,
@@ -32,6 +32,7 @@ async function main(): Promise<void> {
       : undefined,
   });
 
+  await cancelListener.start();
   await worker.start();
   console.error("[executor] ready");
 

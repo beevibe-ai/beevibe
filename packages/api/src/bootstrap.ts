@@ -29,6 +29,8 @@ import { MeshServer } from "./mesh/server.js";
 import { BeevibeApiServer } from "./server.js";
 import { SessionCache } from "./session-cache.js";
 import { createMcpRouter } from "./routes/mcp.js";
+import { createTaskRouter } from "./routes/task.js";
+import { createEscalationRouter } from "./routes/escalation.js";
 
 export interface BootstrapConfig {
   databaseUrl: string;
@@ -193,6 +195,22 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     makeMemoryAgent,
   });
   server.getApp().use("/mcp", mcpRouter);
+
+  // M6.4 human REST routes — bv_u_ only.
+  const taskRouter = createTaskRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    taskRepo,
+    taskService,
+    pool,
+  });
+  server.getApp().use("/task", taskRouter);
+
+  const escalationRouter = createEscalationRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    escalationService,
+    pool,
+  });
+  server.getApp().use("/escalation", escalationRouter);
 
   const shutdown = async (): Promise<void> => {
     sessionCache.stopIdleSweep();

@@ -17,6 +17,7 @@ import {
   FactStore,
   createMemoryAgent,
 } from "@beevibe/core/services/memory";
+import { CancelListener } from "./cancel-listener.js";
 import { createTaskDispatcher } from "./dispatch.js";
 import { TaskExecutionWorker } from "./worker.js";
 
@@ -33,6 +34,7 @@ export interface BootstrapConfig {
 
 export interface BootstrapResult {
   worker: TaskExecutionWorker;
+  cancelListener: CancelListener;
   pool: Pool;
   shutdown: () => Promise<void>;
 }
@@ -98,10 +100,20 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     pollIntervalMs: cfg.pollIntervalMs,
   });
 
+  // M6.4 cancel-listener: dedicated pg.Client subscribed to `cancel_task`
+  // notifications from @beevibe/api's POST /task/:id/cancel. On notification
+  // fires worker.cancelTask which aborts the in-flight AbortController and
+  // kills the CLI subprocess.
+  const cancelListener = new CancelListener({
+    connectionString: cfg.databaseUrl,
+    worker,
+  });
+
   const shutdown = async () => {
+    await cancelListener.stop();
     await worker.stop();
     await pool.end();
   };
 
-  return { worker, pool, shutdown };
+  return { worker, cancelListener, pool, shutdown };
 }
