@@ -39,7 +39,7 @@ const NAV: NavEntry[] = [
     href: "/threads",
     label: "Threads",
     icon: MessageSquare,
-    isActive: (p) => p.startsWith("/threads"),
+    isActive: (p) => p.startsWith("/threads") || p.startsWith("/mesh"),
   },
   {
     href: "/memory",
