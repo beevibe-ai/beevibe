@@ -1,4 +1,5 @@
 import type { SessionStatus, SessionType } from "@beevibe/core";
+import type { RichText } from "@/components/rich-text";
 
 export interface SessionDisplay {
   id: string;
@@ -14,6 +15,8 @@ export interface SessionDisplay {
   intent: string;
   started_at: Date;
   duration_label: string;
+  worktree?: string;
+  cli_session?: string;
   briefing: {
     block_count: number;
     fact_count: number;
@@ -34,12 +37,18 @@ export interface TranscriptEntry {
 
 export interface AskThread {
   id: string;
-  request_agent_label: string;
-  responder_agent_label: string;
-  responder_hierarchy: "ic" | "team" | "org";
-  intent: string;
-  response: string;
+  insert_after_index: number;
+  caller: string;
+  responder: string;
+  arrow: "right" | "up";
+  status: "succeeded" | "failed";
   duration_label: string;
+  request: RichText;
+  response: { agent: string; note?: string; content: RichText };
+  chain_depth: string;
+  spawned_session_label: string;
+  tokens_label?: string;
+  tone: "running" | "neutral";
 }
 
 const now = Date.now();
@@ -60,6 +69,8 @@ export const fixtureSessions: SessionDisplay[] = [
     intent: "Wire OAuth refresh-token rotation",
     started_at: minutesAgo(18),
     duration_label: "ran 2m 14s",
+    worktree: "~/.beevibe/workspaces/ic-agent-1/beevibe-T-1014",
+    cli_session: "cli_8e2a4c",
     briefing: {
       block_count: 3,
       fact_count: 5,
@@ -173,9 +184,66 @@ export const fixtureSessions: SessionDisplay[] = [
           "Implemented refresh-token rotation with 60s previous-token grace window. Migration applied. All 12 oauth tests passing. Submitted for review.",
       },
     ],
+    ask_threads: [
+      {
+        id: "ath_a4f9",
+        insert_after_index: 3,
+        caller: "ic-agent-1",
+        responder: "db-agent",
+        arrow: "right",
+        status: "succeeded",
+        duration_label: "resolved · 8s",
+        tone: "running",
+        request:
+          "Schema for refresh-token storage? Need a column for the encrypted blob plus rotation metadata (last_rotated_at, rotation_count) with a unique index by user_id. Concurrent rotation has to be safe.",
+        response: {
+          agent: "db-agent",
+          note: "answered from its own bounded memory",
+          content: [
+            "Add ",
+            { mono: "refresh_token" },
+            " table — columns: ",
+            { mono: "id, user_id (UQ), encrypted_blob BYTEA, last_rotated_at TIMESTAMPTZ, rotation_count INT" },
+            ". Read with ",
+            { mono: "FOR UPDATE SKIP LOCKED" },
+            " in the rotation flow, or two concurrent rotations race the increment. Migration template at ",
+            { mono: "migrations/_template_with_partial_index.sql" },
+            ".",
+          ],
+        },
+        chain_depth: "1/4",
+        spawned_session_label: "session sess_a4f9 spawned for db-agent",
+        tokens_label: "1,128 tokens used of chain budget",
+      },
+      {
+        id: "ath_b8c3",
+        insert_after_index: 6,
+        caller: "ic-agent-1",
+        responder: "team-alpha",
+        arrow: "up",
+        status: "succeeded",
+        duration_label: "resolved · 14s",
+        tone: "neutral",
+        request:
+          "Sanity check the OAuth refresh-token rotation: KMS-backed encryption, FOR UPDATE SKIP LOCKED on read, increment-on-rotate, fails closed if KMS key missing. Sound for prod?",
+        response: {
+          agent: "team-alpha",
+          note: "approved with one note",
+          content: [
+            "Sound. Add a metric on ",
+            { mono: "rotation_count" },
+            " per user — anomalous spikes are how we'll catch a stolen-token replay. Open a follow-up task; not blocking this one.",
+          ],
+        },
+        chain_depth: "1/4",
+        spawned_session_label: "session sess_b8c3 spawned for team-alpha",
+      },
+    ],
   },
 ];
 
 export function findSessionById(idOrShort: string): SessionDisplay | undefined {
-  return fixtureSessions.find((s) => s.id === idOrShort || s.short_id === idOrShort);
+  const exact = fixtureSessions.find((s) => s.id === idOrShort || s.short_id === idOrShort);
+  if (exact) return exact;
+  return fixtureSessions[0];
 }

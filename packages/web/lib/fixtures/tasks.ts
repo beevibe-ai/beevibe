@@ -1,16 +1,17 @@
 import type { Task } from "@beevibe/core";
+import type { RichText } from "@/components/rich-text";
 
 const now = Date.now();
 const minutesAgo = (m: number) => new Date(now - m * 60_000);
 const hoursAgo = (h: number) => new Date(now - h * 3_600_000);
 const daysAgo = (d: number) => new Date(now - d * 86_400_000);
 
-export interface TaskListItem extends Task {
+export interface TaskListItem extends Omit<Task, "description" | "result_summary"> {
   assignee_hierarchy?: "ic" | "team" | "org";
   assignee_label?: string;
   creator_label?: string;
-  description?: string;
-  result_summary?: string;
+  description?: RichText[];
+  result_summary?: RichText;
   session_count?: number;
   work_product_count?: number;
   latest_session?: {
@@ -22,7 +23,9 @@ export interface TaskListItem extends Task {
 }
 
 export function findTaskById(id: string): TaskListItem | undefined {
-  return fixtureTasks.find((t) => t.id === id);
+  const exact = fixtureTasks.find((t) => t.id === id);
+  if (exact) return exact;
+  return fixtureTasks[0];
 }
 
 export const fixtureTasks: TaskListItem[] = [
@@ -37,10 +40,23 @@ export const fixtureTasks: TaskListItem[] = [
     assignee_id: "agt_ic1",
     assignee_label: "ic-agent-1",
     assignee_hierarchy: "ic",
-    description:
-      "Add an OAuth 2.0 authorization code flow to the API so external clients can authenticate as a person without sharing their bv_u_* API key.\n\nProvider: Google. Tokens stored in person.oauth_tokens (JSONB). PKCE required.",
-    result_summary:
-      "Implemented the authorization code + PKCE flow against Google. Tokens stored on person.oauth_tokens. Refresh handled in middleware on 401. Added integration tests covering success, denied-consent, expired-state, and refresh paths.",
+    description: [
+      [
+        "Add an OAuth 2.0 authorization code flow to the API so external clients can authenticate as a person without sharing their ",
+        { mono: "bv_u_*" },
+        " API key.",
+      ],
+      [
+        "Provider: Google. Tokens stored in ",
+        { mono: "person.oauth_tokens" },
+        " (JSONB). PKCE required.",
+      ],
+    ],
+    result_summary: [
+      "Implemented the authorization code + PKCE flow against Google. Tokens stored on ",
+      { mono: "person.oauth_tokens" },
+      ". Refresh handled in middleware on 401. Added integration tests covering success, denied-consent, expired-state, and refresh paths.",
+    ],
     session_count: 3,
     work_product_count: 1,
     latest_session: {

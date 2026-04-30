@@ -1,6 +1,6 @@
 "use client";
 
-import { Layers } from "lucide-react";
+import { Info, Layers } from "lucide-react";
 import type { MemoryScope } from "@beevibe/core";
 import { cn } from "@/lib/utils";
 
@@ -62,6 +62,7 @@ export function ScopeTabs({ current, counts, onChange }: Props) {
         );
       })}
       <span className="ml-auto inline-flex items-center gap-1.5 text-muted-foreground">
+        <Info className="h-3 w-3" />
         <span className="text-[10px]">retrieved at brief-time per agent · no global pool view</span>
       </span>
     </div>

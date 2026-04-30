@@ -102,14 +102,30 @@ export default function SessionDetailPage({ params }: { params: { id: string } }
 
         <BriefingComposer briefing={session.briefing} />
 
-        <Transcript entries={session.transcript} />
+        <Transcript entries={session.transcript} ask_threads={session.ask_threads} />
 
-        <div className="mt-8 pt-4 border-t border-border flex items-center gap-3 text-xs text-muted-foreground">
+        <div className="mt-10 pt-6 border-t border-border text-xs text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-2">
           <ClickToCopyId id={session.id.replace(/^[a-z]+_/, "")} />
           <span className="text-border">·</span>
           <span>
             Started <span className="text-foreground">{formatRelativeTime(session.started_at)}</span>
           </span>
+          {session.worktree ? (
+            <>
+              <span className="text-border">·</span>
+              <span>
+                worktree <span className="font-mono">{session.worktree}</span>
+              </span>
+            </>
+          ) : null}
+          {session.cli_session ? (
+            <>
+              <span className="text-border">·</span>
+              <span>
+                cli session <span className="font-mono">{session.cli_session}</span>
+              </span>
+            </>
+          ) : null}
           <span className="text-border">·</span>
           <Link href={`/tasks/${session.task_id}`} className="hover:text-foreground transition-colors">
             Parent task {session.task_short_id}
