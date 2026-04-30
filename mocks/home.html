@@ -1,0 +1,448 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>beevibe — home / fleet stats</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script>
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <style>
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 240 10% 4%;
+      --card: 240 5% 98%;
+      --card-foreground: 240 10% 4%;
+      --primary: 48 96% 53%;
+      --primary-foreground: 240 10% 4%;
+      --secondary: 240 5% 96%;
+      --secondary-foreground: 240 6% 10%;
+      --muted: 240 5% 96%;
+      --muted-foreground: 240 4% 46%;
+      --border: 240 6% 90%;
+      --input: 240 6% 90%;
+      --ring: 47 96% 47%;
+      --radius: 0.375rem;
+
+      --status-pending:   240 4% 46%;
+      --status-running:   217 91% 60%;
+      --status-review:    38 92% 50%;
+      --status-blocked:   25 95% 53%;
+      --status-done:      160 84% 39%;
+      --status-failed:    0 84% 60%;
+
+      --hier-ic:   240 4% 46%;
+      --hier-team: 262 83% 58%;
+      --hier-org:  38 92% 50%;
+    }
+    .dark {
+      --background: 240 10% 4%;
+      --foreground: 0 0% 98%;
+      --card: 240 6% 10%;
+      --card-foreground: 0 0% 98%;
+      --primary: 48 96% 53%;
+      --primary-foreground: 240 10% 4%;
+      --secondary: 240 4% 16%;
+      --secondary-foreground: 0 0% 98%;
+      --muted: 240 4% 16%;
+      --muted-foreground: 240 5% 65%;
+      --border: 240 4% 16%;
+      --input: 240 4% 16%;
+      --ring: 48 96% 53%;
+    }
+
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+      font-feature-settings: 'cv11', 'ss01';
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+      -webkit-font-smoothing: antialiased;
+    }
+    .font-mono { font-family: 'JetBrains Mono', ui-monospace, 'Menlo', monospace; }
+
+    @keyframes pulse-breathe {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.55; transform: scale(0.92); }
+    }
+    .pulse-dot { animation: pulse-breathe 2s ease-in-out infinite; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pulse-dot { animation: none; }
+    }
+
+    button:focus-visible, a:focus-visible {
+      outline: 2px solid hsl(var(--ring));
+      outline-offset: 2px;
+      border-radius: var(--radius);
+    }
+  </style>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'Menlo', 'monospace'],
+          },
+          colors: {
+            border: 'hsl(var(--border))',
+            input: 'hsl(var(--input))',
+            ring: 'hsl(var(--ring))',
+            background: 'hsl(var(--background))',
+            foreground: 'hsl(var(--foreground))',
+            primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+            secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+            muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+            card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+            status: {
+              pending:   'hsl(var(--status-pending))',
+              running:   'hsl(var(--status-running))',
+              review:    'hsl(var(--status-review))',
+              blocked:   'hsl(var(--status-blocked))',
+              done:      'hsl(var(--status-done))',
+              failed:    'hsl(var(--status-failed))',
+            },
+            hier: {
+              ic:   'hsl(var(--hier-ic))',
+              team: 'hsl(var(--hier-team))',
+              org:  'hsl(var(--hier-org))',
+            },
+          },
+          borderRadius: {
+            DEFAULT: 'var(--radius)',
+            md: 'var(--radius)',
+            lg: 'calc(var(--radius) + 2px)',
+            xl: 'calc(var(--radius) + 6px)',
+          },
+        },
+      },
+    };
+  </script>
+</head>
+<body class="min-h-screen">
+  <div class="flex min-h-screen">
+
+    <!-- Sidebar (Home active) -->
+    <aside class="w-[220px] shrink-0 bg-card flex flex-col">
+      <div class="h-14 flex items-center gap-2.5 px-4">
+        <div class="h-6 w-6 rounded bg-primary flex items-center justify-center">
+          <span class="text-primary-foreground text-sm font-bold leading-none">b</span>
+        </div>
+        <span class="font-semibold tracking-tight">beevibe</span>
+      </div>
+      <nav class="flex-1 p-2 space-y-0.5 text-sm">
+        <a href="#" class="flex items-center gap-3 px-3 py-2 rounded bg-secondary text-foreground font-medium">
+          <i data-lucide="home" class="h-4 w-4"></i>
+          <span>Home</span>
+        </a>
+        <a href="tasks-list.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="list-checks" class="h-4 w-4"></i>
+          <span>Tasks</span>
+        </a>
+        <a href="agents-list.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="circle-dot" class="h-4 w-4"></i>
+          <span>Agents</span>
+        </a>
+        <a href="threads.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="message-square" class="h-4 w-4"></i>
+          <span>Threads</span>
+        </a>
+        <a href="memory.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="sparkles" class="h-4 w-4"></i>
+          <span>Memory</span>
+        </a>
+      </nav>
+
+      <div class="p-3">
+        <div class="flex items-center gap-1">
+          <button class="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 rounded hover:bg-secondary cursor-pointer transition-colors text-left">
+            <div class="h-7 w-7 rounded-full bg-secondary border border-border flex items-center justify-center text-xs font-medium shrink-0">W</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium truncate leading-tight">Weijia</div>
+              <div class="text-[10px] text-muted-foreground flex items-center gap-1 leading-tight mt-0.5">
+                <span class="pulse-dot inline-block h-1 w-1 rounded-full" style="background: hsl(217 91% 60%);"></span>
+                live
+              </div>
+            </div>
+            <i data-lucide="chevrons-up-down" class="h-3.5 w-3.5 text-muted-foreground shrink-0"></i>
+          </button>
+          <button id="theme-toggle" class="h-8 w-8 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors shrink-0" title="Toggle theme">
+            <i data-lucide="sun" class="h-4 w-4 hidden dark:block"></i>
+            <i data-lucide="moon" class="h-4 w-4 block dark:hidden"></i>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main — LIST density (max-w-6xl, pt-8) -->
+    <main class="flex-1 min-w-0 flex flex-col">
+      <div class="flex-1 overflow-auto">
+        <div class="max-w-6xl mx-auto pt-8 pb-12 px-6">
+
+          <!-- Lead line — date + fleet health -->
+          <div class="mb-10 text-sm text-muted-foreground flex items-center gap-3">
+            <span class="text-foreground font-medium">Sunday, April 26</span>
+            <span class="text-border">·</span>
+            <span class="inline-flex items-center gap-1.5">
+              <span class="h-1.5 w-1.5 rounded-full bg-status-done"></span>
+              fleet healthy
+            </span>
+            <span class="text-border">·</span>
+            <span>last activity <span class="text-foreground tabular-nums">30s ago</span></span>
+          </div>
+
+          <!-- KPI ROW — 4 columns. Typography-only, no borders, no boxes. -->
+          <div class="grid grid-cols-4 gap-x-10 mb-14">
+
+            <!-- Active sessions -->
+            <a href="threads.html" class="group block">
+              <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Active sessions</div>
+              <div class="flex items-baseline gap-2">
+                <span class="pulse-dot inline-block h-2 w-2 rounded-full bg-status-running self-center"></span>
+                <span class="text-3xl font-semibold tabular-nums leading-none">3</span>
+                <span class="text-sm text-muted-foreground">running</span>
+              </div>
+              <div class="mt-2 text-xs text-muted-foreground">
+                4m oldest · 18m avg
+              </div>
+              <!-- mini sparkline: concurrent sessions over last 24h -->
+              <svg viewBox="0 0 120 24" class="mt-2 w-full h-6 text-status-running">
+                <path d="M0 20 L10 18 L20 18 L30 14 L40 14 L50 10 L60 10 L70 12 L80 8 L90 6 L100 4 L110 4 L120 6"
+                      fill="none" stroke="currentColor" stroke-width="1.5" />
+                <circle cx="120" cy="6" r="2" fill="currentColor" />
+              </svg>
+            </a>
+
+            <!-- Awaiting review -->
+            <a href="tasks-list.html" class="group block">
+              <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Awaiting your review</div>
+              <div class="flex items-baseline gap-2">
+                <span class="text-3xl font-semibold tabular-nums leading-none text-status-review">7</span>
+                <span class="text-sm text-muted-foreground">tasks</span>
+              </div>
+              <div class="mt-2 text-xs text-muted-foreground">
+                oldest 1d · <span class="text-status-review">3 high priority</span>
+              </div>
+              <svg viewBox="0 0 120 24" class="mt-2 w-full h-6 text-status-review">
+                <path d="M0 20 L10 18 L20 16 L30 14 L40 16 L50 12 L60 10 L70 8 L80 8 L90 6 L100 6 L110 4 L120 4"
+                      fill="none" stroke="currentColor" stroke-width="1.5" />
+                <circle cx="120" cy="4" r="2" fill="currentColor" />
+              </svg>
+            </a>
+
+            <!-- Today's spend -->
+            <a href="#" class="group block">
+              <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Today's spend</div>
+              <div class="flex items-baseline gap-2">
+                <span class="text-3xl font-semibold tabular-nums leading-none">$4.21</span>
+              </div>
+              <div class="mt-2 text-xs text-muted-foreground">
+                <span class="text-status-failed">+$0.42</span> vs yesterday
+              </div>
+              <svg viewBox="0 0 120 24" class="mt-2 w-full h-6" style="color: hsl(var(--primary));">
+                <path d="M0 20 L10 18 L20 16 L30 16 L40 14 L50 12 L60 10 L70 10 L80 8 L90 6 L100 6 L110 4 L120 4"
+                      fill="none" stroke="currentColor" stroke-width="1.5" />
+                <circle cx="120" cy="4" r="2" fill="currentColor" />
+              </svg>
+            </a>
+
+            <!-- Completed today -->
+            <a href="tasks-list.html" class="group block">
+              <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">Completed today</div>
+              <div class="flex items-baseline gap-2">
+                <span class="text-3xl font-semibold tabular-nums leading-none text-status-done">12</span>
+                <span class="text-sm text-muted-foreground">tasks</span>
+              </div>
+              <div class="mt-2 text-xs text-muted-foreground">
+                <span class="text-status-done">+3</span> vs yesterday · 1 failed
+              </div>
+              <!-- bar sparkline: completions per day last 7d -->
+              <svg viewBox="0 0 120 24" class="mt-2 w-full h-6 text-status-done">
+                <rect x="2"   y="14" width="13" height="10" rx="1" fill="currentColor" opacity="0.3" />
+                <rect x="19"  y="10" width="13" height="14" rx="1" fill="currentColor" opacity="0.3" />
+                <rect x="36"  y="6"  width="13" height="18" rx="1" fill="currentColor" opacity="0.4" />
+                <rect x="53"  y="12" width="13" height="12" rx="1" fill="currentColor" opacity="0.3" />
+                <rect x="70"  y="8"  width="13" height="16" rx="1" fill="currentColor" opacity="0.4" />
+                <rect x="87"  y="4"  width="13" height="20" rx="1" fill="currentColor" opacity="0.5" />
+                <rect x="104" y="6"  width="13" height="18" rx="1" fill="currentColor" />
+              </svg>
+            </a>
+          </div>
+
+          <!-- BREAKDOWN ROW — Tasks by status (full-width stacked bar) + Fleet (compact) -->
+          <div class="grid grid-cols-3 gap-x-10 mb-14">
+
+            <!-- Tasks by status — spans 2 cols -->
+            <div class="col-span-2">
+              <div class="flex items-baseline justify-between mb-3">
+                <div class="text-[10px] uppercase tracking-wider text-muted-foreground">Tasks by status</div>
+                <div class="text-xs text-muted-foreground"><span class="text-foreground tabular-nums">47</span> total</div>
+              </div>
+              <!-- Single horizontal stacked bar -->
+              <div class="flex h-2 rounded-full overflow-hidden mb-3">
+                <div class="bg-status-pending"  style="width: 17.0%;" title="pending 8"></div>
+                <div class="bg-status-pending"  style="width: 10.6%; opacity: 0.6" title="assigned 5"></div>
+                <div class="bg-status-running"  style="width: 6.4%;"  title="in_progress 3"></div>
+                <div class="bg-status-running"  style="width: 4.3%; opacity: 0.7" title="revision 2"></div>
+                <div class="bg-status-review"   style="width: 14.9%;" title="review 7"></div>
+                <div class="bg-status-blocked"  style="width: 4.3%;"  title="blocked 2"></div>
+                <div class="bg-status-done"     style="width: 29.8%;" title="done 14"></div>
+                <div class="bg-status-failed"   style="width: 6.4%;"  title="failed 3"></div>
+                <div class="bg-status-pending"  style="width: 6.4%; opacity: 0.4" title="cancelled 3"></div>
+              </div>
+              <!-- Legend — 2 columns -->
+              <div class="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
+                <div class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-status-review"></span><span class="text-muted-foreground flex-1">Review</span><span class="font-mono tabular-nums">7</span></div>
+                <div class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-status-done"></span><span class="text-muted-foreground flex-1">Done</span><span class="font-mono tabular-nums">14</span></div>
+                <div class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-status-blocked"></span><span class="text-muted-foreground flex-1">Blocked</span><span class="font-mono tabular-nums">2</span></div>
+                <div class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-status-failed"></span><span class="text-muted-foreground flex-1">Failed</span><span class="font-mono tabular-nums">3</span></div>
+                <div class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-status-running"></span><span class="text-muted-foreground flex-1">In progress / revision</span><span class="font-mono tabular-nums">5</span></div>
+                <div class="flex items-center gap-2"><span class="h-1.5 w-1.5 rounded-full bg-status-pending"></span><span class="text-muted-foreground flex-1">Pending / assigned / cancelled</span><span class="font-mono tabular-nums">16</span></div>
+              </div>
+            </div>
+
+            <!-- Fleet -->
+            <div>
+              <div class="flex items-baseline justify-between mb-3">
+                <div class="text-[10px] uppercase tracking-wider text-muted-foreground">Fleet</div>
+                <div class="text-xs text-muted-foreground"><span class="text-foreground tabular-nums">7</span> agents</div>
+              </div>
+              <!-- Hierarchy bars -->
+              <div class="space-y-2 text-xs">
+                <div class="flex items-center gap-2">
+                  <span class="text-muted-foreground w-10 text-right">org</span>
+                  <div class="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+                    <div class="h-full bg-hier-org" style="width: 14.3%;"></div>
+                  </div>
+                  <span class="font-mono tabular-nums w-4 text-right">1</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-muted-foreground w-10 text-right">team</span>
+                  <div class="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+                    <div class="h-full bg-hier-team" style="width: 28.6%;"></div>
+                  </div>
+                  <span class="font-mono tabular-nums w-4 text-right">2</span>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-muted-foreground w-10 text-right">ic</span>
+                  <div class="flex-1 h-1.5 bg-secondary rounded-full overflow-hidden">
+                    <div class="h-full bg-hier-ic" style="width: 57.1%;"></div>
+                  </div>
+                  <span class="font-mono tabular-nums w-4 text-right">4</span>
+                </div>
+              </div>
+              <div class="mt-4 text-xs text-muted-foreground flex items-center gap-2">
+                <span class="pulse-dot inline-block h-1.5 w-1.5 rounded-full bg-status-running"></span>
+                <span><span class="text-foreground tabular-nums">4</span> active</span>
+                <span class="text-border">·</span>
+                <span><span class="text-foreground tabular-nums">3</span> idle</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- TREND ROW — last 7 days, sessions completed per day. Full-width chart. -->
+          <div class="mb-14">
+            <div class="flex items-baseline justify-between mb-3">
+              <div class="text-[10px] uppercase tracking-wider text-muted-foreground">Sessions completed · last 7 days</div>
+              <div class="text-xs text-muted-foreground"><span class="text-foreground tabular-nums">142</span> total · <span class="text-status-done">+12%</span> vs prior 7d</div>
+            </div>
+            <!-- SVG bar chart: 7 days, value 0-30 -->
+            <svg viewBox="0 0 700 140" class="w-full h-32">
+              <!-- baseline -->
+              <line x1="40" y1="120" x2="700" y2="120" stroke="hsl(var(--border))" stroke-width="1" />
+              <!-- subtle gridlines -->
+              <line x1="40" y1="80"  x2="700" y2="80"  stroke="hsl(var(--border))" stroke-width="1" stroke-dasharray="2 4" opacity="0.5" />
+              <line x1="40" y1="40"  x2="700" y2="40"  stroke="hsl(var(--border))" stroke-width="1" stroke-dasharray="2 4" opacity="0.5" />
+              <!-- y axis labels -->
+              <text x="32" y="124" text-anchor="end" font-size="10" fill="hsl(var(--muted-foreground))" font-family="JetBrains Mono">0</text>
+              <text x="32" y="84"  text-anchor="end" font-size="10" fill="hsl(var(--muted-foreground))" font-family="JetBrains Mono">15</text>
+              <text x="32" y="44"  text-anchor="end" font-size="10" fill="hsl(var(--muted-foreground))" font-family="JetBrains Mono">30</text>
+
+              <!-- 7 bars (Mon-Sun). Width 64, gap 30 starting at x=60. Heights map count → pixels (max 30 = 80px tall). -->
+              <g fill="hsl(var(--muted-foreground) / 0.3)">
+                <rect x="60"  y="64" width="64" height="56" rx="2" /> <!-- Mon: 21 -->
+                <rect x="154" y="48" width="64" height="72" rx="2" /> <!-- Tue: 27 -->
+                <rect x="248" y="56" width="64" height="64" rx="2" /> <!-- Wed: 24 -->
+                <rect x="342" y="72" width="64" height="48" rx="2" /> <!-- Thu: 18 -->
+                <rect x="436" y="40" width="64" height="80" rx="2" /> <!-- Fri: 30 -->
+                <rect x="530" y="56" width="64" height="64" rx="2" /> <!-- Sat: 24 -->
+              </g>
+              <!-- Today (Sun) — highlighted -->
+              <rect x="624" y="56" width="64" height="64" rx="2" fill="hsl(var(--primary))" />
+
+              <!-- Day labels -->
+              <g font-size="11" fill="hsl(var(--muted-foreground))" text-anchor="middle">
+                <text x="92"  y="135">Mon</text>
+                <text x="186" y="135">Tue</text>
+                <text x="280" y="135">Wed</text>
+                <text x="374" y="135">Thu</text>
+                <text x="468" y="135">Fri</text>
+                <text x="562" y="135">Sat</text>
+                <text x="656" y="135" fill="hsl(var(--foreground))" font-weight="600">Sun</text>
+              </g>
+              <!-- Value labels on bars -->
+              <g font-size="10" font-family="JetBrains Mono" fill="hsl(var(--muted-foreground))" text-anchor="middle">
+                <text x="92"  y="58">21</text>
+                <text x="186" y="42">27</text>
+                <text x="280" y="50">24</text>
+                <text x="374" y="66">18</text>
+                <text x="468" y="34">30</text>
+                <text x="562" y="50">24</text>
+                <text x="656" y="50" fill="hsl(var(--foreground))" font-weight="600">24</text>
+              </g>
+            </svg>
+          </div>
+
+          <!-- ATTENTION — small section showing things that need a look -->
+          <div>
+            <div class="flex items-baseline justify-between mb-3">
+              <div class="text-[10px] uppercase tracking-wider text-muted-foreground">Needs a look</div>
+              <a href="tasks-list.html" class="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">View all <i data-lucide="arrow-right" class="h-3 w-3"></i></a>
+            </div>
+            <ul class="space-y-1">
+              <li>
+                <a href="#" class="flex items-center gap-3 px-2 py-2 -mx-2 rounded hover:bg-secondary/40 cursor-pointer transition-colors">
+                  <i data-lucide="ban" class="h-4 w-4 text-status-blocked shrink-0"></i>
+                  <span class="text-sm flex-1 truncate">OAuth provider configuration · blocked 3h, awaiting decision</span>
+                  <span class="text-xs text-muted-foreground tabular-nums">3h</span>
+                </a>
+              </li>
+              <li>
+                <a href="#" class="flex items-center gap-3 px-2 py-2 -mx-2 rounded hover:bg-secondary/40 cursor-pointer transition-colors">
+                  <i data-lucide="x-circle" class="h-4 w-4 text-status-failed shrink-0"></i>
+                  <span class="text-sm flex-1 truncate">Backfill memory_fact embeddings · failed by ic-agent-2</span>
+                  <span class="text-xs text-muted-foreground tabular-nums">20h</span>
+                </a>
+              </li>
+              <li>
+                <a href="#" class="flex items-center gap-3 px-2 py-2 -mx-2 rounded hover:bg-secondary/40 cursor-pointer transition-colors">
+                  <i data-lucide="alert-circle" class="h-4 w-4 text-status-review shrink-0"></i>
+                  <span class="text-sm flex-1 truncate">Audit task dispatch index · in review 1d</span>
+                  <span class="text-xs text-muted-foreground tabular-nums">1d</span>
+                </a>
+              </li>
+            </ul>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>

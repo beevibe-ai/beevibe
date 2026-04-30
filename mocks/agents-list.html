@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>beevibe — agents org chart mock</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script>
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <style>
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 240 10% 4%;
+      --card: 240 5% 98%;
+      --card-foreground: 240 10% 4%;
+      --primary: 48 96% 53%;
+      --primary-foreground: 240 10% 4%;
+      --secondary: 240 5% 96%;
+      --secondary-foreground: 240 6% 10%;
+      --muted: 240 5% 96%;
+      --muted-foreground: 240 4% 46%;
+      --border: 240 6% 90%;
+      --input: 240 6% 90%;
+      --ring: 47 96% 47%;
+      --radius: 0.375rem;
+
+      --status-pending:   240 4% 46%;
+      --status-running:   217 91% 60%;
+      --status-review:    38 92% 50%;
+      --status-blocked:   25 95% 53%;
+      --status-done:      160 84% 39%;
+      --status-failed:    0 84% 60%;
+
+      --hier-ic:   240 4% 46%;
+      --hier-team: 262 83% 58%;
+      --hier-org:  38 92% 50%;
+    }
+    .dark {
+      --background: 240 10% 4%;
+      --foreground: 0 0% 98%;
+      --card: 240 6% 10%;
+      --card-foreground: 0 0% 98%;
+      --primary: 48 96% 53%;
+      --primary-foreground: 240 10% 4%;
+      --secondary: 240 4% 16%;
+      --secondary-foreground: 0 0% 98%;
+      --muted: 240 4% 16%;
+      --muted-foreground: 240 5% 65%;
+      --border: 240 4% 16%;
+      --input: 240 4% 16%;
+      --ring: 48 96% 53%;
+    }
+
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+      font-feature-settings: 'cv11', 'ss01';
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+      -webkit-font-smoothing: antialiased;
+    }
+    .font-mono { font-family: 'JetBrains Mono', ui-monospace, 'Menlo', monospace; }
+
+    @keyframes pulse-breathe {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.55; transform: scale(0.92); }
+    }
+    .pulse-dot { animation: pulse-breathe 2s ease-in-out infinite; }
+
+    @keyframes spin-slow { to { transform: rotate(360deg); } }
+    .spin-slow { animation: spin-slow 2.5s linear infinite; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pulse-dot, .spin-slow { animation: none; }
+    }
+
+    button:focus-visible, a:focus-visible {
+      outline: 2px solid hsl(var(--ring));
+      outline-offset: 2px;
+      border-radius: var(--radius);
+    }
+
+    /* Org chart canvas — fixed size, scrollable horizontally if narrow viewport. */
+    .chart-canvas {
+      position: relative;
+      width: 1016px;
+      height: 580px;
+      margin: 0 auto;
+    }
+
+    /* Agent cards positioned absolutely. Multica/Paperclip layout: 200×100 boxes. */
+    .agent-card {
+      position: absolute;
+      width: 200px;
+      height: 100px;
+      background: hsl(var(--card));
+      border: 1px solid hsl(var(--border));
+      border-radius: calc(var(--radius) + 2px);
+      box-shadow: 0 1px 2px rgb(0 0 0 / 0.04);
+      transition: border-color 150ms ease-out, box-shadow 150ms ease-out, transform 150ms ease-out;
+      overflow: hidden;
+    }
+    .agent-card:hover {
+      border-color: hsl(var(--ring));
+      box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.10);
+      transform: translateY(-1px);
+    }
+
+    /* Status indicator dot on avatar. */
+    .avatar-dot {
+      position: absolute;
+      bottom: -2px;
+      right: -2px;
+      width: 12px;
+      height: 12px;
+      border-radius: 9999px;
+      border: 2px solid hsl(var(--card));
+    }
+  </style>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'Menlo', 'monospace'],
+          },
+          colors: {
+            border: 'hsl(var(--border))',
+            input: 'hsl(var(--input))',
+            ring: 'hsl(var(--ring))',
+            background: 'hsl(var(--background))',
+            foreground: 'hsl(var(--foreground))',
+            primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+            secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+            muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+            card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+            status: {
+              pending:   'hsl(var(--status-pending))',
+              running:   'hsl(var(--status-running))',
+              review:    'hsl(var(--status-review))',
+              blocked:   'hsl(var(--status-blocked))',
+              done:      'hsl(var(--status-done))',
+              failed:    'hsl(var(--status-failed))',
+            },
+            hier: {
+              ic:   'hsl(var(--hier-ic))',
+              team: 'hsl(var(--hier-team))',
+              org:  'hsl(var(--hier-org))',
+            },
+          },
+          borderRadius: {
+            DEFAULT: 'var(--radius)',
+            md: 'var(--radius)',
+            lg: 'calc(var(--radius) + 2px)',
+            xl: 'calc(var(--radius) + 6px)',
+          },
+        },
+      },
+    };
+  </script>
+</head>
+<body class="min-h-screen">
+  <div class="flex min-h-screen">
+
+    <!-- Sidebar (Agents active) -->
+    <aside class="w-[220px] shrink-0 bg-card flex flex-col">
+      <div class="h-14 flex items-center gap-2.5 px-4">
+        <div class="h-6 w-6 rounded bg-primary flex items-center justify-center">
+          <span class="text-primary-foreground text-sm font-bold leading-none">b</span>
+        </div>
+        <span class="font-semibold tracking-tight">beevibe</span>
+      </div>
+      <nav class="flex-1 p-2 space-y-0.5 text-sm">
+        <a href="#" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="home" class="h-4 w-4"></i>
+          <span>Home</span>
+        </a>
+        <a href="tasks-list.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="list-checks" class="h-4 w-4"></i>
+          <span>Tasks</span>
+        </a>
+        <a href="#" class="flex items-center gap-3 px-3 py-2 rounded bg-secondary text-foreground font-medium">
+          <i data-lucide="circle-dot" class="h-4 w-4"></i>
+          <span>Agents</span>
+        </a>
+        <a href="threads.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="message-square" class="h-4 w-4"></i>
+          <span>Threads</span>
+        </a>
+        <a href="memory.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="sparkles" class="h-4 w-4"></i>
+          <span>Memory</span>
+        </a>
+      </nav>
+
+      <div class="p-3">
+        <div class="flex items-center gap-1">
+          <button class="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 rounded hover:bg-secondary cursor-pointer transition-colors text-left">
+            <div class="h-7 w-7 rounded-full bg-secondary border border-border flex items-center justify-center text-xs font-medium shrink-0">W</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium truncate leading-tight">Weijia</div>
+              <div class="text-[10px] text-muted-foreground flex items-center gap-1 leading-tight mt-0.5">
+                <span class="pulse-dot inline-block h-1 w-1 rounded-full bg-status-running"></span>
+                live
+              </div>
+            </div>
+            <i data-lucide="chevrons-up-down" class="h-3.5 w-3.5 text-muted-foreground shrink-0"></i>
+          </button>
+          <button id="theme-toggle" class="h-8 w-8 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors shrink-0" title="Toggle theme">
+            <i data-lucide="sun" class="h-4 w-4 hidden dark:block"></i>
+            <i data-lucide="moon" class="h-4 w-4 block dark:hidden"></i>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main -->
+    <main class="flex-1 min-w-0 flex flex-col">
+      <div class="flex-1 overflow-auto">
+        <div class="pt-8 pb-12 px-6">
+
+          <!-- Lead line + new agent CTA -->
+          <div class="max-w-5xl mx-auto flex items-end justify-between gap-6 mb-8">
+            <div class="text-base text-muted-foreground">
+              <span class="text-foreground font-medium">7 agents</span> in your org
+              — <span class="text-hier-ic font-medium">4 ic</span>, <span class="text-hier-team font-medium">2 team</span>, <span class="text-hier-org font-medium">1 org</span>.
+              <span class="text-foreground">4 active</span> right now.
+            </div>
+            <button class="inline-flex items-center gap-2 h-8 px-3 rounded bg-primary text-primary-foreground text-xs font-medium hover:opacity-90 active:scale-[0.98] transition-all duration-150 cursor-pointer shrink-0">
+              <i data-lucide="plus" class="h-3.5 w-3.5"></i>
+              New agent
+            </button>
+          </div>
+
+          <!-- Org chart canvas. Layout positions computed offline:
+               root-org: (408, 60) · team-alpha: (292, 240) · team-data: (756, 240)
+               ic-agent-1: (60, 420) · ic-agent-2: (292, 420) · ic-agent-3: (524, 420) · db-agent: (756, 420)
+               Cards 200×100, gap_x 32, gap_y 80, padding 60. -->
+          <div class="overflow-x-auto -mx-6 px-6">
+            <div class="chart-canvas">
+
+              <!-- SVG edge layer (behind cards) -->
+              <svg class="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 1016 580" preserveAspectRatio="xMidYMid meet">
+                <!-- root-org → team-alpha   (508,160) → (392,240), midY=200 -->
+                <path d="M 508 160 L 508 200 L 392 200 L 392 240" fill="none" stroke="hsl(var(--border))" stroke-width="1.5" />
+                <!-- root-org → team-data    (508,160) → (856,240), midY=200 -->
+                <path d="M 508 160 L 508 200 L 856 200 L 856 240" fill="none" stroke="hsl(var(--border))" stroke-width="1.5" />
+                <!-- team-alpha → ic-agent-1 (392,340) → (160,420), midY=380 -->
+                <path d="M 392 340 L 392 380 L 160 380 L 160 420" fill="none" stroke="hsl(var(--border))" stroke-width="1.5" />
+                <!-- team-alpha → ic-agent-2 (392,340) → (392,420), straight vertical -->
+                <path d="M 392 340 L 392 420" fill="none" stroke="hsl(var(--border))" stroke-width="1.5" />
+                <!-- team-alpha → ic-agent-3 (392,340) → (624,420), midY=380 -->
+                <path d="M 392 340 L 392 380 L 624 380 L 624 420" fill="none" stroke="hsl(var(--border))" stroke-width="1.5" />
+                <!-- team-data → db-agent    (856,340) → (856,420), straight vertical -->
+                <path d="M 856 340 L 856 420" fill="none" stroke="hsl(var(--border))" stroke-width="1.5" />
+              </svg>
+
+              <!-- ── ROOT-ORG card at (408, 60) ── -->
+              <a href="#" class="agent-card cursor-pointer block" style="left: 408px; top: 60px;">
+                <div class="flex items-start gap-3 p-3.5">
+                  <div class="relative shrink-0">
+                    <div class="h-9 w-9 rounded-full bg-hier-org/10 flex items-center justify-center text-hier-org text-sm font-semibold">
+                      <i data-lucide="building-2" class="h-4 w-4"></i>
+                    </div>
+                    <span class="avatar-dot bg-status-pending"></span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-1.5">
+                      <span class="font-mono font-medium text-sm truncate">root-org</span>
+                      <span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium border border-hier-org text-hier-org shrink-0">org</span>
+                    </div>
+                    <div class="text-xs text-muted-foreground mt-0.5">2 children · idle</div>
+                    <div class="text-[10px] text-muted-foreground mt-2">last active 5d ago</div>
+                  </div>
+                </div>
+              </a>
+
+              <!-- ── TEAM-ALPHA card at (292, 240) ── -->
+              <a href="#" class="agent-card cursor-pointer block" style="left: 292px; top: 240px;">
+                <div class="flex items-start gap-3 p-3.5">
+                  <div class="relative shrink-0">
+                    <div class="h-9 w-9 rounded-full bg-hier-team/10 flex items-center justify-center text-hier-team text-sm font-semibold">
+                      <i data-lucide="users" class="h-4 w-4"></i>
+                    </div>
+                    <span class="avatar-dot bg-status-running"></span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-1.5">
+                      <span class="font-mono font-medium text-sm truncate">team-alpha</span>
+                      <span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-team/10 text-hier-team shrink-0">team</span>
+                    </div>
+                    <div class="text-xs text-muted-foreground mt-0.5">3 children</div>
+                    <div class="flex items-center gap-3 text-xs mt-2">
+                      <span class="text-status-running inline-flex items-center gap-1">
+                        <i data-lucide="loader-2" class="spin-slow h-3 w-3"></i>1
+                      </span>
+                      <span class="text-[10px] text-muted-foreground ml-auto">7h ago</span>
+                    </div>
+                  </div>
+                </div>
+              </a>
+
+              <!-- ── TEAM-DATA card at (756, 240) ── -->
+              <a href="#" class="agent-card cursor-pointer block" style="left: 756px; top: 240px;">
+                <div class="flex items-start gap-3 p-3.5">
+                  <div class="relative shrink-0">
+                    <div class="h-9 w-9 rounded-full bg-hier-team/10 flex items-center justify-center text-hier-team text-sm font-semibold">
+                      <i data-lucide="users" class="h-4 w-4"></i>
+                    </div>
+                    <span class="avatar-dot bg-status-pending"></span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-1.5">
+                      <span class="font-mono font-medium text-sm truncate">team-data</span>
+                      <span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-team/10 text-hier-team shrink-0">team</span>
+                    </div>
+                    <div class="text-xs text-muted-foreground mt-0.5">1 child · idle</div>
+                    <div class="text-[10px] text-muted-foreground mt-2">last active 1d ago</div>
+                  </div>
+                </div>
+              </a>
+
+              <!-- ── IC-AGENT-1 at (60, 420) ── -->
+              <a href="#" class="agent-card cursor-pointer block" style="left: 60px; top: 420px;">
+                <div class="flex items-start gap-3 p-3.5">
+                  <div class="relative shrink-0">
+                    <div class="h-9 w-9 rounded-full bg-hier-ic/10 flex items-center justify-center text-hier-ic text-sm font-semibold">1</div>
+                    <span class="avatar-dot bg-status-running"></span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-1.5">
+                      <span class="font-mono font-medium text-sm truncate">ic-agent-1</span>
+                      <span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic shrink-0">ic</span>
+                    </div>
+                    <div class="text-xs text-muted-foreground mt-0.5 truncate">running OAuth flow</div>
+                    <div class="flex items-center gap-3 text-xs mt-2">
+                      <span class="text-status-running inline-flex items-center gap-1">
+                        <i data-lucide="loader-2" class="spin-slow h-3 w-3"></i>1
+                      </span>
+                      <span class="text-status-review inline-flex items-center gap-1">
+                        <i data-lucide="alert-circle" class="h-3 w-3"></i>3
+                      </span>
+                      <span class="text-[10px] text-muted-foreground ml-auto">2m</span>
+                    </div>
+                  </div>
+                </div>
+              </a>
+
+              <!-- ── IC-AGENT-2 at (292, 420) ── -->
+              <a href="#" class="agent-card cursor-pointer block" style="left: 292px; top: 420px;">
+                <div class="flex items-start gap-3 p-3.5">
+                  <div class="relative shrink-0">
+                    <div class="h-9 w-9 rounded-full bg-hier-ic/10 flex items-center justify-center text-hier-ic text-sm font-semibold">2</div>
+                    <span class="avatar-dot bg-status-running"></span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-1.5">
+                      <span class="font-mono font-medium text-sm truncate">ic-agent-2</span>
+                      <span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic shrink-0">ic</span>
+                    </div>
+                    <div class="text-xs text-muted-foreground mt-0.5 truncate">migrating logging to pino</div>
+                    <div class="flex items-center gap-3 text-xs mt-2">
+                      <span class="text-status-running inline-flex items-center gap-1">
+                        <i data-lucide="loader-2" class="spin-slow h-3 w-3"></i>1
+                      </span>
+                      <span class="text-status-blocked inline-flex items-center gap-1">
+                        <i data-lucide="ban" class="h-3 w-3"></i>1
+                      </span>
+                      <span class="text-[10px] text-muted-foreground ml-auto">30m</span>
+                    </div>
+                  </div>
+                </div>
+              </a>
+
+              <!-- ── IC-AGENT-3 at (524, 420) ── -->
+              <a href="#" class="agent-card cursor-pointer block" style="left: 524px; top: 420px;">
+                <div class="flex items-start gap-3 p-3.5">
+                  <div class="relative shrink-0">
+                    <div class="h-9 w-9 rounded-full bg-hier-ic/10 flex items-center justify-center text-hier-ic text-sm font-semibold">3</div>
+                    <span class="avatar-dot bg-status-running"></span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-1.5">
+                      <span class="font-mono font-medium text-sm truncate">ic-agent-3</span>
+                      <span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic shrink-0">ic</span>
+                    </div>
+                    <div class="text-xs text-muted-foreground mt-0.5 truncate">refactoring task repo</div>
+                    <div class="flex items-center gap-3 text-xs mt-2">
+                      <span class="text-status-running inline-flex items-center gap-1">
+                        <i data-lucide="loader-2" class="spin-slow h-3 w-3"></i>1
+                      </span>
+                      <span class="text-[10px] text-muted-foreground ml-auto">4m</span>
+                    </div>
+                  </div>
+                </div>
+              </a>
+
+              <!-- ── DB-AGENT at (756, 420) ── -->
+              <a href="#" class="agent-card cursor-pointer block" style="left: 756px; top: 420px;">
+                <div class="flex items-start gap-3 p-3.5">
+                  <div class="relative shrink-0">
+                    <div class="h-9 w-9 rounded-full bg-hier-ic/10 flex items-center justify-center text-hier-ic text-sm font-semibold">
+                      <i data-lucide="database" class="h-4 w-4"></i>
+                    </div>
+                    <span class="avatar-dot bg-status-review"></span>
+                  </div>
+                  <div class="flex-1 min-w-0">
+                    <div class="flex items-center justify-between gap-1.5">
+                      <span class="font-mono font-medium text-sm truncate">db-agent</span>
+                      <span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic shrink-0">ic</span>
+                    </div>
+                    <div class="text-xs text-muted-foreground mt-0.5 truncate">2 tasks awaiting review</div>
+                    <div class="flex items-center gap-3 text-xs mt-2">
+                      <span class="text-status-review inline-flex items-center gap-1">
+                        <i data-lucide="alert-circle" class="h-3 w-3"></i>2
+                      </span>
+                      <span class="text-[10px] text-muted-foreground ml-auto">11h</span>
+                    </div>
+                  </div>
+                </div>
+              </a>
+
+            </div>
+          </div>
+
+          <!-- Specialization depth panel — proves the org chart isn't just structural.
+               Each agent's accumulation is observable. mem0 / Multica / Mastra dashboards have no equivalent. -->
+          <div class="max-w-5xl mx-auto mt-10">
+            <div class="flex items-baseline justify-between mb-3">
+              <h2 class="text-[10px] uppercase tracking-wider text-muted-foreground">Specialization depth · per agent</h2>
+              <a href="memory.html" class="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+                Browse all facts <i data-lucide="arrow-right" class="h-3 w-3"></i>
+              </a>
+            </div>
+            <div class="rounded-lg border border-border bg-card overflow-hidden">
+              <table class="w-full text-sm">
+                <colgroup>
+                  <col />
+                  <col style="width: 80px" />
+                  <col style="width: 100px" />
+                  <col style="width: 100px" />
+                  <col style="width: 100px" />
+                  <col style="width: 60px" />
+                </colgroup>
+                <thead>
+                  <tr class="bg-secondary/40 text-[10px] uppercase tracking-wider text-muted-foreground">
+                    <th class="text-left px-4 py-2 font-medium">Agent</th>
+                    <th class="text-left px-3 py-2 font-medium">Tier</th>
+                    <th class="text-right px-3 py-2 font-medium">Sessions</th>
+                    <th class="text-right px-3 py-2 font-medium">Facts</th>
+                    <th class="text-right px-3 py-2 font-medium">Merges</th>
+                    <th class="text-right px-3 py-2 font-medium"></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="agent-detail.html" class="font-mono text-foreground hover:underline">ic-agent-1</a>
+                      <span class="text-xs text-muted-foreground ml-2">auth · OAuth</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic">ic</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">47</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">23</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">8</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-status-done">+3 this wk</td>
+                  </tr>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="#" class="font-mono text-foreground hover:underline">ic-agent-2</a>
+                      <span class="text-xs text-muted-foreground ml-2">infra · logging</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic">ic</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">31</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">14</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">4</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-muted-foreground">+1</td>
+                  </tr>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="#" class="font-mono text-foreground hover:underline">ic-agent-3</a>
+                      <span class="text-xs text-muted-foreground ml-2">infra · refactor</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic">ic</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">23</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">11</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">2</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-status-done">+2</td>
+                  </tr>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="#" class="font-mono text-foreground hover:underline">db-agent</a>
+                      <span class="text-xs text-muted-foreground ml-2">data · migrations</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic">ic</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">19</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">17</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">5</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-muted-foreground">—</td>
+                  </tr>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="#" class="font-mono text-foreground hover:underline">team-alpha</a>
+                      <span class="text-xs text-muted-foreground ml-2">coordinator</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-team/10 text-hier-team">team</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">8</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">9</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">2</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-muted-foreground">+1</td>
+                  </tr>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="#" class="font-mono text-foreground hover:underline">team-data</a>
+                      <span class="text-xs text-muted-foreground ml-2">coordinator</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium bg-hier-team/10 text-hier-team">team</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">4</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">3</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">0</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-muted-foreground">—</td>
+                  </tr>
+                  <tr class="border-t border-border hover:bg-secondary/30 transition-colors">
+                    <td class="px-4 py-2.5">
+                      <a href="#" class="font-mono text-foreground hover:underline">root-org</a>
+                      <span class="text-xs text-muted-foreground ml-2">strategy</span>
+                    </td>
+                    <td class="px-3 py-2.5"><span class="inline-flex items-center h-4 px-1.5 rounded text-[10px] font-medium border border-hier-org text-hier-org">org</span></td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">2</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">4</td>
+                    <td class="px-3 py-2.5 text-right tabular-nums">1</td>
+                    <td class="px-3 py-2.5 text-right text-[10px] text-muted-foreground">—</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p class="mt-2.5 text-[10px] text-muted-foreground">
+              Each agent's depth is bounded — no agent's facts dilute another's. Promoted facts (visible to wider scopes) preserve their originating agent_id. <a href="promotions.html" class="text-foreground/70 hover:text-foreground hover:underline transition-colors">14 promotions in last 30d →</a>
+            </p>
+          </div>
+
+          <!-- Foot note -->
+          <div class="max-w-5xl mx-auto mt-8 text-xs text-muted-foreground flex items-center gap-3">
+            <span class="font-mono">mock</span>
+            <span class="text-border">·</span>
+            <span>SVG orthogonal connectors + absolute-positioned cards (Multica/Paperclip pattern). Layout positions precomputed; in real app a layout function recomputes on agent add/remove. Status dot on avatar indicates current activity.</span>
+          </div>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>

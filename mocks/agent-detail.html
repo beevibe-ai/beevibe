@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>beevibe — agent detail · ic-agent-1</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script>
+    if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.classList.add('dark');
+    }
+  </script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.js"></script>
+  <style>
+    :root {
+      --background: 0 0% 100%;
+      --foreground: 240 10% 4%;
+      --card: 240 5% 98%;
+      --card-foreground: 240 10% 4%;
+      --primary: 48 96% 53%;
+      --primary-foreground: 240 10% 4%;
+      --secondary: 240 5% 96%;
+      --secondary-foreground: 240 6% 10%;
+      --muted: 240 5% 96%;
+      --muted-foreground: 240 4% 46%;
+      --border: 240 6% 90%;
+      --input: 240 6% 90%;
+      --ring: 47 96% 47%;
+      --radius: 0.375rem;
+
+      --status-pending:   240 4% 46%;
+      --status-running:   217 91% 60%;
+      --status-review:    38 92% 50%;
+      --status-blocked:   25 95% 53%;
+      --status-done:      160 84% 39%;
+      --status-failed:    0 84% 60%;
+
+      --hier-ic:   240 4% 46%;
+      --hier-team: 262 83% 58%;
+      --hier-org:  38 92% 50%;
+    }
+    .dark {
+      --background: 240 10% 4%;
+      --foreground: 0 0% 98%;
+      --card: 240 6% 10%;
+      --card-foreground: 0 0% 98%;
+      --primary: 48 96% 53%;
+      --primary-foreground: 240 10% 4%;
+      --secondary: 240 4% 16%;
+      --secondary-foreground: 0 0% 98%;
+      --muted: 240 4% 16%;
+      --muted-foreground: 240 5% 65%;
+      --border: 240 4% 16%;
+      --input: 240 4% 16%;
+      --ring: 48 96% 53%;
+    }
+
+    body {
+      font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+      font-feature-settings: 'cv11', 'ss01';
+      background-color: hsl(var(--background));
+      color: hsl(var(--foreground));
+      -webkit-font-smoothing: antialiased;
+    }
+    .font-mono { font-family: 'JetBrains Mono', ui-monospace, 'Menlo', monospace; }
+
+    @keyframes pulse-breathe {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%      { opacity: 0.55; transform: scale(0.92); }
+    }
+    .pulse-dot { animation: pulse-breathe 2s ease-in-out infinite; }
+
+    @keyframes spin-slow { to { transform: rotate(360deg); } }
+    .spin-slow { animation: spin-slow 2.5s linear infinite; }
+
+    @media (prefers-reduced-motion: reduce) {
+      .pulse-dot, .spin-slow { animation: none; }
+    }
+
+    button:focus-visible, a:focus-visible {
+      outline: 2px solid hsl(var(--ring));
+      outline-offset: 2px;
+      border-radius: var(--radius);
+    }
+
+    /* core memory block ring — visualizes char_limit fill */
+    .ring-track {
+      stroke: hsl(var(--border));
+    }
+    .ring-fill {
+      stroke: hsl(var(--primary));
+      stroke-linecap: round;
+      transform: rotate(-90deg);
+      transform-origin: center;
+    }
+    .ring-fill-warn { stroke: hsl(var(--status-review)); }
+  </style>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'ui-monospace', 'Menlo', 'monospace'],
+          },
+          colors: {
+            border: 'hsl(var(--border))',
+            input: 'hsl(var(--input))',
+            ring: 'hsl(var(--ring))',
+            background: 'hsl(var(--background))',
+            foreground: 'hsl(var(--foreground))',
+            primary: { DEFAULT: 'hsl(var(--primary))', foreground: 'hsl(var(--primary-foreground))' },
+            secondary: { DEFAULT: 'hsl(var(--secondary))', foreground: 'hsl(var(--secondary-foreground))' },
+            muted: { DEFAULT: 'hsl(var(--muted))', foreground: 'hsl(var(--muted-foreground))' },
+            card: { DEFAULT: 'hsl(var(--card))', foreground: 'hsl(var(--card-foreground))' },
+            status: {
+              pending:   'hsl(var(--status-pending))',
+              running:   'hsl(var(--status-running))',
+              review:    'hsl(var(--status-review))',
+              blocked:   'hsl(var(--status-blocked))',
+              done:      'hsl(var(--status-done))',
+              failed:    'hsl(var(--status-failed))',
+            },
+            hier: {
+              ic:   'hsl(var(--hier-ic))',
+              team: 'hsl(var(--hier-team))',
+              org:  'hsl(var(--hier-org))',
+            },
+          },
+          borderRadius: {
+            DEFAULT: 'var(--radius)',
+            md: 'var(--radius)',
+            lg: 'calc(var(--radius) + 2px)',
+            xl: 'calc(var(--radius) + 6px)',
+          },
+        },
+      },
+    };
+  </script>
+</head>
+<body class="min-h-screen">
+  <div class="flex min-h-screen">
+
+    <!-- Sidebar (Agents active) -->
+    <aside class="w-[220px] shrink-0 bg-card flex flex-col">
+      <div class="h-14 flex items-center gap-2.5 px-4">
+        <div class="h-6 w-6 rounded bg-primary flex items-center justify-center">
+          <span class="text-primary-foreground text-sm font-bold leading-none">b</span>
+        </div>
+        <span class="font-semibold tracking-tight">beevibe</span>
+      </div>
+      <nav class="flex-1 p-2 space-y-0.5 text-sm">
+        <a href="home.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="home" class="h-4 w-4"></i>
+          <span>Home</span>
+        </a>
+        <a href="tasks-list.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="list-checks" class="h-4 w-4"></i>
+          <span>Tasks</span>
+        </a>
+        <a href="agents-list.html" class="flex items-center gap-3 px-3 py-2 rounded bg-secondary text-foreground font-medium">
+          <i data-lucide="circle-dot" class="h-4 w-4"></i>
+          <span>Agents</span>
+        </a>
+        <a href="threads.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="message-square" class="h-4 w-4"></i>
+          <span>Threads</span>
+        </a>
+        <a href="memory.html" class="flex items-center gap-3 px-3 py-2 rounded text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors duration-150">
+          <i data-lucide="sparkles" class="h-4 w-4"></i>
+          <span>Memory</span>
+        </a>
+      </nav>
+
+      <div class="p-3">
+        <div class="flex items-center gap-1">
+          <button class="flex-1 min-w-0 flex items-center gap-2 px-2 py-1.5 rounded hover:bg-secondary cursor-pointer transition-colors text-left">
+            <div class="h-7 w-7 rounded-full bg-secondary border border-border flex items-center justify-center text-xs font-medium shrink-0">W</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium truncate leading-tight">Weijia</div>
+              <div class="text-[10px] text-muted-foreground flex items-center gap-1 leading-tight mt-0.5">
+                <span class="pulse-dot inline-block h-1 w-1 rounded-full bg-status-running"></span>
+                live
+              </div>
+            </div>
+            <i data-lucide="chevrons-up-down" class="h-3.5 w-3.5 text-muted-foreground shrink-0"></i>
+          </button>
+          <button id="theme-toggle" class="h-8 w-8 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors shrink-0" title="Toggle theme">
+            <i data-lucide="sun" class="h-4 w-4 hidden dark:block"></i>
+            <i data-lucide="moon" class="h-4 w-4 block dark:hidden"></i>
+          </button>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main — DETAIL density (max-w-5xl, space-y-5) -->
+    <main class="flex-1 min-w-0 flex flex-col">
+      <div class="flex-1 overflow-auto">
+        <div class="max-w-5xl mx-auto pt-8 pb-12 px-6">
+
+          <!-- Breadcrumb -->
+          <div class="text-xs text-muted-foreground mb-4 flex items-center gap-1.5">
+            <a href="agents-list.html" class="hover:text-foreground transition-colors">Agents</a>
+            <i data-lucide="chevron-right" class="h-3 w-3"></i>
+            <a href="#" class="hover:text-foreground transition-colors">team-alpha</a>
+            <i data-lucide="chevron-right" class="h-3 w-3"></i>
+            <span class="text-foreground font-mono">ic-agent-1</span>
+          </div>
+
+          <!-- Header zone — identity, hierarchy, depth at a glance -->
+          <header class="mb-6">
+            <div class="flex items-start gap-4">
+              <div class="relative shrink-0">
+                <div class="h-14 w-14 rounded-full bg-hier-ic/10 flex items-center justify-center text-hier-ic text-xl font-semibold">
+                  <i data-lucide="key-round" class="h-6 w-6"></i>
+                </div>
+                <span class="absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full bg-status-running border-2 border-background pulse-dot"></span>
+              </div>
+              <div class="flex-1 min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <h1 class="font-mono text-xl font-semibold leading-tight">ic-agent-1</h1>
+                  <span class="inline-flex items-center h-5 px-2 rounded text-[10px] font-medium bg-hier-ic/15 text-hier-ic">ic</span>
+                  <span class="inline-flex items-center gap-1 h-5 px-2 rounded text-[10px] text-status-running bg-status-running/10">
+                    <i data-lucide="loader-2" class="spin-slow h-3 w-3"></i>1 running
+                  </span>
+                </div>
+                <div class="text-sm text-muted-foreground">
+                  reports to <a href="#" class="text-foreground hover:underline font-mono">team-alpha</a>
+                  <span class="text-border mx-1.5">·</span>
+                  specialty: <span class="text-foreground">auth flows, OAuth, session security</span>
+                </div>
+              </div>
+              <button class="inline-flex items-center gap-1.5 h-8 px-3 rounded text-xs font-medium hover:bg-secondary cursor-pointer transition-colors text-muted-foreground hover:text-foreground shrink-0">
+                <i data-lucide="settings-2" class="h-3.5 w-3.5"></i>
+                Configure
+              </button>
+            </div>
+
+            <!-- Depth metrics row — proves accumulation is real -->
+            <div class="grid grid-cols-4 gap-x-8 mt-6 pt-6 border-t border-border">
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Sessions</div>
+                <div class="flex items-baseline gap-1.5">
+                  <span class="text-2xl font-semibold tabular-nums leading-none">47</span>
+                  <span class="text-xs text-status-done">+3 this week</span>
+                </div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Facts learned</div>
+                <div class="flex items-baseline gap-1.5">
+                  <span class="text-2xl font-semibold tabular-nums leading-none">23</span>
+                  <span class="text-xs text-muted-foreground">in memory</span>
+                </div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Merge events</div>
+                <div class="flex items-baseline gap-1.5">
+                  <span class="text-2xl font-semibold tabular-nums leading-none">8</span>
+                  <span class="text-xs text-muted-foreground">consolidated</span>
+                </div>
+              </div>
+              <div>
+                <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-1">Promoted up</div>
+                <div class="flex items-baseline gap-1.5">
+                  <span class="text-2xl font-semibold tabular-nums leading-none">4</span>
+                  <span class="text-xs text-muted-foreground">to team / org</span>
+                </div>
+              </div>
+            </div>
+          </header>
+
+          <!-- Two-column layout: main content + right rail -->
+          <div class="grid grid-cols-3 gap-6">
+
+            <!-- LEFT — main content -->
+            <div class="col-span-2 space-y-5">
+
+              <!-- Core memory blocks — bounded persona/domain/constraints. Agent edits these via update_core_memory. -->
+              <section>
+                <div class="flex items-baseline justify-between mb-3">
+                  <h2 class="text-sm font-semibold">Core memory blocks</h2>
+                  <span class="text-[10px] text-muted-foreground">3 blocks · agent-edited via <span class="font-mono">update_core_memory</span></span>
+                </div>
+
+                <div class="space-y-3">
+                  <!-- persona block -->
+                  <div class="rounded-lg border border-border bg-card p-4">
+                    <div class="flex items-start gap-3">
+                      <!-- Char limit ring -->
+                      <div class="shrink-0">
+                        <svg class="h-12 w-12" viewBox="0 0 36 36">
+                          <circle class="ring-track" cx="18" cy="18" r="14" fill="none" stroke-width="2.5" />
+                          <circle class="ring-fill" cx="18" cy="18" r="14" fill="none" stroke-width="2.5"
+                                  stroke-dasharray="62 88" />
+                        </svg>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1.5">
+                          <span class="font-mono text-xs font-medium">persona</span>
+                          <span class="text-[10px] text-muted-foreground">1,376 / 2,000 chars</span>
+                          <button class="ml-auto h-5 w-5 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                            <i data-lucide="pencil" class="h-3 w-3"></i>
+                          </button>
+                        </div>
+                        <p class="text-sm text-foreground/85 leading-relaxed">
+                          You are a senior engineer specialized in authentication flows. You think in terms of trust boundaries: who is asserting identity, who is verifying, what tokens are crossing which network edges, what's signed vs encrypted. You prefer OAuth 2.1 over implicit-grant patterns; you treat session storage as a security primitive, not a convenience.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- domain block -->
+                  <div class="rounded-lg border border-border bg-card p-4">
+                    <div class="flex items-start gap-3">
+                      <div class="shrink-0">
+                        <svg class="h-12 w-12" viewBox="0 0 36 36">
+                          <circle class="ring-track" cx="18" cy="18" r="14" fill="none" stroke-width="2.5" />
+                          <circle class="ring-fill" cx="18" cy="18" r="14" fill="none" stroke-width="2.5"
+                                  stroke-dasharray="76 88" />
+                        </svg>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1.5">
+                          <span class="font-mono text-xs font-medium">domain</span>
+                          <span class="text-[10px] text-muted-foreground">1,728 / 2,000 chars</span>
+                          <button class="ml-auto h-5 w-5 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                            <i data-lucide="pencil" class="h-3 w-3"></i>
+                          </button>
+                        </div>
+                        <p class="text-sm text-foreground/85 leading-relaxed">
+                          Auth surface for this codebase: <span class="font-mono text-xs">bv_a_</span> agent keys + <span class="font-mono text-xs">bv_u_</span> user keys, both resolved via <span class="font-mono text-xs">lookupApiKey</span>. MCP server speaks OAuth 2.1 to Claude Code CLI. User-driven sessions bind via <span class="font-mono text-xs">Mcp-Session-Id</span> header (server-assigned, client auto-echoes). Agent-driven sessions bind via <span class="font-mono text-xs">X-Beevibe-Session</span>. Token rotation deferred to M14.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- constraints block — near limit, warn color on ring -->
+                  <div class="rounded-lg border border-border bg-card p-4">
+                    <div class="flex items-start gap-3">
+                      <div class="shrink-0">
+                        <svg class="h-12 w-12" viewBox="0 0 36 36">
+                          <circle class="ring-track" cx="18" cy="18" r="14" fill="none" stroke-width="2.5" />
+                          <circle class="ring-fill ring-fill-warn" cx="18" cy="18" r="14" fill="none" stroke-width="2.5"
+                                  stroke-dasharray="82 88" />
+                        </svg>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 mb-1.5">
+                          <span class="font-mono text-xs font-medium">constraints</span>
+                          <span class="text-[10px] text-status-review">1,860 / 2,000 chars · approaching limit</span>
+                          <button class="ml-auto h-5 w-5 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+                            <i data-lucide="pencil" class="h-3 w-3"></i>
+                          </button>
+                        </div>
+                        <p class="text-sm text-foreground/85 leading-relaxed">
+                          Never log full bearer tokens — log first-8-chars with hash suffix. Never store refresh tokens in <span class="font-mono text-xs">localStorage</span> — HttpOnly cookie or KMS only. Never accept <span class="font-mono text-xs">none</span> as a JWT alg. When unsure about a cross-tree mesh ask, escalate to <span class="font-mono text-xs">team-alpha</span> rather than guessing.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+              <!-- Facts — only this agent's facts. No global pool view exists anywhere in the UI. -->
+              <section>
+                <div class="flex items-baseline justify-between mb-3">
+                  <h2 class="text-sm font-semibold">What this agent has learned</h2>
+                  <a href="memory.html?agent=ic-agent-1" class="text-xs text-muted-foreground hover:text-foreground transition-colors flex items-center gap-1">
+                    All 23 facts <i data-lucide="arrow-right" class="h-3 w-3"></i>
+                  </a>
+                </div>
+
+                <div class="space-y-2">
+                  <!-- A merged fact — proof of accumulation -->
+                  <div class="rounded-lg border border-border bg-card p-3.5 hover:border-ring/40 transition-colors cursor-pointer">
+                    <div class="flex items-start gap-3">
+                      <div class="shrink-0 mt-0.5">
+                        <i data-lucide="git-merge" class="h-3.5 w-3.5 text-status-running" title="Merged from prior facts"></i>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-sm leading-relaxed">
+                          Claude Code spawns subprocesses; the executor must reap them with <span class="font-mono text-xs">process_group_id</span>, not just <span class="font-mono text-xs">process_pid</span>, or orphaned children accumulate over long runs.
+                        </p>
+                        <div class="flex items-center gap-2 mt-2 text-[10px]">
+                          <span class="inline-flex items-center h-4 px-1.5 rounded font-medium bg-hier-ic/15 text-hier-ic">ic</span>
+                          <span class="inline-flex items-center h-4 px-1.5 rounded text-status-failed/80 bg-status-failed/10 font-medium">gotcha</span>
+                          <span class="text-muted-foreground font-mono">merged · 4 sessions · 3d ago</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="rounded-lg border border-border bg-card p-3.5 hover:border-ring/40 transition-colors cursor-pointer">
+                    <div class="flex items-start gap-3">
+                      <div class="shrink-0 mt-0.5">
+                        <i data-lucide="circle" class="h-3.5 w-3.5 text-muted-foreground"></i>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-sm leading-relaxed">
+                          When binding bv_u_ to MCP, the server-assigned <span class="font-mono text-xs">Mcp-Session-Id</span> must be cached in-memory keyed to the session row id — Claude Code CLI auto-echoes the header on every subsequent request per spec 2025-11-25.
+                        </p>
+                        <div class="flex items-center gap-2 mt-2 text-[10px]">
+                          <span class="inline-flex items-center h-4 px-1.5 rounded font-medium bg-hier-ic/15 text-hier-ic">ic</span>
+                          <span class="inline-flex items-center h-4 px-1.5 rounded text-status-running bg-status-running/10 font-medium">decision</span>
+                          <span class="text-muted-foreground font-mono">1 session · 2d ago</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <!-- A promoted fact — proof of curated commons -->
+                  <div class="rounded-lg border border-border bg-card p-3.5 hover:border-ring/40 transition-colors cursor-pointer">
+                    <div class="flex items-start gap-3">
+                      <div class="shrink-0 mt-0.5">
+                        <i data-lucide="trending-up" class="h-3.5 w-3.5 text-hier-team" title="Promoted to team scope"></i>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-sm leading-relaxed">
+                          Postgres NOTIFY payload is capped at 8KB. Keep payloads to id, status, and timestamps; clients refetch full rows via HTTP after the event.
+                        </p>
+                        <div class="flex items-center gap-2 mt-2 text-[10px]">
+                          <span class="inline-flex items-center h-4 px-1.5 rounded font-medium bg-hier-team/10 text-hier-team">team</span>
+                          <span class="inline-flex items-center h-4 px-1.5 rounded text-status-running bg-status-running/10 font-medium">decision</span>
+                          <span class="text-muted-foreground font-mono">promoted from ic · 3 sessions · 4d ago</span>
+                          <a href="promotions.html" class="text-muted-foreground hover:text-foreground underline transition-colors">why?</a>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="rounded-lg border border-border bg-card p-3.5 hover:border-ring/40 transition-colors cursor-pointer">
+                    <div class="flex items-start gap-3">
+                      <div class="shrink-0 mt-0.5">
+                        <i data-lucide="git-merge" class="h-3.5 w-3.5 text-status-running"></i>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-sm leading-relaxed">
+                          OAuth 2.1 strict mode rejects implicit grant entirely. For Claude Code CLI integration, use authorization-code-with-PKCE; bv_ keys exchange for short-lived bearer tokens via the token endpoint.
+                        </p>
+                        <div class="flex items-center gap-2 mt-2 text-[10px]">
+                          <span class="inline-flex items-center h-4 px-1.5 rounded font-medium bg-hier-ic/15 text-hier-ic">ic</span>
+                          <span class="inline-flex items-center h-4 px-1.5 rounded text-hier-team bg-hier-team/10 font-medium">pattern</span>
+                          <span class="text-muted-foreground font-mono">merged · 2 sessions · 5d ago</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="rounded-lg border border-border bg-card p-3.5 hover:border-ring/40 transition-colors cursor-pointer">
+                    <div class="flex items-start gap-3">
+                      <div class="shrink-0 mt-0.5">
+                        <i data-lucide="circle" class="h-3.5 w-3.5 text-muted-foreground"></i>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-sm leading-relaxed">
+                          When the OAuth provider config drift (e.g., redirect URI changed in their dashboard, not ours), the failure surfaces as a 400 from <span class="font-mono text-xs">/token</span>, not a redirect failure. Log the upstream response body, not just status.
+                        </p>
+                        <div class="flex items-center gap-2 mt-2 text-[10px]">
+                          <span class="inline-flex items-center h-4 px-1.5 rounded font-medium bg-hier-ic/15 text-hier-ic">ic</span>
+                          <span class="inline-flex items-center h-4 px-1.5 rounded text-status-failed/80 bg-status-failed/10 font-medium">gotcha</span>
+                          <span class="text-muted-foreground font-mono">1 session · 6d ago</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="rounded-lg border border-border bg-card p-3.5 hover:border-ring/40 transition-colors cursor-pointer">
+                    <div class="flex items-start gap-3">
+                      <div class="shrink-0 mt-0.5">
+                        <i data-lucide="circle" class="h-3.5 w-3.5 text-muted-foreground"></i>
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-sm leading-relaxed">
+                          Prefer Argon2id over bcrypt for new password hashes — Argon2 has tunable memory cost that resists GPU attack better; bcrypt's 72-byte input limit is a footgun for long passphrases.
+                        </p>
+                        <div class="flex items-center gap-2 mt-2 text-[10px]">
+                          <span class="inline-flex items-center h-4 px-1.5 rounded font-medium bg-hier-ic/15 text-hier-ic">ic</span>
+                          <span class="inline-flex items-center h-4 px-1.5 rounded text-status-running bg-status-running/10 font-medium">preference</span>
+                          <span class="text-muted-foreground font-mono">1 session · 1w ago</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </section>
+
+            </div>
+
+            <!-- RIGHT RAIL — themes, recent sessions, mesh hint -->
+            <aside class="col-span-1 space-y-5">
+
+              <!-- Themes derived from facts -->
+              <section>
+                <h3 class="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">What this agent knows about</h3>
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="inline-flex items-center h-6 px-2 rounded text-xs bg-secondary text-foreground/85">OAuth 2.1</span>
+                  <span class="inline-flex items-center h-6 px-2 rounded text-xs bg-secondary text-foreground/85">JWT</span>
+                  <span class="inline-flex items-center h-6 px-2 rounded text-xs bg-secondary text-foreground/85">session storage</span>
+                  <span class="inline-flex items-center h-6 px-2 rounded text-xs bg-secondary text-foreground/85">PKCE</span>
+                  <span class="inline-flex items-center h-6 px-2 rounded text-xs bg-secondary text-foreground/85">bv_ keys</span>
+                  <span class="inline-flex items-center h-6 px-2 rounded text-xs bg-secondary text-foreground/85">MCP auth</span>
+                  <span class="inline-flex items-center h-6 px-2 rounded text-xs bg-secondary text-foreground/85">password hashing</span>
+                  <span class="inline-flex items-center h-6 px-2 rounded text-xs bg-secondary text-foreground/85">CSRF</span>
+                </div>
+              </section>
+
+              <!-- Recent sessions -->
+              <section>
+                <div class="flex items-baseline justify-between mb-3">
+                  <h3 class="text-[10px] uppercase tracking-wider text-muted-foreground">Recent sessions</h3>
+                  <a href="#" class="text-[10px] text-muted-foreground hover:text-foreground transition-colors">All</a>
+                </div>
+                <ul class="space-y-1">
+                  <li>
+                    <a href="session-detail.html" class="flex items-center gap-2 px-2 py-2 -mx-2 rounded hover:bg-secondary/40 transition-colors">
+                      <i data-lucide="loader-2" class="spin-slow h-3 w-3 text-status-running shrink-0"></i>
+                      <span class="text-xs flex-1 truncate">running OAuth flow integration</span>
+                      <span class="text-[10px] text-muted-foreground tabular-nums">2m</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="#" class="flex items-center gap-2 px-2 py-2 -mx-2 rounded hover:bg-secondary/40 transition-colors">
+                      <i data-lucide="check-circle-2" class="h-3 w-3 text-status-done shrink-0"></i>
+                      <span class="text-xs flex-1 truncate">add MCP session-id round-trip</span>
+                      <span class="text-[10px] text-muted-foreground tabular-nums">2h</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="#" class="flex items-center gap-2 px-2 py-2 -mx-2 rounded hover:bg-secondary/40 transition-colors">
+                      <i data-lucide="alert-circle" class="h-3 w-3 text-status-review shrink-0"></i>
+                      <span class="text-xs flex-1 truncate">audit token rotation policy</span>
+                      <span class="text-[10px] text-muted-foreground tabular-nums">1d</span>
+                    </a>
+                  </li>
+                  <li>
+                    <a href="#" class="flex items-center gap-2 px-2 py-2 -mx-2 rounded hover:bg-secondary/40 transition-colors">
+                      <i data-lucide="check-circle-2" class="h-3 w-3 text-status-done shrink-0"></i>
+                      <span class="text-xs flex-1 truncate">migrate password hashing to argon2id</span>
+                      <span class="text-[10px] text-muted-foreground tabular-nums">3d</span>
+                    </a>
+                  </li>
+                </ul>
+              </section>
+
+              <!-- Mesh hint — what this agent ASKS others when it doesn't know -->
+              <section>
+                <div class="flex items-baseline justify-between mb-3">
+                  <h3 class="text-[10px] uppercase tracking-wider text-muted-foreground">When it doesn't know</h3>
+                  <a href="mesh.html" class="text-[10px] text-muted-foreground hover:text-foreground transition-colors">Mesh →</a>
+                </div>
+                <div class="rounded-lg bg-secondary/40 p-3 text-xs leading-relaxed">
+                  <p class="text-muted-foreground">Outgoing asks last 7d:</p>
+                  <ul class="mt-2 space-y-1.5">
+                    <li class="flex items-baseline gap-2">
+                      <i data-lucide="arrow-up-right" class="h-3 w-3 text-muted-foreground shrink-0 self-center"></i>
+                      <span class="font-mono text-foreground">db-agent</span>
+                      <span class="text-muted-foreground flex-1 truncate">— schema for refresh-token storage?</span>
+                      <span class="text-[10px] text-muted-foreground tabular-nums">3</span>
+                    </li>
+                    <li class="flex items-baseline gap-2">
+                      <i data-lucide="arrow-up-right" class="h-3 w-3 text-muted-foreground shrink-0 self-center"></i>
+                      <span class="font-mono text-foreground">team-alpha</span>
+                      <span class="text-muted-foreground flex-1 truncate">— escalate token rotation</span>
+                      <span class="text-[10px] text-muted-foreground tabular-nums">1</span>
+                    </li>
+                  </ul>
+                </div>
+              </section>
+
+            </aside>
+          </div>
+
+          <!-- Quiet footer — full id, parent, identity primitives -->
+          <div class="mt-10 pt-6 border-t border-border text-xs text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-2">
+            <button class="inline-flex items-center gap-1.5 hover:text-foreground transition-colors">
+              <i data-lucide="hash" class="h-3 w-3"></i>
+              <span class="font-mono">ag_4f8a2c91b7</span>
+              <i data-lucide="copy" class="h-3 w-3"></i>
+            </button>
+            <span class="text-border">·</span>
+            <span>created Apr 8, 2026</span>
+            <span class="text-border">·</span>
+            <span>parent <a href="#" class="text-foreground/70 hover:text-foreground font-mono">team-alpha</a></span>
+            <span class="text-border">·</span>
+            <span>runtime <span class="font-mono">claude-opus-4-7</span></span>
+            <span class="text-border">·</span>
+            <span>review policy <span class="font-mono">require_human</span></span>
+          </div>
+
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <script>
+    lucide.createIcons();
+    document.getElementById('theme-toggle').addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+      lucide.createIcons();
+    });
+  </script>
+</body>
+</html>
