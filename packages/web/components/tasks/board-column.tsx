@@ -4,9 +4,10 @@ import { MoreHorizontal, Plus } from "lucide-react";
 import { TaskCard } from "./task-card";
 import { cn } from "@/lib/utils";
 import type { TaskListItem } from "@/lib/types/tasks";
+import type { Lifecycle } from "@/lib/tasks-grouping";
 
 export type BoardLane = {
-  key: "pending" | "in_progress" | "in_review" | "done";
+  key: Lifecycle;
   label: string;
   dot: string;
   count: number;

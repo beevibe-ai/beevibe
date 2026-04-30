@@ -1,10 +1,12 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { SessionDetailClient } from "./session-detail-client";
 
 export const metadata: Metadata = { title: "Session" };
 
-export default function SessionDetailPage(_props: {
+export default function SessionDetailPage({
+  params,
+}: {
   params: { id: string; sid: string };
 }) {
-  notFound();
+  return <SessionDetailClient taskId={params.id} sessionShortId={params.sid} />;
 }

@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { TaskDetailClient } from "./task-detail-client";
 
 export const metadata: Metadata = { title: "Task" };
 
-export default function TaskDetailPage(_props: { params: { id: string } }) {
-  notFound();
+export default function TaskDetailPage({ params }: { params: { id: string } }) {
+  return <TaskDetailClient taskId={params.id} />;
 }
