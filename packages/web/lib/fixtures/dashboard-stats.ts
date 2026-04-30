@@ -1,15 +1,21 @@
 import type { TaskStatus } from "@beevibe/core";
 
+export type KpiMetaColor = "muted" | "review" | "done" | "failed";
+export interface KpiMetaPart {
+  text: string;
+  color?: KpiMetaColor;
+}
+
 export interface KpiStat {
   label: string;
   value: string;
   unit?: string;
-  meta: string;
-  meta_color?: "muted" | "review" | "done" | "failed";
+  meta: KpiMetaPart[];
   href: string;
   trend: number[];
   trend_color: "running" | "review" | "primary" | "done";
   trend_kind: "line" | "bar";
+  bar_opacities?: number[];
 }
 
 export const fixtureKpis: KpiStat[] = [
@@ -17,7 +23,7 @@ export const fixtureKpis: KpiStat[] = [
     label: "Active sessions",
     value: "3",
     unit: "running",
-    meta: "4m oldest · 18m avg",
+    meta: [{ text: "4m oldest · 18m avg" }],
     href: "/threads",
     trend: [4, 6, 6, 10, 10, 14, 14, 12, 16, 18, 20, 20, 18],
     trend_color: "running",
@@ -27,8 +33,10 @@ export const fixtureKpis: KpiStat[] = [
     label: "Awaiting your review",
     value: "7",
     unit: "tasks",
-    meta: "oldest 1d · 3 high priority",
-    meta_color: "review",
+    meta: [
+      { text: "oldest 1d · " },
+      { text: "3 high priority", color: "review" },
+    ],
     href: "/tasks",
     trend: [4, 6, 8, 10, 8, 12, 14, 16, 16, 18, 18, 20, 20],
     trend_color: "review",
@@ -37,8 +45,10 @@ export const fixtureKpis: KpiStat[] = [
   {
     label: "Today's spend",
     value: "$4.21",
-    meta: "+$0.42 vs yesterday",
-    meta_color: "failed",
+    meta: [
+      { text: "+$0.42", color: "failed" },
+      { text: " vs yesterday" },
+    ],
     href: "#",
     trend: [4, 6, 8, 8, 10, 12, 14, 14, 16, 18, 18, 20, 20],
     trend_color: "primary",
@@ -48,12 +58,15 @@ export const fixtureKpis: KpiStat[] = [
     label: "Completed today",
     value: "12",
     unit: "tasks",
-    meta: "+3 vs yesterday · 1 failed",
-    meta_color: "done",
+    meta: [
+      { text: "+3", color: "done" },
+      { text: " vs yesterday · 1 failed" },
+    ],
     href: "/tasks",
     trend: [10, 14, 18, 12, 16, 20, 18],
     trend_color: "done",
     trend_kind: "bar",
+    bar_opacities: [0.3, 0.3, 0.4, 0.3, 0.4, 0.5, 1.0],
   },
 ];
 

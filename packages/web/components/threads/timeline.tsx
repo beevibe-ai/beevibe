@@ -16,6 +16,10 @@ export function ThreadTimeline() {
         {fixtureThreadEvents.map((event, i) => (
           <EventRow key={i} event={event} />
         ))}
+        <div className="text-xs text-muted-foreground py-1.5 px-2 flex items-center gap-2">
+          <span className="animate-pulse-breathe inline-block h-1.5 w-1.5 rounded-full bg-status-review" />
+          <span>Awaiting your review</span>
+        </div>
       </div>
     </div>
   );

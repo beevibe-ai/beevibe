@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Check, ChevronLeft, RotateCcw, X } from "lucide-react";
+import { Check, ChevronLeft, Moon, RotateCcw, Sun, X } from "lucide-react";
 import { TaskStatusPill, PriorityPill, SessionStatusPill } from "@/components/detail/status-pill";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { HierChip } from "@/components/hier-chip";
+import { RichTextRender } from "@/components/rich-text";
 import { findTaskById } from "@/lib/fixtures/tasks";
 import { formatRelativeTime, shortId } from "@/lib/format";
 
@@ -109,8 +110,10 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
                   Description
                 </h3>
                 <div className="space-y-3 text-sm leading-6">
-                  {task.description.split("\n\n").map((p, i) => (
-                    <p key={i}>{p}</p>
+                  {task.description.map((p, i) => (
+                    <p key={i}>
+                      <RichTextRender value={p} />
+                    </p>
                   ))}
                 </div>
               </section>
@@ -122,7 +125,9 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
                   Result summary
                 </h3>
                 <div className="space-y-3 text-sm leading-6">
-                  <p>{task.result_summary}</p>
+                  <p>
+                    <RichTextRender value={task.result_summary} />
+                  </p>
                 </div>
               </section>
             ) : null}
@@ -177,6 +182,16 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
           </span>
           <span className="text-border">·</span>
           <span>{task.parent_task_id ? `Parent ${shortId(task.parent_task_id)}` : "No parent task"}</span>
+        </div>
+
+        <div className="mt-12 text-xs text-muted-foreground flex items-center gap-3">
+          <span className="font-mono">mock</span>
+          <span className="text-border">·</span>
+          <span>
+            Honors prefers-color-scheme. Click the{" "}
+            <Moon className="h-3 w-3 inline align-[-1px]" />/
+            <Sun className="h-3 w-3 inline align-[-1px]" /> in the header to override.
+          </span>
         </div>
       </div>
     </div>

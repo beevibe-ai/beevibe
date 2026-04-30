@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Hash, Info } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { ChannelRail } from "@/components/threads/channel-rail";
+import { ThreadActionFooter } from "@/components/threads/thread-action-footer";
 import { ThreadTimeline } from "@/components/threads/timeline";
 import { fixtureActiveChannel } from "@/lib/fixtures/thread-messages";
 
@@ -60,6 +61,7 @@ export default function ThreadsPage() {
         </header>
 
         <ThreadTimeline />
+        <ThreadActionFooter />
       </main>
     </div>
   );

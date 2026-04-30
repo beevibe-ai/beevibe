@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
+import { Info } from "lucide-react";
 import { MeshActivityFeed } from "@/components/mesh/activity-feed";
+import { ChainBudget } from "@/components/mesh/chain-budget";
 import { MeshGraphStatic } from "@/components/mesh/graph-static";
-import { ThreadsSubNav } from "@/components/threads/sub-nav";
 import { fixtureMeshSummary } from "@/lib/fixtures/mesh";
 
 export const metadata: Metadata = { title: "Mesh" };
@@ -10,8 +11,6 @@ export default function MeshPage() {
   return (
     <div className="flex-1 overflow-auto">
       <div className="max-w-5xl mx-auto pt-8 pb-12 px-6">
-        <ThreadsSubNav />
-
         <div className="mb-6 flex items-baseline justify-between gap-6">
           <div>
             <h1 className="text-base font-semibold mb-1">Mesh activity</h1>
@@ -38,7 +37,21 @@ export default function MeshPage() {
 
         <div className="grid grid-cols-5 gap-6">
           <MeshActivityFeed />
-          <MeshGraphStatic />
+          <div className="col-span-2">
+            <MeshGraphStatic />
+            <ChainBudget />
+          </div>
+        </div>
+
+        <div className="mt-10 text-xs text-muted-foreground flex items-start gap-2 max-w-2xl">
+          <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <span>
+            <span className="text-foreground/80">Each ask is a session.</span> Caller and target
+            agents stay bounded — neither dumps its memory into a shared pool. The target answers
+            from its own context; the caller incorporates the answer into its work.{" "}
+            <span className="font-mono">ChainBudget</span> caps depth and total tokens to prevent
+            runaway asks.
+          </span>
         </div>
       </div>
     </div>

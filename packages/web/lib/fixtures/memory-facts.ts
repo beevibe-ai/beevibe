@@ -1,14 +1,19 @@
 import type { FactType, MemoryScope } from "@beevibe/core";
+import type { RichText } from "@/components/rich-text";
+
+export type MergeOrigin = "merged" | "promoted" | "single";
 
 export interface MemoryFactDisplay {
   id: string;
-  content: string;
+  content: RichText;
   fact_type: FactType;
   scope: MemoryScope;
   agent_id: string;
   agent_label: string;
   source_session_count: number;
   created_at: Date;
+  merge_origin?: MergeOrigin;
+  promotion_origin_scope?: MemoryScope;
 }
 
 const now = Date.now();
@@ -16,6 +21,90 @@ const daysAgo = (d: number) => new Date(now - d * 86_400_000);
 const weeksAgo = (w: number) => new Date(now - w * 7 * 86_400_000);
 
 export const fixtureFacts: MemoryFactDisplay[] = [
+  {
+    id: "fct_3d9f7c10a4",
+    content: [
+      "Claude Code spawns subprocesses; the executor must reap them with ",
+      { mono: "process_group_id" },
+      ", not just ",
+      { mono: "process_pid" },
+      ", or orphaned children accumulate over long runs.",
+    ],
+    fact_type: "gotcha",
+    scope: "ic",
+    agent_id: "agt_ic1",
+    agent_label: "ic-agent-1",
+    source_session_count: 4,
+    created_at: daysAgo(3),
+    merge_origin: "merged",
+  },
+  {
+    id: "fct_ic1_mcp",
+    content: [
+      "When binding bv_u_ to MCP, the server-assigned ",
+      { mono: "Mcp-Session-Id" },
+      " must be cached in-memory keyed to the session row id — Claude Code CLI auto-echoes the header on every subsequent request per spec 2025-11-25.",
+    ],
+    fact_type: "decision",
+    scope: "ic",
+    agent_id: "agt_ic1",
+    agent_label: "ic-agent-1",
+    source_session_count: 1,
+    created_at: daysAgo(2),
+    merge_origin: "single",
+  },
+  {
+    id: "fct_ic1_notify",
+    content:
+      "Postgres NOTIFY payload is capped at 8KB. Keep payloads to id, status, and timestamps; clients refetch full rows via HTTP after the event.",
+    fact_type: "decision",
+    scope: "team",
+    agent_id: "agt_ic1",
+    agent_label: "ic-agent-1",
+    source_session_count: 3,
+    created_at: daysAgo(4),
+    merge_origin: "promoted",
+    promotion_origin_scope: "ic",
+  },
+  {
+    id: "fct_ic1_oauth21",
+    content:
+      "OAuth 2.1 strict mode rejects implicit grant entirely. For Claude Code CLI integration, use authorization-code-with-PKCE; bv_ keys exchange for short-lived bearer tokens via the token endpoint.",
+    fact_type: "pattern",
+    scope: "ic",
+    agent_id: "agt_ic1",
+    agent_label: "ic-agent-1",
+    source_session_count: 2,
+    created_at: daysAgo(5),
+    merge_origin: "merged",
+  },
+  {
+    id: "fct_ic1_drift",
+    content: [
+      "When the OAuth provider config drift (e.g., redirect URI changed in their dashboard, not ours), the failure surfaces as a 400 from ",
+      { mono: "/token" },
+      ", not a redirect failure. Log the upstream response body, not just status.",
+    ],
+    fact_type: "gotcha",
+    scope: "ic",
+    agent_id: "agt_ic1",
+    agent_label: "ic-agent-1",
+    source_session_count: 1,
+    created_at: daysAgo(6),
+    merge_origin: "single",
+  },
+  {
+    id: "fct_ic1_argon",
+    content:
+      "Prefer Argon2id over bcrypt for new password hashes — Argon2 has tunable memory cost that resists GPU attack better; bcrypt's 72-byte input limit is a footgun for long passphrases.",
+    fact_type: "preference",
+    scope: "ic",
+    agent_id: "agt_ic1",
+    agent_label: "ic-agent-1",
+    source_session_count: 1,
+    created_at: weeksAgo(1),
+    merge_origin: "single",
+  },
   {
     id: "fct_8c4b2af19e",
     content:
@@ -26,17 +115,6 @@ export const fixtureFacts: MemoryFactDisplay[] = [
     agent_label: "team-alpha",
     source_session_count: 3,
     created_at: daysAgo(2),
-  },
-  {
-    id: "fct_3d9f7c10a4",
-    content:
-      "Claude Code spawns subprocesses; the executor must reap them with process_group_id, not just process_pid, or orphaned children accumulate over long runs.",
-    fact_type: "gotcha",
-    scope: "ic",
-    agent_id: "agt_ic1",
-    agent_label: "ic-agent-1",
-    source_session_count: 2,
-    created_at: daysAgo(3),
   },
   {
     id: "fct_2e9a4f8c3d",

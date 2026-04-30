@@ -29,7 +29,15 @@ export function LineSparkline({ values, color }: { values: number[]; color: Colo
   );
 }
 
-export function BarSparkline({ values, color }: { values: number[]; color: Color }) {
+export function BarSparkline({
+  values,
+  color,
+  opacities,
+}: {
+  values: number[];
+  color: Color;
+  opacities?: number[];
+}) {
   const w = 120;
   const h = 24;
   const max = Math.max(...values, 1);
@@ -39,7 +47,12 @@ export function BarSparkline({ values, color }: { values: number[]; color: Color
     <svg viewBox={`0 0 ${w} ${h}`} className={cn("mt-2 w-full h-6", COLOR_CLASS[color])}>
       {values.map((v, i) => {
         const barH = (v / max) * (h - 4);
-        const opacity = i === values.length - 1 ? 1 : 0.3 + (v / max) * 0.2;
+        const opacity =
+          opacities && opacities[i] !== undefined
+            ? opacities[i]
+            : i === values.length - 1
+              ? 1
+              : 0.3 + (v / max) * 0.2;
         return (
           <rect
             key={i}

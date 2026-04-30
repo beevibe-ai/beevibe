@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { ArrowRight, ArrowUpDown } from "lucide-react";
+import { ArrowRight, ArrowUpDown, Info } from "lucide-react";
+import { LoadOlderButton } from "@/components/load-older-button";
 import { MemorySubNav } from "@/components/memory/sub-nav";
 import { PromotionEventRow } from "@/components/promotions/event-row";
 import { ScopeChip } from "@/components/scope-chip";
@@ -61,6 +62,19 @@ export default function PromotionsPage() {
           {fixturePromotions.map((event) => (
             <PromotionEventRow key={event.id} event={event} />
           ))}
+        </div>
+
+        <LoadOlderButton label="Load 7 older promotions" />
+
+        <div className="mt-10 text-xs text-muted-foreground flex items-start gap-2 max-w-2xl">
+          <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+          <span>
+            <span className="text-foreground/80">No flat pool exists.</span> Every fact, at every
+            scope, is attributed to its originating agent (
+            <span className="font-mono">memory_fact.agent_id</span> is non-null). Promotion changes{" "}
+            <em>visibility radius</em>, not authorship. The org agent reads org-scope facts at
+            brief-time and can override the synthesized view via its own core memory.
+          </span>
         </div>
       </div>
     </div>

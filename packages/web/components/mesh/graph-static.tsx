@@ -20,7 +20,7 @@ const EDGE_COLOR = {
 
 export function MeshGraphStatic() {
   return (
-    <section className="col-span-2">
+    <section>
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-[10px] uppercase tracking-wider text-muted-foreground">
           Live graph · last 24h

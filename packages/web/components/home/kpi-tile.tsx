@@ -1,14 +1,14 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { BarSparkline, LineSparkline } from "./sparkline";
-import type { KpiStat } from "@/lib/fixtures/dashboard-stats";
+import type { KpiMetaColor, KpiStat } from "@/lib/fixtures/dashboard-stats";
 
-const META_COLOR = {
+const META_COLOR: Record<KpiMetaColor, string> = {
   muted: "text-muted-foreground",
   review: "text-status-review",
   done: "text-status-done",
   failed: "text-status-failed",
-} as const;
+};
 
 const VALUE_COLOR = {
   running: "",
@@ -37,13 +37,21 @@ export function KpiTile({ stat }: { stat: KpiStat }) {
         </span>
         {stat.unit ? <span className="text-sm text-muted-foreground">{stat.unit}</span> : null}
       </div>
-      <div className={cn("mt-2 text-xs", META_COLOR[stat.meta_color ?? "muted"])}>
-        {stat.meta}
+      <div className="mt-2 text-xs text-muted-foreground">
+        {stat.meta.map((part, i) => (
+          <span key={i} className={META_COLOR[part.color ?? "muted"]}>
+            {part.text}
+          </span>
+        ))}
       </div>
       {stat.trend_kind === "line" ? (
         <LineSparkline values={stat.trend} color={stat.trend_color} />
       ) : (
-        <BarSparkline values={stat.trend} color={stat.trend_color} />
+        <BarSparkline
+          values={stat.trend}
+          color={stat.trend_color}
+          opacities={stat.bar_opacities}
+        />
       )}
     </Link>
   );

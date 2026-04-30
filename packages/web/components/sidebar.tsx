@@ -7,6 +7,7 @@ import {
   Home,
   ListChecks,
   MessageSquare,
+  Network,
   Sparkles,
   type LucideIcon,
 } from "lucide-react";
@@ -39,7 +40,13 @@ const NAV: NavEntry[] = [
     href: "/threads",
     label: "Threads",
     icon: MessageSquare,
-    isActive: (p) => p.startsWith("/threads") || p.startsWith("/mesh"),
+    isActive: (p) => p.startsWith("/threads"),
+  },
+  {
+    href: "/mesh",
+    label: "Mesh",
+    icon: Network,
+    isActive: (p) => p.startsWith("/mesh"),
   },
   {
     href: "/memory",

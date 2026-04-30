@@ -6,9 +6,15 @@ import { ScopeTabs, type ScopeFilter } from "@/components/memory/scope-tabs";
 import { ScopeChip } from "@/components/scope-chip";
 import { FactTypeTag } from "@/components/fact-type-tag";
 import { EmptyState } from "@/components/empty-state";
+import { RichTextRender, type RichText } from "@/components/rich-text";
 import { formatRelativeTime } from "@/lib/format";
 import { fixtureFactCounts, fixtureFacts } from "@/lib/fixtures/memory-facts";
 import { cn } from "@/lib/utils";
+
+function richTextToPlain(rt: RichText): string {
+  if (typeof rt === "string") return rt;
+  return rt.map((seg) => (typeof seg === "string" ? seg : seg.mono)).join("");
+}
 
 export function MemoryClient() {
   const [scope, setScope] = useState<ScopeFilter>("all");
@@ -19,7 +25,7 @@ export function MemoryClient() {
     const lowerQuery = query.toLowerCase();
     return fixtureFacts.filter((f) => {
       if (scope !== "all" && f.scope !== scope) return false;
-      if (lowerQuery && !f.content.toLowerCase().includes(lowerQuery)) return false;
+      if (lowerQuery && !richTextToPlain(f.content).toLowerCase().includes(lowerQuery)) return false;
       return true;
     });
   }, [scope, query]);
@@ -132,7 +138,7 @@ export function MemoryClient() {
                   </td>
                   <td className="px-3 py-3">
                     <button className="block line-clamp-2 font-medium hover:underline cursor-pointer text-left">
-                      {fact.content}
+                      <RichTextRender value={fact.content} />
                     </button>
                     <div className="mt-1 text-[10px] text-muted-foreground font-mono">
                       {fact.source_session_count} session
@@ -168,10 +174,13 @@ export function MemoryClient() {
             <span className="text-foreground tabular-nums font-medium">{selected.size}</span>
             <span className="text-muted-foreground">selected</span>
             <button className="ml-auto inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs hover:bg-background transition-colors">
-              Promote
+              Promote scope
             </button>
             <button className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs hover:bg-background transition-colors">
-              Demote
+              Export
+            </button>
+            <button className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs hover:bg-background hover:text-status-failed transition-colors">
+              Delete
             </button>
             <button
               onClick={() => setSelected(new Set())}

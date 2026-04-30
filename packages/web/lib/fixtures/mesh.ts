@@ -1,16 +1,24 @@
+import type { RichText } from "@/components/rich-text";
+
 export interface MeshAsk {
   id: string;
   caller: string;
   target: string;
+  intermediate?: string;
+  arrow?: "right" | "up";
   type: "ask" | "negotiate" | "blocker";
+  type_label?: string;
   status: "in_flight" | "succeeded" | "blocked";
   duration_label: string;
-  intent: string;
-  response?: { agent: string; content: string };
+  intent: RichText;
+  response?: { agent: string; content: RichText };
   chain_depth: string;
-  source_session: string;
-  source_task_short_id: string;
+  chain_depth_color?: "review";
+  source_session?: string;
+  source_task_short_id?: string;
   source_task_age?: string;
+  awaiting_label?: string;
+  awaiting_task_short_id?: string;
 }
 
 export const fixtureMeshAsks: MeshAsk[] = [
@@ -34,8 +42,11 @@ export const fixtureMeshAsks: MeshAsk[] = [
     type: "negotiate",
     status: "in_flight",
     duration_label: "in flight · 11s",
-    intent:
-      "Should the task-repo refactor preserve the existing index idx_task_dispatch verbatim, or rebuild as a partial index? Performance budget for dispatch query is 5ms p95.",
+    intent: [
+      "Should the task-repo refactor preserve the existing index ",
+      { mono: "idx_task_dispatch" },
+      " verbatim, or rebuild as a partial index? Performance budget for dispatch query is 5ms p95.",
+    ],
     chain_depth: "1/4",
     source_session: "sess_b4f1",
     source_task_short_id: "T-1031",
@@ -51,28 +62,108 @@ export const fixtureMeshAsks: MeshAsk[] = [
       "Is the new auth path safe given how we're handling token refresh? Walking through: PKCE verifier, /token exchange, then writing the encrypted refresh blob.",
     response: {
       agent: "db-agent",
-      content:
-        "Refresh blob fine in `refresh_token` table — but you need FOR UPDATE SKIP LOCKED on read for the rotation flow, or two concurrent rotations race the increment. Patch in db_helpers.ts:142.",
+      content: [
+        "Refresh blob fine in ",
+        { mono: "refresh_token" },
+        " table — but you need ",
+        { mono: "FOR UPDATE SKIP LOCKED" },
+        " on read for the rotation flow, or two concurrent rotations race the increment. Patch in ",
+        { mono: "db_helpers.ts:142" },
+        ".",
+      ],
     },
     chain_depth: "1/4",
     source_session: "sess_3a8c",
-    source_task_short_id: "T-1014",
     source_task_age: "18m ago",
   },
   {
     id: "ask_4",
     caller: "ic-agent-2",
-    target: "team-alpha",
-    type: "blocker",
-    status: "blocked",
-    duration_label: "awaiting decision",
-    intent:
-      "Memory_fact promotion threshold disagreement: I want N=3 sessions with cosine ≥ 0.9 across ≥ 2 agents. Pattern is currently N=4 / 0.85 / 2. Which do we go with?",
+    target: "ic-agent-3",
+    type: "ask",
+    status: "succeeded",
+    duration_label: "4s",
+    intent: "Did you already migrate the logger to pino, or am I about to step on your work?",
+    response: {
+      agent: "ic-agent-3",
+      content: [
+        "Task-repo logger only — ",
+        { mono: "packages/core/src/adapters/postgres/task-repo.ts" },
+        ". Yours is greenfield.",
+      ],
+    },
     chain_depth: "1/4",
-    source_session: "sess_c2d1",
-    source_task_short_id: "T-1032",
+    source_session: "sess_5d12",
+    source_task_age: "47m ago",
+  },
+  {
+    id: "ask_5",
+    caller: "ic-agent-2",
+    target: "team-alpha",
+    arrow: "up",
+    type: "blocker",
+    type_label: "report_blocker",
+    status: "blocked",
+    duration_label: "blocker · 3h",
+    intent:
+      "OAuth provider config drifted between env vars and Auth0 dashboard. Need a human decision: roll forward with new redirect URI (breaks staging) or roll back the Auth0 change.",
+    chain_depth: "1/4",
+    awaiting_label: "awaiting",
+    awaiting_task_short_id: "T-1014",
+  },
+  {
+    id: "ask_6",
+    caller: "team-alpha",
+    target: "ic-agent-1",
+    intermediate: "db-agent",
+    type: "ask",
+    status: "succeeded",
+    duration_label: "24s",
+    intent:
+      "Is the OAuth refresh-token rotation production-safe? (ic-agent-1 sub-asked db-agent about lock semantics before answering.)",
+    chain_depth: "2/4",
+    chain_depth_color: "review",
+    source_session: "sess_8c4a",
+    source_task_age: "2h ago",
+  },
+  {
+    id: "ask_7",
+    caller: "db-agent",
+    target: "root-org",
+    type: "ask",
+    status: "succeeded",
+    duration_label: "6s",
+    intent:
+      "Should new migrations include explicit Down sections, or is auto-generated reverse acceptable?",
+    response: {
+      agent: "root-org",
+      content:
+        "Always explicit Down. Auto-generated reverses miss CHECK constraints and partial-index drops.",
+    },
+    chain_depth: "1/4",
+    source_session: "sess_4f9a",
+    source_task_age: "6h ago",
   },
 ];
+
+export const fixtureMeshAsksOlderCount = 16;
+
+export interface ChainBudgetRow {
+  used_label: string;
+  max_label: string;
+  percent: number;
+  color: "done" | "review" | "primary";
+}
+
+export const fixtureChainBudget: {
+  avg_depth: ChainBudgetRow;
+  max_depth: ChainBudgetRow;
+  tokens: ChainBudgetRow;
+} = {
+  avg_depth: { used_label: "1.3", max_label: "4", percent: 32, color: "done" },
+  max_depth: { used_label: "2", max_label: "4", percent: 50, color: "review" },
+  tokens: { used_label: "8.2k", max_label: "50k", percent: 18, color: "primary" },
+};
 
 export interface GraphNode {
   id: string;
