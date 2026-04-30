@@ -1,127 +1,48 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Inbox } from "lucide-react";
-import type { TaskStatus } from "@beevibe/core";
-import { LifecycleTabs, type Lifecycle } from "@/components/tasks/lifecycle-tabs";
-import { FilterBar } from "@/components/tasks/filter-bar";
-import { TaskRow } from "@/components/tasks/task-row";
+import { useState } from "react";
+import { ListChecks } from "lucide-react";
+import { ViewTabs, type TaskView } from "@/components/tasks/view-tabs";
+import { BoardColumn, type BoardLane } from "@/components/tasks/board-column";
 import { EmptyState } from "@/components/empty-state";
-import { fixtureCounts, fixtureTasks, type TaskListItem } from "@/lib/fixtures/tasks";
-import { cn } from "@/lib/utils";
 
-const STATUS_PRIORITY: Record<TaskStatus, number> = {
-  review: 0,
-  blocked: 1,
-  in_progress: 2,
-  revision: 2,
-  needs_revision: 2,
-  assigned: 3,
-  pending: 4,
-  done: 5,
-  failed: 6,
-  cancelled: 7,
-};
-
-const ARCHIVED_STATUSES: readonly TaskStatus[] = ["done", "failed", "cancelled"];
-
-function sortTasks(tasks: TaskListItem[]): TaskListItem[] {
-  return [...tasks].sort((a, b) => {
-    const sp = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
-    if (sp !== 0) return sp;
-    return b.updated_at.getTime() - a.updated_at.getTime();
-  });
-}
+const LANES: BoardLane[] = [
+  { key: "pending", label: "Pending", dot: "bg-muted-foreground/50", count: 0, tasks: [] },
+  { key: "in_progress", label: "In progress", dot: "bg-status-running", count: 0, tasks: [] },
+  { key: "in_review", label: "In review", dot: "bg-status-review", count: 0, tasks: [] },
+  { key: "done", label: "Done", dot: "bg-status-done", count: 0, tasks: [] },
+];
 
 export function TasksClient() {
-  const [lifecycle, setLifecycle] = useState<Lifecycle>("active");
+  const [view, setView] = useState<TaskView>("all");
   const [query, setQuery] = useState("");
 
-  const visible = useMemo(() => {
-    const lowerQuery = query.toLowerCase();
-    const filtered = fixtureTasks.filter((t) => {
-      if (lowerQuery && !t.title.toLowerCase().includes(lowerQuery)) return false;
-      const archived = ARCHIVED_STATUSES.includes(t.status);
-      if (lifecycle === "active") return !archived;
-      if (lifecycle === "archive") return archived;
-      return true;
-    });
-    return sortTasks(filtered);
-  }, [lifecycle, query]);
-
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="max-w-6xl mx-auto pb-6">
-        <LifecycleTabs
-          current={lifecycle}
-          counts={fixtureCounts}
-          onChange={setLifecycle}
-          onMineToReview={() => {}}
-          onNewTask={() => {}}
-        />
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <ViewTabs
+        current={view}
+        onChange={setView}
+        onNewTask={() => {}}
+        onSearch={() => {}}
+        query={query}
+        onQueryChange={setQuery}
+      />
 
-        <FilterBar query={query} onQueryChange={setQuery} />
-
-        {visible.length === 0 ? (
+      <div className="flex-1 overflow-x-auto overflow-y-auto">
+        <div className="group/board flex gap-4 px-6 py-5 min-h-full">
+          {LANES.map((lane) => (
+            <BoardColumn key={lane.key} lane={lane} />
+          ))}
+          <div className="shrink-0 w-2" aria-hidden />
+        </div>
+        <div className="px-6 pb-8 max-w-md mx-auto">
           <EmptyState
-            icon={Inbox}
-            title="No tasks match"
-            description={
-              query
-                ? `No ${lifecycle} tasks match "${query}".`
-                : `No ${lifecycle} tasks right now.`
-            }
+            icon={ListChecks}
+            title="No tasks yet"
+            description="Create a task to assign work to an agent."
           />
-        ) : (
-          <>
-            <ul>
-              {visible.map((t, i) => (
-                <TaskRow key={t.id} task={t} flash={i === 0} />
-              ))}
-            </ul>
-            <Pagination total={fixtureCounts.active} shown={visible.length} />
-          </>
-        )}
+        </div>
       </div>
-    </div>
-  );
-}
-
-function Pagination({ shown, total }: { shown: number; total: number }) {
-  return (
-    <div className="flex items-center justify-between px-6 py-3 mt-2 text-xs">
-      <span className="text-muted-foreground">
-        Showing <span className="text-foreground">1–{shown}</span> of{" "}
-        <span className="text-foreground">{total}</span> active
-      </span>
-      <nav className="flex items-center gap-1" aria-label="Pagination">
-        <button
-          disabled
-          aria-label="Previous page"
-          className="h-7 w-7 rounded inline-flex items-center justify-center hover:bg-secondary cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-        </button>
-        {[1, 2, 3].map((n) => (
-          <button
-            key={n}
-            aria-label={`Page ${n}`}
-            aria-current={n === 1 ? "page" : undefined}
-            className={cn(
-              "h-7 min-w-7 px-2 rounded cursor-pointer transition-colors",
-              n === 1 ? "text-foreground bg-secondary font-medium" : "hover:bg-secondary",
-            )}
-          >
-            {n}
-          </button>
-        ))}
-        <button
-          aria-label="Next page"
-          className="h-7 w-7 rounded inline-flex items-center justify-center hover:bg-secondary cursor-pointer transition-colors"
-        >
-          <ChevronRight className="h-3.5 w-3.5" />
-        </button>
-      </nav>
     </div>
   );
 }

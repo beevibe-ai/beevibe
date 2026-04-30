@@ -17,3 +17,8 @@ export function shortId(id: string): string {
   const trimmed = id.replace(/^[a-z]+_/, "");
   return `#${trimmed.slice(0, 6)}`;
 }
+
+export function sessionHref(sid: string, taskId?: string): string {
+  if (taskId) return `/tasks/${taskId}/sessions/${sid}`;
+  return "#";
+}

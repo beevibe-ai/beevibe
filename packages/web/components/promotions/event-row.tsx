@@ -1,9 +1,9 @@
 import Link from "next/link";
 import { ArrowRight, BrainCircuit, Hash, TrendingUp, X } from "lucide-react";
 import { ScopeChip } from "@/components/scope-chip";
-import { formatRelativeTime } from "@/lib/format";
+import { formatRelativeTime, sessionHref } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { PromotionEvent } from "@/lib/fixtures/promotion-events";
+import type { PromotionEvent } from "@/lib/types/promotion-events";
 
 const DOT_BORDER_CLASS = {
   ic: "border-hier-ic",
@@ -94,7 +94,7 @@ export function PromotionEventRow({ event }: { event: PromotionEvent }) {
         <span className="text-border">·</span>
         <span>source sessions:</span>
         {event.source_session_ids.map((sid) => (
-          <Link key={sid} href={`/sessions/${sid}`} className="hover:text-foreground transition-colors">
+          <Link key={sid} href={sessionHref(sid)} className="hover:text-foreground transition-colors">
             {sid}
           </Link>
         ))}

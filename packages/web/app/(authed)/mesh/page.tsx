@@ -3,7 +3,6 @@ import { Info } from "lucide-react";
 import { MeshActivityFeed } from "@/components/mesh/activity-feed";
 import { ChainBudget } from "@/components/mesh/chain-budget";
 import { MeshGraphStatic } from "@/components/mesh/graph-static";
-import { fixtureMeshSummary } from "@/lib/fixtures/mesh";
 
 export const metadata: Metadata = { title: "Mesh" };
 
@@ -20,18 +19,6 @@ export default function MeshPage() {
               <span className="font-mono text-foreground">ChainBudget</span> caps depth and total
               tokens per chain to prevent runaway loops.
             </p>
-          </div>
-          <div className="text-xs text-muted-foreground shrink-0 text-right">
-            <div>
-              <span className="text-foreground tabular-nums">{fixtureMeshSummary.asks_24h}</span> asks
-              · last 24h
-            </div>
-            <div className="mt-1">
-              <span className="animate-pulse-breathe inline-block h-1.5 w-1.5 rounded-full bg-status-running mr-1.5" />
-              <span className="text-status-running font-medium">
-                {fixtureMeshSummary.in_flight} in flight
-              </span>
-            </div>
           </div>
         </div>
 
