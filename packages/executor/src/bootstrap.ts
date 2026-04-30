@@ -21,6 +21,7 @@ import {
 import { TaskService } from "@beevibe/core/services/task-service";
 import { CancelListener } from "./cancel-listener.js";
 import { createTaskDispatcher } from "./dispatch.js";
+import { ExecutorHealthServer, DEFAULT_HEALTH_PORT } from "./health-server.js";
 import { buildPostDispatchHook } from "./post-dispatch.js";
 import { TaskExecutionWorker } from "./worker.js";
 
@@ -33,11 +34,14 @@ export interface BootstrapConfig {
   workspaceRoot?: string;
   /** Default 30_000ms. */
   pollIntervalMs?: number;
+  /** Default 3001. */
+  healthPort?: number;
 }
 
 export interface BootstrapResult {
   worker: TaskExecutionWorker;
   cancelListener: CancelListener;
+  healthServer: ExecutorHealthServer;
   pool: Pool;
   shutdown: () => Promise<void>;
 }
@@ -134,11 +138,17 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     worker,
   });
 
+  const healthServer = new ExecutorHealthServer(
+    worker,
+    cfg.healthPort ?? DEFAULT_HEALTH_PORT,
+  );
+
   const shutdown = async () => {
+    await healthServer.stop();
     await cancelListener.stop();
     await worker.stop();
     await pool.end();
   };
 
-  return { worker, cancelListener, pool, shutdown };
+  return { worker, cancelListener, healthServer, pool, shutdown };
 }

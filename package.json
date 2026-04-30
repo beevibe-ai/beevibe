@@ -9,14 +9,13 @@
   },
   "scripts": {
     "build": "turbo build",
-    "dev": "turbo dev",
+    "dev": "bash scripts/dev.sh",
     "lint": "turbo lint",
     "typecheck": "turbo typecheck",
     "test": "turbo test --concurrency=1",
     "clean": "turbo clean && rm -rf node_modules",
     "migrate": "node-pg-migrate --envPath .env",
-    "migrate:test": "node-pg-migrate --envPath .env -d DATABASE_URL_TEST",
-    "api:share": "tsx scripts/api-share.ts"
+    "migrate:test": "node-pg-migrate --envPath .env -d DATABASE_URL_TEST"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
