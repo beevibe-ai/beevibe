@@ -55,9 +55,9 @@ afterEach(() => {
 });
 
 function makeWrapper(client: QueryClient) {
-  return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
-  );
+  return function TestQueryWrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  };
 }
 
 describe("useLiveUpdates", () => {

@@ -33,9 +33,9 @@ const getMock = vi.mocked(api.tasks.get);
 
 function wrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  return ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>
-  );
+  return function TestQueryWrapper({ children }: { children: ReactNode }) {
+    return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  };
 }
 
 const sampleTask: TaskListItem = {
