@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { notFound } from "next/navigation";
+import { AgentDetailClient } from "./agent-detail-client";
 
 export const metadata: Metadata = { title: "Agent" };
 
-export default function AgentDetailPage(_props: { params: { id: string } }) {
-  notFound();
+export default function AgentDetailPage({ params }: { params: { id: string } }) {
+  return <AgentDetailClient agentId={params.id} />;
 }
