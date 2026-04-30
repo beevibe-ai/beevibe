@@ -78,7 +78,7 @@ describe("useTasks", () => {
 
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.data).toEqual([sampleTask]);
-    expect(listMock).toHaveBeenCalledWith({ view: "mine" });
+    expect(listMock).toHaveBeenCalledWith({ view: "mine" }, expect.objectContaining({}));
   });
 
   it("treats different filters as separate cache entries", async () => {
@@ -91,8 +91,8 @@ describe("useTasks", () => {
     await waitFor(() => expect(b.result.current.isSuccess).toBe(true));
 
     expect(listMock).toHaveBeenCalledTimes(2);
-    expect(listMock).toHaveBeenNthCalledWith(1, { view: "mine" });
-    expect(listMock).toHaveBeenNthCalledWith(2, { view: "sprint" });
+    expect(listMock).toHaveBeenNthCalledWith(1, { view: "mine" }, expect.objectContaining({}));
+    expect(listMock).toHaveBeenNthCalledWith(2, { view: "sprint" }, expect.objectContaining({}));
   });
 
   it("surfaces errors from the api", async () => {
@@ -128,7 +128,7 @@ describe("useTask", () => {
     getMock.mockResolvedValue(detail);
     const { result } = renderHook(() => useTask("t1"), { wrapper: wrapper() });
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
-    expect(getMock).toHaveBeenCalledWith("t1");
+    expect(getMock).toHaveBeenCalledWith("t1", expect.objectContaining({}));
     expect(result.current.data).toEqual(detail);
   });
 });

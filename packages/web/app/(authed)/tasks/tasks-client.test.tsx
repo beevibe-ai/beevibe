@@ -125,12 +125,14 @@ describe("TasksClient — lane rendering", () => {
     listMock.mockResolvedValue([]);
     renderClient();
 
-    await waitFor(() => expect(listMock).toHaveBeenCalledWith({}));
+    await waitFor(() =>
+      expect(listMock).toHaveBeenCalledWith({}, expect.objectContaining({})),
+    );
 
     await userEvent.click(screen.getByRole("button", { name: "My tasks" }));
 
     await waitFor(() =>
-      expect(listMock).toHaveBeenCalledWith({ view: "mine" }),
+      expect(listMock).toHaveBeenCalledWith({ view: "mine" }, expect.objectContaining({})),
     );
   });
 });

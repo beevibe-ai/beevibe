@@ -24,10 +24,12 @@ export function ThreadsClient() {
             <Hash className="h-4 w-4 text-muted-foreground shrink-0" />
             <div className="min-w-0">
               <h1 className="text-base font-semibold">
-                {data?.active_channel?.title ?? "Select a thread"}
+                {data?.active_channel ? data.active_channel.title : "Select a thread"}
               </h1>
               <div className="text-xs text-muted-foreground mt-0.5">
-                {data?.active_channel?.task_short_id ?? "Pick a channel from the rail or create a new task."}
+                {data?.active_channel
+                  ? data.active_channel.task_short_id
+                  : "Pick a channel from the rail or create a new task."}
               </div>
             </div>
           </div>

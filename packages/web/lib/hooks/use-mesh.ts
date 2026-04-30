@@ -6,7 +6,7 @@ import { queryKeys } from "./keys";
 export function useMeshOverview(filter: { since?: string } = {}) {
   return useQuery({
     queryKey: queryKeys.mesh.overview(filter),
-    queryFn: () => api.mesh.overview(filter),
+    queryFn: ({ signal }) => api.mesh.overview(filter, { signal }),
     enabled: isApiConfigured,
   });
 }

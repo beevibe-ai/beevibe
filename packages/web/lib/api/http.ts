@@ -37,9 +37,10 @@ function buildUrl(path: string, query?: FetchOptions["query"]): string {
 }
 
 export async function fetchJson<T>(path: string, opts: FetchOptions = {}): Promise<T> {
-  const { query, body, headers, ...rest } = opts;
+  const { query, body, headers, signal, ...rest } = opts;
   const init: RequestInit = {
     ...rest,
+    signal,
     headers: {
       Accept: "application/json",
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),

@@ -6,7 +6,7 @@ import { queryKeys } from "./keys";
 export function useThreads() {
   return useQuery({
     queryKey: queryKeys.threads.list(),
-    queryFn: () => api.threads.list(),
+    queryFn: ({ signal }) => api.threads.list({ signal }),
     enabled: isApiConfigured,
   });
 }
@@ -14,7 +14,7 @@ export function useThreads() {
 export function useThread(id: string | undefined) {
   return useQuery({
     queryKey: id ? queryKeys.threads.detail(id) : queryKeys.threads.all,
-    queryFn: () => api.threads.get(id as string),
+    queryFn: ({ signal }) => api.threads.get(id as string, { signal }),
     enabled: isApiConfigured && !!id,
   });
 }

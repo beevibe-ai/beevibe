@@ -6,12 +6,20 @@ import { useDashboard } from "@/lib/hooks/use-dashboard";
 import { isApiConfigured } from "@/lib/api/config";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
+import { KpiTileSkeleton } from "@/components/skeletons";
+import { cn } from "@/lib/utils";
 import { KpiTile } from "@/components/home/kpi-tile";
 import { FleetBars } from "@/components/home/fleet-bars";
 import { StatusBreakdownBar } from "@/components/home/status-breakdown";
 import { TrendChart } from "@/components/home/trend-chart";
 import type { DashboardSummary } from "@/lib/api/types";
 import type { AttentionItem } from "@/lib/types/dashboard";
+
+const ATTENTION_DOT: Record<AttentionItem["status"], string> = {
+  blocked: "bg-status-blocked",
+  failed: "bg-status-failed",
+  review: "bg-status-review",
+};
 
 export function HomeClient() {
   const { data, isLoading, isError } = useDashboard();
@@ -63,7 +71,7 @@ function Body({
       <div className="space-y-6">
         <div className="grid grid-cols-4 gap-6">
           {[0, 1, 2, 3].map((i) => (
-            <Skeleton key={i} className="h-24 rounded-lg" />
+            <KpiTileSkeleton key={i} />
           ))}
         </div>
         <Skeleton className="h-32 rounded-lg" />
@@ -124,19 +132,16 @@ function Body({
 }
 
 function AttentionRow({ item }: { item: AttentionItem }) {
-  const dot =
-    item.status === "blocked"
-      ? "bg-status-blocked"
-      : item.status === "failed"
-        ? "bg-status-failed"
-        : "bg-status-review";
   return (
     <li>
       <Link
         href={item.href}
         className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 hover:bg-secondary/30 transition-colors"
       >
-        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${dot}`} aria-hidden />
+        <span
+          className={cn("h-1.5 w-1.5 rounded-full shrink-0", ATTENTION_DOT[item.status])}
+          aria-hidden
+        />
         <span className="flex-1 min-w-0 truncate text-sm">{item.title}</span>
         <span className="text-xs text-muted-foreground tabular-nums shrink-0">{item.age}</span>
       </Link>

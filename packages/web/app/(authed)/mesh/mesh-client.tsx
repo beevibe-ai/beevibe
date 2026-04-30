@@ -3,6 +3,7 @@
 import { AlertTriangle, Info, Network } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
+import { MeshAskSkeleton } from "@/components/skeletons";
 import { MeshActivityFeed } from "@/components/mesh/activity-feed";
 import { MeshGraphStatic } from "@/components/mesh/graph-static";
 import { ChainBudget } from "@/components/mesh/chain-budget";
@@ -80,7 +81,7 @@ function Body({
       <div className="grid grid-cols-5 gap-6">
         <div className="col-span-3 space-y-2">
           {[0, 1, 2].map((i) => (
-            <Skeleton key={i} className="h-20 rounded-lg" />
+            <MeshAskSkeleton key={i} />
           ))}
         </div>
         <div className="col-span-2">

@@ -6,7 +6,7 @@ import { queryKeys } from "./keys";
 export function useTasks(filter: TaskListFilter = {}) {
   return useQuery({
     queryKey: queryKeys.tasks.list(filter),
-    queryFn: () => api.tasks.list(filter),
+    queryFn: ({ signal }) => api.tasks.list(filter, { signal }),
     enabled: isApiConfigured,
   });
 }
@@ -14,7 +14,7 @@ export function useTasks(filter: TaskListFilter = {}) {
 export function useTask(id: string | undefined) {
   return useQuery({
     queryKey: id ? queryKeys.tasks.detail(id) : queryKeys.tasks.all,
-    queryFn: () => api.tasks.get(id as string),
+    queryFn: ({ signal }) => api.tasks.get(id as string, { signal }),
     enabled: isApiConfigured && !!id,
   });
 }

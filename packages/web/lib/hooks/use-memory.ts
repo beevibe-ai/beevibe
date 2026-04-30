@@ -7,7 +7,7 @@ import { queryKeys } from "./keys";
 export function useMemoryFacts(filter: { scope?: MemoryScope } = {}) {
   return useQuery({
     queryKey: queryKeys.memory.facts(filter),
-    queryFn: () => api.memory.listFacts(filter),
+    queryFn: ({ signal }) => api.memory.listFacts(filter, { signal }),
     enabled: isApiConfigured,
   });
 }

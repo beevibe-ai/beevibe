@@ -16,7 +16,7 @@ import {
 import type { MemoryScope } from "@beevibe/core";
 import { ScopeTabs, type ScopeFilter } from "@/components/memory/scope-tabs";
 import { EmptyState } from "@/components/empty-state";
-import { Skeleton } from "@/components/skeleton";
+import { FactRowSkeleton } from "@/components/skeletons";
 import { FactTypeTag } from "@/components/fact-type-tag";
 import { ScopeChip } from "@/components/scope-chip";
 import { RichTextRender } from "@/components/rich-text";
@@ -26,6 +26,7 @@ import { formatRelativeTime } from "@/lib/format";
 import type { MemoryFactDisplay, FactCounts } from "@/lib/types/memory-facts";
 
 const EMPTY_COUNTS: FactCounts = { total: 0, ic: 0, team: 0, org: 0 };
+const EMPTY_FACTS: MemoryFactDisplay[] = [];
 
 export function MemoryClient() {
   const [scope, setScope] = useState<ScopeFilter>("all");
@@ -34,8 +35,10 @@ export function MemoryClient() {
   const filterScope: MemoryScope | undefined = scope === "all" ? undefined : scope;
   const { data, isLoading, isError } = useMemoryFacts({ scope: filterScope });
 
-  const counts = useMemo(() => deriveCounts(data ?? []), [data]);
-  const filtered = useMemo(() => applyFilter(data ?? [], query), [data, query]);
+  const facts = data ?? EMPTY_FACTS;
+  const counts = useMemo(() => deriveCounts(facts), [facts]);
+  const haystacks = useMemo(() => buildHaystacks(facts), [facts]);
+  const filtered = useMemo(() => applyFilter(facts, haystacks, query), [facts, haystacks, query]);
 
   return (
     <>
@@ -136,11 +139,7 @@ function Body({
     return (
       <>
         {[0, 1, 2, 3].map((i) => (
-          <tr key={i}>
-            <td colSpan={5} className="px-3 py-3">
-              <Skeleton className="h-5 w-full" />
-            </td>
-          </tr>
+          <FactRowSkeleton key={i} />
         ))}
       </>
     );
@@ -217,13 +216,22 @@ function deriveCounts(facts: MemoryFactDisplay[]): FactCounts {
   return counts;
 }
 
-function applyFilter(facts: MemoryFactDisplay[], query: string): MemoryFactDisplay[] {
+function buildHaystacks(facts: MemoryFactDisplay[]): string[] {
+  return facts.map((f) => {
+    const content =
+      typeof f.content === "string" ? f.content : f.content.map(stringify).join(" ");
+    return `${content} ${f.agent_label}`.toLowerCase();
+  });
+}
+
+function applyFilter(
+  facts: MemoryFactDisplay[],
+  haystacks: string[],
+  query: string,
+): MemoryFactDisplay[] {
   const q = query.trim().toLowerCase();
   if (!q) return facts;
-  return facts.filter((f) => {
-    const text = typeof f.content === "string" ? f.content : f.content.map(stringify).join(" ");
-    return text.toLowerCase().includes(q) || f.agent_label.toLowerCase().includes(q);
-  });
+  return facts.filter((_, i) => haystacks[i].includes(q));
 }
 
 function stringify(seg: string | { mono: string }): string {

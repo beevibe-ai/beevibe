@@ -1,12 +1,13 @@
 "use client";
 
-import { AlertTriangle, Info, TrendingUp } from "lucide-react";
+import { AlertTriangle, Info, TrendingUp, type LucideIcon } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
-import { Skeleton } from "@/components/skeleton";
+import { PromotionEventSkeleton } from "@/components/skeletons";
 import { MemorySubNav } from "@/components/memory/sub-nav";
 import { PromotionEventRow } from "@/components/promotions/event-row";
 import { usePromotions } from "@/lib/hooks/use-promotions";
 import { isApiConfigured } from "@/lib/api/config";
+import type { PromotionEvent } from "@/lib/types/promotion-events";
 
 export function PromotionsClient() {
   const { data, isLoading, isError } = usePromotions();
@@ -28,39 +29,7 @@ export function PromotionsClient() {
           </div>
         </div>
 
-        {!isApiConfigured ? (
-          <div className="rounded-lg border border-dashed border-border">
-            <EmptyState
-              icon={TrendingUp}
-              title="No promotions yet"
-              description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load promotion events."
-            />
-          </div>
-        ) : isError ? (
-          <div className="rounded-lg border border-dashed border-border">
-            <EmptyState icon={AlertTriangle} title="Couldn't load promotions" />
-          </div>
-        ) : isLoading ? (
-          <div className="pl-8 space-y-3">
-            {[0, 1, 2].map((i) => (
-              <Skeleton key={i} className="h-24 rounded" />
-            ))}
-          </div>
-        ) : !data || data.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-border">
-            <EmptyState
-              icon={TrendingUp}
-              title="No promotions yet"
-              description="Promotion decisions appear here as agents accumulate facts across sessions."
-            />
-          </div>
-        ) : (
-          <div className="pl-8 border-l border-border">
-            {data.map((event) => (
-              <PromotionEventRow key={event.id} event={event} />
-            ))}
-          </div>
-        )}
+        <Body data={data} isLoading={isLoading} isError={isError} />
 
         <div className="mt-10 text-xs text-muted-foreground flex items-start gap-2 max-w-2xl">
           <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
@@ -72,6 +41,66 @@ export function PromotionsClient() {
           </span>
         </div>
       </div>
+    </div>
+  );
+}
+
+function Body({
+  data,
+  isLoading,
+  isError,
+}: {
+  data: PromotionEvent[] | undefined;
+  isLoading: boolean;
+  isError: boolean;
+}) {
+  if (!isApiConfigured) {
+    return (
+      <EmptyWrapper
+        icon={TrendingUp}
+        title="No promotions yet"
+        description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load promotion events."
+      />
+    );
+  }
+
+  if (isError) {
+    return <EmptyWrapper icon={AlertTriangle} title="Couldn't load promotions" />;
+  }
+
+  if (isLoading) {
+    return (
+      <div className="pl-8 space-y-3">
+        {[0, 1, 2].map((i) => (
+          <PromotionEventSkeleton key={i} />
+        ))}
+      </div>
+    );
+  }
+
+  if (!data || data.length === 0) {
+    return (
+      <EmptyWrapper
+        icon={TrendingUp}
+        title="No promotions yet"
+        description="Promotion decisions appear here as agents accumulate facts across sessions."
+      />
+    );
+  }
+
+  return (
+    <div className="pl-8 border-l border-border">
+      {data.map((event) => (
+        <PromotionEventRow key={event.id} event={event} />
+      ))}
+    </div>
+  );
+}
+
+function EmptyWrapper(props: { icon: LucideIcon; title: string; description?: string }) {
+  return (
+    <div className="rounded-lg border border-dashed border-border">
+      <EmptyState {...props} />
     </div>
   );
 }

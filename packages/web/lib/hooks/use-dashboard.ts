@@ -6,7 +6,7 @@ import { queryKeys } from "./keys";
 export function useDashboard() {
   return useQuery({
     queryKey: queryKeys.dashboard.summary(),
-    queryFn: () => api.dashboard.summary(),
+    queryFn: ({ signal }) => api.dashboard.summary({ signal }),
     enabled: isApiConfigured,
   });
 }

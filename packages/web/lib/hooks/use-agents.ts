@@ -6,7 +6,7 @@ import { queryKeys } from "./keys";
 export function useAgents() {
   return useQuery({
     queryKey: queryKeys.agents.list(),
-    queryFn: () => api.agents.list(),
+    queryFn: ({ signal }) => api.agents.list({ signal }),
     enabled: isApiConfigured,
   });
 }
@@ -14,7 +14,7 @@ export function useAgents() {
 export function useAgent(id: string | undefined) {
   return useQuery({
     queryKey: id ? queryKeys.agents.detail(id) : queryKeys.agents.all,
-    queryFn: () => api.agents.get(id as string),
+    queryFn: ({ signal }) => api.agents.get(id as string, { signal }),
     enabled: isApiConfigured && !!id,
   });
 }

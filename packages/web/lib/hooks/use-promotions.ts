@@ -6,7 +6,7 @@ import { queryKeys } from "./keys";
 export function usePromotions() {
   return useQuery({
     queryKey: queryKeys.promotions.list(),
-    queryFn: () => api.promotions.list(),
+    queryFn: ({ signal }) => api.promotions.list({ signal }),
     enabled: isApiConfigured,
   });
 }

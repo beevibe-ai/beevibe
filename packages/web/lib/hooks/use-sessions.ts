@@ -6,7 +6,7 @@ import { queryKeys } from "./keys";
 export function useSession(shortId: string | undefined) {
   return useQuery({
     queryKey: shortId ? queryKeys.sessions.detail(shortId) : queryKeys.sessions.all,
-    queryFn: () => api.sessions.get(shortId as string),
+    queryFn: ({ signal }) => api.sessions.get(shortId as string, { signal }),
     enabled: isApiConfigured && !!shortId,
   });
 }

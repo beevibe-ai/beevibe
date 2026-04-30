@@ -23,6 +23,10 @@ export interface TaskListFilter {
   view?: TaskView;
 }
 
+export interface ReadOptions {
+  signal?: AbortSignal;
+}
+
 export type ApproveAction = "approve" | "reject" | "revise";
 
 export interface ApproveTaskInput {
@@ -45,9 +49,10 @@ export interface CreateTaskInput {
 
 export const api = {
   tasks: {
-    list: (filter: TaskListFilter = {}) =>
-      fetchJson<TaskListItem[]>("/api/tasks", { query: { ...filter } }),
-    get: (id: string) => fetchJson<TaskDetail>(`/api/tasks/${encodeURIComponent(id)}`),
+    list: (filter: TaskListFilter = {}, opts: ReadOptions = {}) =>
+      fetchJson<TaskListItem[]>("/api/tasks", { query: { ...filter }, signal: opts.signal }),
+    get: (id: string, opts: ReadOptions = {}) =>
+      fetchJson<TaskDetail>(`/api/tasks/${encodeURIComponent(id)}`, { signal: opts.signal }),
     approve: (id: string, input: ApproveTaskInput) =>
       fetchJson<Task>(`/api/tasks/${encodeURIComponent(id)}/approve`, {
         method: "POST",
@@ -62,32 +67,43 @@ export const api = {
       fetchJson<Task>("/api/tasks", { method: "POST", body: input }),
   },
   agents: {
-    list: () => fetchJson<AgentDisplay[]>("/api/agents"),
-    get: (id: string) => fetchJson<AgentDetail>(`/api/agents/${encodeURIComponent(id)}`),
+    list: (opts: ReadOptions = {}) =>
+      fetchJson<AgentDisplay[]>("/api/agents", { signal: opts.signal }),
+    get: (id: string, opts: ReadOptions = {}) =>
+      fetchJson<AgentDetail>(`/api/agents/${encodeURIComponent(id)}`, { signal: opts.signal }),
   },
   sessions: {
-    get: (shortId: string) =>
-      fetchJson<SessionDisplay>(`/api/sessions/${encodeURIComponent(shortId)}`),
+    get: (shortId: string, opts: ReadOptions = {}) =>
+      fetchJson<SessionDisplay>(`/api/sessions/${encodeURIComponent(shortId)}`, {
+        signal: opts.signal,
+      }),
     cancel: (shortId: string) =>
       fetchJson<void>(`/api/sessions/${encodeURIComponent(shortId)}/cancel`, { method: "POST" }),
   },
   memory: {
-    listFacts: (filter: { scope?: MemoryScope } = {}) =>
-      fetchJson<MemoryFactDisplay[]>("/api/memory/facts", { query: { ...filter } }),
+    listFacts: (filter: { scope?: MemoryScope } = {}, opts: ReadOptions = {}) =>
+      fetchJson<MemoryFactDisplay[]>("/api/memory/facts", {
+        query: { ...filter },
+        signal: opts.signal,
+      }),
   },
   promotions: {
-    list: () => fetchJson<PromotionEvent[]>("/api/promotions"),
+    list: (opts: ReadOptions = {}) =>
+      fetchJson<PromotionEvent[]>("/api/promotions", { signal: opts.signal }),
   },
   mesh: {
-    overview: (filter: { since?: string } = {}) =>
-      fetchJson<MeshOverview>("/api/mesh", { query: { ...filter } }),
+    overview: (filter: { since?: string } = {}, opts: ReadOptions = {}) =>
+      fetchJson<MeshOverview>("/api/mesh", { query: { ...filter }, signal: opts.signal }),
   },
   threads: {
-    list: () => fetchJson<ThreadsOverview>("/api/threads"),
-    get: (id: string) => fetchJson<ThreadDetail>(`/api/threads/${encodeURIComponent(id)}`),
+    list: (opts: ReadOptions = {}) =>
+      fetchJson<ThreadsOverview>("/api/threads", { signal: opts.signal }),
+    get: (id: string, opts: ReadOptions = {}) =>
+      fetchJson<ThreadDetail>(`/api/threads/${encodeURIComponent(id)}`, { signal: opts.signal }),
   },
   dashboard: {
-    summary: () => fetchJson<DashboardSummary>("/api/dashboard"),
+    summary: (opts: ReadOptions = {}) =>
+      fetchJson<DashboardSummary>("/api/dashboard", { signal: opts.signal }),
   },
 } as const;
 
