@@ -145,7 +145,7 @@ export default function TaskDetailPage({ params }: { params: { id: string } }) {
                   ) : null}
                 </div>
                 <Link
-                  href={`/sessions/${task.latest_session.short_id}`}
+                  href={`/tasks/${task.id}/sessions/${task.latest_session.short_id}`}
                   className="block group -mx-1 -my-1 px-1 py-1 rounded hover:bg-secondary/60 transition-colors"
                 >
                   <div className="flex items-center justify-between text-sm">

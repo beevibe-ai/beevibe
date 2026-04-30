@@ -1,14 +1,25 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { ChevronLeft, ChevronRight, Inbox } from "lucide-react";
 import type { TaskStatus } from "@beevibe/core";
-import { LifecycleTabs, type Lifecycle } from "@/components/tasks/lifecycle-tabs";
-import { FilterBar } from "@/components/tasks/filter-bar";
-import { TaskRow } from "@/components/tasks/task-row";
-import { EmptyState } from "@/components/empty-state";
-import { fixtureCounts, fixtureTasks, type TaskListItem } from "@/lib/fixtures/tasks";
-import { cn } from "@/lib/utils";
+import { ViewTabs, type TaskView } from "@/components/tasks/view-tabs";
+import { BoardColumn, type BoardLane } from "@/components/tasks/board-column";
+import { fixtureTasks, type TaskListItem } from "@/lib/fixtures/tasks";
+
+type LaneKey = BoardLane["key"];
+
+const LANE_OF: Record<TaskStatus, LaneKey | null> = {
+  pending: "pending",
+  assigned: "pending",
+  in_progress: "in_progress",
+  revision: "in_progress",
+  needs_revision: "in_progress",
+  review: "in_review",
+  blocked: "in_review",
+  done: "done",
+  failed: "done",
+  cancelled: "done",
+};
 
 const STATUS_PRIORITY: Record<TaskStatus, number> = {
   review: 0,
@@ -23,8 +34,6 @@ const STATUS_PRIORITY: Record<TaskStatus, number> = {
   cancelled: 7,
 };
 
-const ARCHIVED_STATUSES: readonly TaskStatus[] = ["done", "failed", "cancelled"];
-
 function sortTasks(tasks: TaskListItem[]): TaskListItem[] {
   return [...tasks].sort((a, b) => {
     const sp = STATUS_PRIORITY[a.status] - STATUS_PRIORITY[b.status];
@@ -33,95 +42,72 @@ function sortTasks(tasks: TaskListItem[]): TaskListItem[] {
   });
 }
 
+const LANES: { key: LaneKey; label: string; dot: string }[] = [
+  { key: "pending", label: "Pending", dot: "bg-muted-foreground/50" },
+  { key: "in_progress", label: "In progress", dot: "bg-status-running" },
+  { key: "in_review", label: "In review", dot: "bg-status-review" },
+  { key: "done", label: "Done", dot: "bg-status-done" },
+];
+
+const MY_ID = "per_weijia";
+
 export function TasksClient() {
-  const [lifecycle, setLifecycle] = useState<Lifecycle>("active");
+  const [view, setView] = useState<TaskView>("all");
   const [query, setQuery] = useState("");
 
-  const visible = useMemo(() => {
-    const lowerQuery = query.toLowerCase();
-    const filtered = fixtureTasks.filter((t) => {
-      if (lowerQuery && !t.title.toLowerCase().includes(lowerQuery)) return false;
-      const archived = ARCHIVED_STATUSES.includes(t.status);
-      if (lifecycle === "active") return !archived;
-      if (lifecycle === "archive") return archived;
+  const lanes = useMemo<BoardLane[]>(() => {
+    const lower = query.toLowerCase();
+    const visible = fixtureTasks.filter((t) => {
+      if (lower && !t.title.toLowerCase().includes(lower)) return false;
+      if (view === "mine") {
+        return t.creator_id === MY_ID || t.assignee_id?.startsWith("agt_");
+      }
+      if (view === "sprint") {
+        const lane = LANE_OF[t.status];
+        return lane === "in_progress" || lane === "in_review";
+      }
       return true;
     });
-    return sortTasks(filtered);
-  }, [lifecycle, query]);
+
+    const buckets: Record<LaneKey, TaskListItem[]> = {
+      pending: [],
+      in_progress: [],
+      in_review: [],
+      done: [],
+    };
+    for (const t of visible) {
+      const lane = LANE_OF[t.status];
+      if (lane) buckets[lane].push(t);
+    }
+
+    return LANES.map((lane) => ({
+      key: lane.key,
+      label: lane.label,
+      dot: lane.dot,
+      count: buckets[lane.key].length,
+      tasks: sortTasks(buckets[lane.key]),
+    }));
+  }, [view, query]);
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="max-w-6xl mx-auto pb-6">
-        <LifecycleTabs
-          current={lifecycle}
-          counts={fixtureCounts}
-          onChange={setLifecycle}
-          onMineToReview={() => {}}
-          onNewTask={() => {}}
-        />
+    <div className="flex-1 flex flex-col overflow-hidden">
+      <ViewTabs
+        current={view}
+        onChange={setView}
+        onNewTask={() => {}}
+        onSearch={() => {}}
+        query={query}
+        onQueryChange={setQuery}
+      />
 
-        <FilterBar query={query} onQueryChange={setQuery} />
-
-        {visible.length === 0 ? (
-          <EmptyState
-            icon={Inbox}
-            title="No tasks match"
-            description={
-              query
-                ? `No ${lifecycle} tasks match "${query}".`
-                : `No ${lifecycle} tasks right now.`
-            }
-          />
-        ) : (
-          <>
-            <ul>
-              {visible.map((t, i) => (
-                <TaskRow key={t.id} task={t} flash={i === 0} />
-              ))}
-            </ul>
-            <Pagination total={fixtureCounts.active} shown={visible.length} />
-          </>
-        )}
+      <div className="flex-1 overflow-x-auto overflow-y-auto">
+        <div className="group/board flex gap-4 px-6 py-5 min-h-full">
+          {lanes.map((lane, idx) => (
+            <BoardColumn key={lane.key} lane={lane} flashTopCard={idx === 1} />
+          ))}
+          <div className="shrink-0 w-2" aria-hidden />
+        </div>
       </div>
-    </div>
-  );
-}
-
-function Pagination({ shown, total }: { shown: number; total: number }) {
-  return (
-    <div className="flex items-center justify-between px-6 py-3 mt-2 text-xs">
-      <span className="text-muted-foreground">
-        Showing <span className="text-foreground">1–{shown}</span> of{" "}
-        <span className="text-foreground">{total}</span> active
-      </span>
-      <nav className="flex items-center gap-1" aria-label="Pagination">
-        <button
-          disabled
-          aria-label="Previous page"
-          className="h-7 w-7 rounded inline-flex items-center justify-center hover:bg-secondary cursor-pointer transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-        >
-          <ChevronLeft className="h-3.5 w-3.5" />
-        </button>
-        {[1, 2, 3].map((n) => (
-          <button
-            key={n}
-            aria-label={`Page ${n}`}
-            aria-current={n === 1 ? "page" : undefined}
-            className={cn(
-              "h-7 min-w-7 px-2 rounded cursor-pointer transition-colors",
-              n === 1 ? "text-foreground bg-secondary font-medium" : "hover:bg-secondary",
-            )}
-          >
-            {n}
-          </button>
-        ))}
-        <button
-          aria-label="Next page"
-          className="h-7 w-7 rounded inline-flex items-center justify-center hover:bg-secondary cursor-pointer transition-colors"
-        >
-          <ChevronRight className="h-3.5 w-3.5" />
-        </button>
-      </nav>
     </div>
   );
 }

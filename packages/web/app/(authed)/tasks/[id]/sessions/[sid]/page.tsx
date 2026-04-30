@@ -17,8 +17,12 @@ import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { findSessionById } from "@/lib/fixtures/sessions";
 import { formatRelativeTime } from "@/lib/format";
 
-export function generateMetadata({ params }: { params: { id: string } }): Metadata {
-  const session = findSessionById(params.id);
+export function generateMetadata({
+  params,
+}: {
+  params: { id: string; sid: string };
+}): Metadata {
+  const session = findSessionById(params.sid);
   return { title: session ? session.intent : "Session" };
 }
 
@@ -29,8 +33,12 @@ const STATUS_AVATAR = {
   cancelled: { Icon: XCircle, bg: "bg-secondary text-muted-foreground" },
 } as const;
 
-export default function SessionDetailPage({ params }: { params: { id: string } }) {
-  const session = findSessionById(params.id);
+export default function SessionDetailPage({
+  params,
+}: {
+  params: { id: string; sid: string };
+}) {
+  const session = findSessionById(params.sid);
   if (!session) notFound();
 
   const avatar = STATUS_AVATAR[session.status];

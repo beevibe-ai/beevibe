@@ -27,7 +27,7 @@ import {
 } from "@/lib/fixtures/agents";
 import { fixtureAgentMetrics, fixtureCoreBlocks } from "@/lib/fixtures/core-memory-blocks";
 import { fixtureFacts, type MergeOrigin } from "@/lib/fixtures/memory-facts";
-import { formatRelativeTime } from "@/lib/format";
+import { formatRelativeTime, sessionHref } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export function generateMetadata({ params }: { params: { id: string } }): Metadata {
@@ -233,7 +233,7 @@ export default function AgentDetailPage({ params }: { params: { id: string } }) 
                     const { Icon, className, spin } = SESSION_STATUS_ICON[s.status];
                     const cls =
                       "flex items-center gap-2 px-2 py-2 -mx-2 rounded hover:bg-secondary/40 transition-colors";
-                    const href = s.short_id ? `/sessions/${s.short_id}` : "/sessions/sess_3a8c";
+                    const href = sessionHref(s.short_id ?? "sess_3a8c");
                     return (
                       <li key={i}>
                         <Link href={href} className={cls}>

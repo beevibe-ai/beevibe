@@ -10,6 +10,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { sessionHref } from "@/lib/format";
 import { LoadOlderButton } from "@/components/load-older-button";
 import { RichTextRender } from "@/components/rich-text";
 import {
@@ -57,7 +58,7 @@ function AskCard({ ask }: { ask: MeshAsk }) {
   const isLive = ask.status === "in_flight";
   const isBlocked = ask.status === "blocked";
   const ArrowIcon = ask.arrow === "up" ? ArrowUp : ArrowRight;
-  const href = ask.source_session ? `/sessions/${ask.source_session}` : "#";
+  const href = ask.source_session ? sessionHref(ask.source_session) : "#";
 
   return (
     <Link
