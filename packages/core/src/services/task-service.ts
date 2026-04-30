@@ -1,8 +1,10 @@
-import type { Task, TaskStatus } from "../domain/task.js";
+import type { NextDispatchContext, Task, TaskStatus } from "../domain/task.js";
 import type { WorkProduct } from "../domain/work-product.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
+import type { SessionRepository } from "../ports/session-repo.js";
 import type {
   NewWorkProduct,
+  WorkProductPatch,
   WorkProductRepository,
 } from "../ports/work-product-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
@@ -23,22 +25,19 @@ export class InvalidTaskTransitionError extends Error {
   }
 }
 
-/** Approval verbs → the terminal status they transition the task to. */
-const APPROVAL_TRANSITIONS: Record<"approve" | "reject" | "revise", TaskStatus> = {
-  approve: "done",
-  reject: "cancelled",
-  // "revise" queues the task for re-work; the executor's claim will then
-  // transition needs_revision → revision (running as re-work).
-  revise: "needs_revision",
-};
+// ── Per-method accepted-from sets (M6.4 split) ────────────────────────────
+//
+// Each method has its own "approvable from" set, narrowed source-aware for
+// reviseTask. Approve from `blocked` would be semantically weird ("the work
+// is good as-is" while blocked); reject and revise from `blocked` are both
+// legitimate (forget about it, or here's how to unblock).
 
-/**
- * Statuses from which an approval action is legal. `review` is the natural
- * case (agent finished, waiting for human). `needs_revision` lets a reviewer
- * change their mind about a re-work request before the executor picks it
- * up — not allowed once the task is actively re-running (`revision`).
- */
-const APPROVABLE_FROM: readonly TaskStatus[] = ["review", "needs_revision"];
+const APPROVE_FROM: readonly TaskStatus[] = ["review", "needs_revision"];
+const REJECT_FROM: readonly TaskStatus[] = ["review", "needs_revision", "blocked"];
+
+/** Source-aware revise-from sets. Validated in reviseTask. */
+const HUMAN_REVISE_FROM: readonly TaskStatus[] = ["review", "needs_revision"];
+const PARENT_AGENT_REVISE_FROM: readonly TaskStatus[] = ["blocked"];
 
 /** Cancellation from these requires `force: true`. */
 const TERMINAL_STATUSES: readonly TaskStatus[] = ["done", "cancelled"];
@@ -51,6 +50,25 @@ export interface TaskServiceDeps {
   workProductRepo: WorkProductRepository;
   /** Looked up on `updateProgress` to apply the agent's `review_policy`. */
   agentRepo: AgentRepository;
+  /**
+   * M6.4: required by `reviseTask` to look up the prior session (used as
+   * `priorSessionId` in the stamped `next_dispatch_context`). Other methods
+   * don't touch sessionRepo, but the dep is unconditional to keep
+   * construction simple.
+   */
+  sessionRepo: SessionRepository;
+}
+
+export interface ReviseTaskOptions {
+  /**
+   * Required. Discriminates valid from-statuses + frames the resumed
+   * agent's intent prompt:
+   *   - `human`        ← review-cycle revision (POST /task/:id/revise)
+   *   - `parent_agent` ← post-blocker fix (revise_task MCP tool)
+   */
+  source: "human" | "parent_agent";
+  /** When source='parent_agent', the calling parent's agent id. */
+  reviserAgentId?: string;
 }
 
 /**
@@ -119,25 +137,88 @@ export class TaskService {
   }
 
   /**
-   * Approve / reject / revise a task awaiting review. Valid only when the
-   * task is currently in `review` or `needs_revision` (latter lets a
-   * reviewer undo a re-work request before the executor claims it).
+   * Approve a task: terminal transition `review|needs_revision → done`.
+   * Used by `POST /task/:id/approve` (human only).
    */
-  async approveTask(
-    taskId: string,
-    action: "approve" | "reject" | "revise",
-    resultSummary?: string,
-  ): Promise<Task> {
+  async approveTask(taskId: string, resultSummary?: string): Promise<Task> {
     const task = await this.requireTask(taskId);
-    if (!APPROVABLE_FROM.includes(task.status)) {
+    if (!APPROVE_FROM.includes(task.status)) {
       throw new InvalidTaskTransitionError(
-        `Cannot ${action} task in status '${task.status}' — must be one of: ${APPROVABLE_FROM.join(", ")}`,
+        `Cannot approve task in status '${task.status}' — must be one of: ${APPROVE_FROM.join(", ")}`,
       );
     }
-    const nextStatus = APPROVAL_TRANSITIONS[action];
     return this.deps.taskRepo.update(taskId, {
-      status: nextStatus,
+      status: "done",
       result_summary: resultSummary ?? task.result_summary,
+    });
+  }
+
+  /**
+   * Reject a task: terminal transition `review|needs_revision|blocked →
+   * cancelled`. Used by `POST /task/:id/reject` (human only).
+   */
+  async rejectTask(taskId: string, resultSummary?: string): Promise<Task> {
+    const task = await this.requireTask(taskId);
+    if (!REJECT_FROM.includes(task.status)) {
+      throw new InvalidTaskTransitionError(
+        `Cannot reject task in status '${task.status}' — must be one of: ${REJECT_FROM.join(", ")}`,
+      );
+    }
+    return this.deps.taskRepo.update(taskId, {
+      status: "cancelled",
+      result_summary: resultSummary ?? task.result_summary,
+    });
+  }
+
+  /**
+   * Revise a task: re-queue with feedback. Source-aware:
+   *   - `human` from review|needs_revision (review cycle)
+   *   - `parent_agent` from blocked (post-blocker fix via revise_task MCP)
+   *
+   * Stamps `task.next_dispatch_context` with the revision context (kind,
+   * source, from_status, feedback, prior_session_id) so dispatch.ts (M6.5)
+   * can build the right intent without re-deriving the from-state.
+   *
+   * Used by both `POST /task/:id/revise` (human) and the `revise_task` MCP
+   * tool (parent-agent). `result_summary` is preserved — only
+   * `next_dispatch_context` is mutated, so the agent's prior summary
+   * remains visible for audit.
+   */
+  async reviseTask(
+    taskId: string,
+    feedback: string,
+    opts: ReviseTaskOptions,
+  ): Promise<Task> {
+    const task = await this.requireTask(taskId);
+    const allowedFrom =
+      opts.source === "human" ? HUMAN_REVISE_FROM : PARENT_AGENT_REVISE_FROM;
+    if (!allowedFrom.includes(task.status)) {
+      throw new InvalidTaskTransitionError(
+        `Cannot revise task in status '${task.status}' from source '${opts.source}'. ` +
+          `Allowed from-statuses for source='${opts.source}': ${allowedFrom.join(", ")}`,
+      );
+    }
+
+    // Look up prior session for --resume continuity. cli_session_id-guarded:
+    // a session row without a started CLI subprocess (rare; e.g., spawn
+    // failed) can't be resumed.
+    const priorSession = await this.deps.sessionRepo.findLatestForTask(taskId);
+    const priorSessionId = priorSession?.cli_session_id ? priorSession.id : undefined;
+
+    const nextDispatchContext: NextDispatchContext = {
+      kind: "revision",
+      feedback,
+      source: opts.source,
+      // Captured BEFORE the UPDATE so buildIntent can frame the resumed
+      // intent correctly (especially blocked → revision post-blocker case).
+      from_status: task.status as "review" | "needs_revision" | "blocked",
+      reviser_agent_id: opts.reviserAgentId,
+      prior_session_id: priorSessionId,
+    };
+
+    return this.deps.taskRepo.update(taskId, {
+      status: "needs_revision",
+      next_dispatch_context: nextDispatchContext,
     });
   }
 
@@ -170,6 +251,22 @@ export class TaskService {
   /** List work products for a task (chronological order is the repo's concern). */
   async listWorkProducts(taskId: string): Promise<WorkProduct[]> {
     return this.deps.workProductRepo.listByTask(taskId);
+  }
+
+  /**
+   * Amend a work product (used by the `update_work_product` MCP tool — see M9
+   * for the agent skill that decides between create vs update). Mutable
+   * subset is `summary | url | provider | external_id | metadata`; identity
+   * (`type`, `title`, `task_id`, `agent_id`) is fixed at creation.
+   *
+   * Bumps `updated_at = NOW()` via the repo. Throws if the row doesn't
+   * exist (`work_product <id> not found`).
+   */
+  async updateWorkProduct(
+    id: string,
+    patch: WorkProductPatch,
+  ): Promise<WorkProduct> {
+    return this.deps.workProductRepo.update(id, patch);
   }
 
   /**

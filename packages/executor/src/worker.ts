@@ -68,6 +68,7 @@ export class TaskExecutionWorker {
   private running = false;
   private pollTimer: ReturnType<typeof setInterval> | null = null;
   private inFlight = new Map<string, AbortController>();
+  private lastPollAt: Date | null = null;
   private readonly pollIntervalMs: number;
   private readonly onError: (err: Error) => void;
 
@@ -75,6 +76,25 @@ export class TaskExecutionWorker {
     this.pollIntervalMs = config.pollIntervalMs ?? DEFAULT_POLL_MS;
     this.onError =
       config.onError ?? ((err) => console.error("[worker] dispatch error:", err));
+  }
+
+  /**
+   * Read-only snapshot for the health endpoint. Surfaces enough for an
+   * operator (or k8s liveness probe) to tell "is this process polling?"
+   * without exposing internal repos.
+   */
+  status(): {
+    running: boolean;
+    lastPollAt: Date | null;
+    inFlightCount: number;
+    pollIntervalMs: number;
+  } {
+    return {
+      running: this.running,
+      lastPollAt: this.lastPollAt,
+      inFlightCount: this.inFlight.size,
+      pollIntervalMs: this.pollIntervalMs,
+    };
   }
 
   /**
@@ -109,6 +129,7 @@ export class TaskExecutionWorker {
   /** One complete poll cycle: reap → dispatch. Public for testing. */
   async poll(): Promise<void> {
     if (!this.running) return;
+    this.lastPollAt = new Date();
     await this.reapOrphanedSessions();
     await this.dispatchReady();
   }

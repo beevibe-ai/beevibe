@@ -11,4 +11,5 @@ coverage/
 *.log
 .vscode/
 .idea/
+.claude/
 .gstack/

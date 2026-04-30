@@ -42,6 +42,22 @@
     "./services/memory": {
       "types": "./dist/services/memory/index.d.ts",
       "default": "./dist/services/memory/index.js"
+    },
+    "./services/task-service": {
+      "types": "./dist/services/task-service.d.ts",
+      "default": "./dist/services/task-service.js"
+    },
+    "./services/escalation-service": {
+      "types": "./dist/services/escalation-service.d.ts",
+      "default": "./dist/services/escalation-service.js"
+    },
+    "./auth": {
+      "types": "./dist/auth/index.d.ts",
+      "default": "./dist/auth/index.js"
+    },
+    "./test-helpers": {
+      "types": "./dist/test-helpers.d.ts",
+      "default": "./dist/test-helpers.js"
     }
   },
   "scripts": {

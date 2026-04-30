@@ -21,7 +21,7 @@ async function main(): Promise<void> {
     );
   }
 
-  const { worker, shutdown } = await bootstrap({
+  const { worker, cancelListener, healthServer, shutdown } = await bootstrap({
     databaseUrl: process.env.DATABASE_URL!,
     mcpServerUrl: process.env.BEEVIBE_MCP_SERVER_URL!,
     openaiApiKey: process.env.OPENAI_API_KEY!,
@@ -30,9 +30,14 @@ async function main(): Promise<void> {
     pollIntervalMs: process.env.POLL_INTERVAL_MS
       ? Number(process.env.POLL_INTERVAL_MS)
       : undefined,
+    healthPort: process.env.BEEVIBE_EXECUTOR_HEALTH_PORT
+      ? Number(process.env.BEEVIBE_EXECUTOR_HEALTH_PORT)
+      : undefined,
   });
 
+  await cancelListener.start();
   await worker.start();
+  await healthServer.start();
   console.error("[executor] ready");
 
   const stop = async (signal: string): Promise<void> => {

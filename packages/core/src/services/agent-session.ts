@@ -1,3 +1,4 @@
+import type { ResolutionProposal } from "../domain/escalation.js";
 import type { Session, SessionType } from "../domain/session.js";
 import { sessionId as newSessionId } from "../domain/ids.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
@@ -15,6 +16,14 @@ export interface AgentSessionDeps {
   sessionRepo: SessionRepository;
   runtime: AgentRuntime;
   memoryAgent: MemoryAgent;
+  /**
+   * Optional fire-and-forget hook fired once the terminal session row is
+   * written. Wired by composition roots — the executor uses it to call
+   * `postDispatchCheck` (M6.5: parent rollup + leaf retry-once on missing
+   * update_progress). Hook errors are caught and logged; they cannot affect
+   * the returned session.
+   */
+  onSessionComplete?: (session: Session) => Promise<void>;
 }
 
 export interface AgentSessionRunInput {
@@ -25,12 +34,25 @@ export interface AgentSessionRunInput {
   taskId?: string;
   /** Session kind. Defaults to "task" when taskId is set, else "chat". */
   type?: SessionType;
+  /**
+   * Optional pre-generated session id. If provided, AgentSession uses it
+   * instead of minting a new one. Used by MeshServer (M6.4) which needs to
+   * stamp the counterparty's session id on the negotiation row BEFORE the
+   * CLI subprocess spawns (so escalation flows can reference it).
+   */
+  sessionId?: string;
   /** Resume-chain pointer. Used to set `--resume <cli_session_id>` on the CLI. */
   priorSessionId?: string;
   /** Caller-controlled cancellation. */
   abortSignal?: AbortSignal;
   /** Step-by-step notifier for live UIs. */
   onStep?: (step: RuntimeStep) => void;
+  /**
+   * Skip the `onSessionComplete` hook for this run. Used by
+   * `postDispatchCheck`'s retry path to break the otherwise-recursive call
+   * (retry → hook → another postDispatchCheck → another retry → …).
+   */
+  skipOnComplete?: boolean;
 }
 
 /**
@@ -53,8 +75,10 @@ export class AgentSession {
     const agent = await this.deps.agentRepo.findById(input.agentId);
     if (!agent) throw new Error(`AgentSession: agent not found: ${input.agentId}`);
 
-    // 2. Session row
-    const sid = newSessionId();
+    // 2. Session row — caller may pre-supply an id (M6.4 mesh path needs to
+    // know B's sid before spawn so it can stamp counterparty_session_id on
+    // the negotiation row).
+    const sid = input.sessionId ?? newSessionId();
     const session = await this.deps.sessionRepo.create({
       id: sid,
       agent_id: input.agentId,
@@ -144,8 +168,120 @@ export class AgentSession {
       ),
     );
 
+    // 7. M6.5 hook for post-dispatch logic (parent rollup, leaf retry).
+    // Fire-and-forget; never blocks the caller's promise. Suppressed for the
+    // retry path (skipOnComplete) so the retry's own terminal write doesn't
+    // recursively re-trigger postDispatchCheck.
+    if (!input.skipOnComplete) {
+      void this.deps.onSessionComplete?.(finalSession).catch((err) =>
+        console.error(
+          "[AgentSession] onSessionComplete failed:",
+          (err as Error).message,
+        ),
+      );
+    }
+
     // Intentionally do NOT await session.id  — return updated session row.
     void session;
     return finalSession;
   }
 }
+
+// ── ResumeReason + buildIntent (added in M6.3, wired to dispatch in M6.5) ──
+
+/**
+ * The reason a session is being spawned, with all per-reason context the
+ * intent prompt needs. Set by composition roots (executor's dispatch.ts and
+ * api's EscalationService.resolve in M6.4) and consumed by `buildIntent`.
+ *
+ * The dispatch path (M6.5) reads `task.next_dispatch_context` (a JSONB
+ * column) for the explicit-context kinds; `fresh` and `crash_recovery` are
+ * inferred from session-row state.
+ */
+export type ResumeReason =
+  | { kind: "fresh" }
+  | { kind: "crash_recovery" }
+  | {
+      kind: "revision";
+      feedback: string;
+      source: "human" | "parent_agent";
+      from_status: "review" | "needs_revision" | "blocked";
+      reviser_agent_id?: string;
+      prior_session_id?: string;
+    }
+  | {
+      kind: "post_escalation";
+      role: "initiator" | "counterparty";
+      resolution: ResolutionProposal;
+      notes?: string;
+      prior_session_id?: string;
+    };
+
+/**
+ * The minimal Task fields buildIntent needs. Avoids importing the full Task
+ * type to keep this helper portable and the dependency graph narrow.
+ */
+export interface IntentTask {
+  id: string;
+  title: string;
+  description?: string;
+}
+
+/**
+ * Compose the stdin (user-message) payload for a CLI invocation. The
+ * system prompt comes from `--append-system-prompt` (briefing + persona);
+ * task-specific data lives here so prompt cache stays warm across sessions.
+ *
+ * For non-`fresh` reasons the agent has the task body via `--resume`
+ * conversation history, so we emit a self-closing `<task id="..."/>`
+ * anchor (used by tools like `update_progress(task_id, ...)`) plus a
+ * scenario-specific `<context type="...">` block. Only `fresh` includes
+ * the full title+description.
+ */
+export function buildIntent(
+  task: IntentTask | null,
+  reason: ResumeReason,
+): string {
+  const taskAnchor =
+    task === null
+      ? ""
+      : reason.kind === "fresh"
+        ? `<task id="${task.id}">\n${task.title}${task.description ? "\n\n" + task.description : ""}\n</task>`
+        : `<task id="${task.id}"/>`;
+
+  switch (reason.kind) {
+    case "fresh":
+      return taskAnchor;
+
+    case "crash_recovery":
+      return `<context type="crash_recovery">Your previous session ended unexpectedly. Pick up where you left off.</context>\n${taskAnchor}`;
+
+    case "revision": {
+      const fb = reason.feedback || "(no specific feedback provided)";
+      // Two valid combinations enforced by TaskService.reviseTask:
+      //   - source='parent_agent' + from_status='blocked' (post-blocker fix)
+      //   - source='human'        + from_status='review' or 'needs_revision'
+      const preamble =
+        reason.source === "parent_agent"
+          ? "Your parent agent has resolved the blocker you reported. Their guidance for proceeding:"
+          : "A human reviewer requested changes:";
+      return `<context type="revision" source="${reason.source}" from="${reason.from_status}">${preamble}\n${fb}\n\nAddress the feedback and re-submit via update_progress.</context>\n${taskAnchor}`;
+    }
+
+    case "post_escalation": {
+      const notesLine = reason.notes
+        ? `\nAdditional guidance: ${reason.notes}`
+        : "";
+      const roleLine =
+        reason.role === "counterparty"
+          ? "\nYour peer is continuing their task with this guidance. Update your memory with anything notable, complete any related follow-up, then exit."
+          : "\nContinue your task using this resolution.";
+      return `<context type="post_escalation" role="${reason.role}">A negotiation about this task was resolved by a human reviewer.\nResolution: ${reason.resolution.title} — ${reason.resolution.description}${notesLine}${roleLine}</context>\n${taskAnchor}`;
+    }
+  }
+}
+
+// Re-export the escalation domain types this helper consumes so consumers
+// (executor's dispatch in M6.5, EscalationService in M6.4) can import them
+// through the same subpath as buildIntent.
+export type { ResolutionProposal, Proposal } from "../domain/escalation.js";

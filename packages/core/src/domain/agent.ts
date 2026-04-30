@@ -35,6 +35,11 @@ export interface Agent {
   runtime_config: RuntimeConfig;
   max_task_sessions?: number;
   max_mesh_sessions?: number;
+  /**
+   * Per-agent cap on negotiation rounds. Stamped on negotiation rows at
+   * creation (initiator's value wins). Default 5 if undefined.
+   */
+  max_negotiation_rounds?: number;
   created_at: Date;
   updated_at: Date;
 }

@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
 import { agentId, factId, personId, sessionId } from "../../domain/ids.js";
 import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "./test-helpers.js";
+import { createTestPool, truncateAll } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresMemoryFactRepository } from "./memory-fact-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";

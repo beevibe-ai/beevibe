@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
 import { agentId, personId, taskId, workProductId } from "../../domain/ids.js";
 import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "./test-helpers.js";
+import { createTestPool, truncateAll } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
 import { PostgresTaskRepository } from "./task-repo.js";
@@ -130,5 +130,52 @@ describe("PostgresWorkProductRepository", () => {
     const wp = await wps.create(newWp());
     await wps.delete(wp.id);
     expect(await wps.findById(wp.id)).toBeUndefined();
+  });
+
+  it("create initializes updated_at = created_at", async () => {
+    const wp = await wps.create(newWp({ summary: "v1" }));
+    expect(wp.updated_at.getTime()).toBeCloseTo(wp.created_at.getTime(), -2);
+  });
+
+  it("update mutates summary + url + metadata and bumps updated_at", async () => {
+    const wp = await wps.create(
+      newWp({ summary: "v1 summary", url: "https://example.com/v1", metadata: { lines_added: 10 } }),
+    );
+    await new Promise((r) => setTimeout(r, 10));
+    const updated = await wps.update(wp.id, {
+      summary: "v2 summary",
+      url: "https://example.com/v2",
+      metadata: { lines_added: 25, files_changed: 3 },
+    });
+
+    expect(updated.id).toBe(wp.id);
+    // Identity preserved
+    expect(updated.task_id).toBe(wp.task_id);
+    expect(updated.agent_id).toBe(wp.agent_id);
+    expect(updated.type).toBe(wp.type);
+    expect(updated.title).toBe(wp.title);
+    expect(updated.created_at.getTime()).toBe(wp.created_at.getTime());
+    // Mutables changed
+    expect(updated.summary).toBe("v2 summary");
+    expect(updated.url).toBe("https://example.com/v2");
+    expect(updated.metadata).toEqual({ lines_added: 25, files_changed: 3 });
+    // Timestamp bumped
+    expect(updated.updated_at.getTime()).toBeGreaterThan(wp.updated_at.getTime());
+  });
+
+  it("update with undefined fields preserves existing values (COALESCE)", async () => {
+    const wp = await wps.create(
+      newWp({ summary: "keep me", url: "https://keep.example.com" }),
+    );
+    const updated = await wps.update(wp.id, { provider: "github" });
+    expect(updated.summary).toBe("keep me");
+    expect(updated.url).toBe("https://keep.example.com");
+    expect(updated.provider).toBe("github");
+  });
+
+  it("update on missing id throws", async () => {
+    await expect(wps.update("wp_nonexistent", { summary: "x" })).rejects.toThrow(
+      /not found/,
+    );
   });
 });

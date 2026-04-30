@@ -21,6 +21,7 @@
     "@beevibe/core": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^20.16.0",
     "@types/pg": "^8.11.10",
     "dotenv": "^17.4.2"
   }

@@ -146,13 +146,22 @@ export class PostgresTaskRepository implements TaskRepository {
     return Number(rows[0]?.count ?? 0);
   }
 
+  async countChildren(parentId: string): Promise<number> {
+    const { rows } = await this.pool.query<{ count: string }>(
+      `SELECT COUNT(*) AS count FROM task WHERE parent_task_id = $1`,
+      [parentId],
+    );
+    return Number(rows[0]?.count ?? 0);
+  }
+
   async create(input: NewTask): Promise<Task> {
     const { rows } = await this.pool.query<TaskRow>(
       `INSERT INTO task (
          id, title, description, status, priority,
          assignee_id, creator_id, creator_type, parent_task_id,
-         result_summary, blocker_agent_id, blocker_reason, repo_url
-       ) VALUES ($1, $2, $3, COALESCE($4, 'pending'), $5, $6, $7, $8, $9, $10, $11, $12, $13)
+         result_summary, blocker_agent_id, blocker_reason, repo_url,
+         next_dispatch_context
+       ) VALUES ($1, $2, $3, COALESCE($4, 'pending'), $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
        RETURNING *`,
       [
         input.id,
@@ -168,6 +177,7 @@ export class PostgresTaskRepository implements TaskRepository {
         input.blocker_agent_id ?? null,
         input.blocker_reason ?? null,
         input.repo_url ?? null,
+        input.next_dispatch_context ?? null,
       ],
     );
     return rowToTask(rows[0]!);
@@ -187,6 +197,7 @@ export class PostgresTaskRepository implements TaskRepository {
       blocker_agent_id: "blocker_agent_id",
       blocker_reason: "blocker_reason",
       repo_url: "repo_url",
+      next_dispatch_context: "next_dispatch_context",
     });
 
     if (clause.fields.length === 0) {
@@ -269,6 +280,10 @@ function rowToTask(row: TaskRow): Task {
     blocker_agent_id: row.blocker_agent_id ?? undefined,
     blocker_reason: row.blocker_reason ?? undefined,
     repo_url: row.repo_url ?? undefined,
+    // The DB column is JSONB; the typed shape is enforced via NextDispatchContext
+    // when written by reviseTask + EscalationService.
+    next_dispatch_context:
+      (row.next_dispatch_context as Task["next_dispatch_context"]) ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

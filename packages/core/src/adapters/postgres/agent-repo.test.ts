@@ -2,7 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG, type HierarchyLevel } from "../../domain/agent.js";
 import { agentId, personId } from "../../domain/ids.js";
 import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "./test-helpers.js";
+import { createTestPool, truncateAll } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
 
@@ -102,6 +102,27 @@ describe("PostgresAgentRepository", () => {
 
     const peersOfA = await agents.findPeers(peerA.id);
     expect(peersOfA.map((a) => a.id)).toEqual([peerB.id]);
+  });
+
+  it("findParent returns the direct parent", async () => {
+    const parent = await agents.create(newAgent({ hierarchy_level: "team", name: "parent" }));
+    const child = await agents.create(
+      newAgent({ parent_agent_id: parent.id, hierarchy_level: "ic", name: "child" }),
+    );
+
+    const found = await agents.findParent(child.id);
+    expect(found?.id).toBe(parent.id);
+  });
+
+  it("findParent returns undefined for top-level agents", async () => {
+    const top = await agents.create(newAgent({ hierarchy_level: "team", name: "top" }));
+    const found = await agents.findParent(top.id);
+    expect(found).toBeUndefined();
+  });
+
+  it("findParent returns undefined for unknown agent id", async () => {
+    const found = await agents.findParent("agent_nonexistent_xxx");
+    expect(found).toBeUndefined();
   });
 
   it("findByLevel returns all agents at that level", async () => {

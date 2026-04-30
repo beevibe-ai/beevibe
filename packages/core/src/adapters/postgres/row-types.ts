@@ -21,6 +21,7 @@ export interface AgentRow {
   runtime_config: RuntimeConfig;
   max_task_sessions: number | null;
   max_mesh_sessions: number | null;
+  max_negotiation_rounds: number | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -39,6 +40,7 @@ export interface TaskRow {
   blocker_agent_id: string | null;
   blocker_reason: string | null;
   repo_url: string | null;
+  next_dispatch_context: Record<string, unknown> | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -87,6 +89,7 @@ export interface WorkProductRow {
   external_id: string | null;
   metadata: Record<string, unknown> | null;
   created_at: Date;
+  updated_at: Date;
 }
 
 export interface MemoryFactRow {
@@ -99,4 +102,50 @@ export interface MemoryFactRow {
   embedding: string;
   source_session_ids: string[];
   created_at: Date;
+}
+
+export interface NegotiationRow {
+  id: string;
+  initiator_agent_id: string;
+  initiator_session_id: string;
+  counterparty_agent_id: string;
+  counterparty_session_id: string | null;
+  task_id: string | null;
+  max_rounds: number;
+  rounds_completed: number;
+  status: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface NegotiationRoundRow {
+  id: string;
+  negotiation_id: string;
+  round_number: number;
+  from_agent_id: string;
+  decision: string;
+  message: string;
+  sent_at: Date;
+}
+
+export interface EscalationRow {
+  id: string;
+  negotiation_id: string;
+  initiator_session_id: string;
+  counterparty_session_id: string;
+  summary: string;
+  initiator_proposals: unknown | null;
+  initiator_open_questions: string[];
+  initiator_submitted_at: Date | null;
+  counterparty_proposals: unknown | null;
+  counterparty_open_questions: string[];
+  counterparty_submitted_at: Date | null;
+  escalated_by_role: string;
+  status: string;
+  resolution_proposal: unknown | null;
+  resolution_notes: string | null;
+  resolved_by: string | null;
+  resolved_at: Date | null;
+  created_at: Date;
+  updated_at: Date;
 }

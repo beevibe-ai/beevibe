@@ -18,7 +18,7 @@ import {
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createTestPool, truncateAll } from "./test-helpers.js";
+import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
 import {
   DEFAULT_POLL_MS,
   DEFAULT_TASK_CAP,

@@ -8,7 +8,13 @@ import type {
   Workspace,
 } from "../ports/runtime.js";
 import type { SessionRepository } from "../ports/session-repo.js";
-import { AgentSession } from "./agent-session.js";
+import {
+  AgentSession,
+  type AgentSessionDeps,
+  buildIntent,
+  type IntentTask,
+  type ResumeReason,
+} from "./agent-session.js";
 import type { MemoryAgent } from "./memory/memory-agent.js";
 
 const WORKSPACE: Workspace = { path: "/tmp/ws" };
@@ -337,5 +343,208 @@ describe("AgentSession.run", () => {
       taskId: "task_xyz",
     });
     expect(vi.mocked(sessionRepo.create).mock.calls[0]![0].type).toBe("task");
+  });
+
+  it("fires onSessionComplete with the terminal session row (fire-and-forget)", async () => {
+    const onSessionComplete = vi.fn<NonNullable<AgentSessionDeps["onSessionComplete"]>>().mockResolvedValue();
+    const svc = new AgentSession({
+      agentRepo,
+      sessionRepo,
+      runtime,
+      memoryAgent,
+      onSessionComplete,
+    });
+    vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
+    vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue("");
+    vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
+    vi.mocked(sessionRepo.update).mockImplementation(async (id, patch) =>
+      makeSession(id, patch as Partial<Session>),
+    );
+
+    await svc.run({ agentId: "agent_1", intent: "x", workspace: WORKSPACE });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(onSessionComplete).toHaveBeenCalledTimes(1);
+    expect(onSessionComplete.mock.calls[0]![0].status).toBe("succeeded");
+  });
+
+  it("skips onSessionComplete when input.skipOnComplete is true (used by post-dispatch retry)", async () => {
+    const onSessionComplete = vi.fn<NonNullable<AgentSessionDeps["onSessionComplete"]>>().mockResolvedValue();
+    const svc = new AgentSession({
+      agentRepo,
+      sessionRepo,
+      runtime,
+      memoryAgent,
+      onSessionComplete,
+    });
+    vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
+    vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue("");
+    vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
+    vi.mocked(sessionRepo.update).mockImplementation(async (id) => makeSession(id));
+
+    await svc.run({
+      agentId: "agent_1",
+      intent: "x",
+      workspace: WORKSPACE,
+      skipOnComplete: true,
+    });
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(onSessionComplete).not.toHaveBeenCalled();
+  });
+
+  it("hook errors are caught and logged, never propagated to the caller", async () => {
+    const onSessionComplete = vi
+      .fn<NonNullable<AgentSessionDeps["onSessionComplete"]>>()
+      .mockRejectedValue(new Error("hook blew up"));
+    const svc = new AgentSession({
+      agentRepo,
+      sessionRepo,
+      runtime,
+      memoryAgent,
+      onSessionComplete,
+    });
+    vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
+    vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue("");
+    vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
+    vi.mocked(sessionRepo.update).mockImplementation(async (id) => makeSession(id));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    await expect(
+      svc.run({ agentId: "agent_1", intent: "x", workspace: WORKSPACE }),
+    ).resolves.toBeDefined();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(errSpy).toHaveBeenCalledWith(
+      "[AgentSession] onSessionComplete failed:",
+      "hook blew up",
+    );
+    errSpy.mockRestore();
+  });
+});
+
+// ── buildIntent helper (M6.3, wired to dispatch in M6.5) ──────────────────
+
+const INTENT_TASK: IntentTask = {
+  id: "task_xyz",
+  title: "Add error handling",
+  description: "Wrap the auth path with retry logic.",
+};
+
+describe("buildIntent", () => {
+  it("fresh: full task body in <task id> envelope", () => {
+    const out = buildIntent(INTENT_TASK, { kind: "fresh" });
+    expect(out).toContain('<task id="task_xyz">');
+    expect(out).toContain("Add error handling");
+    expect(out).toContain("Wrap the auth path with retry logic.");
+    expect(out).not.toContain("<context");
+  });
+
+  it("fresh with no description: just title in envelope", () => {
+    const t: IntentTask = { id: "t1", title: "Do thing" };
+    const out = buildIntent(t, { kind: "fresh" });
+    expect(out).toBe('<task id="t1">\nDo thing\n</task>');
+  });
+
+  it("crash_recovery: self-closing <task id/> + crash_recovery context", () => {
+    const out = buildIntent(INTENT_TASK, { kind: "crash_recovery" });
+    expect(out).toContain('<task id="task_xyz"/>');
+    expect(out).not.toContain('<task id="task_xyz">\n');
+    expect(out).toContain('<context type="crash_recovery">');
+    expect(out).toContain("Pick up where you left off");
+    expect(out).not.toContain("Add error handling");
+  });
+
+  it("revision (parent_agent + blocked): post-blocker preamble", () => {
+    const reason: ResumeReason = {
+      kind: "revision",
+      feedback: "Use the existing connection pool, don't open a new one.",
+      source: "parent_agent",
+      from_status: "blocked",
+    };
+    const out = buildIntent(INTENT_TASK, reason);
+    expect(out).toContain('<context type="revision" source="parent_agent" from="blocked">');
+    expect(out).toContain("Your parent agent has resolved the blocker you reported");
+    expect(out).toContain("Use the existing connection pool");
+    expect(out).toContain('<task id="task_xyz"/>');
+  });
+
+  it("revision (human + review): review-cycle preamble", () => {
+    const reason: ResumeReason = {
+      kind: "revision",
+      feedback: "Please add unit tests for the edge cases.",
+      source: "human",
+      from_status: "review",
+    };
+    const out = buildIntent(INTENT_TASK, reason);
+    expect(out).toContain('source="human" from="review"');
+    expect(out).toContain("A human reviewer requested changes");
+    expect(out).toContain("Please add unit tests for the edge cases.");
+  });
+
+  it("revision with empty feedback uses placeholder", () => {
+    const reason: ResumeReason = {
+      kind: "revision",
+      feedback: "",
+      source: "human",
+      from_status: "review",
+    };
+    const out = buildIntent(INTENT_TASK, reason);
+    expect(out).toContain("(no specific feedback provided)");
+  });
+
+  it("post_escalation initiator: continues task with resolution", () => {
+    const reason: ResumeReason = {
+      kind: "post_escalation",
+      role: "initiator",
+      resolution: {
+        title: "Hybrid approach",
+        description: "Reuse component X but rewrite Y.",
+        source: "human",
+      },
+      notes: "Cap timeline at 4 weeks.",
+    };
+    const out = buildIntent(INTENT_TASK, reason);
+    expect(out).toContain('<context type="post_escalation" role="initiator">');
+    expect(out).toContain("Hybrid approach — Reuse component X but rewrite Y.");
+    expect(out).toContain("Additional guidance: Cap timeline at 4 weeks.");
+    expect(out).toContain("Continue your task using this resolution.");
+  });
+
+  it("post_escalation counterparty: memory-update + exit framing", () => {
+    const reason: ResumeReason = {
+      kind: "post_escalation",
+      role: "counterparty",
+      resolution: {
+        title: "Approach A",
+        description: "...",
+        source: "initiator",
+        source_index: 0,
+      },
+    };
+    const out = buildIntent(INTENT_TASK, reason);
+    expect(out).toContain('role="counterparty"');
+    expect(out).toContain("Update your memory with anything notable");
+    expect(out).toContain("complete any related follow-up, then exit.");
+    expect(out).toContain("Approach A");
+  });
+
+  it("post_escalation without notes omits the Additional guidance line", () => {
+    const reason: ResumeReason = {
+      kind: "post_escalation",
+      role: "initiator",
+      resolution: { title: "A", description: "b", source: "human" },
+    };
+    const out = buildIntent(INTENT_TASK, reason);
+    expect(out).not.toContain("Additional guidance:");
+  });
+
+  it("null task: omits the <task> anchor entirely (e.g., user-driven chat)", () => {
+    const out = buildIntent(null, { kind: "crash_recovery" });
+    expect(out).toContain('<context type="crash_recovery">');
+    expect(out).not.toContain("<task");
   });
 });

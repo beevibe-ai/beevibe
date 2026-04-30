@@ -8,7 +8,7 @@ Beevibe core — modular monolith for the agent runtime platform.
 beevibe/
 ├── packages/
 │   ├── core/          shared library: domain, ports, services, adapters, auth
-│   ├── mcp-server/    binary: HTTP tool surface + in-process MeshServer (port 3002)
+│   ├── api/           binary: MCP tool surface for agents + REST endpoints for humans + MeshServer
 │   └── executor/      binary: task polling + session dispatch
 │
 ├── migrations/        Drizzle migrations (populated in M1)
@@ -22,7 +22,7 @@ core/domain     → nothing
 core/ports      → domain
 core/services   → domain + ports  (NEVER adapters)
 core/adapters   → ports it implements + domain
-mcp-server/     → core (composition root)
+api/            → core (composition root)
 executor/       → core (composition root)
 ```
 
@@ -64,7 +64,7 @@ pnpm dev          # (from M5+) run services in watch mode
 - **M3**: services + pgvector + llm providers
 - **M4**: auth
 - **M5**: executor binary (polling + dispatch)
-- **M6**: mcp-server binary (HTTP + OAuth + mesh + tools)
+- **M6**: api binary (MCP tool surface + REST + mesh + escalation + cancellation)
 - **M7**: integration test
 - **M8+**: web package (Next.js UI + API routes)
 
