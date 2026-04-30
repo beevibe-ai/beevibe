@@ -1,7 +1,6 @@
 import { ArrowRight, ArrowUpRight, Ban, Check, CheckCircle2, GitPullRequest, PlusCircle } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { HierChip } from "@/components/hier-chip";
-import { cn } from "@/lib/utils";
 import { fixtureThreadEvents, type ThreadEvent } from "@/lib/fixtures/thread-messages";
 
 const SYS_ICON = {
