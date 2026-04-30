@@ -1,21 +1,49 @@
 "use client";
 
-import { useState } from "react";
-import { ListChecks } from "lucide-react";
+import { useMemo, useState } from "react";
+import { type LucideIcon, AlertTriangle, ListChecks } from "lucide-react";
 import { ViewTabs, type TaskView } from "@/components/tasks/view-tabs";
-import { BoardColumn, type BoardLane } from "@/components/tasks/board-column";
+import { BoardColumn } from "@/components/tasks/board-column";
 import { EmptyState } from "@/components/empty-state";
+import { useTasks } from "@/lib/hooks/use-tasks";
+import { isApiConfigured } from "@/lib/api/config";
+import { groupTasks } from "@/lib/tasks-grouping";
+import type { TaskListFilter } from "@/lib/api/client";
 
-const LANES: BoardLane[] = [
-  { key: "pending", label: "Pending", dot: "bg-muted-foreground/50", count: 0, tasks: [] },
-  { key: "in_progress", label: "In progress", dot: "bg-status-running", count: 0, tasks: [] },
-  { key: "in_review", label: "In review", dot: "bg-status-review", count: 0, tasks: [] },
-  { key: "done", label: "Done", dot: "bg-status-done", count: 0, tasks: [] },
-];
+const VIEW_TO_FILTER: Record<TaskView, TaskListFilter> = {
+  all: {},
+  mine: { view: "mine" },
+  sprint: { view: "sprint" },
+  timeline: { view: "timeline" },
+};
+
+interface EmptyMessage {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+}
 
 export function TasksClient() {
   const [view, setView] = useState<TaskView>("all");
   const [query, setQuery] = useState("");
+
+  const { data, isLoading, isError } = useTasks(VIEW_TO_FILTER[view]);
+
+  const filtered = useMemo(() => {
+    if (!data) return [];
+    const q = query.trim().toLowerCase();
+    if (!q) return data;
+    return data.filter((t) => t.title.toLowerCase().includes(q));
+  }, [data, query]);
+
+  const lanes = useMemo(() => groupTasks(filtered), [filtered]);
+  const emptyMessage = pickEmptyMessage({
+    isApiConfigured,
+    isError,
+    isLoading,
+    hasResults: filtered.length > 0,
+    hasQuery: query.length > 0,
+  });
 
   return (
     <div className="flex-1 flex flex-col overflow-hidden">
@@ -30,19 +58,50 @@ export function TasksClient() {
 
       <div className="flex-1 overflow-x-auto overflow-y-auto">
         <div className="group/board flex gap-4 px-6 py-5 min-h-full">
-          {LANES.map((lane) => (
+          {lanes.map((lane) => (
             <BoardColumn key={lane.key} lane={lane} />
           ))}
           <div className="shrink-0 w-2" aria-hidden />
         </div>
-        <div className="px-6 pb-8 max-w-md mx-auto">
-          <EmptyState
-            icon={ListChecks}
-            title="No tasks yet"
-            description="Create a task to assign work to an agent."
-          />
-        </div>
+
+        {emptyMessage ? (
+          <div className="px-6 pb-8 max-w-md mx-auto">
+            <EmptyState {...emptyMessage} />
+          </div>
+        ) : null}
       </div>
     </div>
   );
+}
+
+function pickEmptyMessage(state: {
+  isApiConfigured: boolean;
+  isError: boolean;
+  isLoading: boolean;
+  hasResults: boolean;
+  hasQuery: boolean;
+}): EmptyMessage | null {
+  if (state.isError) {
+    return {
+      icon: AlertTriangle,
+      title: "Couldn't load tasks",
+      description:
+        "The API is configured but unreachable. Check that the MCP server is running.",
+    };
+  }
+  if (!state.isApiConfigured) {
+    return {
+      icon: ListChecks,
+      title: "No tasks yet",
+      description: "Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load tasks.",
+    };
+  }
+  if (state.isLoading || state.hasResults) return null;
+  return {
+    icon: ListChecks,
+    title: state.hasQuery ? "No matching tasks" : "No tasks yet",
+    description: state.hasQuery
+      ? "Try a different search."
+      : "Create a task to assign work to an agent.",
+  };
 }

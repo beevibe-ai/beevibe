@@ -1,0 +1,204 @@
+"use client";
+
+import Link from "next/link";
+import { ArrowLeft, AlertTriangle, Bot } from "lucide-react";
+import { useAgent } from "@/lib/hooks/use-agents";
+import { isApiConfigured } from "@/lib/api/config";
+import { Avatar } from "@/components/avatar";
+import { HierChip } from "@/components/hier-chip";
+import { CoreBlockCard } from "@/components/agents/core-block-card";
+import { EmptyState } from "@/components/empty-state";
+import { Skeleton } from "@/components/skeleton";
+import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { DetailShell } from "@/components/detail/detail-shell";
+import { FooterField } from "@/components/detail/footer-field";
+import { Metric } from "@/components/detail/metric";
+import { cn } from "@/lib/utils";
+import type { AgentDetail } from "@/lib/api/types";
+import type { RecentSession } from "@/lib/types/agents";
+
+const RECENT_SESSION_DOT: Record<RecentSession["status"], string> = {
+  running: "bg-status-running animate-pulse-breathe",
+  review: "bg-status-review",
+  succeeded: "bg-status-done",
+};
+
+const AgentsBackLink = () => (
+  <Link
+    href="/agents"
+    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-3"
+  >
+    <ArrowLeft className="h-3 w-3" />
+    Agents
+  </Link>
+);
+
+export function AgentDetailClient({ agentId }: { agentId: string }) {
+  const { data, isLoading, isError } = useAgent(agentId);
+
+  if (!isApiConfigured) {
+    return (
+      <DetailShell nav={<AgentsBackLink />}>
+        <EmptyState
+          icon={Bot}
+          title="API not configured"
+          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load this agent."
+        />
+      </DetailShell>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <DetailShell nav={<AgentsBackLink />}>
+        <Skeleton className="h-14 w-full mb-6" />
+        <div className="grid grid-cols-3 gap-6">
+          <div className="col-span-2 space-y-4">
+            <Skeleton className="h-32 w-full rounded-lg" />
+            <Skeleton className="h-40 w-full rounded-lg" />
+          </div>
+          <Skeleton className="h-40 w-full rounded-lg" />
+        </div>
+      </DetailShell>
+    );
+  }
+
+  if (isError || !data) {
+    return (
+      <DetailShell nav={<AgentsBackLink />}>
+        <EmptyState
+          icon={AlertTriangle}
+          title="Couldn't load agent"
+          description={`Agent ${agentId} could not be fetched.`}
+        />
+      </DetailShell>
+    );
+  }
+
+  return <AgentDetailLoaded agent={data} />;
+}
+
+function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
+  const initial = agent.display_name.charAt(0).toUpperCase();
+  const presence = agent.metrics.sessions > 0 ? "idle" : "off";
+
+  return (
+    <DetailShell nav={<AgentsBackLink />}>
+      <header className="mb-6">
+        <div className="flex items-start gap-4">
+          <Avatar initial={initial} kind={agent.hierarchy} size={56} presence={presence} />
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 mb-1">
+              <h1 className="text-xl font-semibold leading-tight">{agent.display_name}</h1>
+              <HierChip hier={agent.hierarchy} />
+            </div>
+            {agent.specialization ? (
+              <p className="text-sm text-muted-foreground">{agent.specialization}</p>
+            ) : null}
+          </div>
+          <div className="shrink-0">
+            <button
+              type="button"
+              className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer"
+            >
+              Edit
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-4 gap-x-8 mt-6 pt-6 border-t border-border">
+          <Metric label="Sessions" value={agent.metrics.sessions} />
+          <Metric label="Facts learned" value={agent.metrics.facts} />
+          <Metric label="Merges" value={agent.metrics.merges} />
+          <Metric label="Promoted" value={agent.metrics.promoted} />
+        </div>
+      </header>
+
+      <div className="grid grid-cols-3 gap-6">
+        <div className="col-span-2 space-y-5">
+          <section>
+            <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
+              Core memory{" "}
+              <span className="text-muted-foreground/70 tabular-nums">
+                {agent.core_blocks.length}
+              </span>
+            </h2>
+            {agent.core_blocks.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">No core blocks.</p>
+            ) : (
+              <div className="space-y-3">
+                {agent.core_blocks.map((b) => (
+                  <CoreBlockCard key={b.id} block={b} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          <section>
+            <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
+              Recent sessions{" "}
+              <span className="text-muted-foreground/70 tabular-nums">
+                {agent.recent_sessions.length}
+              </span>
+            </h2>
+            {agent.recent_sessions.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">No recent sessions.</p>
+            ) : (
+              <ul className="space-y-2">
+                {agent.recent_sessions.map((s, i) => (
+                  <RecentSessionRow key={s.short_id ?? i} session={s} />
+                ))}
+              </ul>
+            )}
+          </section>
+        </div>
+
+        <aside className="col-span-1 space-y-4">
+          {agent.outgoing_mesh_hints.length ? (
+            <section className="rounded-lg border border-border bg-card p-4">
+              <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
+                Outgoing mesh
+              </h3>
+              <ul className="space-y-2">
+                {agent.outgoing_mesh_hints.map((hint, i) => (
+                  <li key={i} className="text-xs">
+                    <span className="text-foreground/85">{hint.target}</span>{" "}
+                    <span className="text-muted-foreground/70">· {hint.age}</span>
+                    <p className="text-muted-foreground line-clamp-1">{hint.intent}</p>
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ) : null}
+        </aside>
+      </div>
+
+      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+        <FooterField label="ID">
+          <ClickToCopyId id={agent.id} />
+        </FooterField>
+        <FooterField label="Hierarchy">{agent.hierarchy}</FooterField>
+        {agent.runtime ? <FooterField label="Runtime">{agent.runtime}</FooterField> : null}
+        {agent.review_policy ? (
+          <FooterField label="Review policy">{agent.review_policy}</FooterField>
+        ) : null}
+      </footer>
+    </DetailShell>
+  );
+}
+
+function RecentSessionRow({ session }: { session: RecentSession }) {
+  return (
+    <li className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+      <span
+        className={cn("h-1.5 w-1.5 rounded-full", RECENT_SESSION_DOT[session.status])}
+        aria-hidden
+      />
+      <span className="flex-1 min-w-0 truncate">{session.title}</span>
+      {session.short_id ? (
+        <span className="font-mono text-xs text-muted-foreground">{session.short_id}</span>
+      ) : null}
+      <span className="text-xs text-muted-foreground tabular-nums shrink-0">{session.age}</span>
+    </li>
+  );
+}
