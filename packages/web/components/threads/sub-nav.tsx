@@ -4,22 +4,40 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 
-const ENTRIES: { href: string; label: string }[] = [
-  { href: "/threads", label: "Channels" },
-  { href: "/mesh", label: "Mesh" },
-  { href: "/threads/dms", label: "DMs" },
+type Entry =
+  | { kind: "link"; href: string; label: string }
+  | { kind: "disabled"; label: string };
+
+const ENTRIES: Entry[] = [
+  { kind: "link", href: "/threads", label: "Channels" },
+  { kind: "link", href: "/mesh", label: "Mesh" },
+  { kind: "disabled", label: "DMs" },
 ];
 
 export function ThreadsSubNav() {
   const pathname = usePathname();
   return (
     <div className="flex items-center gap-1 mb-6 -mt-2 text-sm">
-      {ENTRIES.map(({ href, label }) => {
-        const active = pathname === href;
+      {ENTRIES.map((entry) => {
+        if (entry.kind === "disabled") {
+          return (
+            <button
+              key={entry.label}
+              type="button"
+              disabled
+              aria-disabled="true"
+              title="Coming soon"
+              className="px-3 py-1.5 rounded text-muted-foreground/50 cursor-not-allowed"
+            >
+              {entry.label}
+            </button>
+          );
+        }
+        const active = pathname === entry.href;
         return (
           <Link
-            key={href}
-            href={href}
+            key={entry.href}
+            href={entry.href}
             className={cn(
               "px-3 py-1.5 rounded transition-colors",
               active
@@ -27,7 +45,7 @@ export function ThreadsSubNav() {
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary",
             )}
           >
-            {label}
+            {entry.label}
           </Link>
         );
       })}
