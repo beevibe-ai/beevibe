@@ -40,8 +40,14 @@ export interface DashboardSummary {
   kpis: KpiStat[];
   status_breakdown: StatusBreakdownEntry[];
   status_legend: StatusLegendEntry[];
+  status_total: number;
   fleet: FleetBar[];
+  fleet_total: number;
+  fleet_active: number;
+  fleet_idle: number;
   trend: TrendDay[];
+  trend_total: number;
+  trend_change_percent: number;
   attention: AttentionItem[];
 }
 

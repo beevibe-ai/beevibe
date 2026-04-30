@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { ArrowLeft, AlertTriangle, FileText, ListChecks, Terminal } from "lucide-react";
 import { useTask } from "@/lib/hooks/use-tasks";
+import { useApproveTask } from "@/lib/hooks/use-task-mutations";
 import { isApiConfigured } from "@/lib/api/config";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
@@ -74,6 +75,7 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
 function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   const isInReview = task.status === "review";
   const activeSession = task.latest_session?.status === "running" ? task.latest_session : null;
+  const approve = useApproveTask(task.id);
 
   return (
     <DetailShell nav={<TasksBackLink />}>
@@ -90,22 +92,35 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
           <div className="flex justify-end gap-2 mb-2">
             <button
               type="button"
-              className="h-9 px-3 rounded text-sm font-medium border border-border hover:bg-secondary transition-colors cursor-pointer"
+              disabled={approve.isPending}
+              onClick={() => approve.mutate({ action: "reject" })}
+              className="h-9 px-3 rounded text-sm font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Reject
             </button>
             <button
               type="button"
-              className="h-9 px-3 rounded text-sm font-medium border border-border hover:bg-secondary transition-colors cursor-pointer"
+              disabled={approve.isPending}
+              onClick={() => approve.mutate({ action: "revise" })}
+              className="h-9 px-3 rounded text-sm font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Request revision
             </button>
             <button
               type="button"
-              className="h-9 px-3 rounded text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer"
+              disabled={approve.isPending}
+              onClick={() => approve.mutate({ action: "approve" })}
+              className="h-9 px-3 rounded text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              Approve
+              {approve.isPending && approve.variables?.action === "approve"
+                ? "Approving…"
+                : "Approve"}
             </button>
+          </div>
+        ) : null}
+        {approve.isError ? (
+          <div className="text-xs text-status-failed text-right">
+            Couldn&apos;t {approve.variables?.action ?? "submit"}: {approve.error.message}
           </div>
         ) : null}
       </header>

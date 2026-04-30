@@ -12,7 +12,7 @@ import type { AgentDisplay } from "@/lib/types/agents";
 import type { SessionDisplay } from "@/lib/types/sessions";
 import type { MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
-import type { MemoryScope } from "@beevibe/core";
+import type { Task, MemoryScope, TaskPriority } from "@beevibe/core";
 import type { Lifecycle } from "@/lib/tasks-grouping";
 
 export type TaskView = "all" | "mine" | "sprint" | "timeline";
@@ -23,11 +23,43 @@ export interface TaskListFilter {
   view?: TaskView;
 }
 
+export type ApproveAction = "approve" | "reject" | "revise";
+
+export interface ApproveTaskInput {
+  action: ApproveAction;
+  result_summary?: string;
+}
+
+export interface CancelTaskInput {
+  force?: boolean;
+  reason?: string;
+}
+
+export interface CreateTaskInput {
+  title: string;
+  description?: string;
+  priority?: TaskPriority;
+  assignee_id?: string;
+  parent_task_id?: string;
+}
+
 export const api = {
   tasks: {
     list: (filter: TaskListFilter = {}) =>
       fetchJson<TaskListItem[]>("/api/tasks", { query: { ...filter } }),
     get: (id: string) => fetchJson<TaskDetail>(`/api/tasks/${encodeURIComponent(id)}`),
+    approve: (id: string, input: ApproveTaskInput) =>
+      fetchJson<Task>(`/api/tasks/${encodeURIComponent(id)}/approve`, {
+        method: "POST",
+        body: input,
+      }),
+    cancel: (id: string, input: CancelTaskInput = {}) =>
+      fetchJson<Task>(`/api/tasks/${encodeURIComponent(id)}/cancel`, {
+        method: "POST",
+        body: input,
+      }),
+    create: (input: CreateTaskInput) =>
+      fetchJson<Task>("/api/tasks", { method: "POST", body: input }),
   },
   agents: {
     list: () => fetchJson<AgentDisplay[]>("/api/agents"),
@@ -36,6 +68,8 @@ export const api = {
   sessions: {
     get: (shortId: string) =>
       fetchJson<SessionDisplay>(`/api/sessions/${encodeURIComponent(shortId)}`),
+    cancel: (shortId: string) =>
+      fetchJson<void>(`/api/sessions/${encodeURIComponent(shortId)}/cancel`, { method: "POST" }),
   },
   memory: {
     listFacts: (filter: { scope?: MemoryScope } = {}) =>

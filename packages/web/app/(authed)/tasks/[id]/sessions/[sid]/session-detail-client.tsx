@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { AlertTriangle, ChevronRight, Terminal } from "lucide-react";
 import { useSession } from "@/lib/hooks/use-sessions";
+import { useCancelSession } from "@/lib/hooks/use-session-mutations";
 import { isApiConfigured } from "@/lib/api/config";
 import { Avatar } from "@/components/avatar";
 import { HierChip } from "@/components/hier-chip";
@@ -65,7 +66,7 @@ export function SessionDetailClient({ taskId, sessionShortId }: Props) {
 
   return (
     <DetailShell nav={nav}>
-      <SessionDetailBody session={data} />
+      <SessionDetailBody session={data} taskId={taskId} />
     </DetailShell>
   );
 }
@@ -100,7 +101,9 @@ function Breadcrumbs({
   );
 }
 
-function SessionDetailBody({ session }: { session: SessionDisplay }) {
+function SessionDetailBody({ session, taskId }: { session: SessionDisplay; taskId: string }) {
+  const cancel = useCancelSession(session.short_id, taskId);
+
   return (
     <>
       <header className="mb-6">
@@ -127,13 +130,20 @@ function SessionDetailBody({ session }: { session: SessionDisplay }) {
             {session.status === "running" ? (
               <button
                 type="button"
-                className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer"
+                disabled={cancel.isPending}
+                onClick={() => cancel.mutate()}
+                className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Cancel
+                {cancel.isPending ? "Canceling…" : "Cancel"}
               </button>
             ) : null}
           </div>
         </div>
+        {cancel.isError ? (
+          <div className="mt-1 text-xs text-status-failed text-right">
+            Couldn&apos;t cancel: {cancel.error.message}
+          </div>
+        ) : null}
       </header>
 
       <BriefingComposer briefing={session.briefing} />
