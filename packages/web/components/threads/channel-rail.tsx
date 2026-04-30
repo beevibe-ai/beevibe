@@ -1,20 +1,4 @@
-import Link from "next/link";
-import { AlertCircle, Ban, Loader2, Plus } from "lucide-react";
-import { Avatar } from "@/components/avatar";
-import { cn } from "@/lib/utils";
-import {
-  fixtureThreadSections,
-  type ThreadChannel,
-} from "@/lib/fixtures/thread-messages";
-
-const STATUS_ICON: Record<
-  ThreadChannel["status"],
-  { Icon: typeof AlertCircle; color: string; spin?: boolean }
-> = {
-  review: { Icon: AlertCircle, color: "text-status-review" },
-  running: { Icon: Loader2, color: "text-status-running", spin: true },
-  blocked: { Icon: Ban, color: "text-status-blocked" },
-};
+import { Plus } from "lucide-react";
 
 export function ChannelRail() {
   return (
@@ -28,49 +12,11 @@ export function ChannelRail() {
       </div>
 
       <div className="flex-1 overflow-y-auto px-2 pb-4 space-y-4">
-        <Section label="Needs you" count={fixtureThreadSections.needs_you.length}>
-          {fixtureThreadSections.needs_you.map((c) => (
-            <ChannelLink key={c.id} channel={c} />
-          ))}
-        </Section>
-
-        <Section label="Active" count={fixtureThreadSections.active.length}>
-          {fixtureThreadSections.active.map((c) => (
-            <ChannelLink key={c.id} channel={c} />
-          ))}
-        </Section>
-
-        <Section label="Blocked" count={fixtureThreadSections.blocked.length}>
-          {fixtureThreadSections.blocked.map((c) => (
-            <ChannelLink key={c.id} channel={c} />
-          ))}
-        </Section>
-
-        <Section
-          label="Direct messages"
-          count={fixtureThreadSections.direct_messages.length}
-        >
-          {fixtureThreadSections.direct_messages.map((dm) => (
-            <Link
-              key={dm.agent_label}
-              href="#"
-              className="flex items-center gap-2 px-2 py-1.5 rounded hover:bg-secondary/60 cursor-pointer transition-colors"
-            >
-              <Avatar
-                initial={dm.initial}
-                kind={dm.hierarchy}
-                size={18}
-                presence="running"
-              />
-              <span className="text-sm truncate flex-1 font-mono text-muted-foreground">
-                {dm.agent_label}
-              </span>
-              <span className="text-[10px] text-muted-foreground tabular-nums">{dm.age}</span>
-            </Link>
-          ))}
-        </Section>
-
-        <Section label="Archive" count={fixtureThreadSections.archive_count} />
+        <Section label="Needs you" count={0} />
+        <Section label="Active" count={0} />
+        <Section label="Blocked" count={0} />
+        <Section label="Direct messages" count={0} />
+        <Section label="Archive" count={0} />
       </div>
     </aside>
   );
@@ -93,31 +39,5 @@ function Section({
       </div>
       {children}
     </div>
-  );
-}
-
-function ChannelLink({ channel }: { channel: ThreadChannel }) {
-  const { Icon, color, spin } = STATUS_ICON[channel.status];
-  return (
-    <Link
-      href="#"
-      className={cn(
-        "flex items-center gap-2 px-2 py-1.5 rounded transition-colors",
-        channel.active
-          ? "bg-secondary text-foreground"
-          : "text-muted-foreground hover:bg-secondary/60",
-      )}
-    >
-      <Icon className={cn("h-3.5 w-3.5 shrink-0", color, spin && "animate-spin-slow")} />
-      <span
-        className={cn(
-          "text-sm truncate flex-1",
-          channel.active && "font-medium text-foreground",
-        )}
-      >
-        {channel.title}
-      </span>
-      <span className="text-[10px] text-muted-foreground tabular-nums">{channel.age}</span>
-    </Link>
   );
 }

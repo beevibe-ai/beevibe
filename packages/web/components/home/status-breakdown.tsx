@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { StatusBreakdownEntry, StatusLegendEntry } from "@/lib/fixtures/dashboard-stats";
+import type { StatusBreakdownEntry, StatusLegendEntry } from "@/lib/types/dashboard";
 
 const COLOR_CLASS = {
   pending: "bg-status-pending",

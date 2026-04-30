@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { BarSparkline, LineSparkline } from "./sparkline";
-import type { KpiMetaColor, KpiStat } from "@/lib/fixtures/dashboard-stats";
+import type { KpiMetaColor, KpiStat } from "@/lib/types/dashboard";
 
 const META_COLOR: Record<KpiMetaColor, string> = {
   muted: "text-muted-foreground",

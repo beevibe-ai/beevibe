@@ -3,7 +3,7 @@
 import { MoreHorizontal, Plus } from "lucide-react";
 import { TaskCard } from "./task-card";
 import { cn } from "@/lib/utils";
-import type { TaskListItem } from "@/lib/fixtures/tasks";
+import type { TaskListItem } from "@/lib/types/tasks";
 
 export type BoardLane = {
   key: "pending" | "in_progress" | "in_review" | "done";

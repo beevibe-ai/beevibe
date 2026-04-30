@@ -3,7 +3,7 @@ import { ArrowRight, BrainCircuit, Hash, TrendingUp, X } from "lucide-react";
 import { ScopeChip } from "@/components/scope-chip";
 import { formatRelativeTime, sessionHref } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { PromotionEvent } from "@/lib/fixtures/promotion-events";
+import type { PromotionEvent } from "@/lib/types/promotion-events";
 
 const DOT_BORDER_CLASS = {
   ic: "border-hier-ic",

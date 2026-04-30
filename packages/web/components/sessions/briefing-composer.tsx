@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ChevronDown, ChevronUp, Layers, Search, SquareStack } from "lucide-react";
 import { ScopeChip } from "@/components/scope-chip";
 import { cn } from "@/lib/utils";
-import type { SessionDisplay } from "@/lib/fixtures/sessions";
+import type { SessionDisplay } from "@/lib/types/sessions";
 
 export function BriefingComposer({ briefing }: { briefing: SessionDisplay["briefing"] }) {
   const [open, setOpen] = useState(true);

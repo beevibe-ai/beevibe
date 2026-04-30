@@ -20,8 +20,6 @@ import {
   Terminal,
   TrendingUp,
 } from "lucide-react";
-import { fixtureAgents, fixtureFleetCounts } from "@/lib/fixtures/agents";
-import { fixtureCounts } from "@/lib/fixtures/tasks";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
@@ -46,7 +44,7 @@ type NavItem = {
 const QUICK_ACTIONS: QuickAction[] = [
   { label: "Search", icon: Search, onClick: () => {} },
   { href: "/", label: "Home", icon: Home },
-  { href: "/threads", label: "Inbox", icon: Inbox, badge: fixtureCounts.mineToReview },
+  { href: "/threads", label: "Inbox", icon: Inbox },
 ];
 
 const WORKSPACE_ITEMS: NavItem[] = [
@@ -55,7 +53,6 @@ const WORKSPACE_ITEMS: NavItem[] = [
     label: "Tasks",
     icon: ListChecks,
     isActive: (p) => p.startsWith("/tasks"),
-    trailing: String(fixtureCounts.active),
   },
   {
     href: "/threads",
@@ -134,13 +131,12 @@ export function Sidebar() {
       <nav className="flex-1 overflow-y-auto px-2 pb-2 space-y-3" aria-label="Main">
         <Section
           title="Agents"
-          count={fixtureFleetCounts.total}
           open={openAgents}
           onToggle={() => setOpenAgents((v) => !v)}
           actionLabel="New agent"
           onAction={() => {}}
         >
-          <AgentList pathname={pathname} />
+          <EmptyAgentList />
         </Section>
 
         <Section
@@ -194,10 +190,7 @@ function WorkspaceSwitcher() {
       </div>
       <div className="flex-1 min-w-0 text-left">
         <div className="text-sm font-semibold tracking-tight leading-tight truncate">
-          Weijia&apos;s beevibe
-        </div>
-        <div className="text-[10px] text-muted-foreground leading-tight mt-0.5 truncate">
-          1 owner · 7 agents
+          beevibe
         </div>
       </div>
       <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
@@ -285,60 +278,15 @@ function NavRow({ item, pathname }: { item: NavItem; pathname: string }) {
   );
 }
 
-const HIER_DOT: Record<"org" | "team" | "ic", string> = {
-  org: "bg-hier-org",
-  team: "bg-hier-team",
-  ic: "bg-hier-ic",
-};
-
-const RUNNING_AGENT_IDS = new Set(["agt_ic1", "agt_ic3"]);
-
-function AgentList({ pathname }: { pathname: string }) {
+function EmptyAgentList() {
   return (
-    <>
-      {fixtureAgents.map((agent) => {
-        const href = `/agents/${agent.id}`;
-        const active = pathname === href;
-        const running = RUNNING_AGENT_IDS.has(agent.id);
-        return (
-          <Link
-            key={agent.id}
-            href={href}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "group flex items-center gap-2 h-7 pl-5 pr-2 rounded-md text-sm transition-colors",
-              active
-                ? "bg-secondary text-foreground font-medium"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
-            )}
-          >
-            <span
-              className={cn(
-                "h-1.5 w-1.5 rounded-full shrink-0",
-                HIER_DOT[agent.hierarchy],
-              )}
-              aria-hidden
-            />
-            <span className="flex-1 truncate font-mono text-[12px]">
-              {agent.display_name}
-            </span>
-            {running ? (
-              <span
-                className="h-1.5 w-1.5 rounded-full bg-status-running animate-pulse-breathe shrink-0"
-                aria-label="running"
-              />
-            ) : null}
-          </Link>
-        );
-      })}
-      <button
-        type="button"
-        className="flex items-center gap-2 h-7 pl-5 pr-2 rounded-md text-sm text-muted-foreground/70 hover:text-foreground hover:bg-secondary/70 cursor-pointer transition-colors w-full"
-      >
-        <Plus className="h-3.5 w-3.5 shrink-0" />
-        <span className="flex-1 truncate text-left">New agent</span>
-      </button>
-    </>
+    <button
+      type="button"
+      className="flex items-center gap-2 h-7 pl-5 pr-2 rounded-md text-sm text-muted-foreground/70 hover:text-foreground hover:bg-secondary/70 cursor-pointer transition-colors w-full"
+    >
+      <Plus className="h-3.5 w-3.5 shrink-0" />
+      <span className="flex-1 truncate text-left">New agent</span>
+    </button>
   );
 }
 

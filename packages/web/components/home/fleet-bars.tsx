@@ -1,5 +1,5 @@
 import { cn } from "@/lib/utils";
-import type { FleetBar } from "@/lib/fixtures/dashboard-stats";
+import type { FleetBar } from "@/lib/types/dashboard";
 
 const HIER_FILL = {
   org: "bg-hier-org",

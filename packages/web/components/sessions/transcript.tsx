@@ -13,7 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RichTextRender } from "@/components/rich-text";
-import type { AskThread, TranscriptEntry } from "@/lib/fixtures/sessions";
+import type { AskThread, TranscriptEntry } from "@/lib/types/sessions";
 
 const KIND_CONFIG = {
   agent: { Icon: Bot, color: "text-foreground", bg: "bg-secondary/40" },

@@ -4,7 +4,7 @@ import type { TaskStatus } from "@beevibe/core";
 import { HierChip } from "@/components/hier-chip";
 import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import type { TaskListItem } from "@/lib/fixtures/tasks";
+import type { TaskListItem } from "@/lib/types/tasks";
 
 const PRIORITY_DOT: Record<string, string> = {
   high: "bg-status-failed",

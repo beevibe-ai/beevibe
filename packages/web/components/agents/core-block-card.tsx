@@ -1,5 +1,5 @@
 import { Pencil } from "lucide-react";
-import type { CoreBlockDisplay } from "@/lib/fixtures/core-memory-blocks";
+import type { CoreBlockDisplay } from "@/lib/types/core-memory-blocks";
 
 export function CoreBlockCard({ block }: { block: CoreBlockDisplay }) {
   const filled = (block.char_count / block.char_limit) * 88;

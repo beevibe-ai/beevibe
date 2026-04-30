@@ -1,4 +1,4 @@
-import type { TrendDay } from "@/lib/fixtures/dashboard-stats";
+import type { TrendDay } from "@/lib/types/dashboard";
 
 export function TrendChart({
   days,

@@ -1,5 +1,3 @@
-import { findSessionById } from "@/lib/fixtures/sessions";
-
 export function formatRelativeTime(date: Date, now: Date = new Date()): string {
   const diffMs = now.getTime() - date.getTime();
   const diffSec = Math.floor(diffMs / 1000);
@@ -22,7 +20,5 @@ export function shortId(id: string): string {
 
 export function sessionHref(sid: string, taskId?: string): string {
   if (taskId) return `/tasks/${taskId}/sessions/${sid}`;
-  const session = findSessionById(sid);
-  const parentTask = session?.task_id ?? "tsk_8a3f1c00000000000000000000";
-  return `/tasks/${parentTask}/sessions/${sid}`;
+  return "#";
 }

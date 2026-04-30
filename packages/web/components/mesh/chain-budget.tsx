@@ -1,10 +1,17 @@
-import { fixtureChainBudget, type ChainBudgetRow } from "@/lib/fixtures/mesh";
+import type { ChainBudgetRow } from "@/lib/types/mesh";
 
 const BAR_COLOR = {
   done: "bg-status-done",
   review: "bg-status-review",
   primary: "bg-primary",
 } as const;
+
+const EMPTY_ROW: ChainBudgetRow = {
+  used_label: "—",
+  max_label: "—",
+  percent: 0,
+  color: "primary",
+};
 
 export function ChainBudget() {
   return (
@@ -15,13 +22,12 @@ export function ChainBudget() {
         </span>
       </div>
       <div className="space-y-2 text-xs">
-        <BudgetRow label="Avg depth" row={fixtureChainBudget.avg_depth} />
-        <BudgetRow label="Max depth" row={fixtureChainBudget.max_depth} />
-        <BudgetRow label="Tokens used" row={fixtureChainBudget.tokens} />
+        <BudgetRow label="Avg depth" row={EMPTY_ROW} />
+        <BudgetRow label="Max depth" row={EMPTY_ROW} />
+        <BudgetRow label="Tokens used" row={EMPTY_ROW} />
       </div>
       <div className="mt-3 text-[10px] text-muted-foreground leading-relaxed">
-        No chain has reached the depth cap or token cap.{" "}
-        <span className="text-foreground/80">ChainBudget</span> would terminate at depth 4 or 50k
+        <span className="text-foreground/80">ChainBudget</span> caps each chain at depth 4 or 50k
         tokens, whichever first.
       </div>
     </div>
