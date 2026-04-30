@@ -17,9 +17,8 @@
  * executor picks both up within ≤30s.
  */
 
-import { Router, type Request, type RequestHandler, type Response } from "express";
+import { Router, type RequestHandler } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import type { ResolvedCaller } from "@beevibe/core/auth";
 import {
   type EscalationService,
   type ResolveSelector,
@@ -27,24 +26,12 @@ import {
   EscalationStateError,
   NegotiationNotFoundError,
 } from "@beevibe/core/services/escalation-service";
-
-type HumanRequest = Request & { caller: Extract<ResolvedCaller, { source: "human" }> };
+import { requireHuman } from "../auth/middleware.js";
 
 export interface EscalationRoutesDeps {
   authMiddleware: RequestHandler;
   escalationService: EscalationService;
   pool: Pool;
-}
-
-function requireHuman(req: Request, res: Response): req is HumanRequest {
-  if (req.caller?.source !== "human") {
-    res.status(403).json({
-      error: "human_required",
-      message: "this endpoint requires a bv_u_ token",
-    });
-    return false;
-  }
-  return true;
 }
 
 function buildSelector(body: unknown):

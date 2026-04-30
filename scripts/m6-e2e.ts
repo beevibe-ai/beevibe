@@ -127,43 +127,49 @@ async function getFreePort(): Promise<number> {
   });
 }
 
-async function waitForTask(
+/**
+ * Generic poll-with-deadline-and-predicate. Calls `fetch()` every 500ms
+ * until either the predicate is true (returns the value) or the deadline
+ * elapses (throws with `tag` for context). Used by all the wait* helpers
+ * in this file — task status, latest session, escalation row, etc.
+ */
+async function pollUntil<T>(
+  fetch: () => Promise<T | null | undefined>,
+  pred: (v: T) => boolean,
+  deadlineMs: number,
+  tag: string,
+): Promise<T> {
+  const end = Date.now() + deadlineMs;
+  while (Date.now() < end) {
+    const v = await fetch();
+    if (v != null && pred(v)) return v;
+    await sleep(500);
+  }
+  throw new Error(`pollUntil timed out: "${tag}" (deadline ${deadlineMs}ms)`);
+}
+
+const waitForTask = (
   tasks: PostgresTaskRepository,
   id: string,
   deadlineMs: number,
   pred: (t: Task) => boolean,
   tag: string,
-): Promise<Task> {
-  const end = Date.now() + deadlineMs;
-  while (Date.now() < end) {
-    const t = await tasks.findById(id);
-    if (t && pred(t)) return t;
-    await sleep(500);
-  }
-  const current = await tasks.findById(id);
-  throw new Error(
-    `task ${id} never satisfied "${tag}" (last status=${current?.status})`,
-  );
-}
+): Promise<Task> =>
+  pollUntil(() => tasks.findById(id), pred, deadlineMs, `task ${id}: ${tag}`);
 
-async function waitForSession(
+const waitForSession = (
   sessions: PostgresSessionRepository,
   taskId: string,
   deadlineMs: number,
   pred: (s: Session) => boolean,
   tag: string,
-): Promise<Session> {
-  const end = Date.now() + deadlineMs;
-  while (Date.now() < end) {
-    const s = await sessions.findLatestForTask(taskId);
-    if (s && pred(s)) return s;
-    await sleep(500);
-  }
-  const current = await sessions.findLatestForTask(taskId);
-  throw new Error(
-    `session for task ${taskId} never satisfied "${tag}" (last status=${current?.status})`,
+): Promise<Session> =>
+  pollUntil(
+    () => sessions.findLatestForTask(taskId),
+    pred,
+    deadlineMs,
+    `session for task ${taskId}: ${tag}`,
   );
-}
 
 // ───────────────────────── deps + boot ─────────────────────────
 
@@ -180,7 +186,10 @@ type Deps = {
 interface Stack {
   api: ApiBootstrapResult;
   exec: ExecutorBootstrapResult;
+  /** MCP endpoint URL (`http://localhost:PORT/mcp`). Used in agent mcp-config. */
   apiUrl: string;
+  /** REST base URL (`http://localhost:PORT`). Used by human REST scenarios. */
+  restUrl: string;
   shutdown: () => Promise<void>;
 }
 
@@ -194,7 +203,8 @@ async function bootStack(
   opts: { pollIntervalMs?: number } = {},
 ): Promise<Stack> {
   const port = await getFreePort();
-  const apiUrl = `http://localhost:${port}/mcp`;
+  const restUrl = `http://localhost:${port}`;
+  const apiUrl = `${restUrl}/mcp`;
 
   const api = await bootstrapApi({
     databaseUrl: process.env.DATABASE_URL_TEST!,
@@ -222,7 +232,7 @@ async function bootStack(
     await api.shutdown();
   };
 
-  return { api, exec, apiUrl, shutdown };
+  return { api, exec, apiUrl, restUrl, shutdown };
 }
 
 // ───────────────────────── seed helpers ─────────────────────────
@@ -488,7 +498,7 @@ const reviewPolicyRevise: Scenario = async (deps, stack) => {
   log(`  task in review: result_summary="${inReview.result_summary}"`);
 
   // Human reviewer revises via REST.
-  const reviseResp = await fetch(`${stack.apiUrl.replace(/\/mcp$/, "")}/task/${task.id}/revise`, {
+  const reviseResp = await fetch(`${stack.restUrl}/task/${task.id}/revise`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${reviewer.apiKey}`,
@@ -606,7 +616,7 @@ const revisionRoundTrip: Scenario = async (deps, stack) => {
     "v1 → review",
   );
 
-  const r = await fetch(`${stack.apiUrl.replace(/\/mcp$/, "")}/task/${task.id}/revise`, {
+  const r = await fetch(`${stack.restUrl}/task/${task.id}/revise`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${reviewer.apiKey}`,
@@ -673,7 +683,7 @@ const inFlightCancel: Scenario = async (deps, stack) => {
 
   const cancelStart = Date.now();
   const cancelResp = await fetch(
-    `${stack.apiUrl.replace(/\/mcp$/, "")}/task/${task.id}/cancel`,
+    `${stack.restUrl}/task/${task.id}/cancel`,
     {
       method: "POST",
       headers: { Authorization: `Bearer ${reviewer.apiKey}` },
@@ -901,24 +911,24 @@ async function waitForTSession(
   parentAgentId: string,
   triggerSessionId: string,
 ): Promise<Session> {
-  const end = Date.now() + SESSION_TERMINAL_DEADLINE_MS;
-  while (Date.now() < end) {
-    const { rows } = await deps.pool.query<{ id: string }>(
-      `SELECT id FROM session
-        WHERE agent_id = $1
-          AND type = 'blocker'
-          AND id != $2
-          AND status IN ('succeeded', 'failed')
-        ORDER BY created_at DESC LIMIT 1`,
-      [parentAgentId, triggerSessionId],
-    );
-    if (rows[0]) {
-      const s = await deps.sessions.findById(rows[0].id);
-      if (s) return s;
-    }
-    await sleep(500);
-  }
-  throw new Error(`T's blocker session never reached terminal`);
+  return pollUntil(
+    async () => {
+      const { rows } = await deps.pool.query<{ id: string }>(
+        `SELECT id FROM session
+          WHERE agent_id = $1
+            AND type = 'blocker'
+            AND id != $2
+            AND status IN ('succeeded', 'failed')
+          ORDER BY created_at DESC LIMIT 1`,
+        [parentAgentId, triggerSessionId],
+      );
+      if (!rows[0]) return null;
+      return deps.sessions.findById(rows[0].id);
+    },
+    () => true,
+    SESSION_TERMINAL_DEADLINE_MS,
+    `T's blocker session terminal (parent=${parentAgentId})`,
+  );
 }
 
 /**
@@ -1358,7 +1368,7 @@ const fullEscalation: Scenario = async (deps, stack) => {
 
   // Phase 2: human resolves via REST. Pick A's first proposal.
   const resolveResp = await fetch(
-    `${stack.apiUrl.replace(/\/mcp$/, "")}/escalation/${escRow.id}/resolve`,
+    `${stack.restUrl}/escalation/${escRow.id}/resolve`,
     {
       method: "POST",
       headers: {
@@ -1471,57 +1481,50 @@ const fullEscalation: Scenario = async (deps, stack) => {
   log(`  B's task done; result_summary="${bDone.result_summary}"`);
 };
 
-async function waitForEscalationRow(
-  deps: Deps,
-  taskId: string,
-): Promise<{
+interface EscalationRow {
   id: string;
   negotiation_id: string;
   status: string;
   escalated_by_role: string;
-}> {
-  const end = Date.now() + SESSION_TERMINAL_DEADLINE_MS;
-  while (Date.now() < end) {
-    const { rows } = await deps.pool.query<{
-      id: string;
-      negotiation_id: string;
-      status: string;
-      escalated_by_role: string;
-    }>(
-      `SELECT e.id, e.negotiation_id, e.status, e.escalated_by_role
-         FROM escalation e
-         JOIN negotiation n ON n.id = e.negotiation_id
-        WHERE n.task_id = $1
-        ORDER BY e.created_at DESC LIMIT 1`,
-      [taskId],
-    );
-    if (rows[0]) return rows[0];
-    await sleep(300);
-  }
-  throw new Error(`escalation row for task ${taskId} never appeared`);
 }
 
-async function waitForBPrimary(
-  deps: Deps,
-  agentBId: string,
-): Promise<Session> {
-  const end = Date.now() + SESSION_TERMINAL_DEADLINE_MS;
-  while (Date.now() < end) {
-    const { rows } = await deps.pool.query<{ id: string }>(
-      `SELECT id FROM session
-        WHERE agent_id = $1
-          AND type = 'mesh_negotiate'
-          AND status IN ('succeeded', 'failed')
-        ORDER BY created_at DESC LIMIT 1`,
-      [agentBId],
-    );
-    if (rows[0]) {
-      const s = await deps.sessions.findById(rows[0].id);
-      if (s) return s;
-    }
-    await sleep(300);
-  }
-  throw new Error(`B's primary mesh session never reached terminal`);
+function waitForEscalationRow(deps: Deps, taskId: string): Promise<EscalationRow> {
+  return pollUntil(
+    async () => {
+      const { rows } = await deps.pool.query<EscalationRow>(
+        `SELECT e.id, e.negotiation_id, e.status, e.escalated_by_role
+           FROM escalation e
+           JOIN negotiation n ON n.id = e.negotiation_id
+          WHERE n.task_id = $1
+          ORDER BY e.created_at DESC LIMIT 1`,
+        [taskId],
+      );
+      return rows[0];
+    },
+    () => true,
+    SESSION_TERMINAL_DEADLINE_MS,
+    `escalation row for task ${taskId}`,
+  );
+}
+
+function waitForBPrimary(deps: Deps, agentBId: string): Promise<Session> {
+  return pollUntil(
+    async () => {
+      const { rows } = await deps.pool.query<{ id: string }>(
+        `SELECT id FROM session
+          WHERE agent_id = $1
+            AND type = 'mesh_negotiate'
+            AND status IN ('succeeded', 'failed')
+          ORDER BY created_at DESC LIMIT 1`,
+        [agentBId],
+      );
+      if (!rows[0]) return null;
+      return deps.sessions.findById(rows[0].id);
+    },
+    () => true,
+    SESSION_TERMINAL_DEADLINE_MS,
+    `B's primary mesh_negotiate session terminal (B=${agentBId})`,
+  );
 }
 
 // ───────────────────────── main ─────────────────────────

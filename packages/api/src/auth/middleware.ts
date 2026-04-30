@@ -59,3 +59,26 @@ export function createAuthMiddleware(deps: LookupApiKeyDeps): RequestHandler {
     next();
   };
 }
+
+/** Express request narrowed to a confirmed human (`bv_u_`) caller. */
+export type HumanRequest = Request & {
+  caller: Extract<ResolvedCaller, { source: "human" }>;
+};
+
+/**
+ * Type guard for routes that only accept human callers (e.g., the REST
+ * endpoints under /task and /escalation). Sends 403 to the response and
+ * returns false on agent / missing callers; returns true and narrows
+ * `req` to `HumanRequest` on success. The auth middleware already
+ * attached `req.caller`; this just gates by source.
+ */
+export function requireHuman(req: Request, res: Response): req is HumanRequest {
+  if (req.caller?.source !== "human") {
+    res.status(403).json({
+      error: "human_required",
+      message: "this endpoint requires a bv_u_ token",
+    });
+    return false;
+  }
+  return true;
+}

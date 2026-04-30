@@ -1,15 +1,6 @@
 import type { ResolvedCaller } from "@beevibe/core/auth";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 
-export interface BuildInstructionsServices {
-  /**
-   * Per-agent MemoryAgent factory. The composition root closes over
-   * shared memory services (FactStore, CoreMemory, FactPromoter, embed)
-   * and produces a fresh agent-scoped instance.
-   */
-  makeMemoryAgent: (agentId: string) => MemoryAgent;
-}
-
 /**
  * Build the MCP `instructions` string returned on `initialize`.
  *
@@ -21,14 +12,17 @@ export interface BuildInstructionsServices {
  *   - "human" → full briefing via `MemoryAgent.prepareBriefing("(interactive)")`.
  *     The user ran `claude` themselves; no system-prompt arg was passed, so
  *     we deliver the briefing through MCP.
+ *
+ * Takes the already-built `MemoryAgent` (constructed once per session at
+ * the call site) rather than the factory — avoids rebuilding it just to
+ * call `prepareBriefing`.
  */
 export async function buildInstructions(
   caller: ResolvedCaller,
-  services: BuildInstructionsServices,
+  memoryAgent: MemoryAgent,
 ): Promise<string> {
   if (caller.source === "agent") {
     return "";
   }
-  const memoryAgent = services.makeMemoryAgent(caller.agentId);
   return memoryAgent.prepareBriefing("(interactive)");
 }

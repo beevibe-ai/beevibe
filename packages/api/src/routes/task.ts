@@ -19,18 +19,15 @@
  *     killed).
  */
 
-import { Router, type Request, type RequestHandler, type Response } from "express";
+import { Router, type RequestHandler, type Response } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { TaskRepository, TaskStatus } from "@beevibe/core";
-import type { ResolvedCaller } from "@beevibe/core/auth";
 import {
   type TaskService,
   InvalidTaskTransitionError,
   TaskNotFoundError,
 } from "@beevibe/core/services/task-service";
-
-/** Narrows req.caller to the human variant. */
-type HumanRequest = Request & { caller: Extract<ResolvedCaller, { source: "human" }> };
+import { requireHuman } from "../auth/middleware.js";
 
 /** Statuses from which /cancel is legal. Anything non-terminal. */
 const CANCELLABLE_FROM: readonly TaskStatus[] = [
@@ -49,17 +46,6 @@ export interface TaskRoutesDeps {
   taskService: TaskService;
   /** For pg_notify('cancel_task', task_id). */
   pool: Pool;
-}
-
-function requireHuman(req: Request, res: Response): req is HumanRequest {
-  if (req.caller?.source !== "human") {
-    res.status(403).json({
-      error: "human_required",
-      message: "this endpoint requires a bv_u_ token",
-    });
-    return false;
-  }
-  return true;
 }
 
 function handleServiceError(err: unknown, res: Response): void {
@@ -182,13 +168,14 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
           ? `cancelled by ${req.caller.personId}: ${req.body.reason}`
           : `cancelled by ${req.caller.personId}`;
 
-      // 1. Atomic UPDATE — idempotent if already cancelled (no-op)
+      // CANCELLABLE_FROM gate above already rejects terminal states, so
+      // this UPDATE only runs against non-terminal tasks.
       await deps.taskRepo.update(id, {
         status: "cancelled",
         result_summary: reason,
       });
 
-      // 2. pg_notify the executor's cancel-listener so the in-flight CLI
+      // pg_notify the executor's cancel-listener so the in-flight CLI
       // subprocess (if any) gets killed via AbortController.
       await deps.pool.query(`SELECT pg_notify('cancel_task', $1)`, [id]);
 

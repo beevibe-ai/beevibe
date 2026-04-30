@@ -13,12 +13,9 @@ import type { MemoryAgent } from "@beevibe/core/services/memory";
 import type { TaskService } from "@beevibe/core/services/task-service";
 
 /**
- * Stamp on the retry session's stdin so the `onSessionComplete` hook can
- * detect "this is a retry" and short-circuit (otherwise the retry's terminal
- * write would re-trigger postDispatchCheck recursively). Distinct from
- * `skipOnComplete` (the input flag — primary guard); the marker is a
- * belt-and-suspenders for any code path that loses the input flag. Public so
- * the bootstrap can reference it from the hook.
+ * The XML context marker the retry session sees in its stdin. Identifies
+ * the "agent forgot update_progress; please call it now" intent. Exported
+ * so tests + the e2e suite can assert the retry session received it.
  */
 export const NUDGE_COMPLETION_MARKER = '<context type="nudge_completion">';
 
@@ -97,15 +94,19 @@ export async function postDispatchCheck(
   if (latest && latest.id !== sessionResult.id) return;
 
   // Task is still in a running status (agent exited without update_progress).
-  // Parent vs leaf decision.
-  const childNotComplete = await deps.taskRepo.countChildrenNotComplete(taskId);
+  // Parent vs leaf decision: fire both child counts in parallel — both are
+  // independent SELECTs and at least one is needed on every running-status
+  // path.
+  const [childNotComplete, childTotal] = await Promise.all([
+    deps.taskRepo.countChildrenNotComplete(taskId),
+    deps.taskRepo.countChildren(taskId),
+  ]);
   if (childNotComplete > 0) {
     // Parent waiting on non-terminal children. Their post-dispatch will
     // bubble through `checkAndCompleteParent` when the last one settles.
     return;
   }
 
-  const childTotal = await deps.taskRepo.countChildren(taskId);
   if (childTotal > 0) {
     // Parent task whose children have all settled (mixed outcomes possible).
     // M6: do not auto-retry parents — log + try the rollup. If all children
@@ -169,15 +170,8 @@ export function buildPostDispatchHook(
   deps: BuildHookDeps,
 ): (session: Session) => Promise<void> {
   return async (session) => {
-    // Filter: only task sessions go through post-dispatch. Mesh / chat
-    // sessions don't have an `update_progress` semantics to chase.
+    // Mesh / chat sessions don't have `update_progress` semantics to chase.
     if (session.type !== "task" || !session.task_id) return;
-    // Belt-and-suspenders against any path that loses the skipOnComplete
-    // flag — the retry session's intent embeds NUDGE_COMPLETION_MARKER and
-    // we short-circuit on it. Primary guard is the retry's AgentSession
-    // having no `onSessionComplete`, so this branch should be unreachable
-    // in practice.
-    if (session.intent?.includes(NUDGE_COMPLETION_MARKER)) return;
 
     const agent: Agent | undefined = await deps.agentRepo.findById(
       session.agent_id,

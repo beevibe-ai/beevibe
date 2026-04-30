@@ -32,10 +32,8 @@ describe("ExecutorHealthServer", () => {
       0, // OS-assigned port
     );
     await server.start();
-    const port = (server as unknown as { server: { address: () => { port: number } } })
-      .server.address().port;
 
-    const res = await getJson(port, "/health");
+    const res = await getJson(server.port, "/health");
     expect(res.status).toBe(200);
     expect(res.body).toMatchObject({
       ok: true,
@@ -58,10 +56,8 @@ describe("ExecutorHealthServer", () => {
       0,
     );
     await server.start();
-    const port = (server as unknown as { server: { address: () => { port: number } } })
-      .server.address().port;
 
-    const res = await getJson(port, "/health");
+    const res = await getJson(server.port, "/health");
     expect(res.status).toBe(503);
     expect(res.body.ok).toBe(false);
   });
@@ -77,10 +73,8 @@ describe("ExecutorHealthServer", () => {
       0,
     );
     await server.start();
-    const port = (server as unknown as { server: { address: () => { port: number } } })
-      .server.address().port;
 
-    const res = await getJson(port, "/health");
+    const res = await getJson(server.port, "/health");
     expect(res.status).toBe(503);
     expect(res.body).toMatchObject({ ok: false, polling: false });
   });
@@ -96,10 +90,8 @@ describe("ExecutorHealthServer", () => {
       0,
     );
     await server.start();
-    const port = (server as unknown as { server: { address: () => { port: number } } })
-      .server.address().port;
 
-    const res = await fetch(`http://localhost:${port}/nope`);
+    const res = await fetch(`http://localhost:${server.port}/nope`);
     expect(res.status).toBe(404);
   });
 });

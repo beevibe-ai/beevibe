@@ -195,9 +195,7 @@ async function handleMcpRequest(
   // MemoryAgent (closed over caller.agentId) so search_context queries hit
   // the right agent's archival memory.
   const memoryAgent = deps.makeMemoryAgent(caller.agentId);
-  const instructions = await buildInstructions(caller, {
-    makeMemoryAgent: deps.makeMemoryAgent,
-  });
+  const instructions = await buildInstructions(caller, memoryAgent);
   const tools = assembleTools(
     { caller, beevibeSid },
     {

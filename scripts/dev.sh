@@ -80,10 +80,8 @@ if [ "$TUNNEL_ENABLED" = "1" ] && ! command -v cloudflared >/dev/null 2>&1; then
 fi
 
 # ─────────────────── deps ───────────────────
-if [ ! -d node_modules ]; then
-  echo "==> Installing dependencies..."
-  pnpm install
-fi
+echo "==> Installing dependencies (no-op if up to date)..."
+pnpm install --frozen-lockfile
 
 # ─────────────────── postgres ───────────────────
 echo "==> Ensuring postgres is running..."
@@ -106,7 +104,7 @@ pnpm migrate up >/dev/null
 
 # ─────────────────── start services ───────────────────
 echo ""
-echo "✓ Ready. Starting services..."
+echo "==> Starting services (watch the [api] / [exec] logs for ready signals)..."
 echo "  API:           http://localhost:${BEEVIBE_API_PORT}"
 echo "  Executor:      health on http://localhost:${BEEVIBE_EXECUTOR_HEALTH_PORT}/health"
 [ "$TUNNEL_ENABLED" = "1" ] && echo "  Tunnel:        starting cloudflared..."

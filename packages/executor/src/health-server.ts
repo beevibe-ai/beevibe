@@ -1,4 +1,5 @@
 import { createServer, type Server } from "node:http";
+import type { AddressInfo } from "node:net";
 import type { TaskExecutionWorker } from "./worker.js";
 
 export const DEFAULT_HEALTH_PORT = 3001;
@@ -24,8 +25,19 @@ export class ExecutorHealthServer {
 
   constructor(
     private readonly worker: TaskExecutionWorker,
-    private readonly port: number = DEFAULT_HEALTH_PORT,
+    private readonly requestedPort: number = DEFAULT_HEALTH_PORT,
   ) {}
+
+  /**
+   * Bound port. After `start()` returns the actual listen port (useful when
+   * `requestedPort` was 0 — OS-assigned, in tests). Before start: returns
+   * the requested value.
+   */
+  get port(): number {
+    const addr = this.server?.address();
+    if (addr && typeof addr !== "string") return (addr as AddressInfo).port;
+    return this.requestedPort;
+  }
 
   async start(): Promise<void> {
     if (this.server) return;
@@ -53,7 +65,7 @@ export class ExecutorHealthServer {
       );
     });
     await new Promise<void>((resolve) => {
-      this.server!.listen(this.port, () => resolve());
+      this.server!.listen(this.requestedPort, () => resolve());
     });
   }
 

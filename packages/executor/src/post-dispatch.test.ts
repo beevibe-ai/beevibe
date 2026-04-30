@@ -156,7 +156,9 @@ describe("postDispatchCheck", () => {
     await promise;
 
     expect(taskRepo.countChildrenNotComplete).toHaveBeenCalledWith("task_t");
-    expect(taskRepo.countChildren).not.toHaveBeenCalled();
+    // childNotComplete > 0 → no retry / no rollup; both child counts fire
+    // in parallel so countChildren is also called (cheap), but neither
+    // downstream side-effect runs.
     expect(agentSession.run).not.toHaveBeenCalled();
     expect(taskService.checkAndCompleteParent).not.toHaveBeenCalled();
   });
