@@ -45,6 +45,23 @@ const NESTING_GUARD_VARS = [
   "CLAUDE_CODE_PARENT_SESSION",
 ] as const;
 
+/**
+ * Anthropic auth env vars stripped from the spawned CLI subprocess so it
+ * authenticates via its own `~/.claude/` credentials (subscription
+ * billing when the user has run `claude login`). Without this, the
+ * executor's own `ANTHROPIC_API_KEY` (used by FactPromoter / FactStore
+ * for their server-side LLM calls) leaks into the subprocess and forces
+ * API-key billing — which silently overrides any subscription auth the
+ * user had configured.
+ *
+ * Per-agent billing-mode opt-in (some agents on API key, others on
+ * subscription) is tracked separately for a follow-up.
+ */
+const ANTHROPIC_AUTH_VARS = [
+  "ANTHROPIC_API_KEY",
+  "ANTHROPIC_AUTH_TOKEN",
+] as const;
+
 export class ClaudeCodeRuntime implements AgentRuntime {
   readonly type = "claude-code";
 
@@ -76,6 +93,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
 
     const env: Record<string, string | undefined> = { ...process.env };
     for (const key of NESTING_GUARD_VARS) delete env[key];
+    for (const key of ANTHROPIC_AUTH_VARS) delete env[key];
     if (context.env) Object.assign(env, context.env);
 
     // Parse messages incrementally during streaming so we don't re-parse

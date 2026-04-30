@@ -27,8 +27,6 @@ export interface NegotiateResponse {
   message: string;
   /** Required when decision === 'counter'. */
   counter_proposal?: string;
-  /** 1-based round number; mesh-internal — agents don't typically read this. */
-  round: number;
 }
 
 /**

@@ -158,9 +158,12 @@ export class MeshServer {
     if (!initiator) throw new Error(`initiator agent not found: ${fromAgentId}`);
     const maxRounds = initiator.max_negotiation_rounds ?? DEFAULT_MAX_NEGOTIATION_ROUNDS;
 
-    // Pre-generate B's sid so we can stamp counterparty_session_id on the
-    // negotiation row before the spawn. AgentSession.run accepts the
-    // pre-generated id via input.sessionId.
+    // Pre-generate B's sid so AgentSession.run uses it (so the spawn's
+    // session row matches the id we'll stamp on the negotiation row when
+    // B first calls respond_negotiate). The negotiation row itself starts
+    // with `counterparty_session_id IS NULL` — the FK only requires the
+    // referenced session to exist when the column is set; we set it later,
+    // after the spawn has created B's session row.
     const counterpartySid = makeSessionId();
 
     const neg = await this.deps.negotiationRepo.create({
@@ -168,12 +171,15 @@ export class MeshServer {
       initiator_agent_id: fromAgentId,
       initiator_session_id: options.initiatorSessionId,
       counterparty_agent_id: toAgentId,
-      counterparty_session_id: counterpartySid,
       task_id: options.taskId,
       max_rounds: maxRounds,
     });
 
-    // INSERT round 1 (initiator's proposal).
+    // INSERT round 1 (initiator's proposal). sendNegotiate is the round-1
+    // entry point only; bump rounds_completed in the same logical step so
+    // respondNegotiate can compute nextRoundNumber correctly (otherwise
+    // B's first respond_negotiate re-attempts round_number=1 and trips the
+    // UNIQUE constraint on negotiation_round).
     await this.deps.negotiationRoundRepo.create({
       id: makeRoundId(),
       negotiation_id: neg.id,
@@ -182,6 +188,7 @@ export class MeshServer {
       decision: "propose",
       message: proposal,
     });
+    await this.deps.negotiationRepo.update(neg.id, { rounds_completed: 1 });
 
     const intent =
       `<mesh-negotiate negotiation_id="${escapeAttr(neg.id)}" from="${escapeAttr(fromAgentId)}" round="1">\n` +
@@ -224,6 +231,7 @@ export class MeshServer {
   async respondNegotiate(
     negotiationId: string,
     response: NegotiateResponse,
+    responderSessionId: string,
   ): Promise<NegotiateResponse | EscalatedSentinel | null> {
     const neg = await this.deps.negotiationRepo.findById(negotiationId);
     if (!neg) {
@@ -235,11 +243,34 @@ export class MeshServer {
       );
     }
 
-    // Refuse if THIS round would push past max_rounds. The next round
-    // number is rounds_completed + 1 (rounds_completed reflects rows
-    // already inserted; THIS call's row hasn't been inserted yet).
+    // First respond_negotiate from B → stamp B's session id on the negotiation
+    // row. Idempotent: only fires when the field is NULL and the responder is
+    // the negotiation's counterparty. Subsequent rounds (B counter → A reply
+    // → B reply, etc.) are no-ops because the field is already set.
+    if (
+      !neg.counterparty_session_id &&
+      response.from_agent_id === neg.counterparty_agent_id
+    ) {
+      await this.deps.negotiationRepo.update(negotiationId, {
+        counterparty_session_id: responderSessionId,
+      });
+    }
+
+    // The schema's `rounds_completed` column counts INSERTed rows (each
+    // respond_negotiate adds one). But `max_rounds` semantically caps the
+    // number of A↔B EXCHANGES — one full back-and-forth = one user-facing
+    // "round". An exchange has two halves: A starts it, B completes it.
+    //
+    //   row 1: A propose      → exchange 1 in progress
+    //   row 2: B respond      → exchange 1 complete   (B never hits cap)
+    //   row 3: A counter      → exchange 2 starts    (A may hit cap here)
+    //   row 4: B counter      → exchange 2 complete
+    //   ...
+    //
+    // Cap check: would inserting THIS row start an exchange beyond the cap?
     const nextRoundNumber = neg.rounds_completed + 1;
-    if (nextRoundNumber > neg.max_rounds) {
+    const wouldBeExchange = Math.ceil(nextRoundNumber / 2);
+    if (wouldBeExchange > neg.max_rounds) {
       throw new MeshMaxRoundsError({
         negotiationId,
         rounds_completed: neg.rounds_completed,
@@ -365,7 +396,9 @@ export class MeshServer {
     );
     if (running >= cap) {
       throw new MeshCapacityError(
-        `target agent ${targetAgentId} at mesh capacity (${running}/${cap})`,
+        `Target agent ${targetAgentId} is at mesh capacity (${running}/${cap}). ` +
+          `Try again later, or work on something else in the meantime — ` +
+          `their existing mesh sessions will free up shortly.`,
         { agentId: targetAgentId, running, cap },
       );
     }

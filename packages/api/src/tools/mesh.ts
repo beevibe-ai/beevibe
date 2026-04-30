@@ -91,7 +91,6 @@ function projectNegotiateResponse(
     decision: r.decision,
     message: r.message,
     counter_proposal: r.counter_proposal,
-    round: r.round,
   };
 }
 
@@ -265,17 +264,19 @@ function respondNegotiateTool(ctx: MeshToolContext, services: MeshToolServices):
           };
         }
 
-        // round_number is mesh-internal — the server tracks it via
-        // negotiation.rounds_completed. We pass 0 here as a placeholder;
-        // MeshServer.respondNegotiate computes the real round_number.
-        const result = await services.mesh.respondNegotiate(negId, {
-          negotiation_id: negId,
-          from_agent_id: ctx.caller.agentId,
-          decision,
-          message,
-          counter_proposal: counter,
-          round: 0,
-        });
+        // The server computes the round number internally from
+        // negotiation.rounds_completed; agents don't pass it.
+        const result = await services.mesh.respondNegotiate(
+          negId,
+          {
+            negotiation_id: negId,
+            from_agent_id: ctx.caller.agentId,
+            decision,
+            message,
+            counter_proposal: counter,
+          },
+          ctx.beevibeSid,
+        );
 
         if (result === null) {
           // Terminal — accept/reject. Caller exits.
