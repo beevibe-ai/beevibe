@@ -16,11 +16,11 @@ beforeEach(() => {
   fetchJsonMock.mockResolvedValue([]);
 });
 
-describe("api client", () => {
+describe("api client (reads)", () => {
   describe("tasks", () => {
-    it("list() hits /api/tasks with empty query when no filter is given", async () => {
+    it("list() hits /task with empty query when no filter is given", async () => {
       await api.tasks.list();
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/tasks", {
+      expect(fetchJsonMock).toHaveBeenCalledWith("/task", {
         query: {},
         signal: undefined,
       });
@@ -28,7 +28,7 @@ describe("api client", () => {
 
     it("list({lifecycle, view, assignee_id}) forwards every filter to the query", async () => {
       await api.tasks.list({ lifecycle: "in_review", view: "mine", assignee_id: "a1" });
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/tasks", {
+      expect(fetchJsonMock).toHaveBeenCalledWith("/task", {
         query: { lifecycle: "in_review", view: "mine", assignee_id: "a1" },
         signal: undefined,
       });
@@ -37,7 +37,7 @@ describe("api client", () => {
     it("forwards an AbortSignal when one is provided", async () => {
       const ac = new AbortController();
       await api.tasks.list({}, { signal: ac.signal });
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/tasks", {
+      expect(fetchJsonMock).toHaveBeenCalledWith("/task", {
         query: {},
         signal: ac.signal,
       });
@@ -45,30 +45,30 @@ describe("api client", () => {
 
     it("get(id) URL-encodes the id", async () => {
       await api.tasks.get("task with spaces");
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/tasks/task%20with%20spaces", {
+      expect(fetchJsonMock).toHaveBeenCalledWith("/task/task%20with%20spaces", {
         signal: undefined,
       });
     });
   });
 
   describe("agents", () => {
-    it("list() hits /api/agents", async () => {
+    it("list() hits /agent", async () => {
       await api.agents.list();
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/agents", { signal: undefined });
+      expect(fetchJsonMock).toHaveBeenCalledWith("/agent", { signal: undefined });
     });
 
     it("get(id) URL-encodes the id", async () => {
       await api.agents.get("agt/slash");
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/agents/agt%2Fslash", {
+      expect(fetchJsonMock).toHaveBeenCalledWith("/agent/agt%2Fslash", {
         signal: undefined,
       });
     });
   });
 
   describe("sessions", () => {
-    it("get(shortId) hits /api/sessions/:short", async () => {
-      await api.sessions.get("sess-abc");
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/sess-abc", {
+    it("get(shortId) hits /session/:short", async () => {
+      await api.sessions.get("abc123");
+      expect(fetchJsonMock).toHaveBeenCalledWith("/session/abc123", {
         signal: undefined,
       });
     });
@@ -77,7 +77,7 @@ describe("api client", () => {
   describe("memory", () => {
     it("listFacts() defaults to empty filter", async () => {
       await api.memory.listFacts();
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/memory/facts", {
+      expect(fetchJsonMock).toHaveBeenCalledWith("/memory/fact", {
         query: {},
         signal: undefined,
       });
@@ -85,22 +85,22 @@ describe("api client", () => {
 
     it("listFacts({scope}) forwards scope", async () => {
       await api.memory.listFacts({ scope: "team" });
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/memory/facts", {
+      expect(fetchJsonMock).toHaveBeenCalledWith("/memory/fact", {
         query: { scope: "team" },
         signal: undefined,
       });
     });
   });
 
-  describe("promotions / mesh / threads / dashboard", () => {
-    it("promotions.list() hits /api/promotions", async () => {
+  describe("deferred surfaces (paths set; backend not yet shipped)", () => {
+    it("promotions.list() hits /promotion", async () => {
       await api.promotions.list();
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/promotions", { signal: undefined });
+      expect(fetchJsonMock).toHaveBeenCalledWith("/promotion", { signal: undefined });
     });
 
-    it("mesh.overview() hits /api/mesh with optional since", async () => {
+    it("mesh.overview() hits /mesh with optional since", async () => {
       await api.mesh.overview({ since: "2026-04-30T00:00:00Z" });
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/mesh", {
+      expect(fetchJsonMock).toHaveBeenCalledWith("/mesh", {
         query: { since: "2026-04-30T00:00:00Z" },
         signal: undefined,
       });
@@ -108,14 +108,14 @@ describe("api client", () => {
 
     it("threads.list() / threads.get(id)", async () => {
       await api.threads.list();
-      expect(fetchJsonMock).toHaveBeenLastCalledWith("/api/threads", { signal: undefined });
+      expect(fetchJsonMock).toHaveBeenLastCalledWith("/thread", { signal: undefined });
       await api.threads.get("ch_1");
-      expect(fetchJsonMock).toHaveBeenLastCalledWith("/api/threads/ch_1", { signal: undefined });
+      expect(fetchJsonMock).toHaveBeenLastCalledWith("/thread/ch_1", { signal: undefined });
     });
 
-    it("dashboard.summary() hits /api/dashboard", async () => {
+    it("dashboard.summary() hits /dashboard", async () => {
       await api.dashboard.summary();
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/dashboard", { signal: undefined });
+      expect(fetchJsonMock).toHaveBeenCalledWith("/dashboard", { signal: undefined });
     });
   });
 });

@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./config", () => ({
   apiBaseUrl: "https://api.example.com",
   isApiConfigured: true,
+  userKey: null,
 }));
 
 import { fetchJson, ApiError } from "./http";
@@ -115,11 +116,39 @@ describe("fetchJson", () => {
 describe("fetchJson when API is not configured", () => {
   it("throws ApiNotConfigured without invoking fetch", async () => {
     vi.resetModules();
-    vi.doMock("./config", () => ({ apiBaseUrl: null, isApiConfigured: false }));
+    vi.doMock("./config", () => ({
+      apiBaseUrl: null,
+      isApiConfigured: false,
+      userKey: null,
+    }));
 
     const { fetchJson: ucFetch, ApiNotConfigured } = await import("./http");
     await expect(ucFetch("/api/tasks")).rejects.toBeInstanceOf(ApiNotConfigured);
     expect(fetchMock).not.toHaveBeenCalled();
+
+    vi.doUnmock("./config");
+    vi.resetModules();
+  });
+});
+
+describe("fetchJson with userKey configured", () => {
+  it("attaches Authorization: Bearer <userKey> when configured", async () => {
+    vi.resetModules();
+    vi.doMock("./config", () => ({
+      apiBaseUrl: "https://api.example.com",
+      isApiConfigured: true,
+      userKey: "bv_u_test_key",
+    }));
+
+    const { fetchJson: authedFetch } = await import("./http");
+    fetchMock.mockResolvedValueOnce(new Response("{}", { status: 200 }));
+
+    await authedFetch("/task/t_1/approve", { method: "POST", body: {} });
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect((init.headers as Record<string, string>).Authorization).toBe(
+      "Bearer bv_u_test_key",
+    );
 
     vi.doUnmock("./config");
     vi.resetModules();

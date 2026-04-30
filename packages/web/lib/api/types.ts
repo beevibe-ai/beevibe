@@ -1,7 +1,19 @@
-import type { WorkProduct } from "@beevibe/core";
-import type { TaskListItem } from "@/lib/types/tasks";
-import type { AgentDisplay, RecentSession, OutgoingMeshHint } from "@/lib/types/agents";
-import type { CoreBlockDisplay, AgentMetrics } from "@/lib/types/core-memory-blocks";
+/**
+ * Web-side re-exports of the read-DTO contract owned by `@beevibe/api`.
+ *
+ * Live shapes are defined in `packages/api/src/views/types.ts` so the
+ * backend is the single source of truth for the read surface. Anything
+ * the web computes locally (display-only types like ChainBudget, GraphNode,
+ * dashboard KPI styling) stays in `lib/types/*` and isn't surfaced here.
+ */
+
+export type {
+  TaskDetail,
+  TaskDetailSessionRow,
+  AgentDetail,
+} from "@beevibe/api/views/types";
+
+import type { ChainBudgetData, GraphNode, GraphEdge, MeshSummary, MeshAsk } from "@/lib/types/mesh";
 import type {
   KpiStat,
   StatusBreakdownEntry,
@@ -10,31 +22,16 @@ import type {
   TrendDay,
   AttentionItem,
 } from "@/lib/types/dashboard";
-import type { ChainBudgetData, GraphNode, GraphEdge, MeshSummary, MeshAsk } from "@/lib/types/mesh";
-import type { ThreadEvent, ThreadChannel, DirectMessage, ActiveChannel } from "@/lib/types/thread-messages";
+import type {
+  ThreadEvent,
+  ThreadChannel,
+  DirectMessage,
+  ActiveChannel,
+} from "@/lib/types/thread-messages";
 
-export interface TaskDetail extends TaskListItem {
-  work_products: WorkProduct[];
-  sessions: TaskDetailSessionRow[];
-}
-
-export interface TaskDetailSessionRow {
-  id: string;
-  short_id: string;
-  agent_id: string;
-  agent_label: string;
-  status: "running" | "succeeded" | "failed" | "cancelled";
-  started_at: Date;
-  duration_label: string;
-  result_summary?: string;
-}
-
-export interface AgentDetail extends AgentDisplay {
-  core_blocks: CoreBlockDisplay[];
-  metrics: AgentMetrics;
-  recent_sessions: RecentSession[];
-  outgoing_mesh_hints: OutgoingMeshHint[];
-}
+// ── Display-only shapes the web still composes from fixtures ────────────
+// These surfaces (dashboard, mesh, threads) need a data/display split before
+// the backend can produce them cleanly. Tracked separately from #30.
 
 export interface DashboardSummary {
   kpis: KpiStat[];

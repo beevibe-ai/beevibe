@@ -27,15 +27,17 @@ export interface ReadOptions {
   signal?: AbortSignal;
 }
 
-export type ApproveAction = "approve" | "reject" | "revise";
-
 export interface ApproveTaskInput {
-  action: ApproveAction;
   result_summary?: string;
+}
+export interface RejectTaskInput {
+  result_summary?: string;
+}
+export interface ReviseTaskInput {
+  feedback: string;
 }
 
 export interface CancelTaskInput {
-  force?: boolean;
   reason?: string;
 }
 
@@ -47,63 +49,105 @@ export interface CreateTaskInput {
   parent_task_id?: string;
 }
 
+export type EscalationResolveInput =
+  | {
+      source: "initiator" | "counterparty";
+      source_index: number;
+      edited_title?: string;
+      edited_description?: string;
+      resolution_notes?: string;
+    }
+  | {
+      source: "human";
+      title: string;
+      description: string;
+      resolution_notes?: string;
+    };
+
 export const api = {
   tasks: {
     list: (filter: TaskListFilter = {}, opts: ReadOptions = {}) =>
-      fetchJson<TaskListItem[]>("/api/tasks", { query: { ...filter }, signal: opts.signal }),
+      fetchJson<TaskListItem[]>("/task", { query: { ...filter }, signal: opts.signal }),
     get: (id: string, opts: ReadOptions = {}) =>
-      fetchJson<TaskDetail>(`/api/tasks/${encodeURIComponent(id)}`, { signal: opts.signal }),
-    approve: (id: string, input: ApproveTaskInput) =>
-      fetchJson<Task>(`/api/tasks/${encodeURIComponent(id)}/approve`, {
-        method: "POST",
-        body: input,
-      }),
+      fetchJson<TaskDetail>(`/task/${encodeURIComponent(id)}`, { signal: opts.signal }),
+    approve: (id: string, input: ApproveTaskInput = {}) =>
+      fetchJson<{ ok: true; task: Pick<Task, "id" | "status"> }>(
+        `/task/${encodeURIComponent(id)}/approve`,
+        { method: "POST", body: input },
+      ),
+    reject: (id: string, input: RejectTaskInput = {}) =>
+      fetchJson<{ ok: true; task: Pick<Task, "id" | "status"> }>(
+        `/task/${encodeURIComponent(id)}/reject`,
+        { method: "POST", body: input },
+      ),
+    revise: (id: string, input: ReviseTaskInput) =>
+      fetchJson<{ ok: true; task: Pick<Task, "id" | "status"> }>(
+        `/task/${encodeURIComponent(id)}/revise`,
+        { method: "POST", body: input },
+      ),
     cancel: (id: string, input: CancelTaskInput = {}) =>
-      fetchJson<Task>(`/api/tasks/${encodeURIComponent(id)}/cancel`, {
-        method: "POST",
-        body: input,
-      }),
+      fetchJson<{ ok: true; task_id: string; note: string }>(
+        `/task/${encodeURIComponent(id)}/cancel`,
+        { method: "POST", body: input },
+      ),
+    // Backend hasn't shipped POST /task (create) yet — see #30.
     create: (input: CreateTaskInput) =>
-      fetchJson<Task>("/api/tasks", { method: "POST", body: input }),
+      fetchJson<Task>("/task", { method: "POST", body: input }),
   },
   agents: {
     list: (opts: ReadOptions = {}) =>
-      fetchJson<AgentDisplay[]>("/api/agents", { signal: opts.signal }),
+      fetchJson<AgentDisplay[]>("/agent", { signal: opts.signal }),
     get: (id: string, opts: ReadOptions = {}) =>
-      fetchJson<AgentDetail>(`/api/agents/${encodeURIComponent(id)}`, { signal: opts.signal }),
+      fetchJson<AgentDetail>(`/agent/${encodeURIComponent(id)}`, { signal: opts.signal }),
   },
   sessions: {
+    /** Path param is the 6-char short_id (no '#'). */
     get: (shortId: string, opts: ReadOptions = {}) =>
-      fetchJson<SessionDisplay>(`/api/sessions/${encodeURIComponent(shortId)}`, {
+      fetchJson<SessionDisplay>(`/session/${encodeURIComponent(shortId)}`, {
         signal: opts.signal,
       }),
-    cancel: (shortId: string) =>
-      fetchJson<void>(`/api/sessions/${encodeURIComponent(shortId)}/cancel`, { method: "POST" }),
   },
   memory: {
     listFacts: (filter: { scope?: MemoryScope } = {}, opts: ReadOptions = {}) =>
-      fetchJson<MemoryFactDisplay[]>("/api/memory/facts", {
+      fetchJson<MemoryFactDisplay[]>("/memory/fact", {
         query: { ...filter },
         signal: opts.signal,
       }),
   },
+  // Surfaces below depend on backend slices that haven't shipped yet
+  // (dashboard/mesh need a data/display split; threads/promotions lack a
+  // domain). They'll 404 against the current api server and the page-level
+  // empty states keep showing. Tracked in follow-ups to #30.
   promotions: {
     list: (opts: ReadOptions = {}) =>
-      fetchJson<PromotionEvent[]>("/api/promotions", { signal: opts.signal }),
+      fetchJson<PromotionEvent[]>("/promotion", { signal: opts.signal }),
   },
   mesh: {
     overview: (filter: { since?: string } = {}, opts: ReadOptions = {}) =>
-      fetchJson<MeshOverview>("/api/mesh", { query: { ...filter }, signal: opts.signal }),
+      fetchJson<MeshOverview>("/mesh", { query: { ...filter }, signal: opts.signal }),
   },
   threads: {
     list: (opts: ReadOptions = {}) =>
-      fetchJson<ThreadsOverview>("/api/threads", { signal: opts.signal }),
+      fetchJson<ThreadsOverview>("/thread", { signal: opts.signal }),
     get: (id: string, opts: ReadOptions = {}) =>
-      fetchJson<ThreadDetail>(`/api/threads/${encodeURIComponent(id)}`, { signal: opts.signal }),
+      fetchJson<ThreadDetail>(`/thread/${encodeURIComponent(id)}`, { signal: opts.signal }),
   },
   dashboard: {
     summary: (opts: ReadOptions = {}) =>
-      fetchJson<DashboardSummary>("/api/dashboard", { signal: opts.signal }),
+      fetchJson<DashboardSummary>("/dashboard", { signal: opts.signal }),
+  },
+  escalations: {
+    resolve: (id: string, input: EscalationResolveInput) =>
+      fetchJson<{
+        ok: true;
+        escalation: { id: string; status: string; resolution_proposal: unknown; resolution_notes: string | null };
+        a_task_id: string;
+        b_task_id: string;
+        note: string;
+      }>(`/escalation/${encodeURIComponent(id)}/resolve`, {
+        method: "POST",
+        body: input,
+      }),
   },
 } as const;
 
