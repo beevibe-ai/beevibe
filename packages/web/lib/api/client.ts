@@ -47,6 +47,20 @@ export interface CreateTaskInput {
   parent_task_id?: string;
 }
 
+export interface ChatSendInput {
+  message: string;
+  /** Previous turn's session id — enables `--resume` continuity. */
+  prior_session_id?: string;
+}
+
+export interface ChatTurnResponse {
+  ok: true;
+  agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" };
+  session_id: string;
+  response: string;
+  status: "running" | "succeeded" | "failed" | "cancelled";
+}
+
 export type EscalationResolveInput =
   | {
       source: "initiator" | "counterparty";
@@ -127,6 +141,14 @@ export const api = {
   dashboard: {
     summary: (opts: ReadOptions = {}) =>
       fetchJson<DashboardSummary>("/dashboard", { signal: opts.signal }),
+  },
+  chat: {
+    /**
+     * Send one turn to the caller's primary agent. Server runs
+     * AgentSession.run synchronously; expect a 5–30s wait for the response.
+     */
+    send: (input: ChatSendInput) =>
+      fetchJson<ChatTurnResponse>("/chat", { method: "POST", body: input }),
   },
   escalations: {
     resolve: (id: string, input: EscalationResolveInput) =>

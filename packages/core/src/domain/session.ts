@@ -25,6 +25,24 @@ export interface SessionUsage {
 }
 
 /**
+ * Append-only event captured during a session's CLI run — one row per
+ * tool call (and, when the runtime emits them, per agent message / tool
+ * result / final summary). Persisted so the session detail page can
+ * replay the agent's thinking without keeping the CLI subprocess alive.
+ */
+export type SessionEventKind = "agent" | "tool_call" | "tool_result" | "summary";
+
+export interface SessionEvent {
+  id: string;
+  session_id: string;
+  kind: SessionEventKind;
+  content: string;
+  /** Set for tool_call / tool_result kinds. */
+  tool_name?: string;
+  created_at: Date;
+}
+
+/**
  * Structured snapshot of what `MemoryAgent.prepareBriefing` assembled for
  * the session's system prompt. Persisted on the session row so the
  * web's session detail page can render it without re-parsing XML.

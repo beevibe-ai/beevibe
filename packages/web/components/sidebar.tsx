@@ -10,6 +10,7 @@ import {
   Home,
   ListChecks,
   type LucideIcon,
+  MessageSquare,
   Network,
   Plus,
   Search,
@@ -42,6 +43,7 @@ type NavItem = {
 const QUICK_ACTIONS: QuickAction[] = [
   { label: "Search", icon: Search, onClick: () => {} },
   { href: "/", label: "Home", icon: Home },
+  { href: "/chat", label: "Chat", icon: MessageSquare },
 ];
 
 const WORKSPACE_ITEMS: NavItem[] = [

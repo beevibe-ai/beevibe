@@ -6,18 +6,15 @@
  * improbable with nanoid but the query LIMIT 2 + 409-on-ambiguous handler
  * makes them safe.
  *
- * Briefing / transcript / ask_threads are returned as empty stubs in this
- * cut: the briefing is composed in-process at session start (not persisted
- * in a queryable form), and the transcript lives in the CLI subprocess's
- * stdio — neither is available from the DB alone. Surfacing them is its
- * own backend slice; the empty stubs let the UI render the page chrome
- * (header, status, footer) immediately.
+ * Transcript rows come from `session_event` (M8 #47), aggregated server-side
+ * via json_agg — single round-trip, transcript-ordered. ask_threads remains
+ * an empty stub (mesh-ask threads are a separate backend slice).
  */
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { HierarchyLevel, SessionStatus, SessionType } from "@beevibe/core";
 import { deriveShortId, formatDurationLabel } from "./format.js";
-import type { SessionDisplay, SessionBriefing } from "./types.js";
+import type { SessionDisplay, SessionBriefing, TranscriptEntry } from "./types.js";
 
 interface SessionDetailRow {
   id: string;
@@ -34,6 +31,15 @@ interface SessionDetailRow {
   agent_label: string;
   agent_hier: HierarchyLevel;
   task_title: string | null;
+  transcript: TranscriptEventRow[] | null;
+}
+
+interface TranscriptEventRow {
+  kind: TranscriptEntry["kind"];
+  /** ISO string from `to_char(... 'YYYY-MM-DD"T"HH24:MI:SS"Z"')` (no driver Date coercion inside json_agg). */
+  timestamp: string;
+  content: string;
+  tool_name: string | null;
 }
 
 const SESSION_BY_ID_PREFIX_SQL = /* sql */ `
@@ -43,7 +49,23 @@ SELECT
   s.briefing,
   a.name              AS agent_label,
   a.hierarchy_level   AS agent_hier,
-  t.title             AS task_title
+  t.title             AS task_title,
+  COALESCE(
+    (
+      SELECT json_agg(
+        json_build_object(
+          'kind', e.kind,
+          'timestamp', to_char(e.created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD"T"HH24:MI:SS"Z"'),
+          'content', e.content,
+          'tool_name', e.tool_name
+        )
+        ORDER BY e.created_at ASC, e.id ASC
+      )
+      FROM session_event e
+      WHERE e.session_id = s.id
+    ),
+    '[]'::json
+  ) AS transcript
 FROM session s
 JOIN agent a ON a.id = s.agent_id
 LEFT JOIN task t ON t.id = s.task_id
@@ -106,9 +128,16 @@ function rowToSessionDisplay(row: SessionDetailRow): SessionDisplay {
     worktree: row.workspace_path ?? undefined,
     cli_session: row.cli_session_id ?? undefined,
     briefing: row.briefing ?? emptyBriefing(),
-    // Transcript persistence is the open piece of #45 item 3 — tracked as
-    // a separate follow-up; sessions still return [] here for now.
-    transcript: [],
+    transcript: (row.transcript ?? []).map(toTranscriptEntry),
     ask_threads: [],
+  };
+}
+
+function toTranscriptEntry(row: TranscriptEventRow): TranscriptEntry {
+  return {
+    kind: row.kind,
+    timestamp: row.timestamp,
+    content: row.content,
+    ...(row.tool_name ? { tool_name: row.tool_name } : {}),
   };
 }

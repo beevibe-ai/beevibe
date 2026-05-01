@@ -18,3 +18,4 @@ export const negotiationId = (): string => generateId("neg");
 export const negotiationRoundId = (): string => generateId("round");
 export const escalationId = (): string => generateId("esc");
 export const promotionEventId = (): string => generateId("mpe");
+export const sessionEventId = (): string => generateId("evt");

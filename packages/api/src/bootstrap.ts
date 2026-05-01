@@ -6,6 +6,7 @@ import {
   PostgresNegotiationRepository,
   PostgresNegotiationRoundRepository,
   PostgresPersonRepository,
+  PostgresSessionEventRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
   PostgresWorkProductRepository,
@@ -33,6 +34,7 @@ import { createTaskRouter } from "./routes/task.js";
 import { createEscalationRouter } from "./routes/escalation.js";
 import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
+import { createChatRouter } from "./routes/chat.js";
 import { createStreamAuthMiddleware } from "./auth/middleware.js";
 import { SseManager } from "./sse/manager.js";
 import { SseListener } from "./sse/listener.js";
@@ -93,6 +95,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const negotiationRepo = new PostgresNegotiationRepository(pool);
   const negotiationRoundRepo = new PostgresNegotiationRoundRepository(pool);
   const escalationRepo = new PostgresEscalationRepository(pool);
+  const sessionEventRepo = new PostgresSessionEventRepository(pool);
 
   // External services (LLM + embeddings) for memory pipeline
   const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
@@ -239,6 +242,21 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     sseManager,
   });
   server.getApp().use("/api", streamRouter);
+
+  // Demo prep: human chat surface. Posting a message synchronously runs
+  // one turn of the caller's primary (team/org) agent through
+  // AgentSession.run — same machinery the executor uses for tasks.
+  // The agent has full hierarchy tool access during the turn.
+  const chatRouter = createChatRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    agentRepo,
+    sessionRepo,
+    sessionEventRepo,
+    workspaceManager,
+    runtimeRegistry,
+    makeMemoryAgent,
+  });
+  server.getApp().use("/chat", chatRouter);
 
   const shutdown = async (): Promise<void> => {
     sessionCache.stopIdleSweep();

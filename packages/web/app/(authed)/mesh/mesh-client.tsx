@@ -9,7 +9,7 @@ import { MeshGraphStatic } from "@/components/mesh/graph-static";
 import { ChainBudget } from "@/components/mesh/chain-budget";
 import { useMeshOverview } from "@/lib/hooks/use-mesh";
 import { isApiConfigured } from "@/lib/api/config";
-import type { MeshAsk, MeshDisplay } from "@/lib/types/mesh";
+import type { MeshDisplay } from "@/lib/types/mesh";
 
 export function MeshClient() {
   const { data, isLoading, isError } = useMeshOverview();
@@ -90,51 +90,13 @@ function Body({
     );
   }
 
-  if (!data || data.asks.length === 0) {
-    return (
-      <div className="grid grid-cols-5 gap-6">
-        <MeshActivityFeed />
-        <div className="col-span-2">
-          <MeshGraphStatic
-            nodes={data?.graph.nodes}
-            edges={data?.graph.edges}
-          />
-          <ChainBudget />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="grid grid-cols-5 gap-6">
-      <section className="col-span-3">
-        <h2 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">
-          Recent asks{" "}
-          <span className="text-muted-foreground/70 tabular-nums">{data.asks.length}</span>
-        </h2>
-        <ul className="space-y-2">
-          {data.asks.map((ask) => (
-            <AskRow key={ask.id} ask={ask} />
-          ))}
-        </ul>
-      </section>
+      <MeshActivityFeed asks={data?.asks} />
       <div className="col-span-2 space-y-3">
-        <MeshGraphStatic nodes={data.graph.nodes} edges={data.graph.edges} />
+        <MeshGraphStatic nodes={data?.graph.nodes} edges={data?.graph.edges} />
         <ChainBudget />
       </div>
     </div>
-  );
-}
-
-function AskRow({ ask }: { ask: MeshAsk }) {
-  return (
-    <li className="rounded-lg border border-border bg-card p-3 text-sm">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-        <span className="text-foreground/85">{ask.caller}</span>
-        <span>→</span>
-        <span className="text-foreground/85">{ask.target}</span>
-        <span className="ml-auto tabular-nums">{ask.duration_label}</span>
-      </div>
-    </li>
   );
 }

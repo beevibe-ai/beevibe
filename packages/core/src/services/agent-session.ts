@@ -1,6 +1,6 @@
 import type { ResolutionProposal } from "../domain/escalation.js";
 import type { Session, SessionType } from "../domain/session.js";
-import { sessionId as newSessionId } from "../domain/ids.js";
+import { sessionEventId, sessionId as newSessionId } from "../domain/ids.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type {
   AgentRuntime,
@@ -8,6 +8,7 @@ import type {
   RuntimeStep,
   Workspace,
 } from "../ports/runtime.js";
+import type { SessionEventRepository } from "../ports/session-event-repo.js";
 import type { SessionRepository } from "../ports/session-repo.js";
 import type { MemoryAgent } from "./memory/memory-agent.js";
 
@@ -16,6 +17,12 @@ export interface AgentSessionDeps {
   sessionRepo: SessionRepository;
   runtime: AgentRuntime;
   memoryAgent: MemoryAgent;
+  /**
+   * Optional transcript persistence. When provided, every `RuntimeStep` is
+   * appended to `session_event` so the session detail page can replay the
+   * agent's tool calls. Best-effort; write failures only log.
+   */
+  sessionEventRepo?: SessionEventRepository;
   /**
    * Optional fire-and-forget hook fired once the terminal session row is
    * written. Wired by composition roots — the executor uses it to call
@@ -111,6 +118,36 @@ export class AgentSession {
       .filter((s) => s.length > 0)
       .join("\n\n");
 
+    // Compose onStep: caller's hook (if any) + transcript persistence (when
+    // sessionEventRepo wired). Persistence is fire-and-forget and never
+    // blocks the LLM-bound tail.
+    const eventRepo = this.deps.sessionEventRepo;
+    const persistStep = eventRepo
+      ? (step: RuntimeStep): void => {
+          void eventRepo
+            .append({
+              id: sessionEventId(),
+              session_id: sid,
+              kind: "tool_call",
+              content: step.description,
+              tool_name: step.tool,
+            })
+            .catch((err) =>
+              console.error(
+                `[AgentSession] session_event append failed for ${sid}:`,
+                (err as Error).message,
+              ),
+            );
+        }
+      : undefined;
+    const onStep =
+      input.onStep && persistStep
+        ? (step: RuntimeStep) => {
+            persistStep(step);
+            input.onStep!(step);
+          }
+        : input.onStep ?? persistStep;
+
     // 4. Execute
     let result: RuntimeResult;
     try {
@@ -129,7 +166,7 @@ export class AgentSession {
         env: { BEEVIBE_SESSION_ID: sid },
         resume_session_id: priorCliSessionId,
         abort_signal: input.abortSignal,
-        onStep: input.onStep,
+        onStep,
         onSpawn: (meta) => {
           this.deps.sessionRepo
             .update(sid, {
@@ -170,6 +207,25 @@ export class AgentSession {
       process_group_id: result.process_group_id,
       completed_at: new Date(),
     });
+
+    // Append a terminal `summary` transcript event so the session detail
+    // page has the agent's final response even when there were no tool
+    // calls (e.g. quick chat replies). Fire-and-forget.
+    if (eventRepo && result.output) {
+      void eventRepo
+        .append({
+          id: sessionEventId(),
+          session_id: sid,
+          kind: "summary",
+          content: result.output,
+        })
+        .catch((err) =>
+          console.error(
+            `[AgentSession] session_event summary append failed for ${sid}:`,
+            (err as Error).message,
+          ),
+        );
+    }
 
     // 6. Fire-and-forget post-session memory work.
     void this.deps.memoryAgent.onTaskComplete(sid).catch((err) =>
