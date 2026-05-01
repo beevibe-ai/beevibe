@@ -22,3 +22,26 @@ export function sessionHref(sid: string, taskId?: string): string {
   if (taskId) return `/tasks/${taskId}/sessions/${sid}`;
   return "#";
 }
+
+/**
+ * Duration between `startedAt` and `completedAt` (or `now` if running).
+ * "30s" / "5m" / "1h 12m" / "2d 3h". Returns "—" if no start.
+ */
+export function formatDurationLabel(
+  startedAt: Date | null | undefined,
+  completedAt: Date | null | undefined,
+  now: Date = new Date(),
+): string {
+  if (!startedAt) return "—";
+  const end = completedAt ?? now;
+  const diffSec = Math.max(0, Math.floor((end.getTime() - startedAt.getTime()) / 1000));
+  if (diffSec < 60) return `${diffSec}s`;
+  const min = Math.floor(diffSec / 60);
+  if (min < 60) return `${min}m`;
+  const hr = Math.floor(min / 60);
+  const mins = min % 60;
+  if (hr < 24) return mins ? `${hr}h ${mins}m` : `${hr}h`;
+  const days = Math.floor(hr / 24);
+  const hrs = hr % 24;
+  return hrs ? `${days}d ${hrs}h` : `${days}d`;
+}

@@ -1,5 +1,11 @@
 import type { RichText } from "@/components/rich-text";
 
+// ── Display shapes the mesh page binds against ────────────────────────────
+//
+// Produced by `lib/mesh-display.ts:overviewToDisplay()` from the pure-data
+// `MeshOverview` shipped by the backend. Backend never computes SVG
+// geometry, status colors, or relative-time labels.
+
 export interface MeshAsk {
   id: string;
   caller: string;
@@ -58,3 +64,22 @@ export interface MeshSummary {
   in_flight: number;
   edge_count: number;
 }
+
+/** Aggregated display the mesh page binds to. */
+export interface MeshDisplay {
+  asks: MeshAsk[];
+  graph: { nodes: GraphNode[]; edges: GraphEdge[] };
+  summary: MeshSummary;
+}
+
+// ── Re-export the backend data DTO ────────────────────────────────────────
+
+export type {
+  MeshOverview,
+  MeshAskData,
+  MeshAskType,
+  MeshAskStatus,
+  GraphNodeData,
+  GraphEdgeData,
+  MeshSummaryData,
+} from "@beevibe/api/views/types";

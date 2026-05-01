@@ -1,0 +1,150 @@
+/**
+ * Mock-Pool tests for views/mesh.ts. Validates row → DTO mapping +
+ * status compression. Real query correctness is covered by integration
+ * tests; these stay DB-free.
+ *
+ * Query order in the implementation:
+ *   1) ASKS_SQL    → recent + in-flight negotiations
+ *   2) NODES_SQL   → distinct involved agents
+ *   3) EDGES_SQL   → aggregated initiator → counterparty pairs
+ *   4) SUMMARY_SQL → total counts
+ */
+import { describe, it, expect } from "vitest";
+import { getMeshOverview } from "./mesh.js";
+import { makeMockPool } from "./test-helpers.js";
+
+const baseAsk = {
+  id: "neg_1",
+  caller_id: "agt_a",
+  caller_label: "Alice",
+  target_id: "agt_b",
+  target_label: "Bob",
+  source_task_id: "task_1",
+  rounds_completed: 2,
+  max_rounds: 5,
+  started_at: new Date("2026-04-30T11:00:00Z"),
+  completed_at_or_updated: new Date("2026-04-30T11:30:00Z"),
+  intent: "Can you review this?",
+};
+
+describe("getMeshOverview — asks", () => {
+  it("returns empty arrays + zero summary when DB is empty", async () => {
+    const pool = makeMockPool([[], [], [], []]);
+    const overview = await getMeshOverview(pool);
+    expect(overview.asks).toEqual([]);
+    expect(overview.graph.nodes).toEqual([]);
+    expect(overview.graph.edges).toEqual([]);
+    expect(overview.summary).toEqual({ asks_24h: 0, in_flight: 0, edge_count: 0 });
+  });
+
+  it("maps an active negotiation to in_flight + omits completed_at", async () => {
+    const pool = makeMockPool([
+      [{ ...baseAsk, status: "active" }],
+      [],
+      [],
+      [],
+    ]);
+    const { asks } = await getMeshOverview(pool);
+    expect(asks).toHaveLength(1);
+    expect(asks[0]?.status).toBe("in_flight");
+    expect(asks[0]?.completed_at).toBeUndefined();
+    expect(asks[0]?.caller_label).toBe("Alice");
+    expect(asks[0]?.target_label).toBe("Bob");
+    expect(asks[0]?.intent).toBe("Can you review this?");
+    expect(asks[0]?.rounds_completed).toBe(2);
+    expect(asks[0]?.max_rounds).toBe(5);
+  });
+
+  it("compresses negotiation.status into MeshAskStatus", async () => {
+    const pool = makeMockPool([
+      [
+        { ...baseAsk, id: "neg_a", status: "active" },
+        { ...baseAsk, id: "neg_b", status: "accepted" },
+        { ...baseAsk, id: "neg_c", status: "rejected" },
+        { ...baseAsk, id: "neg_d", status: "escalated" },
+        { ...baseAsk, id: "neg_e", status: "cancelled" },
+      ],
+      [],
+      [],
+      [],
+    ]);
+    const { asks } = await getMeshOverview(pool);
+    const statusByid = Object.fromEntries(asks.map((a) => [a.id, a.status]));
+    expect(statusByid).toEqual({
+      neg_a: "in_flight",
+      neg_b: "succeeded",
+      neg_c: "rejected",
+      neg_d: "escalated",
+      neg_e: "blocked",
+    });
+  });
+
+  it("populates completed_at from updated_at for terminal asks", async () => {
+    const pool = makeMockPool([
+      [{ ...baseAsk, status: "accepted" }],
+      [],
+      [],
+      [],
+    ]);
+    const { asks } = await getMeshOverview(pool);
+    expect(asks[0]?.completed_at).toEqual(new Date("2026-04-30T11:30:00Z"));
+  });
+
+  it("falls back to '(no message)' when round 1 message is null", async () => {
+    const pool = makeMockPool([
+      [{ ...baseAsk, status: "active", intent: null }],
+      [],
+      [],
+      [],
+    ]);
+    const { asks } = await getMeshOverview(pool);
+    expect(asks[0]?.intent).toBe("(no message)");
+  });
+});
+
+describe("getMeshOverview — nodes + edges + summary", () => {
+  it("maps node rows preserving hierarchy and active state", async () => {
+    const pool = makeMockPool([
+      [],
+      [
+        { id: "agt_a", label: "Alice", hier: "team", is_active: true },
+        { id: "agt_b", label: "Bob", hier: "ic", is_active: false },
+      ],
+      [],
+      [],
+    ]);
+    const { graph } = await getMeshOverview(pool);
+    expect(graph.nodes).toEqual([
+      { id: "agt_a", label: "Alice", hier: "team", state: "active" },
+      { id: "agt_b", label: "Bob", hier: "ic", state: "idle" },
+    ]);
+  });
+
+  it("maps edges with count + live state", async () => {
+    const pool = makeMockPool([
+      [],
+      [],
+      [
+        { from_id: "agt_a", to_id: "agt_b", count: 3, has_live: true },
+        { from_id: "agt_a", to_id: "agt_c", count: 1, has_live: false },
+      ],
+      [],
+    ]);
+    const { graph } = await getMeshOverview(pool);
+    expect(graph.edges).toEqual([
+      { from: "agt_a", to: "agt_b", count: 3, state: "live" },
+      { from: "agt_a", to: "agt_c", count: 1, state: "completed" },
+    ]);
+  });
+
+  it("forwards summary counts", async () => {
+    const pool = makeMockPool([
+      [],
+      [],
+      [],
+      [{ asks_24h: 12, in_flight: 3, edge_count: 7 }],
+    ]);
+    const { summary } = await getMeshOverview(pool);
+    expect(summary).toEqual({ asks_24h: 12, in_flight: 3, edge_count: 7 });
+  });
+});
