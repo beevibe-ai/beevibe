@@ -1,55 +1,47 @@
-import { describe, it, expect, vi } from "vitest";
-import type { Pool } from "@beevibe/core/adapters/postgres";
+import { describe, it, expect } from "vitest";
 import { listMemoryFacts } from "./memory.js";
-
-function makePool(rows: unknown[]) {
-  const query = vi.fn(async () => ({ rows }));
-  return {
-    query: query as unknown as Pool["query"],
-    _spy: query,
-  } as unknown as Pool & { _spy: ReturnType<typeof vi.fn> };
-}
+import { makeMockPool } from "./test-helpers.js";
 
 describe("listMemoryFacts", () => {
   it("filters by owner and forwards null scope + default limit when not provided", async () => {
-    const pool = makePool([]);
+    const pool = makeMockPool([]);
     await listMemoryFacts(pool, "per_w");
-    expect((pool as unknown as { _spy: ReturnType<typeof vi.fn> })._spy).toHaveBeenCalledWith(
+    expect(pool._spy).toHaveBeenCalledWith(
       expect.any(String),
       ["per_w", null, 200],
     );
   });
 
   it("forwards scope when provided", async () => {
-    const pool = makePool([]);
+    const pool = makeMockPool([]);
     await listMemoryFacts(pool, "per_w", { scope: "team" });
-    expect((pool as unknown as { _spy: ReturnType<typeof vi.fn> })._spy).toHaveBeenCalledWith(
+    expect(pool._spy).toHaveBeenCalledWith(
       expect.any(String),
       ["per_w", "team", 200],
     );
   });
 
   it("clamps limit to [1, 1000]", async () => {
-    const pool = makePool([]);
+    const pool = makeMockPool([]);
     await listMemoryFacts(pool, "per_w", { limit: 50 });
-    expect((pool as unknown as { _spy: ReturnType<typeof vi.fn> })._spy).toHaveBeenLastCalledWith(
+    expect(pool._spy).toHaveBeenLastCalledWith(
       expect.any(String),
       ["per_w", null, 50],
     );
     await listMemoryFacts(pool, "per_w", { limit: 9999 });
-    expect((pool as unknown as { _spy: ReturnType<typeof vi.fn> })._spy).toHaveBeenLastCalledWith(
+    expect(pool._spy).toHaveBeenLastCalledWith(
       expect.any(String),
       ["per_w", null, 1000],
     );
     await listMemoryFacts(pool, "per_w", { limit: 0 });
-    expect((pool as unknown as { _spy: ReturnType<typeof vi.fn> })._spy).toHaveBeenLastCalledWith(
+    expect(pool._spy).toHaveBeenLastCalledWith(
       expect.any(String),
       ["per_w", null, 1],
     );
   });
 
   it("maps merge_origin from source_session_ids cardinality", async () => {
-    const pool = makePool([
+    const pool = makeMockPool([
       {
         id: "fact_1",
         agent_id: "agt_a",

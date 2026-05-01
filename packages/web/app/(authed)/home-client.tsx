@@ -12,8 +12,7 @@ import { KpiTile } from "@/components/home/kpi-tile";
 import { FleetBars } from "@/components/home/fleet-bars";
 import { StatusBreakdownBar } from "@/components/home/status-breakdown";
 import { TrendChart } from "@/components/home/trend-chart";
-import type { DashboardSummary } from "@/lib/api/types";
-import type { AttentionItem } from "@/lib/types/dashboard";
+import type { AttentionItem, DashboardDisplay } from "@/lib/types/dashboard";
 
 const ATTENTION_DOT: Record<AttentionItem["status"], string> = {
   blocked: "bg-status-blocked",
@@ -38,7 +37,7 @@ function Body({
   isLoading,
   isError,
 }: {
-  data: DashboardSummary | undefined;
+  data: DashboardDisplay | undefined;
   isLoading: boolean;
   isError: boolean;
 }) {

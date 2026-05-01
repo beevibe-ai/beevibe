@@ -1,16 +1,10 @@
-import { describe, it, expect, vi } from "vitest";
-import type { Pool } from "@beevibe/core/adapters/postgres";
+import { describe, it, expect } from "vitest";
 import { listAgents, getAgent } from "./agents.js";
-
-function makePool(responses: unknown[][]) {
-  let i = 0;
-  const query = vi.fn(async () => ({ rows: responses[i++] ?? [] }));
-  return { query: query as unknown as Pool["query"] } as unknown as Pool;
-}
+import { makeMockPool } from "./test-helpers.js";
 
 describe("listAgents", () => {
   it("maps rows into AgentDisplay with hierarchy + sessions/facts counts", async () => {
-    const pool = makePool([
+    const pool = makeMockPool([
       [
         {
           id: "agt_org",
@@ -39,12 +33,12 @@ describe("listAgents", () => {
 
 describe("getAgent", () => {
   it("returns undefined when missing", async () => {
-    const pool = makePool([[], [], [], []]);
+    const pool = makeMockPool([[], [], [], []]);
     expect(await getAgent(pool, "agt_missing")).toBeUndefined();
   });
 
   it("aggregates blocks, recent sessions, and mesh hints when present", async () => {
-    const pool = makePool([
+    const pool = makeMockPool([
       [
         {
           id: "agt_team",
