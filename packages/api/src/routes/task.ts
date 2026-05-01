@@ -92,7 +92,8 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
     }
 
     const priorityRaw = body.priority;
-    if (priorityRaw !== undefined && parsePriority(priorityRaw) === undefined) {
+    const priority = parsePriority(priorityRaw);
+    if (priorityRaw !== undefined && priority === undefined) {
       res.status(400).json({
         error: "invalid_priority",
         message: `priority must be one of ${TASK_PRIORITIES.join(", ")}`,
@@ -106,7 +107,7 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
         title: body.title,
         description: typeof body.description === "string" ? body.description : undefined,
         status: "pending",
-        priority: parsePriority(priorityRaw) ?? "medium",
+        priority: priority ?? "medium",
         assignee_id:
           typeof body.assignee_id === "string" ? body.assignee_id : undefined,
         creator_id: req.caller.personId,
