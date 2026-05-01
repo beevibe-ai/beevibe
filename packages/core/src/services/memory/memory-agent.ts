@@ -85,12 +85,13 @@ export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
         }
       }
 
-      if (!deps.promotionEventRepo || decisions.length === 0) return;
+      const repo = deps.promotionEventRepo;
+      if (!repo || decisions.length === 0) return;
 
       // Audit row reflects actual movement: rejected events keep
       // to_scope = from_scope so the page can show "kept narrow".
       const writes = decisions.map(({ fact, result, fromScope }) =>
-        deps.promotionEventRepo!.create({
+        repo.create({
           id: promotionEventId(),
           fact_id: fact.id,
           from_scope: fromScope,
