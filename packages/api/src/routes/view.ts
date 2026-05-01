@@ -30,6 +30,7 @@ import {
 import { listAgents, getAgent } from "../views/agents.js";
 import { getSessionByShortId, AmbiguousShortIdError } from "../views/sessions.js";
 import { listMemoryFacts } from "../views/memory.js";
+import { getDashboardSummary } from "../views/dashboard.js";
 
 export interface ViewRoutesDeps {
   authMiddleware: RequestHandler;
@@ -154,6 +155,16 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
         return;
       }
       handleError(err, res, "session detail");
+    }
+  });
+
+  router.get("/dashboard", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      const summary = await getDashboardSummary(deps.pool);
+      res.json(summary);
+    } catch (err) {
+      handleError(err, res, "dashboard summary");
     }
   });
 

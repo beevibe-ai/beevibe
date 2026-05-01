@@ -1,5 +1,11 @@
 import type { TaskStatus } from "@beevibe/core";
 
+// ── Display shapes the home page binds against ─────────────────────────────
+//
+// These are produced by `lib/dashboard-display.ts:summaryToDisplay()` from
+// the pure-data `DashboardSummary` shipped by the backend. Backend never
+// computes colors, hrefs, or sparkline geometry.
+
 export type KpiMetaColor = "muted" | "review" | "done" | "failed";
 
 export interface KpiMetaPart {
@@ -52,3 +58,33 @@ export interface AttentionItem {
   age: string;
   href: string;
 }
+
+/** Aggregated display-shaped dashboard the home page binds to. */
+export interface DashboardDisplay {
+  kpis: KpiStat[];
+  status_breakdown: StatusBreakdownEntry[];
+  status_legend: StatusLegendEntry[];
+  status_total: number;
+  fleet: FleetBar[];
+  fleet_total: number;
+  fleet_active: number;
+  fleet_idle: number;
+  trend: TrendDay[];
+  trend_total: number;
+  trend_change_percent: number;
+  attention: AttentionItem[];
+}
+
+// ── Re-export the backend data DTO ─────────────────────────────────────────
+
+export type {
+  DashboardSummary,
+  KpiKind,
+  KpiData,
+  StatusBreakdownData,
+  StatusLegendData,
+  LegendBucket,
+  FleetBarData,
+  TrendDayData,
+  AttentionData,
+} from "@beevibe/api/views/types";

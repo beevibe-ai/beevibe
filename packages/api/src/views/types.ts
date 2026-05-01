@@ -211,6 +211,93 @@ export interface MemoryFactDisplay {
   promotion_origin_scope?: MemoryScope;
 }
 
+// ── Dashboard ───────────────────────────────────────────────────────────────
+//
+// The dashboard DTO is intentionally pure data. The web composes display
+// fields (colors, hrefs, sparkline geometry, day labels, "5m ago" age) via
+// `summaryToDisplay()` in `lib/dashboard-display.ts`. Backend shouldn't know
+// the URL structure or status→color CSS map.
+
+/**
+ * Discriminator that lets the web's mapper attach UI config (label, href,
+ * trend chart kind, color enum) per KPI. Adding a new KPI: define a new
+ * kind here, return a row from `views/dashboard.ts`, and add the display
+ * mapping on the web side. No coupled config tables in the backend.
+ */
+export type KpiKind =
+  | "active_sessions"
+  | "in_review"
+  | "completed_today"
+  | "blocked";
+
+export interface KpiData {
+  kind: KpiKind;
+  value: number;
+  unit?: string;
+  /** Last 7 daily counts, oldest → newest. */
+  trend: number[];
+}
+
+export interface StatusBreakdownData {
+  status: TaskStatus;
+  count: number;
+  percent: number;
+}
+
+/**
+ * Legend entries are coarser than the breakdown: lifecycle groupings
+ * mapped onto the UI's 6 status dots. The mapper (web) joins these with
+ * label + color.
+ */
+export type LegendBucket =
+  | "review"
+  | "done"
+  | "blocked"
+  | "failed"
+  | "running"
+  | "pending";
+
+export interface StatusLegendData {
+  bucket: LegendBucket;
+  count: number;
+}
+
+export interface FleetBarData {
+  hier: HierarchyLevel;
+  count: number;
+  percent: number;
+}
+
+export interface TrendDayData {
+  /** ISO date (`YYYY-MM-DD`) — web maps to a short day label like "Mon". */
+  date: string;
+  value: number;
+  is_today: boolean;
+}
+
+export interface AttentionData {
+  task_id: string;
+  title: string;
+  status: "blocked" | "failed" | "review";
+  /** ISO timestamp; web formats with `formatRelativeTime`. */
+  created_at: Date;
+}
+
+export interface DashboardSummary {
+  kpis: KpiData[];
+  status_breakdown: StatusBreakdownData[];
+  status_legend: StatusLegendData[];
+  status_total: number;
+  fleet: FleetBarData[];
+  fleet_total: number;
+  fleet_active: number;
+  fleet_idle: number;
+  trend: TrendDayData[];
+  trend_total: number;
+  trend_change_percent: number;
+  attention: AttentionData[];
+}
+
 // ── Re-exports of ambient types that web imports alongside the DTOs ─────────
 
 export type { TaskStatus };

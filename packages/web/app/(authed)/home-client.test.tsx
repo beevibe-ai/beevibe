@@ -31,30 +31,25 @@ function renderHome() {
 
 const sample: DashboardSummary = {
   kpis: [
-    {
-      label: "Active sessions",
-      value: "12",
-      meta: [{ text: "rolling 24h" }],
-      href: "/tasks",
-      trend: [1, 2, 3, 4, 5],
-      trend_color: "running",
-      trend_kind: "line",
-    },
+    { kind: "active_sessions", value: 12, unit: "running", trend: [1, 2, 3, 4, 5] },
   ],
-  status_breakdown: [
-    { status: "in_progress", label: "running", color: "running", count: 7, percent: 50 },
-  ],
-  status_legend: [{ color: "running", label: "running", count: 7 }],
+  status_breakdown: [{ status: "in_progress", count: 7, percent: 50 }],
+  status_legend: [{ bucket: "running", count: 7 }],
   status_total: 14,
   fleet: [{ hier: "ic", count: 3, percent: 60 }],
   fleet_total: 5,
   fleet_active: 2,
   fleet_idle: 3,
-  trend: [{ label: "Mon", value: 4 }],
+  trend: [{ date: "2026-04-30", value: 4, is_today: true }],
   trend_total: 28,
   trend_change_percent: 12,
   attention: [
-    { status: "blocked", title: "needs key", age: "2h", href: "/tasks/t1" },
+    {
+      task_id: "t1",
+      title: "needs key",
+      status: "blocked",
+      created_at: new Date("2026-04-30T10:00:00Z"),
+    },
   ],
 };
 
