@@ -9,7 +9,6 @@ describe("queryKeys", () => {
     expect(queryKeys.memory.all).toEqual(["memory"]);
     expect(queryKeys.promotions.all).toEqual(["promotions"]);
     expect(queryKeys.mesh.all).toEqual(["mesh"]);
-    expect(queryKeys.threads.all).toEqual(["threads"]);
     expect(queryKeys.dashboard.all).toEqual(["dashboard"]);
   });
 

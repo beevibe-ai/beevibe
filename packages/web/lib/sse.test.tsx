@@ -127,7 +127,7 @@ describe("useLiveUpdates", () => {
     expect(invalidateSpy).not.toHaveBeenCalled();
   });
 
-  it("dispatches mesh + memory + promotion + thread invalidations on their events", () => {
+  it("dispatches mesh + memory + promotion invalidations on their events", () => {
     const client = new QueryClient();
     const invalidateSpy = vi.spyOn(client, "invalidateQueries");
     renderHook(() => useLiveUpdates(), { wrapper: makeWrapper(client) });
@@ -137,7 +137,6 @@ describe("useLiveUpdates", () => {
       source.emit({ event: "mesh.activity" });
       source.emit({ event: "memory.fact.created" });
       source.emit({ event: "promotion.created" });
-      source.emit({ event: "thread.message" });
       source.emit({ event: "session.updated" });
       source.emit({ event: "agent.updated" });
     });
@@ -148,7 +147,6 @@ describe("useLiveUpdates", () => {
         queryKeys.mesh.all,
         queryKeys.memory.all,
         queryKeys.promotions.all,
-        queryKeys.threads.all,
         queryKeys.sessions.all,
         queryKeys.agents.all,
       ]),
