@@ -1,17 +1,9 @@
 /**
- * Human chat surface — `POST /chat`. The caller sends a message; the
- * server resolves the caller's primary (team or org) agent and runs one
- * synchronous turn through `AgentSession.run` with `type='chat'`. The
- * agent has full hierarchy tool access during the turn (it can mint
- * tasks, query the fleet, escalate, etc.) and the response is whatever
- * Claude Code emits at the end of the turn.
- *
- * Multi-turn continuity is via `prior_session_id` — the client passes
- * the previous turn's session id, and the runtime spawns with `--resume`
- * so the agent has full conversation history.
- *
- * Streaming is intentionally not implemented yet — the agent's response
- * may take 5–30s and the textarea spinner is acceptable for the demo.
+ * Human chat surface — `POST /chat`. Resolves the caller's primary
+ * (team/org) agent and runs one synchronous AgentSession turn with
+ * `type='chat'`. Multi-turn continuity via `prior_session_id` (runtime
+ * spawns with `--resume`). Synchronous-only for now; streaming is a
+ * follow-up.
  */
 
 import { Router, type RequestHandler, type Response } from "express";

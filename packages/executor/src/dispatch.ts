@@ -21,7 +21,7 @@ export type MakeMemoryAgent = (agentId: string) => MemoryAgent;
 export interface DispatchDeps {
   agentRepo: AgentRepository;
   sessionRepo: SessionRepository;
-  sessionEventRepo?: SessionEventRepository;
+  sessionEventRepo: SessionEventRepository;
   /**
    * Keyed by `agent.runtime_config.type`. Built via
    * `createDefaultRuntimeRegistry` in bootstrap; tests inject a fake map.

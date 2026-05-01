@@ -150,6 +150,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const mesh = new MeshServer({
     agentRepo,
     sessionRepo,
+    sessionEventRepo,
     negotiationRepo,
     negotiationRoundRepo,
     workspaceManager,

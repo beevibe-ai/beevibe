@@ -34,6 +34,13 @@ import type {
 const ASKS_LIMIT = 50;
 const WINDOW = "24 hours";
 
+// Reused SQL fragments — interpolated into the queries below so the
+// negotiation/session window filters and the from="..." caller extraction
+// stay in sync across all 5 queries.
+const NEGO_WINDOW = `created_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'active'`;
+const SESS_WINDOW = `type IN ('mesh_ask', 'blocker') AND (started_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'running')`;
+const SESS_FROM = `substring(intent FROM 'from="([^"]+)"')`;
+
 const NEGOTIATIONS_SQL = /* sql */ `
 SELECT
   n.id,
@@ -53,8 +60,7 @@ JOIN agent ca ON ca.id = n.initiator_agent_id
 JOIN agent ta ON ta.id = n.counterparty_agent_id
 LEFT JOIN negotiation_round nr1
   ON nr1.negotiation_id = n.id AND nr1.round_number = 1
-WHERE n.created_at >= NOW() - INTERVAL '${WINDOW}'
-   OR n.status = 'active'
+WHERE n.created_at >= NOW() - INTERVAL '${WINDOW}' OR n.status = 'active'
 ORDER BY n.created_at DESC
 LIMIT $1
 `;
@@ -67,22 +73,20 @@ LIMIT $1
 const MESH_SESSIONS_SQL = /* sql */ `
 SELECT
   s.id,
-  substring(s.intent FROM 'from="([^"]+)"')                  AS caller_id,
-  ca.name                                                     AS caller_label,
-  s.agent_id                                                  AS target_id,
-  ta.name                                                     AS target_label,
-  s.type                                                      AS kind,
-  s.status                                                    AS session_status,
-  s.task_id                                                   AS source_task_id,
+  ${SESS_FROM}              AS caller_id,
+  ca.name                   AS caller_label,
+  s.agent_id                AS target_id,
+  ta.name                   AS target_label,
+  s.type                    AS kind,
+  s.status                  AS session_status,
+  s.task_id                 AS source_task_id,
   s.started_at,
   s.completed_at,
   s.intent
 FROM session s
-LEFT JOIN agent ca
-  ON ca.id = substring(s.intent FROM 'from="([^"]+)"')
+LEFT JOIN agent ca ON ca.id = ${SESS_FROM}
 JOIN agent ta ON ta.id = s.agent_id
-WHERE s.type IN ('mesh_ask', 'blocker')
-  AND (s.started_at >= NOW() - INTERVAL '${WINDOW}' OR s.status = 'running')
+WHERE ${SESS_WINDOW}
 ORDER BY s.started_at DESC
 LIMIT $1
 `;
@@ -95,29 +99,22 @@ LIMIT $1
 const NODES_SQL = /* sql */ `
 WITH endpoints AS (
   SELECT initiator_agent_id AS agent_id, (status = 'active') AS is_live
-  FROM negotiation
-  WHERE created_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'active'
+  FROM negotiation WHERE ${NEGO_WINDOW}
   UNION ALL
   SELECT counterparty_agent_id AS agent_id, (status = 'active') AS is_live
-  FROM negotiation
-  WHERE created_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'active'
+  FROM negotiation WHERE ${NEGO_WINDOW}
   UNION ALL
   SELECT agent_id, (status = 'running') AS is_live
-  FROM session
-  WHERE type IN ('mesh_ask', 'blocker')
-    AND (started_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'running')
+  FROM session WHERE ${SESS_WINDOW}
   UNION ALL
-  SELECT substring(intent FROM 'from="([^"]+)"') AS agent_id, (status = 'running') AS is_live
-  FROM session
-  WHERE type IN ('mesh_ask', 'blocker')
-    AND substring(intent FROM 'from="([^"]+)"') IS NOT NULL
-    AND (started_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'running')
+  SELECT ${SESS_FROM} AS agent_id, (status = 'running') AS is_live
+  FROM session WHERE ${SESS_WINDOW} AND ${SESS_FROM} IS NOT NULL
 )
 SELECT
   a.id,
   a.name                       AS label,
   a.hierarchy_level            AS hier,
-  bool_or(ep.is_live)           AS is_active
+  bool_or(ep.is_live)          AS is_active
 FROM endpoints ep
 JOIN agent a ON a.id = ep.agent_id
 GROUP BY a.id, a.name, a.hierarchy_level
@@ -130,15 +127,11 @@ const EDGES_SQL = /* sql */ `
 WITH pairs AS (
   SELECT initiator_agent_id AS from_id, counterparty_agent_id AS to_id,
          (status = 'active') AS is_live
-  FROM negotiation
-  WHERE created_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'active'
+  FROM negotiation WHERE ${NEGO_WINDOW}
   UNION ALL
-  SELECT substring(intent FROM 'from="([^"]+)"') AS from_id, agent_id AS to_id,
+  SELECT ${SESS_FROM} AS from_id, agent_id AS to_id,
          (status = 'running') AS is_live
-  FROM session
-  WHERE type IN ('mesh_ask', 'blocker')
-    AND substring(intent FROM 'from="([^"]+)"') IS NOT NULL
-    AND (started_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'running')
+  FROM session WHERE ${SESS_WINDOW} AND ${SESS_FROM} IS NOT NULL
 )
 SELECT
   from_id,
@@ -152,16 +145,13 @@ ORDER BY count DESC
 
 const SUMMARY_SQL = /* sql */ `
 WITH activity AS (
-  SELECT status = 'active' AS is_live, created_at,
+  SELECT (status = 'active') AS is_live, created_at,
          initiator_agent_id AS a, counterparty_agent_id AS b
-  FROM negotiation
-  WHERE created_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'active'
+  FROM negotiation WHERE ${NEGO_WINDOW}
   UNION ALL
-  SELECT status = 'running' AS is_live, started_at AS created_at,
-         substring(intent FROM 'from="([^"]+)"') AS a, agent_id AS b
-  FROM session
-  WHERE type IN ('mesh_ask', 'blocker')
-    AND (started_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'running')
+  SELECT (status = 'running') AS is_live, started_at AS created_at,
+         ${SESS_FROM} AS a, agent_id AS b
+  FROM session WHERE ${SESS_WINDOW}
 )
 SELECT
   COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '${WINDOW}')::int  AS asks_24h,
@@ -219,37 +209,28 @@ interface SummaryRow {
   edge_count: number;
 }
 
-/** Map negotiation.status → the UI's coarser ask-status display. */
-function mapNegotiationStatus(raw: string): MeshAskStatus {
-  switch (raw) {
-    case "active":
-      return "in_flight";
-    case "accepted":
-      return "succeeded";
-    case "rejected":
-      return "rejected";
-    case "escalated":
-      return "escalated";
-    case "cancelled":
-      return "blocked";
-    default:
-      return "in_flight";
-  }
-}
+/**
+ * Lookup table from raw negotiation/session status to the UI's coarser
+ * MeshAskStatus. Both sources collapse to the same 5-value display enum;
+ * unknown values default to "in_flight" (e.g. a status added later that
+ * hasn't been mapped yet).
+ */
+const STATUS_TO_MESH_ASK: Record<string, MeshAskStatus> = {
+  // negotiation.status
+  active: "in_flight",
+  accepted: "succeeded",
+  rejected: "rejected",
+  escalated: "escalated",
+  // session.status (mesh_ask + blocker rows)
+  running: "in_flight",
+  completed: "succeeded",
+  failed: "blocked",
+  // shared
+  cancelled: "blocked",
+};
 
-/** Map session.status → MeshAskStatus for one-shot ask/blocker rows. */
-function mapSessionStatus(raw: MeshSessionsRow["session_status"]): MeshAskStatus {
-  switch (raw) {
-    case "running":
-      return "in_flight";
-    case "completed":
-      return "succeeded";
-    case "failed":
-      return "blocked";
-    case "cancelled":
-      return "blocked";
-  }
-}
+const toMeshAskStatus = (raw: string): MeshAskStatus =>
+  STATUS_TO_MESH_ASK[raw] ?? "in_flight";
 
 /**
  * Pull the inner text out of `<mesh-ask ...>BODY</mesh-ask>` /
@@ -273,7 +254,7 @@ export async function getMeshOverview(pool: Pool): Promise<MeshOverview> {
     ]);
 
   const negotiationAsks: MeshAskData[] = negotiationsResult.rows.map((r) => {
-    const status = mapNegotiationStatus(r.status);
+    const status = toMeshAskStatus(r.status);
     const isTerminal = status !== "in_flight";
     return {
       id: r.id,
@@ -304,7 +285,7 @@ export async function getMeshOverview(pool: Pool): Promise<MeshOverview> {
       caller_label: r.caller_label!,
       target_id: r.target_id,
       target_label: r.target_label,
-      status: mapSessionStatus(r.session_status),
+      status: toMeshAskStatus(r.session_status),
       intent: extractMeshIntent(r.intent),
       started_at: r.started_at,
       completed_at: r.completed_at ?? undefined,

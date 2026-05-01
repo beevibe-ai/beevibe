@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { AlertTriangle, MessageSquare, RotateCcw, Send } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
-import { sessionHref } from "@/lib/format";
+import { sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export function ChatClient() {
@@ -130,11 +130,8 @@ function Bubble({ message }: { message: ChatMessage }) {
         {message.content}
         {message.session_id ? (
           <div className="mt-1.5 text-[10px] font-mono opacity-70">
-            <Link
-              href={sessionHref(shortSessionId(message.session_id))}
-              className="hover:underline"
-            >
-              session {shortSessionId(message.session_id)}
+            <Link href={sessionHref(message.session_id)} className="hover:underline">
+              {shortId(message.session_id)}
             </Link>
           </div>
         ) : null}
@@ -170,6 +167,3 @@ function EmptyHint() {
   );
 }
 
-function shortSessionId(sid: string): string {
-  return sid.replace(/^[a-z]+_/, "").slice(0, 6);
-}

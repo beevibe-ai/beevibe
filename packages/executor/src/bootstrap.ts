@@ -107,6 +107,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const onSessionComplete = buildPostDispatchHook({
     agentRepo,
     sessionRepo,
+    sessionEventRepo,
     taskRepo,
     taskService,
     runtimeRegistry,

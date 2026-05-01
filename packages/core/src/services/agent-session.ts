@@ -18,11 +18,12 @@ export interface AgentSessionDeps {
   runtime: AgentRuntime;
   memoryAgent: MemoryAgent;
   /**
-   * Optional transcript persistence. When provided, every `RuntimeStep` is
-   * appended to `session_event` so the session detail page can replay the
-   * agent's tool calls. Best-effort; write failures only log.
+   * Transcript persistence. Every `RuntimeStep` is appended to `session_event`
+   * so the session detail page can replay the agent's tool calls. Writes are
+   * best-effort (fire-and-forget; failures only log) but the dep itself is
+   * required so all composition roots wire it consistently.
    */
-  sessionEventRepo?: SessionEventRepository;
+  sessionEventRepo: SessionEventRepository;
   /**
    * Optional fire-and-forget hook fired once the terminal session row is
    * written. Wired by composition roots — the executor uses it to call
@@ -118,35 +119,27 @@ export class AgentSession {
       .filter((s) => s.length > 0)
       .join("\n\n");
 
-    // Compose onStep: caller's hook (if any) + transcript persistence (when
-    // sessionEventRepo wired). Persistence is fire-and-forget and never
-    // blocks the LLM-bound tail.
+    // Compose onStep: transcript persistence (fire-and-forget; never blocks
+    // the LLM-bound tail) followed by the caller's hook (if any).
     const eventRepo = this.deps.sessionEventRepo;
-    const persistStep = eventRepo
-      ? (step: RuntimeStep): void => {
-          void eventRepo
-            .append({
-              id: sessionEventId(),
-              session_id: sid,
-              kind: "tool_call",
-              content: step.description,
-              tool_name: step.tool,
-            })
-            .catch((err) =>
-              console.error(
-                `[AgentSession] session_event append failed for ${sid}:`,
-                (err as Error).message,
-              ),
-            );
-        }
-      : undefined;
-    const onStep =
-      input.onStep && persistStep
-        ? (step: RuntimeStep) => {
-            persistStep(step);
-            input.onStep!(step);
-          }
-        : input.onStep ?? persistStep;
+    const callerOnStep = input.onStep;
+    const onStep = (step: RuntimeStep): void => {
+      void eventRepo
+        .append({
+          id: sessionEventId(),
+          session_id: sid,
+          kind: "tool_call",
+          content: step.description,
+          tool_name: step.tool,
+        })
+        .catch((err) =>
+          console.error(
+            `[AgentSession] session_event append failed for ${sid}:`,
+            (err as Error).message,
+          ),
+        );
+      callerOnStep?.(step);
+    };
 
     // 4. Execute
     let result: RuntimeResult;
@@ -208,10 +201,9 @@ export class AgentSession {
       completed_at: new Date(),
     });
 
-    // Append a terminal `summary` transcript event so the session detail
-    // page has the agent's final response even when there were no tool
-    // calls (e.g. quick chat replies). Fire-and-forget.
-    if (eventRepo && result.output) {
+    // Terminal `summary` event — gives the detail page the agent's final
+    // response even when there were no tool calls (e.g. quick chat replies).
+    if (result.output) {
       void eventRepo
         .append({
           id: sessionEventId(),

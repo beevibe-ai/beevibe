@@ -8,6 +8,7 @@ import type {
   Workspace,
 } from "../ports/runtime.js";
 import type { SessionRepository } from "../ports/session-repo.js";
+import type { SessionEventRepository } from "../ports/session-event-repo.js";
 import {
   AgentSession,
   type AgentSessionDeps,
@@ -58,6 +59,7 @@ function makeRuntimeResult(overrides: Partial<RuntimeResult> = {}): RuntimeResul
 
 let agentRepo: AgentRepository;
 let sessionRepo: SessionRepository;
+let sessionEventRepo: SessionEventRepository;
 let runtime: AgentRuntime;
 let memoryAgent: MemoryAgent;
 let service: AgentSession;
@@ -96,7 +98,23 @@ beforeEach(() => {
     // Default to a resolved promise so the fire-and-forget .catch() has something to chain.
     onTaskComplete: vi.fn<MemoryAgent["onTaskComplete"]>().mockResolvedValue(),
   };
-  service = new AgentSession({ agentRepo, sessionRepo, runtime, memoryAgent });
+  sessionEventRepo = {
+    append: vi.fn<SessionEventRepository["append"]>().mockResolvedValue({
+      id: "evt_1",
+      session_id: "sess_1",
+      kind: "tool_call",
+      content: "",
+      created_at: new Date(),
+    }),
+    listBySession: vi.fn().mockResolvedValue([]),
+  };
+  service = new AgentSession({
+    agentRepo,
+    sessionRepo,
+    sessionEventRepo,
+    runtime,
+    memoryAgent,
+  });
 });
 
 describe("AgentSession.run", () => {
@@ -351,6 +369,7 @@ describe("AgentSession.run", () => {
     const svc = new AgentSession({
       agentRepo,
       sessionRepo,
+      sessionEventRepo,
       runtime,
       memoryAgent,
       onSessionComplete,
@@ -375,6 +394,7 @@ describe("AgentSession.run", () => {
     const svc = new AgentSession({
       agentRepo,
       sessionRepo,
+      sessionEventRepo,
       runtime,
       memoryAgent,
       onSessionComplete,
@@ -403,6 +423,7 @@ describe("AgentSession.run", () => {
     const svc = new AgentSession({
       agentRepo,
       sessionRepo,
+      sessionEventRepo,
       runtime,
       memoryAgent,
       onSessionComplete,

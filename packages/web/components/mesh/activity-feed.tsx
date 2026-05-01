@@ -1,12 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Network } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { cn } from "@/lib/utils";
-import type { MeshAsk } from "@/lib/types/mesh";
+import type { MeshAsk, MeshAskType } from "@/lib/types/mesh";
 
-type Filter = "all" | "ask" | "negotiate" | "blocker";
+type Filter = MeshAskType | "all";
 
 const FILTERS: { id: Filter; label: string }[] = [
   { id: "all", label: "All" },
@@ -17,9 +17,9 @@ const FILTERS: { id: Filter; label: string }[] = [
 
 export function MeshActivityFeed({ asks }: { asks?: MeshAsk[] }) {
   const [filter, setFilter] = useState<Filter>("all");
-  const all = asks ?? [];
+  const all = useMemo(() => asks ?? [], [asks]);
+  const counts = useMemo(() => countByType(all), [all]);
   const visible = filter === "all" ? all : all.filter((a) => a.type === filter);
-  const counts = countByType(all);
 
   return (
     <section className="col-span-3">
