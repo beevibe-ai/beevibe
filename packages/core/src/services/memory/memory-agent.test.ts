@@ -5,6 +5,7 @@ import type { EmbeddingService } from "../../ports/embedding-service.js";
 import type { CoreMemory } from "./core-memory.js";
 import type { FactPromoter, PromotionResult } from "./fact-promoter.js";
 import type { FactStore } from "./fact-store.js";
+import type { MemoryPromotionEventRepository } from "../../ports/promotion-event-repo.js";
 import { createMemoryAgent, type MemoryAgent } from "./memory-agent.js";
 
 function makeBlock(name: string, content: string): CoreMemoryBlock {
@@ -239,5 +240,104 @@ describe("MemoryAgent.onTaskComplete", () => {
     await agent.onTaskComplete("sess_empty");
     expect(promoter.evaluate).not.toHaveBeenCalled();
     expect(factStore.updateScope).not.toHaveBeenCalled();
+  });
+
+  describe("with promotionEventRepo wired (M8.D audit log)", () => {
+    let promotionEventRepo: MemoryPromotionEventRepository;
+    let auditedAgent: MemoryAgent;
+
+    beforeEach(() => {
+      promotionEventRepo = {
+        create: vi.fn(),
+        listByOwner: vi.fn(),
+        findById: vi.fn(),
+      } as unknown as MemoryPromotionEventRepository;
+      auditedAgent = createMemoryAgent({
+        agentId: "agent_1",
+        coreMemory,
+        factStore,
+        promoter,
+        embed,
+        promotionEventRepo,
+      });
+    });
+
+    it("writes a non-rejected event when a fact is promoted", async () => {
+      vi.mocked(factStore.listBySessionId).mockResolvedValue([
+        makeFact({ id: "fact_a", scope: "ic", source_session_ids: ["sess_X"] }),
+      ]);
+      vi.mocked(promoter.evaluate).mockResolvedValue({
+        promoted: true,
+        target_scope: "team",
+        reason: "broadly useful",
+      });
+      vi.mocked(factStore.updateScope).mockResolvedValue(makeFact());
+
+      await auditedAgent.onTaskComplete("sess_X");
+
+      expect(promotionEventRepo.create).toHaveBeenCalledOnce();
+      const arg = vi.mocked(promotionEventRepo.create).mock.calls[0][0];
+      expect(arg).toMatchObject({
+        fact_id: "fact_a",
+        from_scope: "ic",
+        to_scope: "team",
+        origin_agent_id: "agent_1",
+        promoter_reason: "broadly useful",
+        source_session_ids: ["sess_X"],
+        rejected: false,
+      });
+      expect(arg.id).toMatch(/^mpe_/);
+    });
+
+    it("writes a rejected event with to_scope = from_scope when promoter declines", async () => {
+      vi.mocked(factStore.listBySessionId).mockResolvedValue([
+        makeFact({ id: "fact_b", scope: "ic" }),
+      ]);
+      vi.mocked(promoter.evaluate).mockResolvedValue({
+        promoted: false,
+        target_scope: null,
+        reason: "too narrow",
+      });
+
+      await auditedAgent.onTaskComplete("sess_X");
+
+      expect(promotionEventRepo.create).toHaveBeenCalledOnce();
+      const arg = vi.mocked(promotionEventRepo.create).mock.calls[0][0];
+      expect(arg).toMatchObject({
+        fact_id: "fact_b",
+        from_scope: "ic",
+        to_scope: "ic",
+        promoter_reason: "too narrow",
+        rejected: true,
+      });
+      expect(factStore.updateScope).not.toHaveBeenCalled();
+    });
+
+    it("writes one event per fact in the session", async () => {
+      vi.mocked(factStore.listBySessionId).mockResolvedValue([
+        makeFact({ id: "fact_a" }),
+        makeFact({ id: "fact_b" }),
+        makeFact({ id: "fact_c" }),
+      ]);
+      vi.mocked(promoter.evaluate).mockResolvedValue({
+        promoted: false,
+        target_scope: null,
+        reason: "narrow",
+      });
+
+      await auditedAgent.onTaskComplete("sess_X");
+      expect(promotionEventRepo.create).toHaveBeenCalledTimes(3);
+    });
+
+    it("does NOT write an event when promoter.evaluate throws (consistent with skip-and-continue)", async () => {
+      const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+      vi.mocked(factStore.listBySessionId).mockResolvedValue([makeFact()]);
+      vi.mocked(promoter.evaluate).mockRejectedValue(new Error("LLM 500"));
+
+      await auditedAgent.onTaskComplete("sess_X");
+
+      expect(promotionEventRepo.create).not.toHaveBeenCalled();
+      errSpy.mockRestore();
+    });
   });
 });

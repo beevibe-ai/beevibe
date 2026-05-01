@@ -17,3 +17,4 @@ export const factId = (): string => generateId("fact");
 export const negotiationId = (): string => generateId("neg");
 export const negotiationRoundId = (): string => generateId("round");
 export const escalationId = (): string => generateId("esc");
+export const promotionEventId = (): string => generateId("mpe");

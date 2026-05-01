@@ -298,6 +298,101 @@ export interface DashboardSummary {
   attention: AttentionData[];
 }
 
+// ── Mesh ────────────────────────────────────────────────────────────────────
+//
+// Mesh data DTO. Like the dashboard, the web composes display fields
+// (SVG geometry, duration labels, color enums) via `lib/mesh-display.ts`
+// and `lib/mesh-layout.ts`.
+//
+// V1 ships from the `negotiation` table (the canonical multi-round mesh
+// activity). Mesh-ask sessions and blocker sessions are not yet surfaced
+// here — their parent agent isn't directly stored on the session row, only
+// embedded in the intent XML — and the live UI doesn't differentiate
+// between ask types yet.
+
+export type MeshAskType = "negotiate" | "ask" | "blocker";
+
+export type MeshAskStatus =
+  | "in_flight"
+  | "succeeded"
+  | "rejected"
+  | "blocked"
+  | "escalated";
+
+export interface MeshAskData {
+  id: string;
+  type: MeshAskType;
+  caller_id: string;
+  caller_label: string;
+  target_id: string;
+  target_label: string;
+  status: MeshAskStatus;
+  /** First-round message; the web shows a preview. */
+  intent: string;
+  started_at: Date;
+  completed_at?: Date;
+  source_task_id?: string;
+  /** Negotiations only. */
+  rounds_completed?: number;
+  max_rounds?: number;
+}
+
+export interface GraphNodeData {
+  /** agent_id. */
+  id: string;
+  /** agent.name. */
+  label: string;
+  hier: HierarchyLevel;
+  /** "active" if the agent is in any in-flight mesh activity. */
+  state: "active" | "idle";
+}
+
+export interface GraphEdgeData {
+  from: string;
+  to: string;
+  /** Number of asks/negotiations between this pair in the window. */
+  count: number;
+  /** "live" if any in-flight, "completed" otherwise. */
+  state: "live" | "completed";
+}
+
+export interface MeshSummaryData {
+  asks_24h: number;
+  in_flight: number;
+  edge_count: number;
+}
+
+export interface MeshOverview {
+  asks: MeshAskData[];
+  graph: { nodes: GraphNodeData[]; edges: GraphEdgeData[] };
+  summary: MeshSummaryData;
+}
+
+// ── Promotions ─────────────────────────────────────────────────────────────
+//
+// Audit feed of FactPromoter decisions (promoted + rejected). Sourced from
+// `memory_promotion_event` (M8.D), joined with memory_fact for content and
+// agent for the originating label. Display fields (color enums, hrefs,
+// relative ages) are computed web-side via direct binding — the page
+// renders raw fields, no separate mapper needed for v1.
+
+export interface PromotionEvent {
+  id: string;
+  fact_id: string;
+  fact_type: FactType;
+  fact_content: string;
+  from_scope: MemoryScope | null;
+  to_scope: MemoryScope;
+  origin_agent_id: string;
+  origin_agent_label: string;
+  promoter_reason: string;
+  source_session_ids: string[];
+  /** Overflow count when the row had more than the truncation cap. */
+  source_session_extra?: number;
+  created_at: Date;
+  rejected: boolean;
+}
+
 // ── Re-exports of ambient types that web imports alongside the DTOs ─────────
 
 export type { TaskStatus };

@@ -28,3 +28,23 @@ export interface MemoryFact {
   source_session_ids: string[];
   created_at: Date;
 }
+
+/**
+ * Audit row written by `MemoryAgent.onTaskComplete` for every FactPromoter
+ * decision (promoted + rejected). Surfaces on the Promotions page so the
+ * LLM's reasoning is auditable.
+ *
+ * `from_scope` is nullable for forward-compat with a future fact-creation
+ * event source; FactPromoter always writes a non-null value.
+ */
+export interface MemoryPromotionEvent {
+  id: string;
+  fact_id: string;
+  from_scope: MemoryScope | null;
+  to_scope: MemoryScope;
+  origin_agent_id: string;
+  promoter_reason: string;
+  source_session_ids: string[];
+  rejected: boolean;
+  created_at: Date;
+}

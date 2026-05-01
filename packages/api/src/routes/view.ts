@@ -31,6 +31,8 @@ import { listAgents, getAgent } from "../views/agents.js";
 import { getSessionByShortId, AmbiguousShortIdError } from "../views/sessions.js";
 import { listMemoryFacts } from "../views/memory.js";
 import { getDashboardSummary } from "../views/dashboard.js";
+import { getMeshOverview } from "../views/mesh.js";
+import { listPromotions } from "../views/promotions.js";
 
 export interface ViewRoutesDeps {
   authMiddleware: RequestHandler;
@@ -165,6 +167,28 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(summary);
     } catch (err) {
       handleError(err, res, "dashboard summary");
+    }
+  });
+
+  router.get("/mesh", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      const overview = await getMeshOverview(deps.pool);
+      res.json(overview);
+    } catch (err) {
+      handleError(err, res, "mesh overview");
+    }
+  });
+
+  router.get("/promotion", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : NaN;
+    const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+    try {
+      const events = await listPromotions(deps.pool, req.caller.personId, { limit });
+      res.json(events);
+    } catch (err) {
+      handleError(err, res, "promotion list");
     }
   });
 
