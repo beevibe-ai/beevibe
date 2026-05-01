@@ -147,8 +147,7 @@ describe("summaryToDisplay — trend day labels", () => {
 
 describe("summaryToDisplay — attention", () => {
   it("builds task hrefs and formats relative age from created_at", () => {
-    const now = new Date("2026-04-30T12:00:00Z");
-    const recent = new Date(now.getTime() - 5 * 60_000);
+    const recent = new Date(Date.now() - 5 * 60_000);
     const data: DashboardSummary = {
       ...emptyData(),
       attention: [
@@ -160,13 +159,10 @@ describe("summaryToDisplay — attention", () => {
         },
       ],
     };
-    // Note: formatRelativeTime uses `new Date()` as default `now`, so we
-    // can't pin the output exactly without mocking — assert the href +
-    // structure instead and that age is non-empty.
     const display = summaryToDisplay(data);
     expect(display.attention[0]?.href).toBe("/tasks/task_xyz");
     expect(display.attention[0]?.title).toBe("needs API key");
     expect(display.attention[0]?.status).toBe("blocked");
-    expect(display.attention[0]?.age).toMatch(/m ago|just now|h ago/);
+    expect(display.attention[0]?.age).toBe("5m ago");
   });
 });

@@ -4,28 +4,19 @@
  * by an integration-style e2e in a follow-up; these tests cover the
  * mapping layer without needing a database.
  */
-import { describe, it, expect, vi } from "vitest";
-import type { Pool } from "@beevibe/core/adapters/postgres";
+import { describe, it, expect } from "vitest";
 import { listTasks, getTask } from "./tasks.js";
-
-function makePool(responses: unknown[][]) {
-  let i = 0;
-  const query = vi.fn(async () => {
-    const rows = responses[i++] ?? [];
-    return { rows } as { rows: unknown[] };
-  });
-  return { query: query as unknown as Pool["query"] } as unknown as Pool;
-}
+import { makeMockPool } from "./test-helpers.js";
 
 describe("listTasks", () => {
   it("returns empty array when DB returns no rows", async () => {
-    const pool = makePool([[]]);
+    const pool = makeMockPool([[]]);
     const tasks = await listTasks(pool);
     expect(tasks).toEqual([]);
   });
 
   it("maps a row with joins into a TaskListItem", async () => {
-    const pool = makePool([
+    const pool = makeMockPool([
       [
         {
           id: "task_001",
@@ -73,8 +64,8 @@ describe("listTasks", () => {
   });
 
   it("translates lifecycle filter into a status array param", async () => {
-    const pool = makePool([[]]);
-    const queryMock = pool.query as unknown as ReturnType<typeof vi.fn>;
+    const pool = makeMockPool([[]]);
+    const queryMock = pool._spy;
     await listTasks(pool, { lifecycle: "in_review" });
     expect(queryMock).toHaveBeenCalledWith(
       expect.any(String),
@@ -83,8 +74,8 @@ describe("listTasks", () => {
   });
 
   it("forwards assignee_id when set", async () => {
-    const pool = makePool([[]]);
-    const queryMock = pool.query as unknown as ReturnType<typeof vi.fn>;
+    const pool = makeMockPool([[]]);
+    const queryMock = pool._spy;
     await listTasks(pool, { assignee_id: "agt_xyz" });
     expect(queryMock).toHaveBeenCalledWith(expect.any(String), [null, "agt_xyz"]);
   });
@@ -92,13 +83,13 @@ describe("listTasks", () => {
 
 describe("getTask", () => {
   it("returns undefined when the task isn't found", async () => {
-    const pool = makePool([[], [], []]);
+    const pool = makeMockPool([[], [], []]);
     const task = await getTask(pool, "task_missing");
     expect(task).toBeUndefined();
   });
 
   it("includes sessions and work products when found", async () => {
-    const pool = makePool([
+    const pool = makeMockPool([
       [
         {
           id: "task_001",

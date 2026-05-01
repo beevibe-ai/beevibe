@@ -1,26 +1,21 @@
-import { describe, it, expect, vi } from "vitest";
-import type { Pool } from "@beevibe/core/adapters/postgres";
+import { describe, it, expect } from "vitest";
 import { getSessionByShortId, AmbiguousShortIdError } from "./sessions.js";
-
-function makePool(rows: unknown[]) {
-  const query = vi.fn(async () => ({ rows }));
-  return { query: query as unknown as Pool["query"] } as unknown as Pool;
-}
+import { makeMockPool } from "./test-helpers.js";
 
 describe("getSessionByShortId", () => {
   it("returns undefined when no matching session", async () => {
-    const pool = makePool([]);
+    const pool = makeMockPool([]);
     expect(await getSessionByShortId(pool, "abc123")).toBeUndefined();
   });
 
   it("rejects malformed short_ids without hitting the DB", async () => {
-    const pool = makePool([]);
+    const pool = makeMockPool([]);
     expect(await getSessionByShortId(pool, "abc/../etc")).toBeUndefined();
-    expect((pool.query as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(0);
+    expect(pool._spy.mock.calls).toHaveLength(0);
   });
 
   it("throws AmbiguousShortIdError when 2+ rows share the prefix", async () => {
-    const pool = makePool([
+    const pool = makeMockPool([
       sampleRow("sess_abc1230001"),
       sampleRow("sess_abc1230002"),
     ]);
@@ -30,7 +25,7 @@ describe("getSessionByShortId", () => {
   });
 
   it("maps a single row into a SessionDisplay with empty briefing/transcript", async () => {
-    const pool = makePool([sampleRow("sess_abcdef00ff")]);
+    const pool = makeMockPool([sampleRow("sess_abcdef00ff")]);
     const session = await getSessionByShortId(pool, "abcdef");
     expect(session?.short_id).toBe("abcdef");
     expect(session?.task_title).toBe("Bill rewrite");

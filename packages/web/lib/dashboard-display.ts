@@ -176,7 +176,7 @@ function attentionToDisplay(data: AttentionData): AttentionItem {
   return {
     status: data.status,
     title: data.title,
-    age: formatRelativeTime(new Date(data.created_at)),
+    age: formatRelativeTime(data.created_at),
     href: `/tasks/${data.task_id}`,
   };
 }

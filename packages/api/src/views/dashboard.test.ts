@@ -13,12 +13,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import { getDashboardSummary } from "./dashboard.js";
-
-function makePool(responses: unknown[][]) {
-  let i = 0;
-  const query = vi.fn(async () => ({ rows: responses[i++] ?? [] }));
-  return { query: query as unknown as Pool["query"] } as unknown as Pool;
-}
+import { makeMockPool } from "./test-helpers.js";
 
 function makeKpiTrendRows(): unknown[] {
   return Array.from({ length: 7 }, (_, i) => ({
@@ -40,7 +35,7 @@ function makeTrendRows(): unknown[] {
 
 describe("getDashboardSummary", () => {
   it("computes percentages from raw status counts and ranks descending", async () => {
-    const pool = makePool([
+    const pool = makeMockPool([
       [
         { status: "in_progress", count: 6 },
         { status: "review", count: 2 },
@@ -62,7 +57,7 @@ describe("getDashboardSummary", () => {
   });
 
   it("buckets statuses into the legend's coarser groups", async () => {
-    const pool = makePool([
+    const pool = makeMockPool([
       [
         { status: "pending", count: 1 },
         { status: "assigned", count: 2 },
@@ -89,7 +84,7 @@ describe("getDashboardSummary", () => {
   });
 
   it("aggregates fleet counts across hierarchies and computes active total", async () => {
-    const pool = makePool([
+    const pool = makeMockPool([
       [],
       [
         { hier: "org", count: 1, active: 1 },
@@ -108,7 +103,7 @@ describe("getDashboardSummary", () => {
   });
 
   it("splits the trend window in half and computes the change percent", async () => {
-    const pool = makePool([[], [], makeTrendRows(), [], makeKpiTrendRows()]);
+    const pool = makeMockPool([[], [], makeTrendRows(), [], makeKpiTrendRows()]);
     const { trend, trend_total, trend_change_percent } = await getDashboardSummary(pool);
     expect(trend).toHaveLength(7);
     expect(trend_total).toBe(14); // 7 days × 2
@@ -116,14 +111,14 @@ describe("getDashboardSummary", () => {
   });
 
   it("flags is_today on the most recent trend row", async () => {
-    const pool = makePool([[], [], makeTrendRows(), [], makeKpiTrendRows()]);
+    const pool = makeMockPool([[], [], makeTrendRows(), [], makeKpiTrendRows()]);
     const { trend } = await getDashboardSummary(pool);
     expect(trend.filter((d) => d.is_today)).toHaveLength(1);
     expect(trend[trend.length - 1]?.is_today).toBe(true);
   });
 
   it("emits 4 KPIs (active_sessions, in_review, completed_today, blocked) with raw values", async () => {
-    const pool = makePool([
+    const pool = makeMockPool([
       [
         { status: "review", count: 4 },
         { status: "blocked", count: 2 },
@@ -147,7 +142,7 @@ describe("getDashboardSummary", () => {
   });
 
   it("handles 0 totals without dividing by zero", async () => {
-    const pool = makePool([[], [], makeTrendRows(), [], makeKpiTrendRows()]);
+    const pool = makeMockPool([[], [], makeTrendRows(), [], makeKpiTrendRows()]);
     const { status_total, status_breakdown, fleet_total, fleet } = await getDashboardSummary(pool);
     expect(status_total).toBe(0);
     expect(status_breakdown).toEqual([]);
@@ -160,7 +155,7 @@ describe("getDashboardSummary", () => {
       day: `2026-04-${17 + i}`,
       count: 0,
     }));
-    const pool = makePool([[], [], flatTrend, [], makeKpiTrendRows()]);
+    const pool = makeMockPool([[], [], flatTrend, [], makeKpiTrendRows()]);
     const { trend_change_percent } = await getDashboardSummary(pool);
     expect(trend_change_percent).toBe(0);
   });
@@ -170,14 +165,14 @@ describe("getDashboardSummary", () => {
       day: `2026-04-${17 + i}`,
       count: i < 7 ? 0 : 3,
     }));
-    const pool = makePool([[], [], trendRows, [], makeKpiTrendRows()]);
+    const pool = makeMockPool([[], [], trendRows, [], makeKpiTrendRows()]);
     const { trend_change_percent } = await getDashboardSummary(pool);
     expect(trend_change_percent).toBe(100);
   });
 
   it("maps attention rows preserving title, status, and ISO timestamp", async () => {
     const ts = new Date("2026-04-30T10:00:00Z");
-    const pool = makePool([
+    const pool = makeMockPool([
       [],
       [],
       makeTrendRows(),
