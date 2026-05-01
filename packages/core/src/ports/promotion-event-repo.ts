@@ -1,4 +1,4 @@
-import type { MemoryPromotionEvent, MemoryScope } from "../domain/memory.js";
+import type { MemoryPromotionEvent } from "../domain/memory.js";
 
 export type NewMemoryPromotionEvent = Omit<MemoryPromotionEvent, "created_at">;
 
@@ -16,5 +16,3 @@ export interface MemoryPromotionEventRepository {
   /** Lookup by id. Mostly for tests + diagnostics. */
   findById(id: string): Promise<MemoryPromotionEvent | undefined>;
 }
-
-export type { MemoryScope };
