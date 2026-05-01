@@ -20,10 +20,13 @@
 
 import { Router, type RequestHandler } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import type { AgentRepository, MemoryScope } from "@beevibe/core";
+import { MEMORY_SCOPES, type AgentRepository, type MemoryScope } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { listTasks, getTask, type TaskListFilter } from "../views/tasks.js";
-import type { Lifecycle } from "../views/tasks-grouping.js";
+import {
+  TASK_STATUSES_BY_LIFECYCLE,
+  type Lifecycle,
+} from "../views/tasks-grouping.js";
 import { listAgents, getAgent } from "../views/agents.js";
 import { getSessionByShortId, AmbiguousShortIdError } from "../views/sessions.js";
 import { listMemoryFacts } from "../views/memory.js";
@@ -34,9 +37,11 @@ export interface ViewRoutesDeps {
   agentRepo: AgentRepository;
 }
 
-const LIFECYCLES = new Set<Lifecycle>(["pending", "in_progress", "in_review", "done"]);
+const LIFECYCLES = new Set<Lifecycle>(
+  Object.keys(TASK_STATUSES_BY_LIFECYCLE) as Lifecycle[],
+);
 const VIEWS = new Set<TaskListFilter["view"]>(["all", "mine", "sprint", "timeline"]);
-const SCOPES = new Set<MemoryScope>(["ic", "team", "org"]);
+const SCOPES = new Set<MemoryScope>(MEMORY_SCOPES);
 
 export function createViewRouter(deps: ViewRoutesDeps): Router {
   const router = Router();
@@ -159,9 +164,14 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       scopeParam && SCOPES.has(scopeParam as MemoryScope)
         ? (scopeParam as MemoryScope)
         : undefined;
+    const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : NaN;
+    const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
 
     try {
-      const facts = await listMemoryFacts(deps.pool, req.caller.personId, { scope });
+      const facts = await listMemoryFacts(deps.pool, req.caller.personId, {
+        scope,
+        limit,
+      });
       res.json(facts);
     } catch (err) {
       handleError(err, res, "memory fact list");

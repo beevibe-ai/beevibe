@@ -32,11 +32,16 @@ JOIN agent a ON a.id = f.agent_id
 WHERE a.owner_id = $1
   AND ($2::text IS NULL OR f.scope = $2)
 ORDER BY f.created_at DESC
-LIMIT 200
+LIMIT $3
 `;
+
+export const DEFAULT_MEMORY_FACTS_LIMIT = 200;
+export const MAX_MEMORY_FACTS_LIMIT = 1000;
 
 export interface MemoryFactsFilter {
   scope?: MemoryScope;
+  /** Default 200, capped at 1000 to keep the response bounded. */
+  limit?: number;
 }
 
 export async function listMemoryFacts(
@@ -44,9 +49,14 @@ export async function listMemoryFacts(
   ownerId: string,
   filter: MemoryFactsFilter = {},
 ): Promise<MemoryFactDisplay[]> {
+  const limit = Math.min(
+    Math.max(1, filter.limit ?? DEFAULT_MEMORY_FACTS_LIMIT),
+    MAX_MEMORY_FACTS_LIMIT,
+  );
   const { rows } = await pool.query<FactRow>(LIST_SQL, [
     ownerId,
     filter.scope ?? null,
+    limit,
   ]);
   return rows.map(rowToMemoryFactDisplay);
 }

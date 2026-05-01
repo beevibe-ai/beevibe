@@ -11,12 +11,12 @@ function makePool(rows: unknown[]) {
 }
 
 describe("listMemoryFacts", () => {
-  it("filters by owner and forwards null scope when not provided", async () => {
+  it("filters by owner and forwards null scope + default limit when not provided", async () => {
     const pool = makePool([]);
     await listMemoryFacts(pool, "per_w");
     expect((pool as unknown as { _spy: ReturnType<typeof vi.fn> })._spy).toHaveBeenCalledWith(
       expect.any(String),
-      ["per_w", null],
+      ["per_w", null, 200],
     );
   });
 
@@ -25,7 +25,26 @@ describe("listMemoryFacts", () => {
     await listMemoryFacts(pool, "per_w", { scope: "team" });
     expect((pool as unknown as { _spy: ReturnType<typeof vi.fn> })._spy).toHaveBeenCalledWith(
       expect.any(String),
-      ["per_w", "team"],
+      ["per_w", "team", 200],
+    );
+  });
+
+  it("clamps limit to [1, 1000]", async () => {
+    const pool = makePool([]);
+    await listMemoryFacts(pool, "per_w", { limit: 50 });
+    expect((pool as unknown as { _spy: ReturnType<typeof vi.fn> })._spy).toHaveBeenLastCalledWith(
+      expect.any(String),
+      ["per_w", null, 50],
+    );
+    await listMemoryFacts(pool, "per_w", { limit: 9999 });
+    expect((pool as unknown as { _spy: ReturnType<typeof vi.fn> })._spy).toHaveBeenLastCalledWith(
+      expect.any(String),
+      ["per_w", null, 1000],
+    );
+    await listMemoryFacts(pool, "per_w", { limit: 0 });
+    expect((pool as unknown as { _spy: ReturnType<typeof vi.fn> })._spy).toHaveBeenLastCalledWith(
+      expect.any(String),
+      ["per_w", null, 1],
     );
   });
 

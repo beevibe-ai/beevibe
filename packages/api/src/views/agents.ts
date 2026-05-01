@@ -165,15 +165,14 @@ export async function getAgent(
   pool: Pool,
   id: string,
 ): Promise<AgentDetail | undefined> {
-  const agentResult = await pool.query<AgentRow>(DETAIL_SQL_AGENT, [id]);
-  const agentRow = agentResult.rows[0];
-  if (!agentRow) return undefined;
-
-  const [blockResult, recentResult, meshResult] = await Promise.all([
+  const [agentResult, blockResult, recentResult, meshResult] = await Promise.all([
+    pool.query<AgentRow>(DETAIL_SQL_AGENT, [id]),
     pool.query<BlockRow>(DETAIL_SQL_BLOCKS, [id]),
     pool.query<RecentSessionRow>(DETAIL_SQL_RECENT_SESSIONS, [id]),
     pool.query<MeshHintRow>(DETAIL_SQL_MESH_HINTS, [id]),
   ]);
+  const agentRow = agentResult.rows[0];
+  if (!agentRow) return undefined;
 
   const core_blocks: CoreBlockDisplay[] = blockResult.rows.map((b) => ({
     id: b.id,

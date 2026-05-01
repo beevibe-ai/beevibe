@@ -77,6 +77,19 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
   return <TaskDetailLoaded task={data} />;
 }
 
+type ReviewMutation = "approve" | "reject" | "revise";
+
+function reviewStatus(
+  hooks: Record<ReviewMutation, { isPending: boolean; isError: boolean; error: Error | null }>,
+) {
+  const actions: ReviewMutation[] = ["approve", "reject", "revise"];
+  return {
+    anyPending: actions.some((a) => hooks[a].isPending),
+    lastError: actions.map((a) => hooks[a].error).find((e) => e) ?? null,
+    lastErrorAction: actions.find((a) => hooks[a].isError) ?? null,
+  };
+}
+
 function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   const isInReview = task.status === "review";
   const activeSession = task.latest_session?.status === "running" ? task.latest_session : null;
@@ -86,15 +99,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   const [reviseOpen, setReviseOpen] = useState(false);
   const [reviseFeedback, setReviseFeedback] = useState("");
 
-  const anyPending = approve.isPending || reject.isPending || revise.isPending;
-  const lastError = approve.error ?? reject.error ?? revise.error ?? null;
-  const lastErrorAction = approve.isError
-    ? "approve"
-    : reject.isError
-      ? "reject"
-      : revise.isError
-        ? "revise"
-        : null;
+  const { anyPending, lastError, lastErrorAction } = reviewStatus({ approve, reject, revise });
 
   const submitRevise = () => {
     const feedback = reviseFeedback.trim();
@@ -122,66 +127,68 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         </div>
 
         {isInReview ? (
-          <div className="flex justify-end gap-2 mb-2">
-            <button
-              type="button"
-              disabled={anyPending}
-              onClick={() => reject.mutate({})}
-              className="h-9 px-3 rounded text-sm font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {reject.isPending ? "Rejecting…" : "Reject"}
-            </button>
-            <button
-              type="button"
-              disabled={anyPending}
-              onClick={() => setReviseOpen((v) => !v)}
-              className="h-9 px-3 rounded text-sm font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              Request revision
-            </button>
-            <button
-              type="button"
-              disabled={anyPending}
-              onClick={() => approve.mutate({})}
-              className="h-9 px-3 rounded text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {approve.isPending ? "Approving…" : "Approve"}
-            </button>
-          </div>
-        ) : null}
-        {isInReview && reviseOpen ? (
-          <div className="mb-2 rounded-lg border border-border bg-card p-3 space-y-2">
-            <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
-              Revision feedback
-            </label>
-            <textarea
-              value={reviseFeedback}
-              onChange={(e) => setReviseFeedback(e.target.value)}
-              placeholder="What needs to change?"
-              rows={3}
-              className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-            />
-            <div className="flex justify-end gap-2">
+          <>
+            <div className="flex justify-end gap-2 mb-2">
               <button
                 type="button"
-                onClick={() => {
-                  setReviseOpen(false);
-                  setReviseFeedback("");
-                }}
-                className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer"
+                disabled={anyPending}
+                onClick={() => reject.mutate({})}
+                className="h-9 px-3 rounded text-sm font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                Cancel
+                {reject.isPending ? "Rejecting…" : "Reject"}
               </button>
               <button
                 type="button"
-                disabled={anyPending || reviseFeedback.trim().length === 0}
-                onClick={submitRevise}
-                className="h-8 px-3 rounded text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={anyPending}
+                onClick={() => setReviseOpen((v) => !v)}
+                className="h-9 px-3 rounded text-sm font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {revise.isPending ? "Submitting…" : "Submit revision"}
+                Request revision
+              </button>
+              <button
+                type="button"
+                disabled={anyPending}
+                onClick={() => approve.mutate({})}
+                className="h-9 px-3 rounded text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {approve.isPending ? "Approving…" : "Approve"}
               </button>
             </div>
-          </div>
+            {reviseOpen ? (
+              <div className="mb-2 rounded-lg border border-border bg-card p-3 space-y-2">
+                <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
+                  Revision feedback
+                </label>
+                <textarea
+                  value={reviseFeedback}
+                  onChange={(e) => setReviseFeedback(e.target.value)}
+                  placeholder="What needs to change?"
+                  rows={3}
+                  className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+                />
+                <div className="flex justify-end gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setReviseOpen(false);
+                      setReviseFeedback("");
+                    }}
+                    className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    disabled={anyPending || reviseFeedback.trim().length === 0}
+                    onClick={submitRevise}
+                    className="h-8 px-3 rounded text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {revise.isPending ? "Submitting…" : "Submit revision"}
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </>
         ) : null}
         {lastError ? (
           <div className="text-xs text-status-failed text-right">

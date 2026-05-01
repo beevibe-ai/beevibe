@@ -247,14 +247,13 @@ export async function getTask(
   pool: Pool,
   id: string,
 ): Promise<TaskDetail | undefined> {
-  const taskResult = await pool.query<TaskListRow>(DETAIL_SQL_TASK, [id]);
-  const taskRow = taskResult.rows[0];
-  if (!taskRow) return undefined;
-
-  const [sessionResult, wpResult] = await Promise.all([
+  const [taskResult, sessionResult, wpResult] = await Promise.all([
+    pool.query<TaskListRow>(DETAIL_SQL_TASK, [id]),
     pool.query<DetailSessionRow>(DETAIL_SQL_SESSIONS, [id]),
     pool.query(DETAIL_SQL_WORK_PRODUCTS, [id]),
   ]);
+  const taskRow = taskResult.rows[0];
+  if (!taskRow) return undefined;
 
   const sessions: TaskDetailSessionRow[] = sessionResult.rows.map((s) => ({
     id: s.id,
