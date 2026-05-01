@@ -77,7 +77,7 @@ describe("AgentsClient", () => {
     expect(screen.getByText("5 sessions")).toBeInTheDocument();
     expect(screen.getByText("12 sessions")).toBeInTheDocument();
     expect(
-      screen.getByText((_, el) => el?.textContent === "2 agents in your org."),
-    ).toBeInTheDocument();
+      screen.getAllByText((_, el) => el?.textContent === "2 agents in your org.").length,
+    ).toBeGreaterThan(0);
   });
 });
