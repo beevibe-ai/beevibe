@@ -247,4 +247,82 @@ describe("task routes — integration", () => {
     const res = await request(makeApp()).post("/task/task_x/approve");
     expect(res.status).toBe(401);
   });
+
+  it("create: minimal body → 201 + pending task creator-stamped to caller", async () => {
+    const { owner, agent } = await setupHuman();
+
+    const res = await request(makeApp())
+      .post("/task")
+      .set("Authorization", `Bearer ${owner.apiKey}`)
+      .send({ title: "Wire the Kanban", assignee_id: agent.agent.id });
+
+    expect(res.status).toBe(201);
+    expect(res.body.ok).toBe(true);
+    expect(res.body.task.title).toBe("Wire the Kanban");
+    expect(res.body.task.status).toBe("pending");
+    expect(res.body.task.priority).toBe("medium");
+    expect(res.body.task.creator_id).toBe(owner.person.id);
+    expect(res.body.task.creator_type).toBe("person");
+    expect(res.body.task.assignee_id).toBe(agent.agent.id);
+
+    const persisted = await taskRepo.findById(res.body.task.id);
+    expect(persisted?.title).toBe("Wire the Kanban");
+  });
+
+  it("create: full input round-trips, priority honored", async () => {
+    const { owner, agent } = await setupHuman();
+    const parent = await seedTask("in_progress", agent.agent.id);
+
+    const res = await request(makeApp())
+      .post("/task")
+      .set("Authorization", `Bearer ${owner.apiKey}`)
+      .send({
+        title: "child task",
+        description: "do the thing",
+        priority: "high",
+        assignee_id: agent.agent.id,
+        parent_task_id: parent.id,
+      });
+
+    expect(res.status).toBe(201);
+    expect(res.body.task.priority).toBe("high");
+    expect(res.body.task.parent_task_id).toBe(parent.id);
+    expect(res.body.task.description).toBe("do the thing");
+  });
+
+  it("create: missing title → 400", async () => {
+    const { owner } = await setupHuman();
+
+    const res = await request(makeApp())
+      .post("/task")
+      .set("Authorization", `Bearer ${owner.apiKey}`)
+      .send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("title_required");
+  });
+
+  it("create: invalid priority → 400", async () => {
+    const { owner } = await setupHuman();
+
+    const res = await request(makeApp())
+      .post("/task")
+      .set("Authorization", `Bearer ${owner.apiKey}`)
+      .send({ title: "ok", priority: "urgent" });
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toBe("invalid_priority");
+  });
+
+  it("create: agent caller (bv_a_) → 403", async () => {
+    const { agent } = await setupHuman();
+
+    const res = await request(makeApp())
+      .post("/task")
+      .set("Authorization", `Bearer ${agent.apiKey}`)
+      .send({ title: "nope" });
+
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("human_required");
+  });
 });

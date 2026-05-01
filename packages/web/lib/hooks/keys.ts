@@ -28,11 +28,6 @@ export const queryKeys = {
     all: ["mesh"] as const,
     overview: (filter: { since?: string }) => ["mesh", "overview", filter] as const,
   },
-  threads: {
-    all: ["threads"] as const,
-    list: () => ["threads", "list"] as const,
-    detail: (id: string) => ["threads", "detail", id] as const,
-  },
   dashboard: {
     all: ["dashboard"] as const,
     summary: () => ["dashboard", "summary"] as const,

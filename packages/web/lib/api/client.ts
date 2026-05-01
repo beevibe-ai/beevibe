@@ -4,8 +4,6 @@ import type {
   AgentDetail,
   DashboardSummary,
   MeshOverview,
-  ThreadsOverview,
-  ThreadDetail,
 } from "./types";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { AgentDisplay } from "@/lib/types/agents";
@@ -125,12 +123,6 @@ export const api = {
   mesh: {
     overview: (filter: { since?: string } = {}, opts: ReadOptions = {}) =>
       fetchJson<MeshOverview>("/mesh", { query: { ...filter }, signal: opts.signal }),
-  },
-  threads: {
-    list: (opts: ReadOptions = {}) =>
-      fetchJson<ThreadsOverview>("/thread", { signal: opts.signal }),
-    get: (id: string, opts: ReadOptions = {}) =>
-      fetchJson<ThreadDetail>(`/thread/${encodeURIComponent(id)}`, { signal: opts.signal }),
   },
   dashboard: {
     summary: (opts: ReadOptions = {}) =>
