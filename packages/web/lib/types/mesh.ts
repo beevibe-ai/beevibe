@@ -43,7 +43,6 @@ export interface ChainBudgetData {
 export interface GraphNode {
   id: string;
   label: string;
-  hier_label: string;
   hier: "ic" | "team" | "org";
   cx: number;
   cy: number;

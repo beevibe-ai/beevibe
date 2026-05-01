@@ -24,12 +24,6 @@ interface LaidOut {
   viewBox: { width: number; height: number };
 }
 
-const HIER_LABEL: Record<GraphNode["hier"], string> = {
-  org: "org",
-  team: "team",
-  ic: "ic",
-};
-
 const HIER_ORDER: Record<GraphNode["hier"], number> = {
   org: 0,
   team: 1,
@@ -71,7 +65,6 @@ export function layoutMeshGraph(
       id: n.id,
       label: n.label,
       hier: n.hier,
-      hier_label: HIER_LABEL[n.hier],
       cx,
       cy,
       r: NODE_RADIUS,

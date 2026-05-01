@@ -41,42 +41,39 @@ SELECT
   n.max_rounds,
   n.created_at             AS started_at,
   n.updated_at             AS completed_at_or_updated,
-  (
-    SELECT message
-    FROM negotiation_round nr
-    WHERE nr.negotiation_id = n.id AND nr.round_number = 1
-    LIMIT 1
-  )                        AS intent
+  nr1.message              AS intent
 FROM negotiation n
 JOIN agent ca ON ca.id = n.initiator_agent_id
 JOIN agent ta ON ta.id = n.counterparty_agent_id
+LEFT JOIN negotiation_round nr1
+  ON nr1.negotiation_id = n.id AND nr1.round_number = 1
 WHERE n.created_at >= NOW() - INTERVAL '${WINDOW}'
    OR n.status = 'active'
 ORDER BY n.created_at DESC
 LIMIT $1
 `;
 
+/**
+ * Single negotiation scan, unpivoted into per-endpoint rows, then GROUP BY
+ * agent. `bool_or(status='active')` derives the live-state without a
+ * second pass over the table.
+ */
 const NODES_SQL = /* sql */ `
-WITH involved AS (
-  SELECT initiator_agent_id AS id FROM negotiation
+WITH endpoints AS (
+  SELECT initiator_agent_id AS agent_id, status FROM negotiation
   WHERE created_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'active'
-  UNION
-  SELECT counterparty_agent_id FROM negotiation
+  UNION ALL
+  SELECT counterparty_agent_id AS agent_id, status FROM negotiation
   WHERE created_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'active'
-),
-active_agents AS (
-  SELECT DISTINCT initiator_agent_id    AS id FROM negotiation WHERE status = 'active'
-  UNION
-  SELECT DISTINCT counterparty_agent_id      FROM negotiation WHERE status = 'active'
 )
 SELECT
   a.id,
-  a.name              AS label,
-  a.hierarchy_level   AS hier,
-  (aa.id IS NOT NULL) AS is_active
-FROM involved i
-JOIN agent a ON a.id = i.id
-LEFT JOIN active_agents aa ON aa.id = a.id
+  a.name                       AS label,
+  a.hierarchy_level            AS hier,
+  bool_or(ep.status = 'active') AS is_active
+FROM endpoints ep
+JOIN agent a ON a.id = ep.agent_id
+GROUP BY a.id, a.name, a.hierarchy_level
 ORDER BY
   CASE a.hierarchy_level WHEN 'org' THEN 0 WHEN 'team' THEN 1 ELSE 2 END,
   a.name ASC
