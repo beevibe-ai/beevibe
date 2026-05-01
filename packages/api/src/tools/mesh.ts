@@ -438,17 +438,24 @@ function escalateToHumansTool(
 // ── Assemble mesh tool sets ──────────────────────────────────────────────
 
 /**
- * IC tier mesh tools. ICs only get `report_blocker` — the canonical
- * escalate-to-parent path. They don't initiate ask/negotiate (lateral
- * coordination is team-tier work) and don't terminate mesh calls
- * (respond_ask / respond_negotiate are only meaningful when the session was
- * spawned as a mesh peer, which doesn't happen at IC tier).
+ * IC tier mesh tools. ICs can't INITIATE lateral coordination (no `ask` or
+ * `negotiate`), but they DO need response-side tools because team-tier
+ * agents can target ICs with `ask` / `negotiate` — when that happens the
+ * IC is spawned as a mesh_ask / mesh_negotiate peer and must call
+ * `respond_ask` / `respond_negotiate` to deliver its answer through the
+ * resolver. Without these, the asker's tool call hangs until the upstream
+ * timeout. ICs also keep `report_blocker` as the canonical escalate-to-
+ * parent path.
  */
 export function buildIcMeshTools(
   ctx: MeshToolContext,
   services: MeshToolServices,
 ): AgentTool[] {
-  return [reportBlockerTool(ctx, services)];
+  return [
+    respondAskTool(ctx, services),
+    respondNegotiateTool(ctx, services),
+    reportBlockerTool(ctx, services),
+  ];
 }
 
 /**

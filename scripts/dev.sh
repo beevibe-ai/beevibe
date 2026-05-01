@@ -129,22 +129,18 @@ if [ "$TUNNEL_ENABLED" = "1" ]; then
       echo "[tunnel] $line"
       if [[ "$line" =~ (https://[^[:space:]]+\.trycloudflare\.com) ]]; then
         url="${BASH_REMATCH[1]}"
+        # Persist for `scripts/provision-demo.ts` to auto-pick up.
+        mkdir -p "$HOME/.beevibe"
+        printf '%s\n' "$url" > "$HOME/.beevibe/last-tunnel-url"
         cat <<EOF
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-For remote Claude CLI access, paste into ~/.config/claude/mcp.json:
+Tunnel URL: ${url}
 
-  {
-    "mcpServers": {
-      "beevibe": {
-        "type": "http",
-        "url": "${url}/mcp",
-        "headers": { "Authorization": "Bearer <YOUR_BV_U_TOKEN>" }
-      }
-    }
-  }
-
-(Provision a bv_u_ token via the M8 web UI when it lands.)
+For a manual Claude CLI smoke, run in another terminal:
+  pnpm tsx scripts/provision-demo.ts
+which prints a paste-ready ~/.config/claude/mcp.json snippet
+(captain + IC subordinates + bv_u_ token, pre-pointed at this tunnel).
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 EOF

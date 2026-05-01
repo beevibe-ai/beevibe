@@ -107,7 +107,13 @@ export class MeshServer {
   ): Promise<AskResponse> {
     await this.checkMeshCapacity(toAgentId);
 
-    const intent = `<mesh-ask request_id="${escapeAttr(requestId)}" from="${escapeAttr(fromAgentId)}">${question}</mesh-ask>`;
+    const intent =
+      `<mesh-ask request_id="${escapeAttr(requestId)}" from="${escapeAttr(fromAgentId)}">\n` +
+      `${question}\n` +
+      `</mesh-ask>\n` +
+      `<context type="ask_response">\n` +
+      `Read the question, search relevant context if needed, and respond by calling respond_ask(request_id="${requestId}", answer="..."). The answer is delivered to the asker via that tool — replying in chat alone does NOT reach them. After respond_ask returns, exit.\n` +
+      `</context>`;
 
     void this.spawnTargetSession({
       targetAgentId: toAgentId,

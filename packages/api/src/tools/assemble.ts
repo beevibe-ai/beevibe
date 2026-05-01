@@ -40,13 +40,14 @@ export interface AssembleToolsContext {
  *
  * Tier breakdown (M6.4 final):
  *
- *   IC (10 tools):
+ *   IC (13 tools):
  *     2 memory: save_memory, update_core_memory
  *     8 hierarchy (shared): search_context, update_progress, find_up,
  *       get_agent_profile, get_task, create_work_product,
  *       list_work_products, update_work_product
- *     0 mesh — except report_blocker (parent escalation path).
- *     Effectively IC = 11 (memory + 8 shared + report_blocker).
+ *     3 mesh: report_blocker (escalate up), respond_ask + respond_negotiate
+ *       (response-only — needed when team-tier agents target an IC with
+ *       `ask`/`negotiate`; without these the asker hangs).
  *
  *   Team / org (22 tools):
  *     2 memory + 14 hierarchy (8 shared + 6 team-only) +
