@@ -1,6 +1,8 @@
 import type { CoreMemoryBlock } from "../../domain/core-memory.js";
 import type { MemoryFact } from "../../domain/memory.js";
 import type { EmbeddingService } from "../../ports/embedding-service.js";
+import { promotionEventId } from "../../domain/ids.js";
+import type { MemoryPromotionEventRepository } from "../../ports/promotion-event-repo.js";
 import type { CoreMemory } from "./core-memory.js";
 import type { FactPromoter } from "./fact-promoter.js";
 import type { FactStore } from "./fact-store.js";
@@ -26,6 +28,12 @@ export interface MemoryAgentDeps {
   factStore: FactStore;
   promoter: FactPromoter;
   embed: EmbeddingService;
+  /**
+   * Optional audit log for FactPromoter decisions. When provided,
+   * `onTaskComplete` writes a row per evaluated fact (promoted + rejected)
+   * so the Promotions page can surface the LLM's reasoning.
+   */
+  promotionEventRepo?: MemoryPromotionEventRepository;
   factsPerBriefing?: number;
 }
 
@@ -60,8 +68,23 @@ export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
       for (const fact of facts) {
         try {
           const result = await deps.promoter.evaluate(fact);
+          const fromScope = fact.scope;
           if (result.promoted && result.target_scope !== null) {
             await deps.factStore.updateScope(fact.id, result.target_scope);
+          }
+          if (deps.promotionEventRepo) {
+            // Audit row reflects actual movement: rejected events keep
+            // to_scope = from_scope so the page can show "kept narrow".
+            await deps.promotionEventRepo.create({
+              id: promotionEventId(),
+              fact_id: fact.id,
+              from_scope: fromScope,
+              to_scope: result.promoted && result.target_scope ? result.target_scope : fromScope,
+              origin_agent_id: fact.agent_id,
+              promoter_reason: result.reason,
+              source_session_ids: fact.source_session_ids,
+              rejected: !result.promoted,
+            });
           }
         } catch (err) {
           console.error(

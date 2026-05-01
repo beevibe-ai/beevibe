@@ -368,6 +368,31 @@ export interface MeshOverview {
   summary: MeshSummaryData;
 }
 
+// ── Promotions ─────────────────────────────────────────────────────────────
+//
+// Audit feed of FactPromoter decisions (promoted + rejected). Sourced from
+// `memory_promotion_event` (M8.D), joined with memory_fact for content and
+// agent for the originating label. Display fields (color enums, hrefs,
+// relative ages) are computed web-side via direct binding — the page
+// renders raw fields, no separate mapper needed for v1.
+
+export interface PromotionEvent {
+  id: string;
+  fact_id: string;
+  fact_type: FactType;
+  fact_content: string;
+  from_scope: MemoryScope | null;
+  to_scope: MemoryScope;
+  origin_agent_id: string;
+  origin_agent_label: string;
+  promoter_reason: string;
+  source_session_ids: string[];
+  /** Overflow count when the row had more than the truncation cap. */
+  source_session_extra?: number;
+  created_at: Date;
+  rejected?: boolean;
+}
+
 // ── Re-exports of ambient types that web imports alongside the DTOs ─────────
 
 export type { TaskStatus };
