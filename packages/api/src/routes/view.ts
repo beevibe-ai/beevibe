@@ -31,6 +31,7 @@ import { listAgents, getAgent } from "../views/agents.js";
 import { getSessionByShortId, AmbiguousShortIdError } from "../views/sessions.js";
 import { listMemoryFacts } from "../views/memory.js";
 import { getDashboardSummary } from "../views/dashboard.js";
+import { getMeshOverview } from "../views/mesh.js";
 
 export interface ViewRoutesDeps {
   authMiddleware: RequestHandler;
@@ -165,6 +166,16 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(summary);
     } catch (err) {
       handleError(err, res, "dashboard summary");
+    }
+  });
+
+  router.get("/mesh", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      const overview = await getMeshOverview(deps.pool);
+      res.json(overview);
+    } catch (err) {
+      handleError(err, res, "mesh overview");
     }
   });
 

@@ -9,8 +9,7 @@ import { MeshGraphStatic } from "@/components/mesh/graph-static";
 import { ChainBudget } from "@/components/mesh/chain-budget";
 import { useMeshOverview } from "@/lib/hooks/use-mesh";
 import { isApiConfigured } from "@/lib/api/config";
-import type { MeshOverview } from "@/lib/api/types";
-import type { MeshAsk } from "@/lib/types/mesh";
+import type { MeshAsk, MeshDisplay } from "@/lib/types/mesh";
 
 export function MeshClient() {
   const { data, isLoading, isError } = useMeshOverview();
@@ -52,7 +51,7 @@ function Body({
   isLoading,
   isError,
 }: {
-  data: MeshOverview | undefined;
+  data: MeshDisplay | undefined;
   isLoading: boolean;
   isError: boolean;
 }) {
@@ -96,7 +95,10 @@ function Body({
       <div className="grid grid-cols-5 gap-6">
         <MeshActivityFeed />
         <div className="col-span-2">
-          <MeshGraphStatic />
+          <MeshGraphStatic
+            nodes={data?.graph.nodes}
+            edges={data?.graph.edges}
+          />
           <ChainBudget />
         </div>
       </div>
@@ -117,15 +119,7 @@ function Body({
         </ul>
       </section>
       <div className="col-span-2 space-y-3">
-        <div className="rounded-lg border border-border bg-card p-4 text-xs text-muted-foreground">
-          <div className="text-[10px] uppercase tracking-wider mb-2 text-foreground">
-            Live graph · last 24h
-          </div>
-          <div>
-            <span className="text-foreground tabular-nums">{data.graph.edges.length}</span> edges ·{" "}
-            <span className="text-foreground tabular-nums">{data.graph.nodes.length}</span> agents
-          </div>
-        </div>
+        <MeshGraphStatic nodes={data.graph.nodes} edges={data.graph.edges} />
         <ChainBudget />
       </div>
     </div>
