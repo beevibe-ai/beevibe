@@ -54,6 +54,7 @@ describe("listPromotions", () => {
       promoter_reason: "looks team-relevant",
       source_session_ids: ["sess_a", "sess_b"],
       created_at: new Date("2026-04-30T10:00:00Z"),
+      rejected: false,
     });
   });
 
@@ -75,23 +76,14 @@ describe("listPromotions", () => {
     expect(event?.source_session_extra).toBeUndefined();
   });
 
-  it("sets rejected=true on rejected rows; omits the field when promoted", async () => {
+  it("preserves rejected boolean (true and false both surface)", async () => {
     const pool = makeMockPool([
       { ...baseRow, id: "mpe_yes", rejected: false },
       { ...baseRow, id: "mpe_no", rejected: true },
     ]);
     const events = await listPromotions(pool, "per_w");
-    expect(events[0]?.rejected).toBeUndefined();
+    expect(events[0]?.rejected).toBe(false);
     expect(events[1]?.rejected).toBe(true);
-  });
-
-  it("falls back to '(fact deleted)' when the joined fact row is gone", async () => {
-    const pool = makeMockPool([
-      { ...baseRow, fact_content: null, fact_type: null },
-    ]);
-    const [event] = await listPromotions(pool, "per_w");
-    expect(event?.fact_content).toBe("(fact deleted)");
-    expect(event?.fact_type).toBe("belief");
   });
 
   it("preserves null from_scope (forward-compat for fact-creation events)", async () => {

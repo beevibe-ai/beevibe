@@ -15,6 +15,9 @@ const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
 const SESSION_PREVIEW = 3;
 
+// memory_promotion_event.fact_id has ON DELETE CASCADE, so an event row
+// can never outlive its fact. INNER JOIN both sides — no defensive
+// LEFT-JOIN-with-fallbacks needed.
 const LIST_SQL = /* sql */ `
 SELECT
   mpe.id,
@@ -31,7 +34,7 @@ SELECT
   a.name           AS origin_agent_label
 FROM memory_promotion_event mpe
 JOIN agent a       ON a.id = mpe.origin_agent_id
-LEFT JOIN memory_fact f ON f.id = mpe.fact_id
+JOIN memory_fact f ON f.id = mpe.fact_id
 WHERE a.owner_id = $1
 ORDER BY mpe.created_at DESC
 LIMIT $2
@@ -47,8 +50,8 @@ interface EventRow {
   source_session_ids: string[];
   rejected: boolean;
   created_at: Date;
-  fact_type: FactType | null;
-  fact_content: string | null;
+  fact_type: FactType;
+  fact_content: string;
   origin_agent_label: string;
 }
 
@@ -77,8 +80,8 @@ function rowToPromotionEvent(row: EventRow): PromotionEvent {
   return {
     id: row.id,
     fact_id: row.fact_id,
-    fact_type: row.fact_type ?? "belief",
-    fact_content: row.fact_content ?? "(fact deleted)",
+    fact_type: row.fact_type,
+    fact_content: row.fact_content,
     from_scope: row.from_scope,
     to_scope: row.to_scope,
     origin_agent_id: row.origin_agent_id,
@@ -87,6 +90,6 @@ function rowToPromotionEvent(row: EventRow): PromotionEvent {
     source_session_ids: preview,
     source_session_extra: extra > 0 ? extra : undefined,
     created_at: row.created_at,
-    rejected: row.rejected || undefined,
+    rejected: row.rejected,
   };
 }

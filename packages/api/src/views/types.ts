@@ -390,7 +390,7 @@ export interface PromotionEvent {
   /** Overflow count when the row had more than the truncation cap. */
   source_session_extra?: number;
   created_at: Date;
-  rejected?: boolean;
+  rejected: boolean;
 }
 
 // ── Re-exports of ambient types that web imports alongside the DTOs ─────────
