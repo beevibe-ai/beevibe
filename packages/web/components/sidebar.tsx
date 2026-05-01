@@ -124,8 +124,6 @@ export function Sidebar() {
           title="Agents"
           open={openAgents}
           onToggle={() => setOpenAgents((v) => !v)}
-          actionLabel="New agent"
-          onAction={() => {}}
         >
           <EmptyAgentList />
         </Section>
@@ -271,13 +269,9 @@ function NavRow({ item, pathname }: { item: NavItem; pathname: string }) {
 
 function EmptyAgentList() {
   return (
-    <button
-      type="button"
-      className="flex items-center gap-2 h-7 pl-5 pr-2 rounded-md text-sm text-muted-foreground/70 hover:text-foreground hover:bg-secondary/70 cursor-pointer transition-colors w-full"
-    >
-      <Plus className="h-3.5 w-3.5 shrink-0" />
-      <span className="flex-1 truncate text-left">New agent</span>
-    </button>
+    <div className="h-7 pl-5 pr-2 flex items-center text-sm text-muted-foreground/60">
+      No agents yet
+    </div>
   );
 }
 
