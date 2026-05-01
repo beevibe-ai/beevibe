@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { apiBaseUrl, isApiConfigured } from "./api/config";
+import { apiBaseUrl, isApiConfigured, userKey } from "./api/config";
 import { queryKeys } from "./hooks/keys";
 
 type InvalidationKey = readonly unknown[];
@@ -31,7 +31,11 @@ export function useLiveUpdates() {
   useEffect(() => {
     if (!isApiConfigured || !apiBaseUrl) return;
 
-    const source = new EventSource(`${apiBaseUrl}/api/stream`, { withCredentials: true });
+    // EventSource can't set custom headers, so the bv_u_ token rides along
+    // as a query param — see `createStreamAuthMiddleware` on the api side.
+    const url = new URL(`${apiBaseUrl}/api/stream`);
+    if (userKey) url.searchParams.set("token", userKey);
+    const source = new EventSource(url.toString(), { withCredentials: true });
 
     source.onmessage = (e) => {
       try {

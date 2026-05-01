@@ -32,6 +32,10 @@ import { createMcpRouter } from "./routes/mcp.js";
 import { createTaskRouter } from "./routes/task.js";
 import { createEscalationRouter } from "./routes/escalation.js";
 import { createViewRouter } from "./routes/view.js";
+import { createStreamRouter } from "./routes/stream.js";
+import { createStreamAuthMiddleware } from "./auth/middleware.js";
+import { SseManager } from "./sse/manager.js";
+import { SseListener } from "./sse/listener.js";
 
 export interface BootstrapConfig {
   databaseUrl: string;
@@ -223,8 +227,22 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   });
   server.getApp().use(viewRouter);
 
+  // M8 final integration (#45): SSE live-updates flow.
+  // Triggers in migration 1778300000000 emit on `bv_event`; SseListener
+  // LISTENs on a dedicated pg.Client and fans out via SseManager;
+  // /api/stream pushes to subscribed browsers.
+  const sseManager = new SseManager();
+  const sseListener = new SseListener({ databaseUrl: cfg.databaseUrl, manager: sseManager });
+  sseListener.start();
+  const streamRouter = createStreamRouter({
+    authMiddleware: createStreamAuthMiddleware({ agentRepo, personRepo }),
+    sseManager,
+  });
+  server.getApp().use("/api", streamRouter);
+
   const shutdown = async (): Promise<void> => {
     sessionCache.stopIdleSweep();
+    await sseListener.stop();
     await server.stop();
     await pool.end();
   };

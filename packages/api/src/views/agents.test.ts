@@ -33,11 +33,11 @@ describe("listAgents", () => {
 
 describe("getAgent", () => {
   it("returns undefined when missing", async () => {
-    const pool = makeMockPool([[], [], [], []]);
+    const pool = makeMockPool([[], [], [], [], []]);
     expect(await getAgent(pool, "agt_missing")).toBeUndefined();
   });
 
-  it("aggregates blocks, recent sessions, and mesh hints when present", async () => {
+  it("aggregates blocks, recent sessions, mesh hints, and delta metrics", async () => {
     const pool = makeMockPool([
       [
         {
@@ -83,11 +83,15 @@ describe("getAgent", () => {
           opening_message: "Can you review the schema?",
         },
       ],
+      [{ sessions_change: 5, merges: 2, promoted: 4 }],
     ]);
     const detail = await getAgent(pool, "agt_team");
     expect(detail?.display_name).toBe("Beta");
     expect(detail?.metrics.sessions).toBe(3);
     expect(detail?.metrics.facts).toBe(7);
+    expect(detail?.metrics.sessions_change).toBe(5);
+    expect(detail?.metrics.merges).toBe(2);
+    expect(detail?.metrics.promoted).toBe(4);
     expect(detail?.core_blocks).toHaveLength(1);
     expect(detail?.core_blocks[0]?.char_count).toBe(3);
     expect(detail?.recent_sessions).toHaveLength(1);

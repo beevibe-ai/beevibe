@@ -50,7 +50,6 @@ export function TasksClient() {
       <ViewTabs
         current={view}
         onChange={setView}
-        onNewTask={() => {}}
         onSearch={() => {}}
         query={query}
         onQueryChange={setQuery}

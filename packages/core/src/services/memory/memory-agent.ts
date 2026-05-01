@@ -1,5 +1,6 @@
 import type { CoreMemoryBlock } from "../../domain/core-memory.js";
 import type { MemoryFact, MemoryScope } from "../../domain/memory.js";
+import type { SessionBriefingSnapshot } from "../../domain/session.js";
 import type { EmbeddingService } from "../../ports/embedding-service.js";
 import { promotionEventId } from "../../domain/ids.js";
 import type { MemoryPromotionEventRepository } from "../../ports/promotion-event-repo.js";
@@ -15,9 +16,20 @@ import type { FactStore } from "./fact-store.js";
 const BRIEFING_RECALL_FLOOR = 0.35;
 const DEFAULT_FACTS_PER_BRIEFING = 10;
 
+export interface BriefingResult {
+  /** XML block appended to the agent's system prompt. */
+  systemPromptAppend: string;
+  /** Structured snapshot persisted on the session row for the UI to render. */
+  snapshot: SessionBriefingSnapshot;
+}
+
 export interface MemoryAgent {
-  /** Pre-session: compose the `<core_memory>` + `<archival_memory>` XML block. */
-  prepareBriefing(intent: string): Promise<string>;
+  /**
+   * Pre-session: compose the `<core_memory>` + `<archival_memory>` XML block.
+   * Returns both the assembled prompt string AND a structured snapshot
+   * for persistence on the session row.
+   */
+  prepareBriefing(intent: string): Promise<BriefingResult>;
   /** Post-session: promote facts written during this session if warranted. */
   onTaskComplete(sessionId: string): Promise<void>;
 }
@@ -48,7 +60,7 @@ export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
   const factsPerBriefing = deps.factsPerBriefing ?? DEFAULT_FACTS_PER_BRIEFING;
 
   return {
-    async prepareBriefing(intent: string): Promise<string> {
+    async prepareBriefing(intent: string): Promise<BriefingResult> {
       const [blocks, queryVec] = await Promise.all([
         deps.coreMemory.read(deps.agentId),
         deps.embed.embed(intent),
@@ -60,7 +72,7 @@ export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
         limit: factsPerBriefing,
         min_similarity: BRIEFING_RECALL_FLOOR,
       });
-      return formatBriefing(blocks, facts);
+      return composeBriefing(blocks, facts);
     },
 
     async onTaskComplete(sessionId: string): Promise<void> {
@@ -116,18 +128,49 @@ export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
   };
 }
 
-function formatBriefing(
+/** Coarse ~4 chars/token estimate for the UI's "tokens used" header. */
+const PREVIEW_CHARS = 80;
+
+/**
+ * Single-pass composer for the briefing XML + structured snapshot. One
+ * iteration over blocks + facts produces both the system-prompt append
+ * (consumed by the runtime) and the persisted snapshot (consumed by the
+ * session detail page).
+ */
+function composeBriefing(
   blocks: readonly CoreMemoryBlock[],
   facts: readonly MemoryFact[],
-): string {
-  const blockLines = blocks.map(
-    (b) =>
+): BriefingResult {
+  const blockLines: string[] = [];
+  const blockSnapshots: SessionBriefingSnapshot["blocks"] = [];
+  let charTotal = 0;
+  for (const b of blocks) {
+    blockLines.push(
       `  <block name="${escapeAttr(b.block_name)}">${escapeText(b.content)}</block>`,
-  );
-  const factLines = facts.map(
-    (f) =>
+    );
+    blockSnapshots.push({
+      name: b.block_name,
+      chars: b.content.length,
+      preview: b.content.slice(0, PREVIEW_CHARS),
+    });
+    charTotal += b.content.length;
+  }
+
+  const factLines: string[] = [];
+  const factSnapshots: SessionBriefingSnapshot["facts"] = [];
+  for (const f of facts) {
+    factLines.push(
       `  <fact type="${escapeAttr(f.fact_type)}" scope="${f.scope}">${escapeText(f.content)}</fact>`,
-  );
+    );
+    factSnapshots.push({
+      scope: f.scope,
+      content: f.content,
+      // FactStore doesn't currently round-trip similarity score on the
+      // returned MemoryFact. Backfill 0 until plumbed end-to-end.
+      score: 0,
+    });
+    charTotal += f.content.length;
+  }
 
   const lines = ["<core_memory>"];
   if (blockLines.length > 0) lines.push(...blockLines);
@@ -144,7 +187,17 @@ function formatBriefing(
     "(These MCP tools are wired in M6. Before M6 lands, describe intended memory updates at the end of your response.)",
   );
   lines.push("</memory_tools>");
-  return lines.join("\n");
+
+  return {
+    systemPromptAppend: lines.join("\n"),
+    snapshot: {
+      block_count: blocks.length,
+      fact_count: facts.length,
+      token_count: Math.ceil(charTotal / 4),
+      blocks: blockSnapshots,
+      facts: factSnapshots,
+    },
+  };
 }
 
 function escapeAttr(s: string): string {

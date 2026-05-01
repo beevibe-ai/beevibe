@@ -60,6 +60,26 @@ export function createAuthMiddleware(deps: LookupApiKeyDeps): RequestHandler {
   };
 }
 
+/**
+ * SSE-friendly auth wrapper. Browsers using `EventSource` cannot set a
+ * custom `Authorization` header, so the `/api/stream` route accepts the
+ * token via `?token=` query as well. If the header is already present
+ * (Authorization: Bearer ...) it takes precedence.
+ *
+ * Tokens-in-URLs are normally a leak risk (logged by proxies), but the
+ * stream payload is just `{event, id}` — no secrets, and the leaked
+ * URL would be re-captured on every reload anyway.
+ */
+export function createStreamAuthMiddleware(deps: LookupApiKeyDeps): RequestHandler {
+  const inner = createAuthMiddleware(deps);
+  return (req, res, next) => {
+    if (!req.headers.authorization && typeof req.query.token === "string") {
+      req.headers.authorization = `Bearer ${req.query.token}`;
+    }
+    inner(req, res, next);
+  };
+}
+
 /** Express request narrowed to a confirmed human (`bv_u_`) caller. */
 export type HumanRequest = Request & {
   caller: Extract<ResolvedCaller, { source: "human" }>;

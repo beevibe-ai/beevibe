@@ -1,6 +1,6 @@
 "use client";
 
-import { MoreHorizontal, Plus } from "lucide-react";
+import { MoreHorizontal } from "lucide-react";
 import { TaskCard } from "./task-card";
 import { cn } from "@/lib/utils";
 import type { TaskListItem } from "@/lib/types/tasks";
@@ -13,6 +13,11 @@ export type BoardLane = {
   count: number;
   tasks: TaskListItem[];
 };
+
+// Tasks are minted by team agents through human-agent conversation, not by
+// the human clicking "+" in a kanban column. The original "+ New task"
+// affordance was removed in #48 — when the human chat surface lands, the
+// "create" entry point lives there.
 
 export function BoardColumn({ lane, flashTopCard }: { lane: BoardLane; flashTopCard?: boolean }) {
   return (
@@ -32,26 +37,12 @@ export function BoardColumn({ lane, flashTopCard }: { lane: BoardLane; flashTopC
         >
           <MoreHorizontal className="h-3.5 w-3.5" />
         </button>
-        <button
-          type="button"
-          aria-label={`New task in ${lane.label}`}
-          className="h-6 w-6 rounded inline-flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
       </div>
 
       <div className="flex flex-col gap-2">
         {lane.tasks.map((task, i) => (
           <TaskCard key={task.id} task={task} flash={flashTopCard && i === 0} />
         ))}
-        <button
-          type="button"
-          className="flex items-center gap-1.5 h-8 px-2 rounded-md text-[12px] text-muted-foreground/60 hover:text-foreground hover:bg-secondary/50 cursor-pointer transition-colors"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          New task
-        </button>
       </div>
     </div>
   );

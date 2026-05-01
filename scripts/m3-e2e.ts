@@ -163,13 +163,14 @@ async function main(): Promise<void> {
     const briefing = await memoryAgent.prepareBriefing(
       "Which node package manager should I use for this project?",
     );
-    assert(briefing.includes("<core_memory>"), "briefing missing <core_memory>");
-    assert(briefing.includes("pgvector"), "briefing missing persona content");
-    assert(briefing.includes("<archival_memory>"), "briefing missing <archival_memory>");
-    assert(briefing.includes("<fact"), "briefing missing <fact> element (vector recall failed)");
-    assert(briefing.includes("pnpm"), "briefing missing the pnpm preference fact");
-    assert(briefing.includes("save_memory"), "briefing missing memory_tools hint");
-    console.log(`   briefing length: ${briefing.length} chars`);
+    const append = briefing.systemPromptAppend;
+    assert(append.includes("<core_memory>"), "briefing missing <core_memory>");
+    assert(append.includes("pgvector"), "briefing missing persona content");
+    assert(append.includes("<archival_memory>"), "briefing missing <archival_memory>");
+    assert(append.includes("<fact"), "briefing missing <fact> element (vector recall failed)");
+    assert(append.includes("pnpm"), "briefing missing the pnpm preference fact");
+    assert(append.includes("save_memory"), "briefing missing memory_tools hint");
+    console.log(`   briefing length: ${append.length} chars`);
 
     step(6, "Provision a workspace with an empty mcp-config.json");
     workspacePath = mkdtempSync(join(tmpdir(), "beevibe-m3-e2e-"));

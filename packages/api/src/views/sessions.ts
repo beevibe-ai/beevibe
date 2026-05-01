@@ -30,6 +30,7 @@ interface SessionDetailRow {
   cli_session_id: string | null;
   started_at: Date | null;
   completed_at: Date | null;
+  briefing: SessionBriefing | null;
   agent_label: string;
   agent_hier: HierarchyLevel;
   task_title: string | null;
@@ -39,6 +40,7 @@ const SESSION_BY_ID_PREFIX_SQL = /* sql */ `
 SELECT
   s.id, s.agent_id, s.task_id, s.type, s.status, s.intent,
   s.workspace_path, s.cli_session_id, s.started_at, s.completed_at,
+  s.briefing,
   a.name              AS agent_label,
   a.hierarchy_level   AS agent_hier,
   t.title             AS task_title
@@ -103,7 +105,9 @@ function rowToSessionDisplay(row: SessionDetailRow): SessionDisplay {
     duration_label: formatDurationLabel(row.started_at, row.completed_at),
     worktree: row.workspace_path ?? undefined,
     cli_session: row.cli_session_id ?? undefined,
-    briefing: emptyBriefing(),
+    briefing: row.briefing ?? emptyBriefing(),
+    // Transcript persistence is the open piece of #45 item 3 — tracked as
+    // a separate follow-up; sessions still return [] here for now.
     transcript: [],
     ask_threads: [],
   };

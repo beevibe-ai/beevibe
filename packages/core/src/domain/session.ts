@@ -24,6 +24,19 @@ export interface SessionUsage {
   model?: string;
 }
 
+/**
+ * Structured snapshot of what `MemoryAgent.prepareBriefing` assembled for
+ * the session's system prompt. Persisted on the session row so the
+ * web's session detail page can render it without re-parsing XML.
+ */
+export interface SessionBriefingSnapshot {
+  block_count: number;
+  fact_count: number;
+  token_count: number;
+  blocks: Array<{ name: string; chars: number; preview: string }>;
+  facts: Array<{ scope: "ic" | "team" | "org"; content: string; score: number }>;
+}
+
 export interface Session {
   id: string;
   agent_id: string;
@@ -40,6 +53,7 @@ export interface Session {
   exit_code?: number;
   error?: string;
   usage?: SessionUsage;
+  briefing?: SessionBriefingSnapshot;
   started_at?: Date;
   completed_at?: Date;
   created_at: Date;

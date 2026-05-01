@@ -106,6 +106,36 @@ ORDER BY s.created_at DESC
 LIMIT 5
 `;
 
+/**
+ * Aggregated 7-day delta metrics for the agent detail page. One round-trip:
+ *   - sessions_change: count(session) WHERE created_at > 7d ago, minus
+ *     count(session) WHERE 7d ≤ created_at < 14d ago
+ *   - merges: count(memory_fact) for this agent where source_session_ids
+ *     has 2+ entries (heuristic — a fact merged from multiple sessions)
+ *   - promoted: count of memory_promotion_event rows for this agent where
+ *     rejected = false
+ */
+const DETAIL_SQL_DELTA_METRICS = /* sql */ `
+SELECT
+  (
+    SELECT COUNT(*)::int FROM session
+    WHERE agent_id = $1 AND created_at >= NOW() - INTERVAL '7 days'
+  ) - (
+    SELECT COUNT(*)::int FROM session
+    WHERE agent_id = $1
+      AND created_at >= NOW() - INTERVAL '14 days'
+      AND created_at <  NOW() - INTERVAL '7 days'
+  ) AS sessions_change,
+  (
+    SELECT COUNT(*)::int FROM memory_fact
+    WHERE agent_id = $1 AND array_length(source_session_ids, 1) >= 2
+  ) AS merges,
+  (
+    SELECT COUNT(*)::int FROM memory_promotion_event
+    WHERE origin_agent_id = $1 AND rejected = false
+  ) AS promoted
+`;
+
 const DETAIL_SQL_MESH_HINTS = /* sql */ `
 SELECT
   n.id,
@@ -152,6 +182,12 @@ interface MeshHintRow {
   opening_message: string | null;
 }
 
+interface DeltaMetricsRow {
+  sessions_change: number;
+  merges: number;
+  promoted: number;
+}
+
 function recentSessionStatus(s: SessionStatus): RecentSession["status"] {
   // Display contract narrows to running/succeeded/review (review is mapped
   // from sessions whose parent task is in review — but cheapest path is
@@ -165,14 +201,17 @@ export async function getAgent(
   pool: Pool,
   id: string,
 ): Promise<AgentDetail | undefined> {
-  const [agentResult, blockResult, recentResult, meshResult] = await Promise.all([
-    pool.query<AgentRow>(DETAIL_SQL_AGENT, [id]),
-    pool.query<BlockRow>(DETAIL_SQL_BLOCKS, [id]),
-    pool.query<RecentSessionRow>(DETAIL_SQL_RECENT_SESSIONS, [id]),
-    pool.query<MeshHintRow>(DETAIL_SQL_MESH_HINTS, [id]),
-  ]);
+  const [agentResult, blockResult, recentResult, meshResult, deltaResult] =
+    await Promise.all([
+      pool.query<AgentRow>(DETAIL_SQL_AGENT, [id]),
+      pool.query<BlockRow>(DETAIL_SQL_BLOCKS, [id]),
+      pool.query<RecentSessionRow>(DETAIL_SQL_RECENT_SESSIONS, [id]),
+      pool.query<MeshHintRow>(DETAIL_SQL_MESH_HINTS, [id]),
+      pool.query<DeltaMetricsRow>(DETAIL_SQL_DELTA_METRICS, [id]),
+    ]);
   const agentRow = agentResult.rows[0];
   if (!agentRow) return undefined;
+  const deltaRow = deltaResult.rows[0];
 
   const core_blocks: CoreBlockDisplay[] = blockResult.rows.map((b) => ({
     id: b.id,
@@ -200,10 +239,10 @@ export async function getAgent(
 
   const metrics: AgentMetrics = {
     sessions: Number(agentRow.sessions_count),
-    sessions_change: 0, // delta vs prior period — not computed yet
+    sessions_change: deltaRow ? Number(deltaRow.sessions_change) : 0,
     facts: Number(agentRow.facts_learned),
-    merges: 0,
-    promoted: 0,
+    merges: deltaRow ? Number(deltaRow.merges) : 0,
+    promoted: deltaRow ? Number(deltaRow.promoted) : 0,
   };
 
   return {

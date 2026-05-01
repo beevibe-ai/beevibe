@@ -34,6 +34,20 @@ describe("getSessionByShortId", () => {
     expect(session?.transcript).toEqual([]);
     expect(session?.ask_threads).toEqual([]);
   });
+
+  it("returns the persisted briefing JSONB when present (#45 item 3a)", async () => {
+    const briefing = {
+      block_count: 2,
+      fact_count: 1,
+      token_count: 42,
+      blocks: [{ name: "persona", chars: 12, preview: "infra eng" }],
+      facts: [{ scope: "ic" as const, content: "uses pnpm", score: 0 }],
+    };
+    const row = { ...sampleRow("sess_briefed01"), briefing };
+    const pool = makeMockPool([row]);
+    const session = await getSessionByShortId(pool, "briefe");
+    expect(session?.briefing).toEqual(briefing);
+  });
 });
 
 function sampleRow(id: string) {
@@ -48,6 +62,7 @@ function sampleRow(id: string) {
     cli_session_id: "cli_xx",
     started_at: new Date("2026-04-30T11:00:00Z"),
     completed_at: null,
+    briefing: null,
     agent_label: "Beta",
     agent_hier: "team",
     task_title: "Bill rewrite",

@@ -89,19 +89,35 @@ describe("MemoryAgent.prepareBriefing", () => {
 
     const briefing = await agent.prepareBriefing("Add logging to the auth module.");
 
-    expect(briefing).toContain("<core_memory>");
-    expect(briefing).toContain('<block name="persona">Senior infra engineer.</block>');
-    expect(briefing).toContain('<block name="domain">TypeScript, Postgres.</block>');
-    expect(briefing).toContain("<archival_memory>");
-    expect(briefing).toContain(
+    expect(briefing.systemPromptAppend).toContain("<core_memory>");
+    expect(briefing.systemPromptAppend).toContain(
+      '<block name="persona">Senior infra engineer.</block>',
+    );
+    expect(briefing.systemPromptAppend).toContain(
+      '<block name="domain">TypeScript, Postgres.</block>',
+    );
+    expect(briefing.systemPromptAppend).toContain("<archival_memory>");
+    expect(briefing.systemPromptAppend).toContain(
       '<fact type="preference" scope="ic">Prefers pnpm over npm.</fact>',
     );
-    expect(briefing).toContain(
+    expect(briefing.systemPromptAppend).toContain(
       '<fact type="gotcha" scope="team">DB schema is on public.</fact>',
     );
-    expect(briefing).toContain("<memory_tools>");
-    expect(briefing).toContain("save_memory");
-    expect(briefing).toContain("update_core_memory");
+    expect(briefing.systemPromptAppend).toContain("<memory_tools>");
+    expect(briefing.systemPromptAppend).toContain("save_memory");
+    expect(briefing.systemPromptAppend).toContain("update_core_memory");
+
+    expect(briefing.snapshot.block_count).toBe(2);
+    expect(briefing.snapshot.fact_count).toBe(2);
+    expect(briefing.snapshot.token_count).toBeGreaterThan(0);
+    expect(briefing.snapshot.blocks[0]).toMatchObject({
+      name: "persona",
+      preview: "Senior infra engineer.",
+    });
+    expect(briefing.snapshot.facts[0]).toMatchObject({
+      scope: "ic",
+      content: "Prefers pnpm over npm.",
+    });
   });
 
   it("passes the intent's embedding through to FactStore.search with the recall floor", async () => {
@@ -131,10 +147,10 @@ describe("MemoryAgent.prepareBriefing", () => {
     ]);
 
     const briefing = await agent.prepareBriefing("x");
-    expect(briefing).toContain("knows &lt;html&gt; &amp; JSX");
-    expect(briefing).toContain("works with &lt;div&gt; tags");
-    // Raw '<' characters must only appear in XML tags we generated, not in content.
-    const contentOnly = briefing
+    const append = briefing.systemPromptAppend;
+    expect(append).toContain("knows &lt;html&gt; &amp; JSX");
+    expect(append).toContain("works with &lt;div&gt; tags");
+    const contentOnly = append
       .replace(/<\/?core_memory>|<\/?archival_memory>|<\/?memory_tools>/g, "")
       .replace(/<block [^>]+>/g, "")
       .replace(/<\/block>/g, "")
@@ -150,8 +166,10 @@ describe("MemoryAgent.prepareBriefing", () => {
     vi.mocked(factStore.search).mockResolvedValue([]);
 
     const briefing = await agent.prepareBriefing("anything");
-    expect(briefing).toMatch(/<core_memory>\s*<\/core_memory>/);
-    expect(briefing).toMatch(/<archival_memory>\s*<\/archival_memory>/);
+    expect(briefing.systemPromptAppend).toMatch(/<core_memory>\s*<\/core_memory>/);
+    expect(briefing.systemPromptAppend).toMatch(/<archival_memory>\s*<\/archival_memory>/);
+    expect(briefing.snapshot.block_count).toBe(0);
+    expect(briefing.snapshot.fact_count).toBe(0);
   });
 
   it("accepts a custom factsPerBriefing limit", async () => {
