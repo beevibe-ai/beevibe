@@ -31,6 +31,7 @@ import { SessionCache } from "./session-cache.js";
 import { createMcpRouter } from "./routes/mcp.js";
 import { createTaskRouter } from "./routes/task.js";
 import { createEscalationRouter } from "./routes/escalation.js";
+import { createViewRouter } from "./routes/view.js";
 
 export interface BootstrapConfig {
   databaseUrl: string;
@@ -211,6 +212,16 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     pool,
   });
   server.getApp().use("/escalation", escalationRouter);
+
+  // M8.2 read-only view routes — bv_u_ only. Direct-to-pool composers in
+  // src/views/* return UI-shaped DTOs; no core repos touched on the read
+  // path so the agent-execution surface stays uncoupled from web display.
+  const viewRouter = createViewRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    pool,
+    agentRepo,
+  });
+  server.getApp().use(viewRouter);
 
   const shutdown = async (): Promise<void> => {
     sessionCache.stopIdleSweep();

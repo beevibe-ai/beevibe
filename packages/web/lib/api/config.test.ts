@@ -41,4 +41,20 @@ describe("api config", () => {
     expect(apiBaseUrl).toBeNull();
     expect(isApiConfigured).toBe(false);
   });
+
+  it("exposes userKey from NEXT_PUBLIC_BV_USER_KEY when set", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
+    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "bv_u_test123");
+    vi.resetModules();
+    const { userKey } = await loadConfig();
+    expect(userKey).toBe("bv_u_test123");
+  });
+
+  it("treats missing NEXT_PUBLIC_BV_USER_KEY as null userKey (no auth header)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
+    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "");
+    vi.resetModules();
+    const { userKey } = await loadConfig();
+    expect(userKey).toBeNull();
+  });
 });

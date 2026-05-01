@@ -2,20 +2,43 @@ import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   api,
   type ApproveTaskInput,
+  type RejectTaskInput,
+  type ReviseTaskInput,
   type CancelTaskInput,
   type CreateTaskInput,
 } from "@/lib/api/client";
 import { queryKeys } from "./keys";
 
-export function useApproveTask(taskId: string) {
+function useTaskMutationInvalidations(taskId: string) {
   const client = useQueryClient();
+  return () => {
+    client.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId) });
+    client.invalidateQueries({ queryKey: queryKeys.tasks.all });
+    client.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+  };
+}
+
+export function useApproveTask(taskId: string) {
+  const onSuccess = useTaskMutationInvalidations(taskId);
   return useMutation({
-    mutationFn: (input: ApproveTaskInput) => api.tasks.approve(taskId, input),
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId) });
-      client.invalidateQueries({ queryKey: queryKeys.tasks.all });
-      client.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-    },
+    mutationFn: (input: ApproveTaskInput = {}) => api.tasks.approve(taskId, input),
+    onSuccess,
+  });
+}
+
+export function useRejectTask(taskId: string) {
+  const onSuccess = useTaskMutationInvalidations(taskId);
+  return useMutation({
+    mutationFn: (input: RejectTaskInput = {}) => api.tasks.reject(taskId, input),
+    onSuccess,
+  });
+}
+
+export function useReviseTask(taskId: string) {
+  const onSuccess = useTaskMutationInvalidations(taskId);
+  return useMutation({
+    mutationFn: (input: ReviseTaskInput) => api.tasks.revise(taskId, input),
+    onSuccess,
   });
 }
 

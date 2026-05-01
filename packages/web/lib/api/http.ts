@@ -1,4 +1,4 @@
-import { apiBaseUrl } from "./config";
+import { apiBaseUrl, userKey } from "./config";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -44,6 +44,7 @@ export async function fetchJson<T>(path: string, opts: FetchOptions = {}): Promi
     headers: {
       Accept: "application/json",
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+      ...(userKey ? { Authorization: `Bearer ${userKey}` } : {}),
       ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,

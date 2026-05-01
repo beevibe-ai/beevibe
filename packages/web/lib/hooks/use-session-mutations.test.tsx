@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 
 vi.mock("@/lib/api/client", () => ({
   api: {
-    sessions: { cancel: vi.fn() },
+    tasks: { cancel: vi.fn() },
   },
 }));
 
@@ -13,7 +13,7 @@ import { useCancelSession } from "./use-session-mutations";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "./keys";
 
-const cancelMock = vi.mocked(api.sessions.cancel);
+const cancelMock = vi.mocked(api.tasks.cancel);
 
 function makeWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -33,8 +33,8 @@ afterEach(() => {
 });
 
 describe("useCancelSession", () => {
-  it("calls api.sessions.cancel with the shortId and invalidates session + task caches", async () => {
-    cancelMock.mockResolvedValue(undefined);
+  it("cancels the parent task (session = task subprocess in M6) and invalidates session + task caches", async () => {
+    cancelMock.mockResolvedValue({} as never);
     const { invalidateSpy, Wrapper } = makeWrapper();
 
     const { result } = renderHook(() => useCancelSession("sess_1", "t_1"), { wrapper: Wrapper });
@@ -43,7 +43,7 @@ describe("useCancelSession", () => {
       result.current.mutate();
     });
 
-    await waitFor(() => expect(cancelMock).toHaveBeenCalledWith("sess_1"));
+    await waitFor(() => expect(cancelMock).toHaveBeenCalledWith("t_1"));
 
     const invalidated = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
     expect(invalidated).toEqual(
@@ -54,21 +54,5 @@ describe("useCancelSession", () => {
         queryKeys.tasks.all,
       ]),
     );
-  });
-
-  it("skips task-detail invalidation when taskId is omitted", async () => {
-    cancelMock.mockResolvedValue(undefined);
-    const { invalidateSpy, Wrapper } = makeWrapper();
-
-    const { result } = renderHook(() => useCancelSession("sess_1"), { wrapper: Wrapper });
-
-    await act(async () => {
-      result.current.mutate();
-    });
-
-    await waitFor(() => expect(cancelMock).toHaveBeenCalledWith("sess_1"));
-
-    const invalidated = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
-    expect(invalidated).not.toContain(queryKeys.tasks.detail("t_1"));
   });
 });

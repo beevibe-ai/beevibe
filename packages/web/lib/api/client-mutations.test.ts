@@ -18,41 +18,65 @@ beforeEach(() => {
 
 describe("api mutations", () => {
   describe("tasks", () => {
-    it("approve(id, {action}) POSTs to /api/tasks/:id/approve with body", async () => {
-      await api.tasks.approve("t_1", { action: "approve" });
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/tasks/t_1/approve", {
-        method: "POST",
-        body: { action: "approve" },
-      });
-    });
-
-    it("approve forwards optional result_summary", async () => {
-      await api.tasks.approve("t_1", { action: "revise", result_summary: "needs more tests" });
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/tasks/t_1/approve", {
-        method: "POST",
-        body: { action: "revise", result_summary: "needs more tests" },
-      });
-    });
-
-    it("cancel(id) POSTs to /api/tasks/:id/cancel with empty body by default", async () => {
-      await api.tasks.cancel("t_1");
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/tasks/t_1/cancel", {
+    it("approve(id) POSTs to /task/:id/approve with empty body by default", async () => {
+      await api.tasks.approve("t_1");
+      expect(fetchJsonMock).toHaveBeenCalledWith("/task/t_1/approve", {
         method: "POST",
         body: {},
       });
     });
 
-    it("cancel(id, {force, reason}) forwards both", async () => {
-      await api.tasks.cancel("t_1", { force: true, reason: "scope changed" });
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/tasks/t_1/cancel", {
+    it("approve forwards optional result_summary", async () => {
+      await api.tasks.approve("t_1", { result_summary: "lgtm" });
+      expect(fetchJsonMock).toHaveBeenCalledWith("/task/t_1/approve", {
         method: "POST",
-        body: { force: true, reason: "scope changed" },
+        body: { result_summary: "lgtm" },
+      });
+    });
+
+    it("reject(id) POSTs to /task/:id/reject with empty body by default", async () => {
+      await api.tasks.reject("t_1");
+      expect(fetchJsonMock).toHaveBeenCalledWith("/task/t_1/reject", {
+        method: "POST",
+        body: {},
+      });
+    });
+
+    it("reject forwards optional result_summary", async () => {
+      await api.tasks.reject("t_1", { result_summary: "wrong scope" });
+      expect(fetchJsonMock).toHaveBeenCalledWith("/task/t_1/reject", {
+        method: "POST",
+        body: { result_summary: "wrong scope" },
+      });
+    });
+
+    it("revise(id, {feedback}) POSTs to /task/:id/revise with the feedback body", async () => {
+      await api.tasks.revise("t_1", { feedback: "needs more tests" });
+      expect(fetchJsonMock).toHaveBeenCalledWith("/task/t_1/revise", {
+        method: "POST",
+        body: { feedback: "needs more tests" },
+      });
+    });
+
+    it("cancel(id) POSTs to /task/:id/cancel with empty body by default", async () => {
+      await api.tasks.cancel("t_1");
+      expect(fetchJsonMock).toHaveBeenCalledWith("/task/t_1/cancel", {
+        method: "POST",
+        body: {},
+      });
+    });
+
+    it("cancel(id, {reason}) forwards reason", async () => {
+      await api.tasks.cancel("t_1", { reason: "scope changed" });
+      expect(fetchJsonMock).toHaveBeenCalledWith("/task/t_1/cancel", {
+        method: "POST",
+        body: { reason: "scope changed" },
       });
     });
 
     it("create({title}) POSTs to /api/tasks", async () => {
       await api.tasks.create({ title: "wire it" });
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/tasks", {
+      expect(fetchJsonMock).toHaveBeenCalledWith("/task", {
         method: "POST",
         body: { title: "wire it" },
       });
@@ -66,7 +90,7 @@ describe("api mutations", () => {
         assignee_id: "agt_1",
         parent_task_id: "t_root",
       });
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/tasks", {
+      expect(fetchJsonMock).toHaveBeenCalledWith("/task", {
         method: "POST",
         body: {
           title: "wire it",
@@ -79,20 +103,39 @@ describe("api mutations", () => {
     });
   });
 
-  describe("sessions", () => {
-    it("cancel(shortId) POSTs to /api/sessions/:short/cancel", async () => {
-      await api.sessions.cancel("sess_abc");
-      expect(fetchJsonMock).toHaveBeenCalledWith("/api/sessions/sess_abc/cancel", {
+  describe("escalations", () => {
+    it("resolve(id, {source: 'human', ...}) POSTs to /escalation/:id/resolve", async () => {
+      await api.escalations.resolve("e_1", {
+        source: "human",
+        title: "Adopt option C",
+        description: "Splits the diff",
+      });
+      expect(fetchJsonMock).toHaveBeenCalledWith("/escalation/e_1/resolve", {
         method: "POST",
+        body: {
+          source: "human",
+          title: "Adopt option C",
+          description: "Splits the diff",
+        },
       });
     });
 
-    it("cancel URL-encodes shortId", async () => {
-      await api.sessions.cancel("sess/with/slash");
-      expect(fetchJsonMock).toHaveBeenCalledWith(
-        "/api/sessions/sess%2Fwith%2Fslash/cancel",
-        { method: "POST" },
-      );
+    it("resolve forwards initiator/counterparty selectors", async () => {
+      await api.escalations.resolve("e_1", {
+        source: "initiator",
+        source_index: 0,
+        edited_title: "tweaked",
+        resolution_notes: "confirmed via slack",
+      });
+      expect(fetchJsonMock).toHaveBeenCalledWith("/escalation/e_1/resolve", {
+        method: "POST",
+        body: {
+          source: "initiator",
+          source_index: 0,
+          edited_title: "tweaked",
+          resolution_notes: "confirmed via slack",
+        },
+      });
     });
   });
 });

@@ -5,6 +5,17 @@
   "description": "Beevibe API server — MCP tool surface for agents + REST endpoints for humans + MeshServer broker",
   "type": "module",
   "main": "./dist/main.js",
+  "types": "./dist/main.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/main.d.ts",
+      "default": "./dist/main.js"
+    },
+    "./views/types": {
+      "types": "./dist/views/types.d.ts",
+      "default": "./dist/views/types.js"
+    }
+  },
   "bin": {
     "beevibe-api": "./dist/main.js"
   },
