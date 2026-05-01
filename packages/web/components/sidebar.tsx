@@ -8,10 +8,8 @@ import {
   ChevronRight,
   ChevronsUpDown,
   Home,
-  Inbox,
   ListChecks,
   type LucideIcon,
-  MessageSquare,
   Network,
   Plus,
   Search,
@@ -44,7 +42,6 @@ type NavItem = {
 const QUICK_ACTIONS: QuickAction[] = [
   { label: "Search", icon: Search, onClick: () => {} },
   { href: "/", label: "Home", icon: Home },
-  { href: "/threads", label: "Inbox", icon: Inbox },
 ];
 
 const WORKSPACE_ITEMS: NavItem[] = [
@@ -53,12 +50,6 @@ const WORKSPACE_ITEMS: NavItem[] = [
     label: "Tasks",
     icon: ListChecks,
     isActive: (p) => p.startsWith("/tasks"),
-  },
-  {
-    href: "/threads",
-    label: "Threads",
-    icon: MessageSquare,
-    isActive: (p) => p.startsWith("/threads"),
   },
   {
     href: "/mesh",

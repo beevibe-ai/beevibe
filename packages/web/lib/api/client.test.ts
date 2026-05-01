@@ -106,13 +106,6 @@ describe("api client (reads)", () => {
       });
     });
 
-    it("threads.list() / threads.get(id)", async () => {
-      await api.threads.list();
-      expect(fetchJsonMock).toHaveBeenLastCalledWith("/thread", { signal: undefined });
-      await api.threads.get("ch_1");
-      expect(fetchJsonMock).toHaveBeenLastCalledWith("/thread/ch_1", { signal: undefined });
-    });
-
     it("dashboard.summary() hits /dashboard", async () => {
       await api.dashboard.summary();
       expect(fetchJsonMock).toHaveBeenCalledWith("/dashboard", { signal: undefined });

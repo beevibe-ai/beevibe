@@ -22,16 +22,10 @@ import type {
   TrendDay,
   AttentionItem,
 } from "@/lib/types/dashboard";
-import type {
-  ThreadEvent,
-  ThreadChannel,
-  DirectMessage,
-  ActiveChannel,
-} from "@/lib/types/thread-messages";
 
 // ── Display-only shapes the web still composes from fixtures ────────────
-// These surfaces (dashboard, mesh, threads) need a data/display split before
-// the backend can produce them cleanly. Tracked separately from #30.
+// Dashboard + mesh need a data/display split before the backend can produce
+// them cleanly — tracked in #33 and #34.
 
 export interface DashboardSummary {
   kpis: KpiStat[];
@@ -53,15 +47,4 @@ export interface MeshOverview {
   graph: { nodes: GraphNode[]; edges: GraphEdge[] };
   budget: ChainBudgetData;
   summary: MeshSummary;
-}
-
-export interface ThreadsOverview {
-  channels: ThreadChannel[];
-  direct_messages: DirectMessage[];
-  active_channel?: ActiveChannel;
-}
-
-export interface ThreadDetail {
-  channel: ActiveChannel;
-  events: ThreadEvent[];
 }

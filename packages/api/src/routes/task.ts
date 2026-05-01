@@ -1,18 +1,15 @@
 /**
- * Human-facing task review routes (M6.4). All require bv_u_ caller.
+ * Human-facing task routes. All require bv_u_ caller.
  *
- *   POST /task/:id/approve   { result_summary?: string }
- *   POST /task/:id/reject    { result_summary?: string }
- *   POST /task/:id/revise    { feedback: string }
- *   POST /task/:id/cancel    { reason?: string }
- *
- * approve/reject/revise are the M6.4 split of the old M5 approveTask
- * 3-way method. Cancel is the in-flight kill (pg_notify('cancel_task',
- * task_id) signal handed to the executor's cancel-listener).
+ *   POST /task                     { title, description?, priority?, assignee_id?, parent_task_id? }
+ *   POST /task/:id/approve         { result_summary? }
+ *   POST /task/:id/reject          { result_summary? }
+ *   POST /task/:id/revise          { feedback }
+ *   POST /task/:id/cancel          { reason? }
  *
  * Latency budget:
- *   - approve / reject / revise: 0–30s end-to-end (DB write here, then
- *     executor's next poll picks up needs_revision via listAssignable;
+ *   - approve / reject / revise / create: 0–30s end-to-end (DB write here,
+ *     then executor's next poll picks up assignable tasks via listAssignable;
  *     done/cancelled are terminal so no further work).
  *   - cancel: <200ms target end-to-end (DB write + pg_notify; executor
  *     receives notification; AbortController fires; CLI subprocess
@@ -21,7 +18,13 @@
 
 import { Router, type RequestHandler, type Response } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import type { TaskRepository, TaskStatus } from "@beevibe/core";
+import {
+  TASK_PRIORITIES,
+  taskId,
+  type TaskRepository,
+  type TaskPriority,
+  type TaskStatus,
+} from "@beevibe/core";
 import {
   type TaskService,
   InvalidTaskTransitionError,
@@ -64,9 +67,59 @@ function handleServiceError(err: unknown, res: Response): void {
   });
 }
 
+function parsePriority(input: unknown): TaskPriority | undefined {
+  if (typeof input !== "string") return undefined;
+  return (TASK_PRIORITIES as readonly string[]).includes(input)
+    ? (input as TaskPriority)
+    : undefined;
+}
+
 export function createTaskRouter(deps: TaskRoutesDeps): Router {
   const router = Router();
   router.use(deps.authMiddleware);
+
+  // POST /task
+  router.post("/", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const body = (req.body ?? {}) as Record<string, unknown>;
+
+    if (typeof body.title !== "string" || body.title.trim().length === 0) {
+      res.status(400).json({
+        error: "title_required",
+        message: "POST body must include a non-empty `title: string`",
+      });
+      return;
+    }
+
+    const priorityRaw = body.priority;
+    const priority = parsePriority(priorityRaw);
+    if (priorityRaw !== undefined && priority === undefined) {
+      res.status(400).json({
+        error: "invalid_priority",
+        message: `priority must be one of ${TASK_PRIORITIES.join(", ")}`,
+      });
+      return;
+    }
+
+    try {
+      const created = await deps.taskRepo.create({
+        id: taskId(),
+        title: body.title,
+        description: typeof body.description === "string" ? body.description : undefined,
+        status: "pending",
+        priority: priority ?? "medium",
+        assignee_id:
+          typeof body.assignee_id === "string" ? body.assignee_id : undefined,
+        creator_id: req.caller.personId,
+        creator_type: "person",
+        parent_task_id:
+          typeof body.parent_task_id === "string" ? body.parent_task_id : undefined,
+      });
+      res.status(201).json({ ok: true, task: created });
+    } catch (err) {
+      handleServiceError(err, res);
+    }
+  });
 
   // POST /task/:id/approve
   router.post("/:id/approve", async (req, res) => {
