@@ -128,7 +128,8 @@ async function pollUntil<T>(
 
 async function fetchHealth(url: string): Promise<boolean> {
   try {
-    const res = await fetch(url);
+    // Per-request timeout so a stalled endpoint can't outlive the poll deadline.
+    const res = await fetch(url, { signal: AbortSignal.timeout(2_000) });
     return res.status === 200;
   } catch {
     return false;

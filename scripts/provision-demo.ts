@@ -176,21 +176,22 @@ async function createDemo(pool: Pool): Promise<{
     },
   );
 
-  const ics: Agent[] = [];
-  for (const name of DEMO_IC_NAMES) {
-    const { agent } = await provisionAgent(
-      { agentRepo: agents, coreMemoryRepo },
-      {
-        id: makeAgentId(),
-        name,
-        owner_id: person.id,
-        parent_agent_id: captain.id,
-        hierarchy_level: "ic",
-        runtime_config: DEFAULT_RUNTIME_CONFIG,
-      },
-    );
-    ics.push(agent);
-  }
+  const icResults = await Promise.all(
+    DEMO_IC_NAMES.map((name) =>
+      provisionAgent(
+        { agentRepo: agents, coreMemoryRepo },
+        {
+          id: makeAgentId(),
+          name,
+          owner_id: person.id,
+          parent_agent_id: captain.id,
+          hierarchy_level: "ic",
+          runtime_config: DEFAULT_RUNTIME_CONFIG,
+        },
+      ),
+    ),
+  );
+  const ics: Agent[] = icResults.map((r) => r.agent);
 
   return { bvUToken, captain, ics };
 }
@@ -286,8 +287,7 @@ async function cleanDemoData(pool: Pool): Promise<void> {
       [agentIds],
     );
 
-    // Sessions reference tasks (session.task_id), so sessions must go FIRST.
-    // Sessions also self-reference via prior_session_id — null first.
+    // session.task_id forces sessions before tasks; prior_session_id self-FK forces null-first.
     await pool.query(
       `UPDATE session SET prior_session_id = NULL WHERE agent_id = ANY($1::text[])`,
       [agentIds],
@@ -320,7 +320,6 @@ async function cleanDemoData(pool: Pool): Promise<void> {
       await pool.query(`DELETE FROM task WHERE id = ANY($1::text[])`, [taskIds]);
     }
 
-    // Agents reference each other via parent_agent_id; null first.
     await pool.query(
       `UPDATE agent SET parent_agent_id = NULL WHERE id = ANY($1::text[])`,
       [agentIds],
