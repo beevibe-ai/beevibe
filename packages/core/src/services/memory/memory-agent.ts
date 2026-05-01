@@ -1,5 +1,6 @@
 import type { CoreMemoryBlock } from "../../domain/core-memory.js";
 import type { MemoryFact, MemoryScope } from "../../domain/memory.js";
+import type { SessionBriefingSnapshot } from "../../domain/session.js";
 import type { EmbeddingService } from "../../ports/embedding-service.js";
 import { promotionEventId } from "../../domain/ids.js";
 import type { MemoryPromotionEventRepository } from "../../ports/promotion-event-repo.js";
@@ -15,9 +16,20 @@ import type { FactStore } from "./fact-store.js";
 const BRIEFING_RECALL_FLOOR = 0.35;
 const DEFAULT_FACTS_PER_BRIEFING = 10;
 
+export interface BriefingResult {
+  /** XML block appended to the agent's system prompt. */
+  systemPromptAppend: string;
+  /** Structured snapshot persisted on the session row for the UI to render. */
+  snapshot: SessionBriefingSnapshot;
+}
+
 export interface MemoryAgent {
-  /** Pre-session: compose the `<core_memory>` + `<archival_memory>` XML block. */
-  prepareBriefing(intent: string): Promise<string>;
+  /**
+   * Pre-session: compose the `<core_memory>` + `<archival_memory>` XML block.
+   * Returns both the assembled prompt string AND a structured snapshot
+   * for persistence on the session row.
+   */
+  prepareBriefing(intent: string): Promise<BriefingResult>;
   /** Post-session: promote facts written during this session if warranted. */
   onTaskComplete(sessionId: string): Promise<void>;
 }
@@ -48,7 +60,7 @@ export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
   const factsPerBriefing = deps.factsPerBriefing ?? DEFAULT_FACTS_PER_BRIEFING;
 
   return {
-    async prepareBriefing(intent: string): Promise<string> {
+    async prepareBriefing(intent: string): Promise<BriefingResult> {
       const [blocks, queryVec] = await Promise.all([
         deps.coreMemory.read(deps.agentId),
         deps.embed.embed(intent),
@@ -60,7 +72,8 @@ export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
         limit: factsPerBriefing,
         min_similarity: BRIEFING_RECALL_FLOOR,
       });
-      return formatBriefing(blocks, facts);
+      const systemPromptAppend = formatBriefing(blocks, facts);
+      return { systemPromptAppend, snapshot: buildBriefingSnapshot(blocks, facts) };
     },
 
     async onTaskComplete(sessionId: string): Promise<void> {
@@ -145,6 +158,39 @@ function formatBriefing(
   );
   lines.push("</memory_tools>");
   return lines.join("\n");
+}
+
+/**
+ * Coarse char-based token estimate (~4 chars/token). Cheap, deterministic,
+ * good enough for the UI's "tokens used" header.
+ */
+const PREVIEW_CHARS = 80;
+
+function buildBriefingSnapshot(
+  blocks: readonly CoreMemoryBlock[],
+  facts: readonly MemoryFact[],
+): SessionBriefingSnapshot {
+  const charTotal =
+    blocks.reduce((s, b) => s + b.content.length, 0) +
+    facts.reduce((s, f) => s + f.content.length, 0);
+  return {
+    block_count: blocks.length,
+    fact_count: facts.length,
+    token_count: Math.ceil(charTotal / 4),
+    blocks: blocks.map((b) => ({
+      name: b.block_name,
+      chars: b.content.length,
+      preview: b.content.slice(0, PREVIEW_CHARS),
+    })),
+    facts: facts.map((f) => ({
+      scope: f.scope,
+      content: f.content,
+      // FactStore doesn't currently round-trip similarity score on the
+      // returned MemoryFact. Score is the search-time floor; backfill 0
+      // until the score is plumbed end-to-end.
+      score: 0,
+    })),
+  };
 }
 
 function escapeAttr(s: string): string {

@@ -14,7 +14,15 @@ export type BoardLane = {
   tasks: TaskListItem[];
 };
 
-export function BoardColumn({ lane, flashTopCard }: { lane: BoardLane; flashTopCard?: boolean }) {
+export function BoardColumn({
+  lane,
+  flashTopCard,
+  onNewTask,
+}: {
+  lane: BoardLane;
+  flashTopCard?: boolean;
+  onNewTask?: () => void;
+}) {
   return (
     <div className="flex flex-col min-w-[280px] w-[300px] shrink-0">
       <div className="flex items-center gap-2 h-8 px-1 mb-2">
@@ -34,6 +42,7 @@ export function BoardColumn({ lane, flashTopCard }: { lane: BoardLane; flashTopC
         </button>
         <button
           type="button"
+          onClick={onNewTask}
           aria-label={`New task in ${lane.label}`}
           className="h-6 w-6 rounded inline-flex items-center justify-center text-muted-foreground/60 hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
         >
@@ -47,6 +56,7 @@ export function BoardColumn({ lane, flashTopCard }: { lane: BoardLane; flashTopC
         ))}
         <button
           type="button"
+          onClick={onNewTask}
           className="flex items-center gap-1.5 h-8 px-2 rounded-md text-[12px] text-muted-foreground/60 hover:text-foreground hover:bg-secondary/50 cursor-pointer transition-colors"
         >
           <Plus className="h-3.5 w-3.5" />

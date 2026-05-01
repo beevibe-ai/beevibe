@@ -3,9 +3,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, act } from "@testing-library/react";
 import type { ReactNode } from "react";
 
-const apiState: { isApiConfigured: boolean; apiBaseUrl: string | null } = {
+const apiState: { isApiConfigured: boolean; apiBaseUrl: string | null; userKey: string | null } = {
   isApiConfigured: true,
   apiBaseUrl: "https://api.example.com",
+  userKey: null,
 };
 
 vi.mock("@/lib/api/config", () => ({
@@ -14,6 +15,9 @@ vi.mock("@/lib/api/config", () => ({
   },
   get apiBaseUrl() {
     return apiState.apiBaseUrl;
+  },
+  get userKey() {
+    return apiState.userKey;
   },
 }));
 

@@ -4,7 +4,10 @@ import { buildInstructions } from "./instructions.js";
 
 function fakeMemoryAgent(briefing: string): MemoryAgent {
   return {
-    prepareBriefing: vi.fn(async () => briefing),
+    prepareBriefing: vi.fn(async () => ({
+      systemPromptAppend: briefing,
+      snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] },
+    })),
     onTaskComplete: vi.fn(async () => {}),
   };
 }

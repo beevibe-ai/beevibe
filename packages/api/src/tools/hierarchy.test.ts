@@ -102,7 +102,10 @@ function buildServices(overrides: {
   } as unknown as TaskService;
 
   const memoryAgent = {
-    prepareBriefing: vi.fn(async () => "<core_memory></core_memory>"),
+    prepareBriefing: vi.fn(async () => ({
+      systemPromptAppend: "<core_memory></core_memory>",
+      snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] },
+    })),
     onTaskComplete: vi.fn(async () => {}),
     ...overrides.memoryAgent,
   } as unknown as MemoryAgent;
@@ -265,7 +268,10 @@ describe("search_context", () => {
     const briefing = "<core_memory><block>x</block></core_memory>";
     const services = buildServices({
       memoryAgent: {
-        prepareBriefing: vi.fn(async () => briefing),
+        prepareBriefing: vi.fn(async () => ({
+          systemPromptAppend: briefing,
+          snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] },
+        })),
       } as Partial<MemoryAgent>,
     });
     const tools = buildHierarchyTools({ agentId: "a", hierarchyLevel: "ic" }, services);

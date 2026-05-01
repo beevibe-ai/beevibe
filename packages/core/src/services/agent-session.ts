@@ -95,8 +95,19 @@ export class AgentSession {
       ? (await this.deps.sessionRepo.findById(input.priorSessionId))?.cli_session_id
       : undefined;
     const briefing = await this.deps.memoryAgent.prepareBriefing(input.intent);
+    // Persist the structured snapshot so the session detail page can render
+    // it without re-running the briefing pipeline. Best-effort; an audit
+    // failure shouldn't fail session start.
+    try {
+      await this.deps.sessionRepo.update(sid, { briefing: briefing.snapshot });
+    } catch (err) {
+      console.error(
+        `[AgentSession] failed to persist briefing for ${sid}:`,
+        (err as Error).message,
+      );
+    }
     const baseline = agent.runtime_config.system_prompt_addition ?? "";
-    const system_prompt_append = [baseline, briefing]
+    const system_prompt_append = [baseline, briefing.systemPromptAppend]
       .filter((s) => s.length > 0)
       .join("\n\n");
 

@@ -24,5 +24,6 @@ export async function buildInstructions(
   if (caller.source === "agent") {
     return "";
   }
-  return memoryAgent.prepareBriefing("(interactive)");
+  const briefing = await memoryAgent.prepareBriefing("(interactive)");
+  return briefing.systemPromptAppend;
 }

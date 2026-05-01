@@ -159,7 +159,7 @@ function searchContextTool(
         // the cost of returning the whole envelope is cheap and it gives the
         // agent the same shape they saw at session start.
         const briefing = await services.memoryAgent.prepareBriefing(query);
-        return { content: { briefing } };
+        return { content: { briefing: briefing.systemPromptAppend } };
       } catch (err) {
         return asError(err);
       }

@@ -1,5 +1,6 @@
 import type {
   Session,
+  SessionBriefingSnapshot,
   SessionStatus,
   SessionType,
   SessionUsage,
@@ -129,6 +130,7 @@ export class PostgresSessionRepository implements SessionRepository {
       exit_code: "exit_code",
       error: "error",
       usage: "usage",
+      briefing: "briefing",
       started_at: "started_at",
       completed_at: "completed_at",
     });
@@ -165,6 +167,7 @@ function rowToSession(row: SessionRow): Session {
     exit_code: row.exit_code ?? undefined,
     error: row.error ?? undefined,
     usage: (row.usage ?? undefined) as SessionUsage | undefined,
+    briefing: (row.briefing ?? undefined) as SessionBriefingSnapshot | undefined,
     started_at: row.started_at ?? undefined,
     completed_at: row.completed_at ?? undefined,
     created_at: row.created_at,
