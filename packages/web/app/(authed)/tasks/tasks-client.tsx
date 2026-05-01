@@ -4,7 +4,6 @@ import { useMemo, useState } from "react";
 import { type LucideIcon, AlertTriangle, ListChecks } from "lucide-react";
 import { ViewTabs, type TaskView } from "@/components/tasks/view-tabs";
 import { BoardColumn } from "@/components/tasks/board-column";
-import { CreateTaskDialog } from "@/components/tasks/create-task-dialog";
 import { EmptyState } from "@/components/empty-state";
 import { useTasks } from "@/lib/hooks/use-tasks";
 import { isApiConfigured } from "@/lib/api/config";
@@ -27,7 +26,6 @@ interface EmptyMessage {
 export function TasksClient() {
   const [view, setView] = useState<TaskView>("all");
   const [query, setQuery] = useState("");
-  const [createOpen, setCreateOpen] = useState(false);
 
   const { data, isLoading, isError } = useTasks(VIEW_TO_FILTER[view]);
 
@@ -52,7 +50,6 @@ export function TasksClient() {
       <ViewTabs
         current={view}
         onChange={setView}
-        onNewTask={() => setCreateOpen(true)}
         onSearch={() => {}}
         query={query}
         onQueryChange={setQuery}
@@ -61,7 +58,7 @@ export function TasksClient() {
       <div className="flex-1 overflow-x-auto overflow-y-auto">
         <div className="group/board flex gap-4 px-6 py-5 min-h-full">
           {lanes.map((lane) => (
-            <BoardColumn key={lane.key} lane={lane} onNewTask={() => setCreateOpen(true)} />
+            <BoardColumn key={lane.key} lane={lane} />
           ))}
           <div className="shrink-0 w-2" aria-hidden />
         </div>
@@ -72,8 +69,6 @@ export function TasksClient() {
           </div>
         ) : null}
       </div>
-
-      <CreateTaskDialog open={createOpen} onClose={() => setCreateOpen(false)} />
     </div>
   );
 }

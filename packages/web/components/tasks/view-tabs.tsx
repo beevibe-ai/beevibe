@@ -13,10 +13,13 @@ import { cn } from "@/lib/utils";
 
 export type TaskView = "all" | "mine" | "sprint" | "timeline";
 
+// Note: this toolbar previously had a "+ New" button that opened a
+// create-task dialog. Removed in #48 — tasks are minted by team agents
+// through human-agent conversation, not by the human clicking "+".
+
 interface Props {
   current: TaskView;
   onChange: (next: TaskView) => void;
-  onNewTask: () => void;
   onSearch: () => void;
   query: string;
   onQueryChange: (value: string) => void;
@@ -29,7 +32,7 @@ const VIEWS: { key: TaskView; label: string }[] = [
   { key: "timeline", label: "Timeline" },
 ];
 
-export function ViewTabs({ current, onChange, onNewTask, onSearch, query, onQueryChange }: Props) {
+export function ViewTabs({ current, onChange, onSearch, query, onQueryChange }: Props) {
   return (
     <div className="flex items-center gap-1 px-6 pt-6 border-b border-border/60">
       <div className="flex items-center gap-0.5 flex-1 min-w-0 -mb-px">
@@ -67,7 +70,6 @@ export function ViewTabs({ current, onChange, onNewTask, onSearch, query, onQuer
         <SearchBox query={query} onChange={onQueryChange} onFocus={onSearch} />
         <ToolbarIcon label="Expand" icon={Maximize2} />
         <ToolbarIcon label="More" icon={MoreHorizontal} />
-        <NewButton onClick={onNewTask} />
       </div>
     </div>
   );
@@ -111,15 +113,3 @@ function SearchBox({
   );
 }
 
-function NewButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="ml-1 inline-flex items-center gap-1 h-7 pl-2 pr-2.5 rounded bg-primary text-primary-foreground text-[12px] font-medium hover:opacity-90 active:scale-[0.98] transition-all duration-150 cursor-pointer"
-    >
-      <Plus className="h-3.5 w-3.5" />
-      New
-    </button>
-  );
-}
