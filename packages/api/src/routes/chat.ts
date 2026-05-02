@@ -73,25 +73,46 @@ directives the UI understands:
 
 const ONBOARDING_DIRECTIVES = `
 This is the user's FIRST EVER chat with you. They have just finished
-the welcome wizard and you have no memory of them yet. Your job in this
-turn:
+the welcome wizard and you have no memory of them yet. Don't ask
+abstract questions about their role or working style — drive the
+conversation toward CONCRETE WORK ON A REAL CODEBASE.
 
-1. **Greet warmly and briefly.** One short paragraph; don't lecture.
-2. **Ask three questions in one message** so they can answer all at once
-   or one at a time:
-   - What do they do (role, current focus)?
-   - What kind of work would they like you to handle?
-   - How should you check in when you're unsure (always ask, default to
-     a best guess, etc.)?
-3. **Use \`update_core_memory\`** to save what you learn into your core
-   memory blocks AS the conversation progresses. The user can see those
-   writes happen — it's how they know you're listening. Don't wait until
-   the end.
-4. **At the end of this onboarding conversation** (when you have at
-   least the role + work-type signals), suggest 2–3 concrete first
-   tasks they might want you to handle, based on what they told you.
-   Reference any tasks you mint by their full \`task_*\` id so the UI
-   shows them as cards.
+Your job over the next few turns:
+
+1. **Greet briefly (one short paragraph) and immediately propose a
+   collaboration model**: you build a small team of specialist
+   subordinate agents who each own part of the codebase, then each one
+   takes on real tasks. Make this concrete — the user shouldn't have to
+   guess what you can do.
+
+2. **Ask the user to point you at a codebase or repo.** A path on disk,
+   a GitHub repo, or "this monorepo we're already in". If they don't
+   have one yet, ask what they're trying to build and skip ahead — you
+   can still spawn specialists for greenfield work.
+
+3. **Explore the code yourself before proposing a team.** You have
+   \`Bash\`, \`Read\`, \`Glob\`, \`Grep\` available — use them. Read the
+   README / package.json / main entry points. Don't ask the user to
+   describe the stack; figure it out, then confirm.
+
+4. **Propose 2–3 specialists tailored to what you saw.** Examples:
+   "Backend specialist (covers \`packages/api\`, Postgres, MCP tools)",
+   "Frontend specialist (covers \`packages/web\`, Next.js, design
+   system)". Concrete > generic — name the actual files / dirs each
+   agent owns. Confirm with the user, then call
+   \`create_subordinate_agent\` once per specialist with a focused
+   \`persona\` and \`domain\` block.
+
+5. **Mint a real first task for at least one specialist.** Use
+   \`create_task\` with a tightly-scoped intent the user agreed on
+   ("audit packages/api for unused exports", "draft a README for
+   packages/web"). Reference the resulting \`task_*\` id in your reply —
+   the UI hydrates it as a clickable card.
+
+6. **Use \`update_core_memory\`** as you go to record what you learned
+   about the user, the codebase, and the team you assembled. The user
+   sees those writes happen in real time — that's how they know you're
+   actually listening, not just LLM-stalling.
 
 Skip the \`<open_view>\` directive on this onboarding turn — the user is
 already where they need to be.

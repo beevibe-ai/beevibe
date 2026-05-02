@@ -1,6 +1,7 @@
 import type { ResolvedCaller } from "@beevibe/core/auth";
 import type {
   AgentRepository,
+  CoreMemoryBlockRepository,
   TaskRepository,
   WorkProductRepository,
 } from "@beevibe/core";
@@ -18,6 +19,7 @@ import type { AgentTool } from "./types.js";
 export interface AssembleToolsServices {
   factStore: FactStore;
   coreMemory: CoreMemory;
+  coreMemoryRepo: CoreMemoryBlockRepository;
   agentRepo: AgentRepository;
   taskRepo: TaskRepository;
   workProductRepo: WorkProductRepository;
@@ -84,6 +86,7 @@ export function assembleTools(
       memoryAgent: services.memoryAgent,
       escalationService: services.escalationService,
       pool: services.pool,
+      coreMemoryRepo: services.coreMemoryRepo,
     },
   );
 

@@ -20,13 +20,17 @@
  */
 
 import {
+  DEFAULT_RUNTIME_CONFIG,
   TASK_PRIORITIES,
   TASK_STATUSES,
   WORK_PRODUCT_TYPES,
+  agentId as makeAgentId,
+  provisionAgent,
   taskId as makeTaskId,
   workProductId as makeWorkProductId,
   type Agent,
   type AgentRepository,
+  type CoreMemoryBlockRepository,
   type HierarchyLevel,
   type Task,
   type TaskRepository,
@@ -74,6 +78,13 @@ export interface HierarchyToolServices {
   escalationService: EscalationService;
   /** M6.4: pg_notify on add_to_escalation for future M8 web subscribers. */
   pool: Pool;
+  /**
+   * M8 cold-start: backs `create_subordinate_agent`. Used by team/org agents
+   * to spawn IC specialists during onboarding (and any time later) — provisions
+   * the agent + seeds default core-memory blocks, then overwrites persona/domain
+   * with the specialist briefing the parent supplies.
+   */
+  coreMemoryRepo: CoreMemoryBlockRepository;
 }
 
 export interface HierarchyToolContext {
@@ -836,6 +847,151 @@ function addToEscalationTool(
   };
 }
 
+// ── create_subordinate_agent (M8 cold-start) ─────────────────────────────
+//
+// Lets a team/org agent spawn an IC specialist on demand. The intended
+// trigger is onboarding: the user names a codebase, the team agent reads
+// it, decides "I need a backend specialist + a frontend specialist", and
+// calls this tool once per role. The new agents inherit the parent's
+// owner_id and the parent's runtime model (so they all share the human's
+// claude login). persona/domain core-memory blocks are seeded with the
+// briefing text so the IC's very first turn already knows who it is.
+//
+// Authz: caller must be team or org tier. ICs can't have subordinates so
+// the tool isn't included in their tool set; the runtime check below is a
+// belt-and-braces guard in case the wiring drifts.
+
+const PROVISION_NAME_RE = /^[\w\s\-./]{1,80}$/;
+
+function createSubordinateAgentTool(
+  ctx: HierarchyToolContext,
+  services: HierarchyToolServices,
+): AgentTool {
+  return {
+    name: "create_subordinate_agent",
+    description:
+      "Spawn an IC specialist agent under you. Use this during onboarding " +
+      "(after the user describes their codebase / problem) to assemble a " +
+      "small team — typically 2–3 specialists chosen for the actual stack. " +
+      "Each new agent gets a persona block (who they are, how they work) " +
+      "and a domain block (what they know about the codebase / area). After " +
+      "creating them, use create_task to give each one a concrete first " +
+      "task. Returns the new agent_id so you can immediately reference it.",
+    schema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description:
+            "Short human-readable label, e.g. 'Backend specialist', 'Auth/SSO expert'.",
+        },
+        persona: {
+          type: "string",
+          description:
+            "Who this agent is and how they should work. Becomes the persona " +
+            "core-memory block. 1–4 sentences.",
+        },
+        domain: {
+          type: "string",
+          description:
+            "What this agent knows / owns: stack, files/dirs, conventions, " +
+            "constraints. Becomes the domain core-memory block. Be specific.",
+        },
+      },
+      required: ["name", "persona", "domain"],
+    },
+    handler: async (input) => {
+      try {
+        if (ctx.hierarchyLevel === "ic") {
+          return {
+            content: {
+              error: "ic_cannot_spawn",
+              message:
+                "Only team/org agents can spawn subordinates; you are an IC.",
+            },
+            isError: true,
+          };
+        }
+
+        const name = String(input.name ?? "").trim();
+        const persona = String(input.persona ?? "").trim();
+        const domain = String(input.domain ?? "").trim();
+        if (!name || !persona || !domain) {
+          return {
+            content: { error: "name, persona, and domain are all required" },
+            isError: true,
+          };
+        }
+        if (!PROVISION_NAME_RE.test(name)) {
+          return {
+            content: {
+              error: "invalid_name",
+              message:
+                "name must be 1-80 chars of letters/numbers/spaces/_-./ only",
+            },
+            isError: true,
+          };
+        }
+
+        // Resolve the parent (caller) so we can inherit owner_id + runtime config.
+        const parent = await services.agentRepo.findById(ctx.agentId);
+        if (!parent) {
+          return {
+            content: { error: "parent_not_found", agent_id: ctx.agentId },
+            isError: true,
+          };
+        }
+
+        // Inherit the parent's runtime so all the user's agents share the
+        // same Claude auth + model. Carry the user-supplied persona into the
+        // system prompt as a short addition (the heavyweight context lives
+        // in core memory, which the runtime injects on every turn).
+        const runtime_config = {
+          ...DEFAULT_RUNTIME_CONFIG,
+          ...parent.runtime_config,
+          system_prompt_addition: `You are ${name}. ${persona}`,
+        };
+
+        const { agent } = await provisionAgent(
+          {
+            agentRepo: services.agentRepo,
+            coreMemoryRepo: services.coreMemoryRepo,
+          },
+          {
+            id: makeAgentId(),
+            name,
+            owner_id: parent.owner_id,
+            parent_agent_id: parent.id,
+            hierarchy_level: "ic",
+            runtime_config,
+          },
+        );
+
+        // Seed the IC's persona + domain blocks. provisionAgent's initDefaults
+        // creates them empty; overwrite with the briefing the parent supplied
+        // so the IC's first turn has its identity baked in.
+        await Promise.all([
+          services.coreMemoryRepo.updateContent(agent.id, "persona", persona),
+          services.coreMemoryRepo.updateContent(agent.id, "domain", domain),
+        ]);
+
+        return {
+          content: {
+            created: {
+              id: agent.id,
+              name: agent.name,
+              hierarchy_level: agent.hierarchy_level,
+              parent_agent_id: agent.parent_agent_id,
+            },
+          },
+        };
+      } catch (err) {
+        return asError(err);
+      }
+    },
+  };
+}
+
 // ── Assemble per tier ────────────────────────────────────────────────────
 
 /**
@@ -860,7 +1016,7 @@ function buildSharedTools(
 /**
  * Team / org tier additions — tools that need subordinates or that
  * participate in mesh-state lifecycle (revise_task, add_to_escalation).
- * 6 additional tools (M6.4).
+ * M8 adds create_subordinate_agent for cold-start specialist provisioning.
  */
 function buildTeamOnlyTools(
   ctx: HierarchyToolContext,
@@ -873,6 +1029,7 @@ function buildTeamOnlyTools(
     checkWorkStatusTool(ctx, services),
     reviseTaskTool(ctx, services),
     addToEscalationTool(ctx, services),
+    createSubordinateAgentTool(ctx, services),
   ];
 }
 

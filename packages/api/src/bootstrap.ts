@@ -230,6 +230,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     authMiddleware: server.getAuthMiddleware(),
     factStore,
     coreMemory,
+    coreMemoryRepo,
     sessionCache,
     sessionRepo,
     agentRepo,

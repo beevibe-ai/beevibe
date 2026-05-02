@@ -13,6 +13,7 @@ import type { ResolvedCaller } from "@beevibe/core/auth";
 import type { CoreMemory, FactStore, MemoryAgent } from "@beevibe/core/services/memory";
 import type {
   AgentRepository,
+  CoreMemoryBlockRepository,
   SessionRepository,
   TaskRepository,
   WorkProductRepository,
@@ -31,6 +32,7 @@ export interface McpRouterDeps {
   authMiddleware: RequestHandler;
   factStore: FactStore;
   coreMemory: CoreMemory;
+  coreMemoryRepo: CoreMemoryBlockRepository;
   sessionCache: SessionCache;
   sessionRepo: SessionRepository;
   agentRepo: AgentRepository;
@@ -201,6 +203,7 @@ async function handleMcpRequest(
     {
       factStore: deps.factStore,
       coreMemory: deps.coreMemory,
+      coreMemoryRepo: deps.coreMemoryRepo,
       agentRepo: deps.agentRepo,
       taskRepo: deps.taskRepo,
       workProductRepo: deps.workProductRepo,
