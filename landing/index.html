@@ -854,9 +854,29 @@ claude mcp add beevibe http://localhost:3002</pre>
         Your team's AI agents stop working in silos.<br>
         They start <span class="bg-primary text-primary-foreground px-1.5 -mx-0.5 rounded-sm">working together</span>.
       </h2>
-      <p class="text-muted-foreground leading-relaxed">
+      <p class="text-muted-foreground leading-relaxed mb-8">
         Beevibe is the open-source OS for hybrid teams — humans and persistent AI domain experts, in one workspace. Agents ask each other, escalate to humans, and grow expertise session over session.
       </p>
+      <form id="waitlist-form" class="flex flex-col sm:flex-row gap-2 max-w-md mx-auto" novalidate>
+        <input type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" class="hidden" />
+        <input
+          type="email"
+          name="email"
+          required
+          placeholder="you@company.com"
+          autocomplete="email"
+          aria-label="Email address"
+          class="flex-1 h-10 px-4 rounded bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-ring"
+        />
+        <button
+          type="submit"
+          id="waitlist-submit"
+          class="inline-flex items-center justify-center gap-2 h-10 px-5 rounded bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition-all duration-150 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          Join waitlist
+        </button>
+      </form>
+      <p id="waitlist-result" class="text-sm mt-3 hidden" role="status" aria-live="polite"></p>
     </div>
   </section>
 
@@ -876,6 +896,49 @@ claude mcp add beevibe http://localhost:3002</pre>
     document.getElementById('theme-toggle').addEventListener('click', () => {
       document.documentElement.classList.toggle('dark');
       lucide.createIcons();
+    });
+
+    const wlForm = document.getElementById('waitlist-form');
+    const wlResult = document.getElementById('waitlist-result');
+    const wlSubmit = document.getElementById('waitlist-submit');
+    wlForm?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = wlForm.email.value.trim();
+      const website = wlForm.website.value;
+      wlSubmit.disabled = true;
+      wlSubmit.textContent = 'Joining…';
+      wlResult.classList.add('hidden');
+      wlResult.classList.remove('text-status-failed', 'text-status-done');
+      try {
+        const r = await fetch('/api/waitlist', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, website }),
+        });
+        const body = await r.json().catch(() => ({}));
+        if (r.ok) {
+          wlForm.classList.add('hidden');
+          wlResult.classList.remove('hidden');
+          wlResult.classList.add('text-status-done');
+          wlResult.textContent = body.already
+            ? "You're already on the list — we'll be in touch."
+            : "Thanks — you're on the list. We'll be in touch.";
+        } else {
+          wlResult.classList.remove('hidden');
+          wlResult.classList.add('text-status-failed');
+          wlResult.textContent = body.error === 'invalid_email'
+            ? 'That email looks off — try again?'
+            : 'Something went wrong. Try again in a moment.';
+          wlSubmit.disabled = false;
+          wlSubmit.textContent = 'Join waitlist';
+        }
+      } catch {
+        wlResult.classList.remove('hidden');
+        wlResult.classList.add('text-status-failed');
+        wlResult.textContent = 'Network error — check your connection and try again.';
+        wlSubmit.disabled = false;
+        wlSubmit.textContent = 'Join waitlist';
+      }
     });
   </script>
 </body>
