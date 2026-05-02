@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { useSseEvents, type BvEvent } from "./sse";
 
 export interface ChatStreamStep {
@@ -30,31 +30,30 @@ function parseStep(ev: BvEvent): ChatStreamStep | undefined {
 
 /**
  * Stream of `session.step` events scoped to one session id. Returns the
- * accumulated step list; resets when `sessionId` changes (new chat turn).
+ * accumulated step list (new chat turn → fresh array, since the new
+ * sessionId triggers a new state slot via React's per-render closure).
  */
 export function useChatStream(sessionId: string | undefined): ChatStreamStep[] {
-  const [steps, setSteps] = useState<ChatStreamStep[]>([]);
-
-  // Reset when session id changes — each new turn starts fresh.
-  useEffect(() => {
-    setSteps([]);
-  }, [sessionId]);
+  // Keying state by sessionId means each turn gets its own fresh `steps`
+  // array — no separate reset effect to race with the resubscription.
+  const [stepsBySession, setStepsBySession] = useState<Record<string, ChatStreamStep[]>>({});
 
   const onEvent = useCallback(
     (ev: BvEvent) => {
       if (!sessionId || ev.id !== sessionId) return;
       const step = parseStep(ev);
       if (!step) return;
-      setSteps((prev) => {
-        // De-dup if a step's event_id arrives twice (rare but possible on
-        // EventSource reconnects).
-        if (prev.some((s) => s.event_id === step.event_id)) return prev;
-        return [...prev, step];
+      setStepsBySession((prev) => {
+        const cur = prev[sessionId] ?? [];
+        if (cur.some((s) => s.event_id === step.event_id)) return prev;
+        return { ...prev, [sessionId]: [...cur, step] };
       });
     },
     [sessionId],
   );
   useSseEvents(onEvent);
 
-  return steps;
+  return sessionId ? stepsBySession[sessionId] ?? EMPTY : EMPTY;
 }
+
+const EMPTY: ChatStreamStep[] = [];

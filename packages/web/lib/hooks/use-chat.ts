@@ -1,9 +1,8 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { api, type ChatTurnResponse } from "@/lib/api/client";
-import { queryKeys } from "./keys";
 
 export interface ChatMessage {
   /** Stable key for React; not persisted. */
@@ -40,7 +39,9 @@ function mintSessionId(): string {
 /**
  * Local-state chat history — no React Query cache for the conversation
  * itself (each turn is a fresh DB session row anyway). The mutation runs
- * the turn; on success we append the agent's response.
+ * the turn; on success we append the agent's response. Cache invalidation
+ * for tasks/dashboard/sessions falls out automatically from `useLiveUpdates`
+ * (SSE `task.created`, `session.updated`, … events) — no explicit refetch.
  *
  * Continuity across turns is via `prior_session_id` — we send the latest
  * agent session id with each user message, and the runtime spawns with
@@ -49,8 +50,6 @@ function mintSessionId(): string {
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [priorSessionId, setPriorSessionId] = useState<string | undefined>();
-  const [pendingSessionId, setPendingSessionId] = useState<string | undefined>();
-  const queryClient = useQueryClient();
 
   const mutation = useMutation<
     ChatTurnResponse,
@@ -76,15 +75,6 @@ export function useChat() {
         },
       ]);
       setPriorSessionId(data.session_id);
-      setPendingSessionId(undefined);
-      // The agent likely minted/updated tasks during this turn — force a
-      // fresh fetch even though SSE will also fire `task.updated`.
-      queryClient.invalidateQueries({ queryKey: queryKeys.tasks.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-      queryClient.invalidateQueries({ queryKey: queryKeys.sessions.all });
-    },
-    onError: () => {
-      setPendingSessionId(undefined);
     },
   });
 
@@ -94,7 +84,6 @@ export function useChat() {
       if (!trimmed || mutation.isPending) return;
       const sessionId = mintSessionId();
       setMessages((prev) => [...prev, { id: localId(), role: "user", content: trimmed }]);
-      setPendingSessionId(sessionId);
       mutation.mutate({ message: trimmed, sessionId });
     },
     [mutation],
@@ -103,7 +92,6 @@ export function useChat() {
   const reset = useCallback(() => {
     setMessages([]);
     setPriorSessionId(undefined);
-    setPendingSessionId(undefined);
     mutation.reset();
   }, [mutation]);
 
@@ -113,7 +101,11 @@ export function useChat() {
     reset,
     isPending: mutation.isPending,
     error: mutation.error,
-    /** Session id of the in-flight turn — for the chat UI's step subscription. */
-    pendingSessionId,
+    /**
+     * Session id of the in-flight turn — derived from the mutation's input
+     * variables while pending so the chat UI can subscribe to `session.step`
+     * SSE events for this turn.
+     */
+    pendingSessionId: mutation.isPending ? mutation.variables?.sessionId : undefined,
   };
 }

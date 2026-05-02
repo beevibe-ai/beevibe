@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Bot, Layers, ListChecks, Terminal } from "lucide-react";
+import { Bot, ListChecks, Terminal, type LucideIcon } from "lucide-react";
 import { useAgent } from "@/lib/hooks/use-agents";
 import { useSession } from "@/lib/hooks/use-sessions";
 import { useTask } from "@/lib/hooks/use-tasks";
@@ -104,7 +104,7 @@ function CardShell({
   children,
 }: {
   href: string;
-  icon: typeof Layers;
+  icon: LucideIcon;
   children: React.ReactNode;
 }) {
   return (
