@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ArrowRight, MessageSquare, RotateCcw, Send, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, MessageSquare, Plus, Send, Sparkles } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
@@ -12,6 +12,7 @@ import { sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ReferenceCards } from "@/components/chat/reference-cards";
 import { ChatMarkdown } from "@/components/chat/markdown";
+import { ConversationSidebar } from "@/components/chat/conversation-sidebar";
 
 const PROMPT_SUGGESTIONS = [
   "What's on the team's plate today?",
@@ -28,9 +29,6 @@ const ONBOARDING_PROMPT_SUGGESTIONS = [
 
 export function ChatClient() {
   const [draft, setDraft] = useState("");
-  const { messages, send, reset, isPending, error, pendingSessionId } = useChat();
-  const liveSteps = useChatStream(pendingSessionId);
-  const transcriptRef = useRef<HTMLDivElement | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: me } = useMe();
@@ -42,6 +40,31 @@ export function ChatClient() {
   // /welcome and / during the first chat.
   const fromWelcome = searchParams?.get("from") === "welcome";
   const isOnboardingChat = !!me?.needs_onboarding && fromWelcome;
+  // `?c=<head_id>` opens a specific conversation; `?new=1` opens a fresh
+  // empty surface that becomes a new chain on first send.
+  const conversationParam = searchParams?.get("c") ?? undefined;
+  const isFresh = searchParams?.get("new") === "1";
+
+  const { messages, send, isPending, error, pendingSessionId } = useChat({
+    conversationId: conversationParam,
+    fresh: isFresh,
+  });
+  const liveSteps = useChatStream(pendingSessionId);
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
+
+  // After the user sends their first message in a `?new=1` surface, drop
+  // the `new` param so reload restores the just-started conversation
+  // instead of bouncing the user back into an empty surface.
+  useEffect(() => {
+    if (isFresh && messages.length > 0 && !isPending) {
+      const sp = new URLSearchParams(searchParams?.toString() ?? "");
+      sp.delete("new");
+      const qs = sp.toString();
+      router.replace(qs ? `/chat?${qs}` : "/chat");
+    }
+  }, [isFresh, messages.length, isPending, searchParams, router]);
+
+  const startNewConversation = () => router.push("/chat?new=1");
 
   // First-run gate: if the caller hasn't completed the welcome wizard
   // and didn't arrive here from it, bounce them to the wizard.
@@ -85,81 +108,84 @@ export function ChatClient() {
   };
 
   return (
-    <div className="flex-1 flex flex-col overflow-hidden">
-      <header className="px-6 pt-6 pb-3 border-b border-border/60 flex items-baseline justify-between">
-        <div>
-          <h1 className="text-xl font-semibold tracking-tight">Chat with your team agent</h1>
-          <p className="text-xs text-muted-foreground mt-0.5 max-w-prose">
-            Ask the team agent to do things — mint tasks, query the fleet, brief you on a project.
-            It has full hierarchy tool access during the turn.
-          </p>
-        </div>
-        {messages.length > 0 ? (
+    <div className="flex-1 flex overflow-hidden">
+      <ConversationSidebar
+        activeConversationId={conversationParam}
+        isFresh={isFresh}
+        onNew={startNewConversation}
+      />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <header className="px-6 pt-6 pb-3 border-b border-border/60 flex items-baseline justify-between">
+          <div>
+            <h1 className="text-xl font-semibold tracking-tight">Chat with your team agent</h1>
+            <p className="text-xs text-muted-foreground mt-0.5 max-w-prose">
+              Ask the team agent to do things — mint tasks, query the fleet, brief you on a
+              project. It has full hierarchy tool access during the turn.
+            </p>
+          </div>
           <button
             type="button"
-            onClick={reset}
-            disabled={isPending}
+            onClick={startNewConversation}
+            disabled={isPending || isFresh}
             className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <RotateCcw className="h-3 w-3" />
+            <Plus className="h-3 w-3" />
             New conversation
           </button>
-        ) : null}
-      </header>
+        </header>
 
-      <div ref={transcriptRef} className="flex-1 overflow-y-auto px-6 py-6">
-        <div className="max-w-3xl mx-auto space-y-4">
-          {messages.length === 0 ? (
-            <EmptyHint
-              onPick={(s) => submit(s)}
-              disabled={isPending}
-              onboarding={isOnboardingChat}
-            />
-          ) : (
-            messages.map((m, i) => (
-              <Bubble
-                key={m.id}
-                message={m}
-                /* Chips on the very last agent message only — older
-                   suggestions decay; the user has moved on. */
-                showSuggestions={!isPending && i === messages.length - 1}
-                onSuggest={submit}
+        <div ref={transcriptRef} className="flex-1 overflow-y-auto px-6 py-6">
+          <div className="max-w-3xl mx-auto space-y-4">
+            {messages.length === 0 ? (
+              <EmptyHint
+                onPick={(s) => submit(s)}
+                disabled={isPending}
+                onboarding={isOnboardingChat}
               />
-            ))
-          )}
-          {isPending ? <Thinking steps={liveSteps} /> : null}
-          {error ? (
-            <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
-              <div className="flex items-center gap-1.5 text-status-failed font-medium mb-1">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Couldn&apos;t reach the agent
+            ) : (
+              messages.map((m, i) => (
+                <Bubble
+                  key={m.id}
+                  message={m}
+                  showSuggestions={!isPending && i === messages.length - 1}
+                  onSuggest={submit}
+                />
+              ))
+            )}
+            {isPending ? <Thinking steps={liveSteps} /> : null}
+            {error ? (
+              <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
+                <div className="flex items-center gap-1.5 text-status-failed font-medium mb-1">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Couldn&apos;t reach the agent
+                </div>
+                <div className="text-muted-foreground">{error.message}</div>
               </div>
-              <div className="text-muted-foreground">{error.message}</div>
-            </div>
-          ) : null}
+            ) : null}
+          </div>
         </div>
-      </div>
 
-      <div className="border-t border-border/60 px-6 py-4">
-        <div className="max-w-3xl mx-auto flex items-end gap-2">
-          <textarea
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={onKeyDown}
-            placeholder="Ask your team agent…  (Enter to send, Shift+Enter for newline)"
-            rows={2}
-            disabled={isPending}
-            className="flex-1 rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none disabled:opacity-60"
-          />
-          <button
-            type="button"
-            onClick={() => submit()}
-            disabled={isPending || draft.trim().length === 0}
-            aria-label="Send"
-            className="h-9 w-9 inline-flex items-center justify-center rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Send className="h-4 w-4" />
-          </button>
+        <div className="border-t border-border/60 px-6 py-4">
+          <div className="max-w-3xl mx-auto flex items-end gap-2">
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={onKeyDown}
+              placeholder="Ask your team agent…  (Enter to send, Shift+Enter for newline)"
+              rows={2}
+              disabled={isPending}
+              className="flex-1 rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none disabled:opacity-60"
+            />
+            <button
+              type="button"
+              onClick={() => submit()}
+              disabled={isPending || draft.trim().length === 0}
+              aria-label="Send"
+              className="h-9 w-9 inline-flex items-center justify-center rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <Send className="h-4 w-4" />
+            </button>
+          </div>
         </div>
       </div>
     </div>

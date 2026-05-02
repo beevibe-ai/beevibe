@@ -57,43 +57,65 @@ function fromHistory(m: ChatHistoryMessage): ChatMessage {
   };
 }
 
+export interface UseChatOptions {
+  /**
+   * Conversation head id (full `sess_xxx`). When set, GET /chat returns
+   * only that conversation's chain. When unset, the most recent
+   * conversation loads (default behavior).
+   */
+  conversationId?: string;
+  /**
+   * Render the surface as if it were a brand-new conversation: skip
+   * showing prior history (even though it's still cached) and break the
+   * `prior_session_id` chain. Flips off automatically once the user
+   * sends their first message — that turn becomes the new chain head.
+   */
+  fresh?: boolean;
+}
+
 /**
  * Conversation state for the chat surface.
  *
  * Hydrates from `GET /chat` on mount so a reload doesn't lose the
- * conversation — sessions are persisted server-side (the `session`
- * table) and reconstructed as messages by the route handler. New turns
- * append to local state and chain `prior_session_id` to whatever the
- * latest session id is (history's last, or the most recent mutation's
- * response).
+ * conversation. Sessions are persisted server-side (the `session`
+ * table) and reconstructed as messages by the route handler. When
+ * `conversationId` is set, only that conversation's chain is fetched.
  *
  * Cache invalidation for tasks/dashboard/sessions rides the SSE channel
  * via `useLiveUpdates` — no explicit refetch from this hook.
  */
-export function useChat() {
+export function useChat(opts: UseChatOptions = {}) {
+  const { conversationId, fresh } = opts;
   const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
   const [priorSessionId, setPriorSessionId] = useState<string | undefined>();
   const queryClient = useQueryClient();
 
   const history = useQuery<ChatHistoryResponse>({
-    queryKey: queryKeys.chat.history(),
-    queryFn: ({ signal }) => api.chat.history({ signal }),
-    enabled: isApiConfigured,
-    staleTime: Infinity, // refetch only on explicit invalidation (e.g. reset)
+    queryKey: queryKeys.chat.history(conversationId),
+    queryFn: ({ signal }) => api.chat.history({ conversationId, signal }),
+    // When `fresh` is set we still want the cache populated so a future
+    // navigation to /chat (without ?new) shows the prior conversation —
+    // but we don't need the round-trip RIGHT NOW for the empty surface.
+    enabled: isApiConfigured && !fresh,
+    staleTime: Infinity,
   });
 
   // Initialize prior_session_id from history once it lands. If the user
   // sends a new turn, that takes over (setPriorSessionId in onSuccess);
-  // we only seed once per history load.
+  // we only seed once per history load. Re-seeds when the conversation
+  // changes (key includes conversationId).
   const seededFor = useRef<string | undefined>(undefined);
+  const seedKeyForConversation = `${conversationId ?? "<latest>"}::${
+    history.data?.prior_session_id ?? "<empty>"
+  }`;
   useEffect(() => {
+    if (fresh) return;
     const data = history.data;
     if (!data) return;
-    const seedKey = data.prior_session_id ?? "<empty>";
-    if (seededFor.current === seedKey) return;
-    seededFor.current = seedKey;
+    if (seededFor.current === seedKeyForConversation) return;
+    seededFor.current = seedKeyForConversation;
     setPriorSessionId(data.prior_session_id ?? undefined);
-  }, [history.data]);
+  }, [history.data, fresh, seedKeyForConversation]);
 
   const mutation = useMutation<
     ChatTurnResponse,
@@ -127,17 +149,20 @@ export function useChat() {
         queryClient.invalidateQueries({ queryKey: queryKeys.me.all });
       }
       setPriorSessionId(data.session_id);
+      // A new turn on this surface invalidates the conversation list so
+      // sidebars / pickers see the new conversation immediately.
+      queryClient.invalidateQueries({ queryKey: queryKeys.chat.conversations() });
     },
   });
 
-  // Concatenate history (server-truth, oldest first) + locally-appended
-  // turns from this mount. The two sets never overlap by construction:
-  // history is everything BEFORE this mount; localMessages is everything
-  // ADDED by this mount's mutations.
+  // Concatenate history + local turns. When `fresh`, we drop history
+  // entirely until the user sends their first message — then localMessages
+  // takes over and the conversation list refetches to show the new chain.
   const messages = useMemo<ChatMessage[]>(() => {
+    if (fresh) return localMessages;
     const seed = history.data?.messages ?? [];
     return [...seed.map(fromHistory), ...localMessages];
-  }, [history.data, localMessages]);
+  }, [history.data, localMessages, fresh]);
 
   const send = useCallback(
     (rawMessage: string) => {
@@ -150,26 +175,9 @@ export function useChat() {
     [mutation],
   );
 
-  const reset = useCallback(() => {
-    setLocalMessages([]);
-    setPriorSessionId(undefined);
-    seededFor.current = undefined;
-    mutation.reset();
-    // Drop the cached history so the next mount fetches fresh — and so
-    // the current view becomes empty immediately rather than re-showing
-    // the last conversation.
-    queryClient.setQueryData(queryKeys.chat.history(), {
-      ok: true,
-      agent: history.data?.agent ?? null,
-      messages: [],
-      prior_session_id: null,
-    } satisfies ChatHistoryResponse);
-  }, [mutation, queryClient, history.data?.agent]);
-
   return {
     messages,
     send,
-    reset,
     isPending: mutation.isPending,
     error: mutation.error,
     /**

@@ -124,6 +124,26 @@ export interface ChatHistoryResponse {
   messages: ChatHistoryMessage[];
   /** The most recent session id, used to chain `prior_session_id` on the next turn. */
   prior_session_id: string | null;
+  /** Head session id of the conversation these messages belong to. */
+  conversation_id: string | null;
+}
+
+export interface ChatConversationSummary {
+  /** Head session id of the chain (the first turn). */
+  head_id: string;
+  /** First user message, used as the title in conversation pickers. */
+  title: string;
+  /** Number of turns (sessions) in the chain. */
+  turn_count: number;
+  /** ISO timestamp of the most recent turn in the chain. */
+  last_at: string;
+  /** Brief preview of the latest agent reply (or user intent if no reply yet). */
+  last_preview: string;
+}
+
+export interface ChatConversationsResponse {
+  ok: true;
+  conversations: ChatConversationSummary[];
 }
 
 export type EscalationResolveInput =
@@ -214,9 +234,23 @@ export const api = {
      */
     send: (input: ChatSendInput) =>
       fetchJson<ChatTurnResponse>("/chat", { method: "POST", body: input }),
-    /** Recent conversation, oldest first. Used to rehydrate after a reload. */
-    history: (opts: ReadOptions = {}) =>
-      fetchJson<ChatHistoryResponse>("/chat", { signal: opts.signal }),
+    /**
+     * Conversation history, oldest first.
+     *   - no `conversationId` → most recent conversation chain
+     *   - `conversationId` set → that specific chain (full `sess_xxx` head id)
+     */
+    history: (
+      opts: ReadOptions & { conversationId?: string } = {},
+    ) =>
+      fetchJson<ChatHistoryResponse>("/chat", {
+        signal: opts.signal,
+        ...(opts.conversationId ? { query: { c: opts.conversationId } } : {}),
+      }),
+    /** List recent conversations (chains) for the caller's primary agent. */
+    conversations: (opts: ReadOptions = {}) =>
+      fetchJson<ChatConversationsResponse>("/chat/conversations", {
+        signal: opts.signal,
+      }),
   },
   me: {
     /** Identity + onboarding state for the welcome flow. */

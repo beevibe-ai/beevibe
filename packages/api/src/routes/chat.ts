@@ -210,67 +210,185 @@ function processResponse(raw: string): {
 }
 
 const HISTORY_LIMIT = 50;
+const CONVERSATIONS_LIMIT = 50;
+const CONVERSATION_PREVIEW_CHARS = 140;
+
+interface ChatSession {
+  id: string;
+  prior_session_id?: string;
+  intent: string;
+  result_summary?: string;
+  status: string;
+  error?: string;
+  created_at: Date;
+}
+
+interface ConversationChain {
+  /** Head session id — first turn in the chain (no prior_session_id). */
+  head_id: string;
+  /** Sessions in chronological order (oldest first). */
+  sessions: ChatSession[];
+}
+
+/**
+ * Group chat sessions into conversation chains by walking
+ * `prior_session_id` pointers. Each session ends up in exactly one
+ * chain whose head is the first ancestor with no prior_session_id.
+ *
+ * Sessions whose prior_session_id points outside the input set (e.g.
+ * the chain extends past the recent-N window) start a new chain at
+ * themselves — preferable to dropping data, even if technically a
+ * fragment of an older conversation.
+ */
+function groupIntoConversations(sessions: readonly ChatSession[]): ConversationChain[] {
+  const byId = new Map(sessions.map((s) => [s.id, s]));
+  const headOf = new Map<string, string>();
+  const findHead = (s: ChatSession): string => {
+    const cached = headOf.get(s.id);
+    if (cached) return cached;
+    const parent = s.prior_session_id ? byId.get(s.prior_session_id) : undefined;
+    const head = parent ? findHead(parent) : s.id;
+    headOf.set(s.id, head);
+    return head;
+  };
+
+  const chainsById = new Map<string, ChatSession[]>();
+  for (const s of sessions) {
+    const head = findHead(s);
+    const arr = chainsById.get(head) ?? [];
+    arr.push(s);
+    chainsById.set(head, arr);
+  }
+
+  const chains: ConversationChain[] = [];
+  for (const [head_id, chainSessions] of chainsById) {
+    chainSessions.sort((a, b) => a.created_at.getTime() - b.created_at.getTime());
+    chains.push({ head_id, sessions: chainSessions });
+  }
+  // Newest conversation first (by latest activity in the chain).
+  chains.sort(
+    (a, b) =>
+      b.sessions[b.sessions.length - 1]!.created_at.getTime() -
+      a.sessions[a.sessions.length - 1]!.created_at.getTime(),
+  );
+  return chains;
+}
+
+function chainToMessages(chain: ConversationChain): HistoryMessage[] {
+  const messages: HistoryMessage[] = [];
+  for (const s of chain.sessions) {
+    messages.push({ id: `u_${s.id}`, role: "user", content: s.intent });
+    const summary = s.result_summary ?? "";
+    if (summary) {
+      const { visible, view_refs, open_view, suggested_actions } = processResponse(summary);
+      messages.push({
+        id: `a_${s.id}`,
+        role: "agent",
+        content: visible,
+        session_id: s.id,
+        ...(view_refs.length > 0 ? { view_refs } : {}),
+        ...(open_view ? { open_view } : {}),
+        ...(suggested_actions ? { suggested_actions } : {}),
+      });
+    } else if (s.status === "failed") {
+      messages.push({
+        id: `a_${s.id}`,
+        role: "agent",
+        content: s.error || "(turn failed — no response)",
+        session_id: s.id,
+      });
+    }
+  }
+  return messages;
+}
+
+function previewOf(s: ChatSession): string {
+  const text = s.result_summary
+    ? processResponse(s.result_summary).visible
+    : s.error || s.intent;
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  return oneLine.length <= CONVERSATION_PREVIEW_CHARS
+    ? oneLine
+    : oneLine.slice(0, CONVERSATION_PREVIEW_CHARS - 1) + "…";
+}
 
 export function createChatRouter(deps: ChatRoutesDeps): Router {
   const router = Router();
   router.use(deps.authMiddleware);
 
+  router.get("/conversations", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const agent = await deps.agentRepo.findTopLevelForOwner(req.caller.personId);
+    if (!agent) {
+      res.json({ ok: true, conversations: [] });
+      return;
+    }
+    const all = await deps.sessionRepo.listForAgent(agent.id);
+    const chats = all.filter((s) => s.type === "chat");
+    const chains = groupIntoConversations(chats).slice(0, CONVERSATIONS_LIMIT);
+
+    const conversations = chains.map((chain) => {
+      const head = chain.sessions[0]!;
+      const last = chain.sessions[chain.sessions.length - 1]!;
+      return {
+        head_id: chain.head_id,
+        title:
+          head.intent.length <= 80 ? head.intent : head.intent.slice(0, 79) + "…",
+        turn_count: chain.sessions.length,
+        last_at: last.created_at.toISOString(),
+        last_preview: previewOf(last),
+      };
+    });
+    res.json({ ok: true, conversations });
+  });
+
   router.get("/", async (req, res) => {
     if (!requireHuman(req, res)) return;
     const agent = await deps.agentRepo.findTopLevelForOwner(req.caller.personId);
     if (!agent) {
-      // No primary agent yet → no history. Return empty rather than 404
-      // so the chat UI can render its empty state instead of crashing.
-      res.json({ ok: true, agent: null, messages: [], prior_session_id: null });
+      res.json({
+        ok: true,
+        agent: null,
+        messages: [],
+        prior_session_id: null,
+        conversation_id: null,
+      });
       return;
     }
 
+    const requestedHead = typeof req.query.c === "string" ? req.query.c : undefined;
     const all = await deps.sessionRepo.listForAgent(agent.id);
-    // Filter to chat-type only and slice to the most recent N. The repo
-    // returns DESC by created_at; reverse so the oldest renders first.
-    const recent = all.filter((s) => s.type === "chat").slice(0, HISTORY_LIMIT);
-    const oldestFirst = [...recent].reverse();
+    const chats = all.filter((s) => s.type === "chat");
+    const chains = groupIntoConversations(chats);
 
-    const messages: HistoryMessage[] = [];
-    for (const s of oldestFirst) {
-      // User turn — always present (the intent the user typed).
-      messages.push({
-        id: `u_${s.id}`,
-        role: "user",
-        content: s.intent,
+    const chain = requestedHead
+      ? chains.find((c) => c.head_id === requestedHead)
+      : chains[0]; // most recent
+
+    if (!chain) {
+      // Caller asked for a specific conversation that doesn't exist (or has
+      // no chat sessions yet). Return empty rather than 404 so the chat UI
+      // renders its empty state.
+      res.json({
+        ok: true,
+        agent: { id: agent.id, name: agent.name, hierarchy: agent.hierarchy_level },
+        messages: [],
+        prior_session_id: null,
+        conversation_id: null,
       });
-      // Agent turn — only when the session produced output.
-      const summary = s.result_summary ?? "";
-      if (summary) {
-        const { visible, view_refs, open_view, suggested_actions } =
-          processResponse(summary);
-        messages.push({
-          id: `a_${s.id}`,
-          role: "agent",
-          content: visible,
-          session_id: s.id,
-          ...(view_refs.length > 0 ? { view_refs } : {}),
-          ...(open_view ? { open_view } : {}),
-          ...(suggested_actions ? { suggested_actions } : {}),
-        });
-      } else if (s.status === "failed") {
-        // Surface the failure so the user sees what happened on reload
-        // instead of a phantom "user said X, agent never replied" gap.
-        messages.push({
-          id: `a_${s.id}`,
-          role: "agent",
-          content: s.error || "(turn failed — no response)",
-          session_id: s.id,
-        });
-      }
+      return;
     }
+
+    const truncated = chain.sessions.slice(-Math.ceil(HISTORY_LIMIT / 2)); // each session = 2 messages
+    const messages = chainToMessages({ head_id: chain.head_id, sessions: truncated });
 
     res.json({
       ok: true,
       agent: { id: agent.id, name: agent.name, hierarchy: agent.hierarchy_level },
       messages,
       // Latest session id so the next turn chains correctly.
-      prior_session_id: oldestFirst.length > 0 ? oldestFirst[oldestFirst.length - 1]!.id : null,
+      prior_session_id: chain.sessions[chain.sessions.length - 1]!.id,
+      conversation_id: chain.head_id,
     });
   });
 

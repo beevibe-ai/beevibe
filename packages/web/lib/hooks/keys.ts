@@ -39,6 +39,9 @@ export const queryKeys = {
   },
   chat: {
     all: ["chat"] as const,
-    history: () => ["chat", "history"] as const,
+    /** Per-conversation history. `undefined` = the most recent conversation. */
+    history: (conversationId?: string) =>
+      ["chat", "history", conversationId ?? "<latest>"] as const,
+    conversations: () => ["chat", "conversations"] as const,
   },
 } as const;

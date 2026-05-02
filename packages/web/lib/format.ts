@@ -19,8 +19,10 @@ export function shortId(id: string): string {
 }
 
 export function sessionHref(sid: string, taskId?: string): string {
-  if (taskId) return `/tasks/${taskId}/sessions/${sid}`;
-  return "#";
+  // The full id starts with "sess_"; route URLs use the 6-char suffix.
+  const sessionShort = sid.startsWith("sess_") ? sid.slice(5, 11) : sid.slice(0, 6);
+  if (taskId) return `/tasks/${taskId}/sessions/${sessionShort}`;
+  return `/sessions/${sessionShort}`;
 }
 
 /**
