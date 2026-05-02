@@ -57,7 +57,13 @@ export function WelcomeClient() {
       </header>
 
       <main className="flex-1 flex items-center justify-center px-6 py-12">
-        <div className="max-w-2xl w-full">
+        {/* `key` re-mounts the inner div on step change so the
+            entrance animation re-fires; the wizard reads as three
+            distinct moments instead of three snapshots. */}
+        <div
+          key={step}
+          className="max-w-2xl w-full motion-safe:animate-[wizard-step_180ms_ease-out_both]"
+        >
           {step === "intro" ? <IntroStep onNext={() => setStep("providers")} /> : null}
           {step === "providers" ? <ProvidersStep onNext={() => setStep("ready")} /> : null}
           {step === "ready" ? (

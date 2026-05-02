@@ -93,7 +93,11 @@ export function createMeRouter(deps: MeRoutesDeps): Router {
     const embedOk = embedResult.status === "fulfilled";
     const ok = cliOk && embedOk;
 
-    res.status(ok ? 200 : 503).json({
+    // Always 200: this is a structured probe, not a load-balancer signal.
+    // Per-provider failures are reported in the body so the wizard can
+    // distinguish "the server is unreachable" (network/auth = real
+    // fetch error) from "the server is up but providers aren't ready."
+    res.status(200).json({
       ok,
       claude_cli: cliOk
         ? { ok: true }

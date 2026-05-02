@@ -5,7 +5,6 @@ import {
   Filter,
   Maximize2,
   MoreHorizontal,
-  Plus,
   Search,
   Zap,
 } from "lucide-react";
@@ -16,6 +15,9 @@ export type TaskView = "all" | "mine" | "sprint" | "timeline";
 // Note: this toolbar previously had a "+ New" button that opened a
 // create-task dialog. Removed in #48 — tasks are minted by team agents
 // through human-agent conversation, not by the human clicking "+".
+// A bare "+" remained as an "add view" placeholder; removed too — it
+// wasn't wired and the mindless-click test failed (users couldn't tell
+// what it did).
 
 interface Props {
   current: TaskView;
@@ -54,13 +56,6 @@ export function ViewTabs({ current, onChange, onSearch, query, onQueryChange }: 
             </button>
           );
         })}
-        <button
-          type="button"
-          aria-label="Add view"
-          className="h-9 w-7 inline-flex items-center justify-center text-muted-foreground/60 hover:text-foreground transition-colors cursor-pointer"
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </button>
       </div>
 
       <div className="flex items-center gap-1 mb-1.5 shrink-0">
