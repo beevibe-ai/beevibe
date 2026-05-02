@@ -861,7 +861,10 @@ function addToEscalationTool(
 // the tool isn't included in their tool set; the runtime check below is a
 // belt-and-braces guard in case the wiring drifts.
 
-const PROVISION_NAME_RE = /^[\w\s\-./]{1,80}$/;
+// Disallow control chars + newlines; otherwise let the LLM pick natural
+// names ("Web & Onboarding specialist", "Auth/SSO expert", etc.). 80-char
+// cap matches what survives in dropdowns.
+const PROVISION_NAME_INVALID_RE = /[\x00-\x1f\x7f]/;
 
 function createSubordinateAgentTool(
   ctx: HierarchyToolContext,
@@ -922,12 +925,11 @@ function createSubordinateAgentTool(
             isError: true,
           };
         }
-        if (!PROVISION_NAME_RE.test(name)) {
+        if (name.length > 80 || PROVISION_NAME_INVALID_RE.test(name)) {
           return {
             content: {
               error: "invalid_name",
-              message:
-                "name must be 1-80 chars of letters/numbers/spaces/_-./ only",
+              message: "name must be 1-80 chars and contain no control characters",
             },
             isError: true,
           };
