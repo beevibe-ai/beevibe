@@ -100,6 +100,12 @@ export interface ChatTurnResponse {
    * resolved path is here so the chat UI can render a prominent "Open this →" CTA.
    */
   open_view?: { path: string; label?: string };
+  /**
+   * If the agent ended its reply with `<suggest_action>` directives, each
+   * label becomes a clickable chip below the bubble that re-sends the
+   * label as the next user message.
+   */
+  suggested_actions?: string[];
 }
 
 export interface ChatHistoryMessage {
@@ -109,6 +115,7 @@ export interface ChatHistoryMessage {
   session_id?: string;
   view_refs?: string[];
   open_view?: { path: string; label?: string };
+  suggested_actions?: string[];
 }
 
 export interface ChatHistoryResponse {

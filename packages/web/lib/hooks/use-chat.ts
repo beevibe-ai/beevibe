@@ -22,6 +22,8 @@ export interface ChatMessage {
   view_refs?: string[];
   /** Resolved `<open_view>` directive — rendered as an "Open this →" CTA. */
   open_view?: { path: string; label?: string };
+  /** Resolved `<suggest_action>` chips — clicking sends the label as a turn. */
+  suggested_actions?: string[];
 }
 
 let nextLocalId = 0;
@@ -51,6 +53,7 @@ function fromHistory(m: ChatHistoryMessage): ChatMessage {
     ...(m.session_id ? { session_id: m.session_id } : {}),
     ...(m.view_refs ? { view_refs: m.view_refs } : {}),
     ...(m.open_view ? { open_view: m.open_view } : {}),
+    ...(m.suggested_actions ? { suggested_actions: m.suggested_actions } : {}),
   };
 }
 
@@ -113,6 +116,7 @@ export function useChat() {
           session_id: data.session_id,
           view_refs: data.view_refs,
           ...(data.open_view ? { open_view: data.open_view } : {}),
+          ...(data.suggested_actions ? { suggested_actions: data.suggested_actions } : {}),
         },
       ]);
       // Only the first turn of a conversation can flip the server's

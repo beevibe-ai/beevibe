@@ -132,7 +132,9 @@ export class AgentSession {
       .join("\n\n");
 
     // Compose onStep: transcript persistence (fire-and-forget; never blocks
-    // the LLM-bound tail) followed by the caller's hook (if any).
+    // the LLM-bound tail) followed by the caller's hook (if any). The
+    // kind passes through from the runtime so the SSE pipeline can carry
+    // both tool-call streams and assistant text streams to the chat UI.
     const eventRepo = this.deps.sessionEventRepo;
     const callerOnStep = input.onStep;
     const onStep = (step: RuntimeStep): void => {
@@ -140,7 +142,7 @@ export class AgentSession {
         .append({
           id: sessionEventId(),
           session_id: sid,
-          kind: "tool_call",
+          kind: step.kind,
           content: step.description,
           tool_name: step.tool,
         })

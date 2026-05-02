@@ -48,9 +48,12 @@ export interface ChatRoutesDeps {
 const ENTITY_ID_RE = /\b((?:task|agent|sess)_[A-Za-z0-9]{12})\b/g;
 const OPEN_VIEW_RE =
   /<open_view\s+path="([^"]+)"(?:\s+label="([^"]+)")?\s*\/?>(?:\s*<\/open_view>)?/i;
+// Multiple per turn allowed — each becomes a clickable chip below the bubble.
+const SUGGEST_ACTION_RE =
+  /<suggest_action\s+label="([^"]+)"\s*\/?>(?:\s*<\/suggest_action>)?/gi;
 
 const CHAT_DIRECTIVES = `
-You are responding inside a chat surface — not a CLI. Two display
+You are responding inside a chat surface — not a CLI. Three display
 directives the UI understands:
 
 1. **Reference any task / agent / session by its full id** (e.g.
@@ -69,6 +72,18 @@ directives the UI understands:
    button below your message and strips the directive from the visible
    text. Use this sparingly — only when the user's intent is clearly
    navigational, not for every mention.
+
+3. **When you offer the user concrete next steps** (typically 2–4
+   focused options at the end of a turn), append one
+   \`<suggest_action>\` directive per option on its own line:
+
+   \`<suggest_action label="Approve as-is and spin up the team" />\`
+
+   The UI renders each as a clickable chip below your reply; clicking
+   it sends the label as the user's next message. Make the labels
+   self-contained (the agent will receive them with no extra context),
+   imperative, and short — under ~80 chars. Skip the chips entirely
+   when there's nothing concrete to choose.
 `.trim();
 
 const ONBOARDING_DIRECTIVES = `
@@ -114,6 +129,17 @@ Your job over the next few turns:
    sees those writes happen in real time — that's how they know you're
    actually listening, not just LLM-stalling.
 
+7. **End every turn with 2–4 \`<suggest_action>\` chips** that give the
+   user concrete next moves (especially during onboarding). Examples
+   for the team-proposal turn:
+
+   \`<suggest_action label="Approve as-is and spin up all three" />\`
+   \`<suggest_action label="Merge backend + services into one specialist" />\`
+   \`<suggest_action label="Add a docs/strategy specialist" />\`
+
+   Labels become the user's next message verbatim, so write them as
+   first-person actions the agent can act on directly.
+
 Skip the \`<open_view>\` directive on this onboarding turn — the user is
 already where they need to be.
 `.trim();
@@ -125,6 +151,7 @@ interface HistoryMessage {
   session_id?: string;
   view_refs?: string[];
   open_view?: { path: string; label?: string };
+  suggested_actions?: string[];
 }
 
 function handleError(err: unknown, res: Response): void {
@@ -136,19 +163,33 @@ function handleError(err: unknown, res: Response): void {
 }
 
 /**
- * Parse out the `<open_view path="..." label="..."/>` directive (if any),
- * extract referenced entity ids, and return the cleaned visible response.
+ * Parse out display directives (`<open_view>`, `<suggest_action>`),
+ * extract referenced entity ids, and return the cleaned visible
+ * response. Directives are stripped from the visible text so the
+ * markdown renderer never sees them.
  */
 function processResponse(raw: string): {
   visible: string;
   view_refs: string[];
   open_view?: { path: string; label?: string };
+  suggested_actions?: string[];
 } {
-  const match = raw.match(OPEN_VIEW_RE);
-  const open_view = match?.[1]
-    ? { path: match[1], ...(match[2] ? { label: match[2] } : {}) }
+  const openMatch = raw.match(OPEN_VIEW_RE);
+  const open_view = openMatch?.[1]
+    ? { path: openMatch[1], ...(openMatch[2] ? { label: openMatch[2] } : {}) }
     : undefined;
-  const visible = match ? raw.replace(OPEN_VIEW_RE, "").trim() : raw;
+
+  const suggestedSet = new Set<string>();
+  for (const m of raw.matchAll(SUGGEST_ACTION_RE)) {
+    const label = m[1]?.trim();
+    if (label && !suggestedSet.has(label)) suggestedSet.add(label);
+  }
+  const suggested_actions = suggestedSet.size > 0 ? [...suggestedSet] : undefined;
+
+  let visible = raw;
+  if (openMatch) visible = visible.replace(OPEN_VIEW_RE, "");
+  if (suggested_actions) visible = visible.replace(SUGGEST_ACTION_RE, "");
+  visible = visible.trim();
 
   const seen = new Set<string>();
   const view_refs: string[] = [];
@@ -160,7 +201,12 @@ function processResponse(raw: string): {
     }
   }
 
-  return open_view ? { visible, view_refs, open_view } : { visible, view_refs };
+  return {
+    visible,
+    view_refs,
+    ...(open_view ? { open_view } : {}),
+    ...(suggested_actions ? { suggested_actions } : {}),
+  };
 }
 
 const HISTORY_LIMIT = 50;
@@ -196,7 +242,8 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
       // Agent turn — only when the session produced output.
       const summary = s.result_summary ?? "";
       if (summary) {
-        const { visible, view_refs, open_view } = processResponse(summary);
+        const { visible, view_refs, open_view, suggested_actions } =
+          processResponse(summary);
         messages.push({
           id: `a_${s.id}`,
           role: "agent",
@@ -204,6 +251,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
           session_id: s.id,
           ...(view_refs.length > 0 ? { view_refs } : {}),
           ...(open_view ? { open_view } : {}),
+          ...(suggested_actions ? { suggested_actions } : {}),
         });
       } else if (s.status === "failed") {
         // Surface the failure so the user sees what happened on reload
@@ -293,7 +341,8 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
           .join("\n\n"),
       });
 
-      const { visible, view_refs, open_view } = processResponse(session.result_summary ?? "");
+      const { visible, view_refs, open_view, suggested_actions } =
+        processResponse(session.result_summary ?? "");
 
       // Mark onboarding complete after the first successful chat turn —
       // fire-and-forget so a slow update can't block the response. The
@@ -317,6 +366,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         status: session.status,
         view_refs,
         ...(open_view ? { open_view } : {}),
+        ...(suggested_actions ? { suggested_actions } : {}),
       });
     } catch (err) {
       handleError(err, res);

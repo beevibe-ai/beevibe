@@ -11,6 +11,7 @@ import { useMe } from "@/lib/hooks/use-me";
 import { sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ReferenceCards } from "@/components/chat/reference-cards";
+import { ChatMarkdown } from "@/components/chat/markdown";
 
 const PROMPT_SUGGESTIONS = [
   "What's on the team's plate today?",
@@ -115,7 +116,16 @@ export function ChatClient() {
               onboarding={isOnboardingChat}
             />
           ) : (
-            messages.map((m) => <Bubble key={m.id} message={m} />)
+            messages.map((m, i) => (
+              <Bubble
+                key={m.id}
+                message={m}
+                /* Chips on the very last agent message only — older
+                   suggestions decay; the user has moved on. */
+                showSuggestions={!isPending && i === messages.length - 1}
+                onSuggest={submit}
+              />
+            ))
           )}
           {isPending ? <Thinking steps={liveSteps} /> : null}
           {error ? (
@@ -156,21 +166,34 @@ export function ChatClient() {
   );
 }
 
-function Bubble({ message }: { message: ChatMessage }) {
+function Bubble({
+  message,
+  showSuggestions,
+  onSuggest,
+}: {
+  message: ChatMessage;
+  showSuggestions?: boolean;
+  onSuggest?: (label: string) => void;
+}) {
   const isUser = message.role === "user";
   // Server now supplies view_refs per turn; fall back to empty if missing.
   const refIds = !isUser ? message.view_refs ?? [] : [];
+  const suggestions = showSuggestions ? message.suggested_actions ?? [] : [];
   return (
-    <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
+    <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
       <div
         className={cn(
-          "max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap",
+          "max-w-[80%] rounded-lg px-3 py-2",
           isUser
             ? "bg-primary text-primary-foreground"
             : "bg-secondary text-foreground border border-border",
         )}
       >
-        {message.content}
+        {isUser ? (
+          <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+        ) : (
+          <ChatMarkdown content={message.content} inverted={false} />
+        )}
         {refIds.length > 0 ? <ReferenceCards ids={refIds} /> : null}
         {message.open_view ? <OpenViewCta open_view={message.open_view} /> : null}
         {message.session_id ? (
@@ -181,6 +204,33 @@ function Bubble({ message }: { message: ChatMessage }) {
           </div>
         ) : null}
       </div>
+      {suggestions.length > 0 && onSuggest ? (
+        <SuggestedActions labels={suggestions} onPick={onSuggest} />
+      ) : null}
+    </div>
+  );
+}
+
+function SuggestedActions({
+  labels,
+  onPick,
+}: {
+  labels: string[];
+  onPick: (label: string) => void;
+}) {
+  return (
+    <div className="mt-2 max-w-[80%] flex flex-wrap gap-1.5">
+      {labels.map((label) => (
+        <button
+          key={label}
+          type="button"
+          onClick={() => onPick(label)}
+          className="text-left rounded-md border border-border bg-card hover:bg-secondary hover:border-foreground/30 px-2.5 py-1.5 text-xs text-foreground transition-colors cursor-pointer flex items-center gap-1.5"
+        >
+          <Sparkles className="h-3 w-3 shrink-0 text-muted-foreground" />
+          <span>{label}</span>
+        </button>
+      ))}
     </div>
   );
 }
@@ -198,38 +248,54 @@ function OpenViewCta({ open_view }: { open_view: { path: string; label?: string 
 }
 
 function Thinking({ steps }: { steps: ChatStreamStep[] }) {
-  // Surface only tool steps; the final summary arrives via the synchronous
-  // POST /chat response (so it shows as a regular agent bubble, not here).
-  const visible = steps.filter((s) => s.kind === "tool_call" || s.kind === "tool_result");
+  // Split agent text from tool steps. Agent text is the response being
+  // written — we render it like a real bubble. Tools are the substrate
+  // beneath ("Reading file X", "Bash ls"). The final summary arrives via
+  // the synchronous POST /chat response and replaces this whole block.
+  const toolSteps = steps.filter((s) => s.kind === "tool_call" || s.kind === "tool_result");
+  const agentSteps = steps.filter((s) => s.kind === "agent");
+  // Show the most recent agent text — each Claude turn between tool calls
+  // emits one assistant block with that segment's text, so concatenating
+  // them gives the response so far. (Stream-json segments aren't deltas;
+  // they're full-text blocks separated by tool calls.)
+  const streamingText = agentSteps.map((s) => s.content).join("\n\n");
+  const lastTool = toolSteps[toolSteps.length - 1];
+
   return (
-    <div className="flex justify-start">
-      <div className="max-w-[80%] rounded-lg px-3 py-2 text-sm bg-secondary text-foreground border border-border">
-        <div className="flex items-center gap-2 text-muted-foreground italic">
-          <span className="inline-flex items-center gap-1">
-            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse" />
-            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:200ms]" />
-            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:400ms]" />
-          </span>
-          <span>thinking…</span>
-          {visible.length > 0 ? (
-            <span className="text-[10px] tabular-nums opacity-70 ml-auto">
-              {visible.length} step{visible.length === 1 ? "" : "s"}
+    <div className="flex flex-col items-start">
+      <div className="max-w-[80%] rounded-lg px-3 py-2 bg-secondary text-foreground border border-border">
+        {streamingText ? (
+          <ChatMarkdown content={streamingText} />
+        ) : (
+          <div className="flex items-center gap-2 text-muted-foreground italic text-sm">
+            <span className="inline-flex items-center gap-1">
+              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse" />
+              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:200ms]" />
+              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:400ms]" />
             </span>
-          ) : null}
-        </div>
-        {visible.length > 0 ? (
-          <ul className="mt-2 space-y-1 text-[11px] text-muted-foreground/90">
-            {visible.slice(-6).map((s) => (
-              <li key={s.event_id} className="flex items-baseline gap-1.5 truncate">
-                {s.tool_name ? (
-                  <span className="font-mono text-foreground/80">{s.tool_name}</span>
-                ) : (
-                  <span className="font-mono text-foreground/60">{s.kind}</span>
-                )}
-                <span className="text-muted-foreground truncate">{s.content}</span>
-              </li>
-            ))}
-          </ul>
+            <span>thinking…</span>
+          </div>
+        )}
+        {lastTool ? (
+          <div
+            className={cn(
+              "flex items-baseline gap-1.5 text-[11px] text-muted-foreground/90",
+              streamingText ? "mt-2 pt-2 border-t border-border/60" : "mt-1",
+            )}
+          >
+            <span className="inline-flex h-1.5 w-1.5 rounded-full bg-status-running animate-pulse shrink-0 self-center" />
+            {lastTool.tool_name ? (
+              <span className="font-mono text-foreground/80 shrink-0">{lastTool.tool_name}</span>
+            ) : (
+              <span className="font-mono text-foreground/60 shrink-0">{lastTool.kind}</span>
+            )}
+            <span className="text-muted-foreground truncate min-w-0">{lastTool.content}</span>
+            {toolSteps.length > 1 ? (
+              <span className="ml-auto tabular-nums opacity-60 shrink-0">
+                {toolSteps.length} step{toolSteps.length === 1 ? "" : "s"}
+              </span>
+            ) : null}
+          </div>
         ) : null}
       </div>
     </div>

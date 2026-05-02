@@ -8,7 +8,7 @@ import type {
 } from "../../ports/runtime.js";
 import { runCliProcess } from "./spawn.js";
 import {
-  extractStepEvent,
+  extractStepEvents,
   parseClaudeMessages,
   parseStreamJsonLine,
   type StreamJsonMessage,
@@ -106,8 +106,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       if (!msg) return;
       messages.push(msg);
       if (context.onStep) {
-        const step = extractStepEvent(msg);
-        if (step) context.onStep(step);
+        for (const step of extractStepEvents(msg)) context.onStep(step);
       }
     };
 

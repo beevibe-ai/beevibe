@@ -66,25 +66,66 @@ export function parseStreamJsonLine(line: string): StreamJsonMessage | null {
   }
 }
 
-export function extractStepEvent(msg: StreamJsonMessage): RuntimeStep | null {
+export function extractStepEvents(msg: StreamJsonMessage): RuntimeStep[] {
+  const now = new Date().toISOString();
+
   if (msg.type === STREAM_TYPE.ToolUse || msg.subtype === STREAM_TYPE.ToolUse) {
-    return {
-      tool: msg.name ?? "unknown",
-      description: describeToolInput(msg.input ?? {}),
-      timestamp: new Date().toISOString(),
-    };
+    return [
+      {
+        kind: "tool_call",
+        tool: msg.name ?? "unknown",
+        description: describeToolInput(msg.input ?? {}),
+        timestamp: now,
+      },
+    ];
   }
 
   if (msg.type === STREAM_TYPE.ContentBlockStart && msg.content_block?.type === BLOCK_TYPE.ToolUse) {
     const block = msg.content_block;
-    return {
-      tool: block.name ?? "unknown",
-      description: describeToolInput((block.input ?? {}) as Record<string, unknown>),
-      timestamp: new Date().toISOString(),
-    };
+    return [
+      {
+        kind: "tool_call",
+        tool: block.name ?? "unknown",
+        description: describeToolInput((block.input ?? {}) as Record<string, unknown>),
+        timestamp: now,
+      },
+    ];
   }
 
-  return null;
+  // Assistant text + inline tool_use blocks. Stream-json emits one
+  // `assistant` message per LLM output between tool calls; its content
+  // is one or more blocks. We surface text blocks as `agent` steps so
+  // the chat UI can show the response being written, and tool_use
+  // blocks (when they appear here rather than as standalone messages)
+  // as `tool_call` steps.
+  if (msg.type === STREAM_TYPE.Assistant && msg.message && Array.isArray(msg.message.content)) {
+    const out: RuntimeStep[] = [];
+    for (const block of msg.message.content) {
+      if (block.type === BLOCK_TYPE.Text && typeof block.text === "string" && block.text.trim().length > 0) {
+        out.push({
+          kind: "agent",
+          description: block.text,
+          timestamp: now,
+        });
+      } else if (block.type === BLOCK_TYPE.ToolUse) {
+        out.push({
+          kind: "tool_call",
+          tool: block.name ?? "unknown",
+          description: describeToolInput((block.input ?? {}) as Record<string, unknown>),
+          timestamp: now,
+        });
+      }
+    }
+    return out;
+  }
+
+  return [];
+}
+
+/** @deprecated Use `extractStepEvents` (returns 0+ steps per message). */
+export function extractStepEvent(msg: StreamJsonMessage): RuntimeStep | null {
+  const steps = extractStepEvents(msg);
+  return steps[0] ?? null;
 }
 
 function describeToolInput(input: Record<string, unknown>): string {

@@ -104,13 +104,20 @@ export interface RuntimeContext {
 }
 
 /**
- * A single tool-invocation observed during execution. Emitted via
+ * A single observable step during execution. Emitted via
  * `RuntimeContext.onStep` for UIs that stream progress.
+ *
+ * `tool_call` steps are tool invocations (set `tool` and a short
+ * description like the file path or command). `agent` steps are
+ * assistant text blocks emitted between tool calls — the chat UI shows
+ * them as the response being written so the user isn't staring at a
+ * blank spinner for 30s while the LLM finishes a paragraph.
  */
 export interface RuntimeStep {
-  /** Tool name (e.g. "Read", "Bash", "mcp__platform__search_context"). */
-  tool: string;
-  /** Short human-readable description (path, command, query, etc.). */
+  kind: "tool_call" | "agent";
+  /** Tool name (only set for `tool_call`). */
+  tool?: string;
+  /** Tool description for `tool_call`; assistant text for `agent`. */
   description: string;
   /** ISO-8601 timestamp when the event was observed. */
   timestamp: string;
