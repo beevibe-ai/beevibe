@@ -40,7 +40,11 @@ export function createStreamRouter(deps: StreamRoutesDeps): Router {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
-    const unsubscribe = deps.sseManager.subscribe(send);
+    // Register with the caller's personId — SseManager only invokes this
+    // callback for events owned by this person (per OwnerLookup), so two
+    // users on the same process never see each other's task / agent /
+    // session activity.
+    const unsubscribe = deps.sseManager.subscribe(req.caller.personId, send);
     const heartbeat = setInterval(() => {
       res.write(": heartbeat\n\n");
     }, HEARTBEAT_INTERVAL_MS);

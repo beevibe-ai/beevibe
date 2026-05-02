@@ -6,7 +6,7 @@ import type { ReactNode } from "react";
 const apiState: { isApiConfigured: boolean; apiBaseUrl: string | null; userKey: string | null } = {
   isApiConfigured: true,
   apiBaseUrl: "https://api.example.com",
-  userKey: null,
+  userKey: "bv_u_testkey1234567890", // tests assume an authed visitor unless overridden
 };
 
 vi.mock("@/lib/api/config", () => ({
@@ -16,9 +16,8 @@ vi.mock("@/lib/api/config", () => ({
   get apiBaseUrl() {
     return apiState.apiBaseUrl;
   },
-  get userKey() {
-    return apiState.userKey;
-  },
+  getUserKey: () => apiState.userKey,
+  subscribeToUserKey: () => () => {},
 }));
 
 import { useLiveUpdates, __resetSseStateForTests } from "./sse";
@@ -74,11 +73,21 @@ describe("useLiveUpdates", () => {
     expect(MockEventSource.instances).toHaveLength(0);
   });
 
-  it("opens an EventSource on /api/stream with credentials when configured", () => {
+  it("does not open an EventSource when no user key is set (visitor not signed in)", () => {
+    apiState.userKey = null;
+    const client = new QueryClient();
+    renderHook(() => useLiveUpdates(), { wrapper: makeWrapper(client) });
+    expect(MockEventSource.instances).toHaveLength(0);
+    apiState.userKey = "bv_u_testkey1234567890"; // restore for subsequent tests
+  });
+
+  it("opens an EventSource on /api/stream with the user key as a token query param", () => {
     const client = new QueryClient();
     renderHook(() => useLiveUpdates(), { wrapper: makeWrapper(client) });
     expect(MockEventSource.instances).toHaveLength(1);
-    expect(MockEventSource.instances[0].url).toBe("https://api.example.com/api/stream");
+    const url = new URL(MockEventSource.instances[0].url);
+    expect(url.origin + url.pathname).toBe("https://api.example.com/api/stream");
+    expect(url.searchParams.get("token")).toBe("bv_u_testkey1234567890");
     expect(MockEventSource.instances[0].withCredentials).toBe(true);
   });
 

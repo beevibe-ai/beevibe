@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
-import { apiBaseUrl, isApiConfigured, userKey } from "./api/config";
+import { apiBaseUrl, getUserKey, isApiConfigured, subscribeToUserKey } from "./api/config";
 import { queryKeys } from "./hooks/keys";
 
 /**
@@ -49,8 +49,11 @@ const listeners = new Set<Listener>();
 function ensureSource(): EventSource | undefined {
   if (!isApiConfigured || !apiBaseUrl || typeof window === "undefined") return undefined;
   if (source) return source;
+  const key = getUserKey();
+  // No key = unauthenticated; bail. Visitor needs to sign in first.
+  if (!key) return undefined;
   const url = new URL(`${apiBaseUrl}/api/stream`);
-  if (userKey) url.searchParams.set("token", userKey);
+  url.searchParams.set("token", key);
   source = new EventSource(url.toString(), { withCredentials: true });
   source.onmessage = (e) => {
     try {
@@ -75,7 +78,24 @@ function ensureSource(): EventSource | undefined {
   return source;
 }
 
+// Resubscribe whenever the user key changes (sign-in / sign-out) so the
+// EventSource carries the new token. The current source has the old
+// token baked into its URL, so we close and let the next subscriber
+// recreate it.
+let unsubscribeKeyWatcher: (() => void) | undefined;
+function ensureKeyWatcher(): void {
+  if (unsubscribeKeyWatcher) return;
+  unsubscribeKeyWatcher = subscribeToUserKey(() => {
+    if (source) {
+      source.close();
+      source = undefined;
+    }
+    if (refCount > 0) ensureSource();
+  });
+}
+
 function subscribe(cb: Listener): () => void {
+  ensureKeyWatcher();
   ensureSource();
   listeners.add(cb);
   refCount += 1;

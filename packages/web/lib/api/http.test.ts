@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./config", () => ({
   apiBaseUrl: "https://api.example.com",
   isApiConfigured: true,
-  userKey: null,
+  getUserKey: () => null,
 }));
 
 import { fetchJson, ApiError } from "./http";
@@ -119,7 +119,7 @@ describe("fetchJson when API is not configured", () => {
     vi.doMock("./config", () => ({
       apiBaseUrl: null,
       isApiConfigured: false,
-      userKey: null,
+      getUserKey: () => null,
     }));
 
     const { fetchJson: ucFetch, ApiNotConfigured } = await import("./http");
@@ -132,12 +132,12 @@ describe("fetchJson when API is not configured", () => {
 });
 
 describe("fetchJson with userKey configured", () => {
-  it("attaches Authorization: Bearer <userKey> when configured", async () => {
+  it("attaches Authorization: Bearer <userKey> when getUserKey() returns one", async () => {
     vi.resetModules();
     vi.doMock("./config", () => ({
       apiBaseUrl: "https://api.example.com",
       isApiConfigured: true,
-      userKey: "bv_u_test_key",
+      getUserKey: () => "bv_u_test_key",
     }));
 
     const { fetchJson: authedFetch } = await import("./http");
@@ -149,6 +149,32 @@ describe("fetchJson with userKey configured", () => {
     expect((init.headers as Record<string, string>).Authorization).toBe(
       "Bearer bv_u_test_key",
     );
+
+    vi.doUnmock("./config");
+    vi.resetModules();
+  });
+
+  it("invokes the registered onUnauthorized handler on 401", async () => {
+    vi.resetModules();
+    vi.doMock("./config", () => ({
+      apiBaseUrl: "https://api.example.com",
+      isApiConfigured: true,
+      getUserKey: () => "bv_u_revoked",
+    }));
+
+    const { fetchJson: f, setOnUnauthorized } = await import("./http");
+    const handler = vi.fn();
+    setOnUnauthorized(handler);
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "invalid_token" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(f("/me")).rejects.toMatchObject({ status: 401 });
+    expect(handler).toHaveBeenCalledOnce();
 
     vi.doUnmock("./config");
     vi.resetModules();

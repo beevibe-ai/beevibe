@@ -9,10 +9,12 @@
 
 import { Client } from "pg";
 import type { SseManager, BvEvent } from "./manager.js";
+import type { OwnerLookup } from "./owner-lookup.js";
 
 export interface SseListenerConfig {
   databaseUrl: string;
   manager: SseManager;
+  ownerLookup: OwnerLookup;
   /** Default 5s. */
   reconnectDelayMs?: number;
 }
@@ -72,7 +74,21 @@ export class SseListener {
     client.on("notification", (msg) => {
       if (msg.channel !== "bv_event" || !msg.payload) return;
       const parsed = parseEvent(msg.payload);
-      if (parsed) this.config.manager.publish(parsed);
+      if (!parsed) return;
+      // Owner lookup hits the DB; do it async and fan out when resolved.
+      // Errors are logged + the event is dropped (fail-closed) so we
+      // never leak across users when the lookup fails.
+      this.config.ownerLookup
+        .ownersOf(parsed)
+        .then((owners) => this.config.manager.publish(parsed, owners))
+        .catch((err) =>
+          console.error(
+            "[SseListener] owner lookup failed for",
+            parsed.event,
+            parsed.id,
+            (err as Error).message,
+          ),
+        );
     });
 
     // pg.Client emits 'error' for socket-level issues, then ends the connection.

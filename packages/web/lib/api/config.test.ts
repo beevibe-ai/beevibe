@@ -1,4 +1,24 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+beforeEach(() => {
+  // happy-dom's localStorage isn't always reliable inside resetModules
+  // cycles; stub a minimal in-memory shim so getUserKey/setUserKey/etc.
+  // exercise their real code paths.
+  const store = new Map<string, string>();
+  const fake = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      store.set(k, v);
+    },
+    removeItem: (k: string) => {
+      store.delete(k);
+    },
+    clear: () => store.clear(),
+    key: () => null,
+    length: 0,
+  };
+  Object.defineProperty(window, "localStorage", { value: fake, configurable: true });
+});
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -42,19 +62,40 @@ describe("api config", () => {
     expect(isApiConfigured).toBe(false);
   });
 
-  it("exposes userKey from NEXT_PUBLIC_BV_USER_KEY when set", async () => {
+  it("getUserKey() returns NEXT_PUBLIC_BV_USER_KEY env fallback when nothing's stored", async () => {
     vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
-    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "bv_u_test123");
+    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "bv_u_envFallback");
     vi.resetModules();
-    const { userKey } = await loadConfig();
-    expect(userKey).toBe("bv_u_test123");
+    const { getUserKey } = await loadConfig();
+    expect(getUserKey()).toBe("bv_u_envFallback");
   });
 
-  it("treats missing NEXT_PUBLIC_BV_USER_KEY as null userKey (no auth header)", async () => {
+  it("getUserKey() returns null when neither stored nor env set", async () => {
     vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
     vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "");
     vi.resetModules();
-    const { userKey } = await loadConfig();
-    expect(userKey).toBeNull();
+    const { getUserKey } = await loadConfig();
+    expect(getUserKey()).toBeNull();
+  });
+
+  it("setUserKey persists to localStorage and getUserKey reads it back", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
+    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "");
+    vi.resetModules();
+    const { getUserKey, setUserKey, clearUserKey } = await loadConfig();
+    setUserKey("bv_u_runtime");
+    expect(getUserKey()).toBe("bv_u_runtime");
+    clearUserKey();
+    expect(getUserKey()).toBeNull();
+  });
+
+  it("isWellFormedUserKey rejects garbage and accepts proper bv_u_ keys", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
+    vi.resetModules();
+    const { isWellFormedUserKey } = await loadConfig();
+    expect(isWellFormedUserKey("bv_u_abcdefghijklmnop")).toBe(true);
+    expect(isWellFormedUserKey("bv_u_short")).toBe(false);
+    expect(isWellFormedUserKey("not_a_key")).toBe(false);
+    expect(isWellFormedUserKey("bv_a_agentKey1234567890")).toBe(false);
   });
 });

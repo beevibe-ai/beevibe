@@ -1,4 +1,4 @@
-import { apiBaseUrl, userKey } from "./config";
+import { apiBaseUrl, getUserKey } from "./config";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -10,6 +10,16 @@ export class ApiError extends Error {
     this.status = status;
     this.body = body;
   }
+}
+
+/**
+ * Routed when an api request returns 401 — the stored key is invalid /
+ * revoked. The shell wires this to a redirect to /sign-in. Out-of-band
+ * registration so http.ts stays decoupled from Next.js routing.
+ */
+let onUnauthorized: (() => void) | undefined;
+export function setOnUnauthorized(handler: () => void): void {
+  onUnauthorized = handler;
 }
 
 export class ApiNotConfigured extends Error {
@@ -38,13 +48,14 @@ function buildUrl(path: string, query?: FetchOptions["query"]): string {
 
 export async function fetchJson<T>(path: string, opts: FetchOptions = {}): Promise<T> {
   const { query, body, headers, signal, ...rest } = opts;
+  const key = getUserKey();
   const init: RequestInit = {
     ...rest,
     signal,
     headers: {
       Accept: "application/json",
       ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
-      ...(userKey ? { Authorization: `Bearer ${userKey}` } : {}),
+      ...(key ? { Authorization: `Bearer ${key}` } : {}),
       ...headers,
     },
     body: body !== undefined ? JSON.stringify(body) : undefined,
@@ -55,6 +66,7 @@ export async function fetchJson<T>(path: string, opts: FetchOptions = {}): Promi
   const parsed: unknown = text ? safeParse(text) : undefined;
 
   if (!res.ok) {
+    if (res.status === 401 && onUnauthorized) onUnauthorized();
     throw new ApiError(`HTTP ${res.status} ${res.statusText}`, res.status, parsed);
   }
   return parsed as T;
