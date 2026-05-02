@@ -33,6 +33,27 @@ const DEFAULT_CORS_ORIGINS = Array.from({ length: 11 }, (_, i) => [
   `http://127.0.0.1:${3000 + i}`,
 ]).flat();
 
+const API_LANDING_HTML = `<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>beevibe api</title>
+    <style>
+      body { font-family: ui-sans-serif, system-ui, sans-serif; max-width: 640px; margin: 64px auto; padding: 0 24px; color: #09090b; line-height: 1.6; }
+      h1 { font-size: 1.25rem; margin: 0 0 4px; }
+      p { margin: 12px 0; color: #52525b; }
+      code, kbd { font-family: ui-monospace, Menlo, monospace; background: #f4f4f5; padding: 2px 6px; border-radius: 4px; font-size: 0.9em; }
+      a { color: #09090b; }
+    </style>
+  </head>
+  <body>
+    <h1>beevibe api</h1>
+    <p>This is the api server. It serves JSON over <code>Authorization: Bearer bv_u_…</code>; there's no webpage here.</p>
+    <p>For the chat UI, run <code>pnpm --filter @beevibe/web dev</code> and open the URL it prints (typically <a href="http://localhost:3001">http://localhost:3001</a>).</p>
+    <p>Health probe: <a href="/health"><code>/health</code></a>.</p>
+  </body>
+</html>`;
+
 /**
  * Minimal CORS handler — no extra dependency. Echoes the request's Origin
  * back (matched against the allowlist) and answers OPTIONS preflights.
@@ -91,6 +112,14 @@ export class BeevibeApiServer {
 
     // Public routes
     this.app.get("/health", healthRoute);
+    // Friendly landing page at `/` — first-time users sometimes open the
+    // api port (3000) in a browser instead of the web port (3001) and
+    // get a confusing `{error: "missing_authorization"}` JSON response
+    // from the auth middleware on a downstream router. This handler
+    // points them at the web instead.
+    this.app.get("/", (_req, res) => {
+      res.type("text/html").send(API_LANDING_HTML);
+    });
   }
 
   /** Reference to the underlying Express app for tests + subsequent milestones. */
