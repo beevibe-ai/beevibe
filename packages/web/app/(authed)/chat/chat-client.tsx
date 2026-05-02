@@ -87,7 +87,7 @@ export function ChatClient() {
     <div className="flex-1 flex flex-col overflow-hidden">
       <header className="px-6 pt-6 pb-3 border-b border-border/60 flex items-baseline justify-between">
         <div>
-          <h1 className="text-base font-semibold">Chat with your team agent</h1>
+          <h1 className="text-xl font-semibold tracking-tight">Chat with your team agent</h1>
           <p className="text-xs text-muted-foreground mt-0.5 max-w-prose">
             Ask the team agent to do things — mint tasks, query the fleet, brief you on a project.
             It has full hierarchy tool access during the turn.

@@ -78,12 +78,12 @@ function Stepper({ current, className }: { current: Step; className?: string }) 
         <div key={s} className="flex items-center gap-1.5">
           <span
             className={cn(
-              "h-1.5 w-1.5 rounded-full transition-colors",
-              i <= idx ? "bg-primary" : "bg-muted-foreground/30",
+              "h-2 w-2 rounded-full transition-colors",
+              i <= idx ? "bg-primary" : "bg-muted-foreground/50",
             )}
           />
           {i < steps.length - 1 ? (
-            <span className={cn("h-px w-4 transition-colors", i < idx ? "bg-primary" : "bg-muted-foreground/30")} />
+            <span className={cn("h-0.5 w-5 rounded-full transition-colors", i < idx ? "bg-primary" : "bg-muted-foreground/40")} />
           ) : null}
         </div>
       ))}
@@ -154,7 +154,7 @@ function DiagramNode({
         className={cn(
           "h-12 w-12 rounded-full flex items-center justify-center border",
           highlight
-            ? "bg-primary/10 border-primary/40 text-primary"
+            ? "bg-primary border-primary text-primary-foreground"
             : "bg-secondary border-border text-foreground",
         )}
       >
