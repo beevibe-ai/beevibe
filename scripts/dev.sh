@@ -169,24 +169,68 @@ write_web_api_url() {
 }
 
 if [ "$TUNNEL_ENABLED" = "1" ]; then
-  # Spawn cloudflared for the api; capture the trycloudflare URL from
-  # its log stream, write it into the web env, then start web + a
-  # second cloudflared for the web.
+  # Two cloudflareds run as INDEPENDENT background pipelines: one for
+  # the api, one for the web. They each tee URL captures into temp
+  # files; the orchestrator polls those files to coordinate sequencing
+  # (api up → write web env → start web → web tunnel up → print banner).
+  # An earlier version put the web pipeline INSIDE the api's while loop
+  # which caused SIGPIPE to kill the api cloudflared when web started —
+  # so the web ended up with no public URL at all. Don't regress.
+  api_url_file=$(mktemp -t bv-api-url.XXXXXX)
+  web_url_file=$(mktemp -t bv-web-url.XXXXXX)
+  cleanup_tunnel_files() { rm -f "$api_url_file" "$web_url_file"; }
+  trap 'cleanup_tunnel_files; kill 0' EXIT
+
   (
     cloudflared tunnel --url "http://localhost:${BEEVIBE_API_PORT}" 2>&1 | while IFS= read -r line; do
       echo "[tunnel-api] $line"
-      if [[ "$line" =~ (https://[^[:space:]]+\.trycloudflare\.com) ]]; then
-        api_url="${BASH_REMATCH[1]}"
-        write_web_api_url "$api_url"
-        start_web
-        # Give Next.js a couple seconds to bind the port before we
-        # cloudflared-tunnel it; otherwise the first connection 502s.
-        sleep 4
-        cloudflared tunnel --url "http://localhost:${BEEVIBE_WEB_PORT}" 2>&1 | while IFS= read -r wline; do
-          echo "[tunnel-web] $wline"
-          if [[ "$wline" =~ (https://[^[:space:]]+\.trycloudflare\.com) ]]; then
-            web_url="${BASH_REMATCH[1]}"
-            cat <<EOF
+      if [[ "$line" =~ (https://[^[:space:]]+\.trycloudflare\.com) ]] && [ ! -s "$api_url_file" ]; then
+        echo "${BASH_REMATCH[1]}" > "$api_url_file"
+      fi
+    done
+  ) &
+
+  # Block until the api URL lands so the web bundle bakes the right
+  # NEXT_PUBLIC_BV_API_URL on first build.
+  echo "==> Waiting for api tunnel URL..."
+  for i in $(seq 1 60); do
+    if [ -s "$api_url_file" ]; then break; fi
+    sleep 1
+    if [ "$i" = "60" ]; then
+      echo "✗ api tunnel didn't report a URL in 60s — is cloudflared healthy?"
+      exit 1
+    fi
+  done
+  api_url=$(cat "$api_url_file")
+  echo "==> API tunnel: $api_url"
+  write_web_api_url "$api_url"
+  start_web
+
+  # Give Next.js a couple seconds to bind $BEEVIBE_WEB_PORT before we
+  # cloudflared-tunnel it; otherwise the first remote connection 1033s.
+  sleep 4
+
+  (
+    cloudflared tunnel --url "http://localhost:${BEEVIBE_WEB_PORT}" 2>&1 | while IFS= read -r line; do
+      echo "[tunnel-web] $line"
+      if [[ "$line" =~ (https://[^[:space:]]+\.trycloudflare\.com) ]] && [ ! -s "$web_url_file" ]; then
+        echo "${BASH_REMATCH[1]}" > "$web_url_file"
+      fi
+    done
+  ) &
+
+  # Print the banner once both URLs are known.
+  (
+    for i in $(seq 1 60); do
+      if [ -s "$web_url_file" ]; then break; fi
+      sleep 1
+    done
+    if [ ! -s "$web_url_file" ]; then
+      echo "⚠ web tunnel didn't report a URL in 60s — check [tunnel-web] logs above."
+      return 0 2>/dev/null || exit 0
+    fi
+    web_url=$(cat "$web_url_file")
+    cat <<EOF
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 beevibe is live. Public URLs:
@@ -214,12 +258,6 @@ Remote Claude CLI? Paste into ~/.config/claude/mcp.json:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 EOF
-            break
-          fi
-        done
-        break
-      fi
-    done
   ) &
 else
   # Local-only mode: web points at the local api port; no tunneling.
