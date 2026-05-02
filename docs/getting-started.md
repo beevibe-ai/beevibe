@@ -35,13 +35,21 @@ inline as cards or "Open this →" buttons in the conversation.
   `claude login` — every agent (chat and tasks) runs as a `claude`
   subprocess and authenticates through `~/.claude/` credentials.
   This is what powers the chat — *not* an Anthropic API key.
-- **OpenAI API key** (`sk-...`) — for memory fact embeddings (1536-dim,
-  text-embedding-3-small) used by the agent's memory recall.
-- **Anthropic API key** (`sk-ant-...`) — **optional.** Only used for
-  server-side fact merging and promotion (post-session memory
-  operations). When skipped, memory still works — facts are stored
-  and recalled — but near-duplicates won't be merged and promotions
-  won't fire. Chat and tasks don't depend on it.
+- **OpenAI API key** (`sk-...`) — **optional.** When provided, memory
+  recall embeds intents (text-embedding-3-small) so the team agent
+  remembers facts across sessions. When skipped, the `save_memory`
+  tool returns "memory disabled" to the agent and briefings are
+  blocks-only. Chat works either way.
+- **Anthropic API key** (`sk-ant-...`) — **optional.** Used for
+  server-side fact merging (near-dupe consolidation) and ic→team→org
+  scope promotion. When skipped, memory still stores + recalls but
+  doesn't merge or promote. Chat and tasks don't depend on it.
+
+> **Both keys are optional, but recommended.** With both: agents
+> remember across sessions and consolidate what they learn. With
+> neither: chat works fine for the current session but agents are
+> stateless across sessions. Add the keys later by editing `.env`
+> and restarting `pnpm dev` — no migration needed.
 
 The init script checks for these and bails with a useful message if
 anything's missing.

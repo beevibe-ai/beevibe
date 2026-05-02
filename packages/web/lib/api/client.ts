@@ -66,8 +66,13 @@ export interface HealthResponse {
   ok: boolean;
   /** `claude` CLI presence — chat agents spawn as CLI subprocesses. */
   claude_cli: { ok: boolean; message?: string };
-  /** OpenAI embeddings — used by the memory briefing's vector recall. */
-  openai: { ok: boolean; message?: string };
+  /**
+   * OpenAI embeddings — used by memory briefing's vector recall.
+   * `skipped: true` means no `OPENAI_API_KEY` was configured at boot;
+   * memory writes will return a friendly disabled message and recall
+   * returns blocks-only briefings. Chat works either way.
+   */
+  openai: { ok: boolean; skipped?: boolean; message?: string };
 }
 
 export interface ChatSendInput {

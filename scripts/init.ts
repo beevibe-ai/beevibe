@@ -155,8 +155,10 @@ async function ensureEnvFile(): Promise<EnvState> {
   };
 
   const openai = await ask("OPENAI_API_KEY (sk-...)", env.OPENAI_API_KEY, {
-    required: true,
-    help: "Used for memory recall (text-embedding-3-small).",
+    required: false,
+    help:
+      "Optional — used for memory recall (text-embedding-3-small). Chat works " +
+      "without it; agents just won't remember across sessions until you add it.",
   });
   const anthropic = await ask("ANTHROPIC_API_KEY (sk-ant-...)", env.ANTHROPIC_API_KEY, {
     required: false,

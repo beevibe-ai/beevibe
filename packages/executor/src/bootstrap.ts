@@ -29,11 +29,12 @@ import { TaskExecutionWorker } from "./worker.js";
 export interface BootstrapConfig {
   databaseUrl: string;
   mcpServerUrl: string;
-  openaiApiKey: string;
+  /** Optional. When missing, memory recall + writes are disabled. */
+  openaiApiKey?: string;
   /**
-   * Optional. When missing, FactStore + FactPromoter degrade to no-op
-   * for merge/promotion (memory still stores facts and recalls them).
-   * See `packages/api/src/bootstrap.ts` for the full rationale.
+   * Optional. When missing, FactStore.addOrMerge skips its merge branch
+   * and FactPromoter.evaluate returns no-promotion. See
+   * `packages/api/src/bootstrap.ts` for the full rationale.
    */
   anthropicApiKey?: string;
   /** Default `~/.beevibe/workspaces`. */
@@ -80,14 +81,20 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
   const memoryFactRepo = new PostgresMemoryFactRepository(pool);
 
-  // External-service adapters. LLM is optional — when missing, FactStore
-  // + FactPromoter degrade gracefully (no merge, no promotion). Chat +
-  // tasks unaffected because they spawn the `claude` CLI which auths
-  // via ~/.claude/, not via ANTHROPIC_API_KEY.
-  const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
+  // External-service adapters. Both providers optional; memory degrades
+  // gracefully without each. Chat + tasks unaffected because they spawn
+  // the `claude` CLI which auths via ~/.claude/, not via API keys.
+  const embed = cfg.openaiApiKey
+    ? new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey })
+    : undefined;
   const llm = cfg.anthropicApiKey
     ? new AnthropicLlmProvider({ apiKey: cfg.anthropicApiKey })
     : undefined;
+  if (!embed) {
+    console.warn(
+      "[executor] OPENAI_API_KEY not set — memory recall + writes disabled.",
+    );
+  }
   if (!llm) {
     console.warn(
       "[executor] ANTHROPIC_API_KEY not set — memory merge/promotion disabled.",

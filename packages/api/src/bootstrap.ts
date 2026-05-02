@@ -42,7 +42,14 @@ import { SseListener } from "./sse/listener.js";
 
 export interface BootstrapConfig {
   databaseUrl: string;
-  openaiApiKey: string;
+  /**
+   * OpenAI API key for memory recall embeddings. OPTIONAL: when missing,
+   * `MemoryAgent.prepareBriefing` returns blocks-only (no fact recall),
+   * the `save_memory` MCP tool returns a friendly disabled message to
+   * the agent, and existing memory_fact rows are unreachable by vector
+   * search. Chat and tasks are unaffected (they spawn the `claude` CLI).
+   */
+  openaiApiKey?: string;
   /**
    * Anthropic API key for the server-side memory pipeline (FactStore
    * merging + FactPromoter scope-promotion). OPTIONAL: when missing,
@@ -106,15 +113,25 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const escalationRepo = new PostgresEscalationRepository(pool);
   const sessionEventRepo = new PostgresSessionEventRepository(pool);
 
-  // External services (LLM + embeddings) for memory pipeline.
-  // The Anthropic LLM is optional — without it FactStore skips
-  // merge-on-similar and FactPromoter returns no-promotion. Log a
-  // one-line warning at startup so an operator who expected memory
-  // promotion isn't quietly without it.
-  const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
+  // External services. Both keys are optional — memory degrades
+  // gracefully without each:
+  //   - no OPENAI_API_KEY: prepareBriefing returns blocks-only, save_memory
+  //     MCP tool fails-fast with a friendly disabled message
+  //   - no ANTHROPIC_API_KEY: FactStore skips merge-on-similar,
+  //     FactPromoter returns no-promotion
+  // Chat and tasks are unaffected by either — they spawn `claude` directly.
+  const embed = cfg.openaiApiKey
+    ? new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey })
+    : undefined;
   const llm = cfg.anthropicApiKey
     ? new AnthropicLlmProvider({ apiKey: cfg.anthropicApiKey })
     : undefined;
+  if (!embed) {
+    console.warn(
+      "[bootstrap] OPENAI_API_KEY not set — memory recall + writes disabled. " +
+        "Chat and tasks unaffected; agents won't remember across sessions.",
+    );
+  }
   if (!llm) {
     console.warn(
       "[bootstrap] ANTHROPIC_API_KEY not set — memory fact merging + promotion disabled. " +

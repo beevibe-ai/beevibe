@@ -24,7 +24,15 @@ const MERGE_TEMPERATURE = 0.2;
 
 export interface FactStoreDeps {
   repo: MemoryFactRepository;
-  embed: EmbeddingService;
+  /**
+   * Embedding service for new fact content. Optional: when absent,
+   * `addOrMerge` throws `MEMORY_DISABLED` and memory writes return a
+   * graceful error to the caller (typically the `save_memory` MCP tool,
+   * which surfaces it to the agent as "memory writes disabled — skip").
+   * Vector search (`search`) still works against existing rows; the
+   * caller controls whether to query.
+   */
+  embed?: EmbeddingService;
   /**
    * LLM used to merge near-duplicate observations into one coherent fact.
    * Optional: when absent, `addOrMerge` always inserts a new fact (no
@@ -34,6 +42,15 @@ export interface FactStoreDeps {
    */
   llm?: LlmProvider;
 }
+
+/**
+ * Sentinel error: thrown by `addOrMerge` when no embedding service is
+ * configured. Callers (`save_memory` MCP tool) should match this and
+ * return a friendly disabled-memory message to the agent rather than
+ * propagating an opaque stack.
+ */
+export const MEMORY_DISABLED_ERROR =
+  "MEMORY_DISABLED: no embedding service configured (OPENAI_API_KEY missing)";
 
 export class FactStore {
   constructor(private deps: FactStoreDeps) {}
@@ -53,7 +70,11 @@ export class FactStore {
     content: string,
     fact_type: FactType,
   ): Promise<MemoryFact> {
-    const embedding = await this.deps.embed.embed(content);
+    const embed = this.deps.embed;
+    if (!embed) {
+      throw new Error(MEMORY_DISABLED_ERROR);
+    }
+    const embedding = await embed.embed(content);
     const [neighbor] = await this.deps.repo.searchByVector({
       agent_id: agentId,
       scope: "ic",
@@ -89,7 +110,7 @@ export class FactStore {
       })
     ).text.trim();
 
-    const mergedEmbedding = await this.deps.embed.embed(mergedText);
+    const mergedEmbedding = await embed.embed(mergedText);
     const mergedSessionIds = Array.from(
       new Set([...neighbor.source_session_ids, sessionId]),
     );

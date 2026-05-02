@@ -8,6 +8,7 @@ import {
   Check,
   Loader2,
   MessageSquare,
+  Minus,
   Network,
   Sparkles,
   X,
@@ -201,8 +202,20 @@ function ProvidersStep({ onNext }: { onNext: () => void }) {
         />
         <ProviderRow
           label="OpenAI"
-          subtitle="memory recall (text-embedding-3-small)"
-          state={isLoading ? "loading" : data?.openai.ok ? "ok" : "fail"}
+          subtitle={
+            data?.openai.skipped
+              ? "memory disabled (optional — add OPENAI_API_KEY in .env to enable)"
+              : "memory recall (text-embedding-3-small)"
+          }
+          state={
+            isLoading
+              ? "loading"
+              : data?.openai.skipped
+              ? "skipped"
+              : data?.openai.ok
+              ? "ok"
+              : "fail"
+          }
           message={data?.openai.ok ? undefined : data?.openai.message}
         />
       </div>
@@ -233,7 +246,7 @@ function ProvidersStep({ onNext }: { onNext: () => void }) {
         </div>
       ) : null}
 
-      {data && !data.openai.ok ? (
+      {data && !data.openai.ok && !data.openai.skipped ? (
         <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs max-w-md mx-auto">
           <div className="text-status-failed font-medium mb-1">OpenAI key not working</div>
           <div className="text-muted-foreground">
@@ -276,7 +289,7 @@ function ProviderRow({
 }: {
   label: string;
   subtitle: string;
-  state: "loading" | "ok" | "fail";
+  state: "loading" | "ok" | "fail" | "skipped";
   message?: string;
 }) {
   return (
@@ -295,7 +308,7 @@ function ProviderRow({
   );
 }
 
-function StatusGlyph({ state }: { state: "loading" | "ok" | "fail" }) {
+function StatusGlyph({ state }: { state: "loading" | "ok" | "fail" | "skipped" }) {
   if (state === "loading") {
     return (
       <div className="h-7 w-7 rounded-full bg-secondary border border-border flex items-center justify-center">
@@ -307,6 +320,13 @@ function StatusGlyph({ state }: { state: "loading" | "ok" | "fail" }) {
     return (
       <div className="h-7 w-7 rounded-full bg-status-done/15 border border-status-done/40 flex items-center justify-center">
         <Check className="h-3.5 w-3.5 text-status-done" />
+      </div>
+    );
+  }
+  if (state === "skipped") {
+    return (
+      <div className="h-7 w-7 rounded-full bg-secondary border border-border flex items-center justify-center">
+        <Minus className="h-3.5 w-3.5 text-muted-foreground" />
       </div>
     );
   }

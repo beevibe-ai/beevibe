@@ -33,7 +33,8 @@ export interface MeRoutesDeps {
   personRepo: PersonRepository;
   agentRepo: AgentRepository;
   runtimeRegistry: RuntimeRegistry;
-  embed: EmbeddingService;
+  /** Optional. When undefined, /health/runtime reports openai as `skipped`. */
+  embed?: EmbeddingService;
 }
 
 export function createMeRouter(deps: MeRoutesDeps): Router {
@@ -81,22 +82,24 @@ export function createMeRouter(deps: MeRoutesDeps): Router {
     // The chat path: spawn `claude` CLI. The runtime port's healthCheck
     // calls `claude --version` — fast, doesn't burn a turn.
     const claudeRuntime = deps.runtimeRegistry["claude-code"];
+    const embed = deps.embed;
     const [cliResult, embedResult] = await Promise.allSettled([
       claudeRuntime
         ? claudeRuntime.healthCheck()
         : Promise.reject(new Error("claude-code runtime not registered")),
-      deps.embed.embed("ok"),
+      embed ? embed.embed("ok") : Promise.resolve(null),
     ]);
 
     const cliOk =
       cliResult.status === "fulfilled" && cliResult.value.healthy;
-    const embedOk = embedResult.status === "fulfilled";
+    // OpenAI is "skipped" when no embed service was configured at boot
+    // (no OPENAI_API_KEY). Wizard treats skipped as "ok-but-degraded"
+    // and lets the user proceed; chat works without it. When configured,
+    // skipped becomes ok/fail based on the actual probe result.
+    const embedSkipped = !embed;
+    const embedOk = embedSkipped || embedResult.status === "fulfilled";
     const ok = cliOk && embedOk;
 
-    // Always 200: this is a structured probe, not a load-balancer signal.
-    // Per-provider failures are reported in the body so the wizard can
-    // distinguish "the server is unreachable" (network/auth = real
-    // fetch error) from "the server is up but providers aren't ready."
     res.status(200).json({
       ok,
       claude_cli: cliOk
@@ -108,7 +111,9 @@ export function createMeRouter(deps: MeRoutesDeps): Router {
                 ? cliResult.value.error ?? "claude --version exited non-zero"
                 : errMsg(cliResult.reason),
           },
-      openai: embedOk
+      openai: embedSkipped
+        ? { ok: true, skipped: true }
+        : embedResult.status === "fulfilled"
         ? { ok: true }
         : { ok: false, message: errMsg((embedResult as PromiseRejectedResult).reason) },
     });

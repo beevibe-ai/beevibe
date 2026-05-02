@@ -2,14 +2,14 @@
 import { config as loadEnv } from "dotenv";
 import { bootstrap } from "./bootstrap.js";
 
-// ANTHROPIC_API_KEY is intentionally NOT required: when missing, the
-// bootstrap logs a warning + memory merge/promotion silently disable.
+// Both LLM provider keys are intentionally NOT required:
+//   - OPENAI_API_KEY missing → memory recall/writes disabled; chat works
+//   - ANTHROPIC_API_KEY missing → memory merge/promotion disabled; chat works
 // Chat and tasks spawn the `claude` CLI, which authenticates via the
 // host's `~/.claude/` credentials — no api key needed for those paths.
 const REQUIRED_ENV = [
   "DATABASE_URL",
   "BEEVIBE_MCP_SERVER_URL",
-  "OPENAI_API_KEY",
 ] as const;
 
 async function main(): Promise<void> {
@@ -26,7 +26,7 @@ async function main(): Promise<void> {
   const { server, shutdown } = await bootstrap({
     databaseUrl: process.env.DATABASE_URL!,
     mcpServerUrl: process.env.BEEVIBE_MCP_SERVER_URL!,
-    openaiApiKey: process.env.OPENAI_API_KEY!,
+    openaiApiKey: process.env.OPENAI_API_KEY,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     workspaceRoot: process.env.WORKSPACE_ROOT,
     port,

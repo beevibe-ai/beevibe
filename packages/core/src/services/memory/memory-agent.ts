@@ -39,7 +39,14 @@ export interface MemoryAgentDeps {
   coreMemory: CoreMemory;
   factStore: FactStore;
   promoter: FactPromoter;
-  embed: EmbeddingService;
+  /**
+   * Embedding service for briefing-time fact recall. Optional: when
+   * absent, `prepareBriefing` returns blocks-only (no vector search).
+   * Memory writes via the MCP `save_memory` tool also fail-fast in
+   * `FactStore.addOrMerge` — the tool surfaces a friendly disabled
+   * message to the agent.
+   */
+  embed?: EmbeddingService;
   /**
    * Optional audit log for FactPromoter decisions. When provided,
    * `onTaskComplete` writes a row per evaluated fact (promoted + rejected)
@@ -61,6 +68,15 @@ export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
 
   return {
     async prepareBriefing(intent: string): Promise<BriefingResult> {
+      // Without an embedding service we can't do vector recall — return
+      // a blocks-only briefing. Core memory still works, archival memory
+      // is empty for this session. The agent operates without recall
+      // until the operator provides an OPENAI_API_KEY and writes start
+      // landing in memory_fact again.
+      if (!deps.embed) {
+        const blocks = await deps.coreMemory.read(deps.agentId);
+        return composeBriefing(blocks, []);
+      }
       const [blocks, queryVec] = await Promise.all([
         deps.coreMemory.read(deps.agentId),
         deps.embed.embed(intent),

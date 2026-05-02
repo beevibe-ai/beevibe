@@ -1,4 +1,4 @@
-import type { FactStore } from "@beevibe/core/services/memory";
+import { MEMORY_DISABLED_ERROR, type FactStore } from "@beevibe/core/services/memory";
 import { FACT_TYPES, type FactType } from "@beevibe/core";
 import type { AgentTool } from "./types.js";
 
@@ -69,15 +69,35 @@ export function createSaveMemoryTool(
           isError: true,
         };
       }
-      const fact = await services.factStore.addOrMerge(
-        ctx.agentId,
-        ctx.sessionId,
-        content,
-        factType as FactType,
-      );
-      return {
-        content: { saved: true, fact_id: fact.id, fact_type: factType },
-      };
+      try {
+        const fact = await services.factStore.addOrMerge(
+          ctx.agentId,
+          ctx.sessionId,
+          content,
+          factType as FactType,
+        );
+        return {
+          content: { saved: true, fact_id: fact.id, fact_type: factType },
+        };
+      } catch (err) {
+        if (err instanceof Error && err.message.startsWith("MEMORY_DISABLED")) {
+          // Graceful degrade: tell the agent its memory writes aren't
+          // landing right now (no OPENAI_API_KEY) so it can decide
+          // whether to keep going or surface the limitation to the user.
+          // isError=false so the agent doesn't treat this as a tool
+          // failure to retry — it's a documented capability gap.
+          return {
+            content: {
+              saved: false,
+              skipped: true,
+              reason: "memory_disabled",
+              message:
+                "Memory writes are disabled (no OPENAI_API_KEY configured). Continue without saving.",
+            },
+          };
+        }
+        throw err;
+      }
     },
   };
 }
