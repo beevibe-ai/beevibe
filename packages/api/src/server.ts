@@ -1,4 +1,10 @@
-import express, { json, type Express, type RequestHandler } from "express";
+import express, {
+  json,
+  type Express,
+  type Request,
+  type RequestHandler,
+  type Response,
+} from "express";
 import type { Server } from "node:http";
 import type { LookupApiKeyDeps } from "@beevibe/core/auth";
 import { createAuthMiddleware } from "./auth/middleware.js";
@@ -12,6 +18,49 @@ export interface BeevibeApiServerConfig {
   authDeps: LookupApiKeyDeps;
   /** Override the default socket timeout. Default 5 min. */
   socketTimeoutMs?: number;
+  /**
+   * Origins allowed to make cross-origin requests with credentials. Used by
+   * the web frontend during local dev (api on `:3000`, Next on `:3001+`)
+   * and by remote-tunnel deployments where the web origin differs from
+   * the api origin. Empty array disables CORS entirely (same-origin only).
+   * Default: localhost ports 3000-3010 for dev convenience.
+   */
+  corsOrigins?: string[];
+}
+
+const DEFAULT_CORS_ORIGINS = Array.from({ length: 11 }, (_, i) => [
+  `http://localhost:${3000 + i}`,
+  `http://127.0.0.1:${3000 + i}`,
+]).flat();
+
+/**
+ * Minimal CORS handler — no extra dependency. Echoes the request's Origin
+ * back (matched against the allowlist) and answers OPTIONS preflights.
+ * `Authorization` is exposed as an allowed header so EventSource + bv_u_
+ * Bearer flows work cross-origin.
+ */
+function corsMiddleware(allowed: string[]): RequestHandler {
+  if (allowed.length === 0) {
+    return (_req, _res, next) => next();
+  }
+  const allowSet = new Set(allowed);
+  return (req: Request, res: Response, next): void => {
+    const origin = req.header("origin");
+    if (origin && allowSet.has(origin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Credentials", "true");
+      res.setHeader("Vary", "Origin");
+      res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type");
+      res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+      res.setHeader("Access-Control-Expose-Headers", "Content-Type");
+      res.setHeader("Access-Control-Max-Age", "600");
+    }
+    if (req.method === "OPTIONS") {
+      res.status(204).end();
+      return;
+    }
+    next();
+  };
 }
 
 /**
@@ -32,6 +81,9 @@ export class BeevibeApiServer {
 
   constructor(private readonly config: BeevibeApiServerConfig) {
     this.app = express();
+    // CORS must run before json() so OPTIONS preflights are answered
+    // without trying to parse a body.
+    this.app.use(corsMiddleware(config.corsOrigins ?? DEFAULT_CORS_ORIGINS));
     this.app.use(json());
 
     this.authMiddleware = createAuthMiddleware(config.authDeps);
