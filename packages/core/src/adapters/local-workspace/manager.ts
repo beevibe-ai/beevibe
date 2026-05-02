@@ -39,7 +39,15 @@ export class LocalWorkspaceManager implements WorkspaceManager {
   private readonly root: string;
 
   constructor(private config: LocalWorkspaceManagerConfig) {
-    this.root = config.workspaceRoot ?? join(homedir(), ".beevibe", "workspaces");
+    // `||` rather than `??` so empty-string env (`WORKSPACE_ROOT=` in .env,
+    // which dotenv parses as `""`) falls back to homedir. Without this,
+    // `this.root` becomes `""`, `join("", agent.id)` yields a RELATIVE
+    // path, and the spawned `claude` subprocess resolves --mcp-config
+    // doubly-relative and errors out.
+    this.root =
+      config.workspaceRoot && config.workspaceRoot.length > 0
+        ? config.workspaceRoot
+        : join(homedir(), ".beevibe", "workspaces");
   }
 
   async ensureWorkspace({ agent }: { agent: Agent }): Promise<Workspace> {

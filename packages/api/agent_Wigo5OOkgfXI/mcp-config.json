@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "beevibe": {
+      "type": "http",
+      "url": "http://localhost:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer bv_a_QcJaGchTGkyJOmHDtUyfVDGW",
+        "X-Beevibe-Session": "${BEEVIBE_SESSION_ID}"
+      }
+    }
+  }
+}

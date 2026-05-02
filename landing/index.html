@@ -4,6 +4,13 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Beevibe — the OS for companies run by humans and AI domain experts</title>
+  <meta name="description" content="A shared workspace where each AI agent is a persistent domain expert with its own memory. Specialists that deepen with use — not one giant generalist that resets every chat." />
+  <meta property="og:title" content="Beevibe — the OS for companies run by humans and AI domain experts" />
+  <meta property="og:description" content="A shared workspace where each AI agent is a persistent domain expert with its own memory. Specialists that deepen with use — not one giant generalist that resets every chat." />
+  <meta property="og:type" content="website" />
+  <meta property="og:url" content="https://beevibe.ai" />
+  <meta name="twitter:card" content="summary_large_image" />
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='18' fill='%23facc15'/%3E%3Ctext x='50' y='74' text-anchor='middle' font-family='Inter,sans-serif' font-weight='800' font-size='68' fill='%23000'%3EB%3C/text%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -203,9 +210,6 @@
           <i data-lucide="sun" class="h-4 w-4 hidden dark:block"></i>
           <i data-lucide="moon" class="h-4 w-4 block dark:hidden"></i>
         </button>
-        <a href="home.html" class="inline-flex items-center gap-1.5 h-8 px-3 rounded bg-primary text-primary-foreground text-xs font-semibold hover:opacity-90 active:scale-[0.98] transition-all duration-150">
-          Open dashboard
-        </a>
       </div>
     </div>
   </header>
@@ -227,11 +231,7 @@
           Each agent is a persistent domain expert with its own memory. Specialists that deepen with use — not one giant generalist that resets every chat.
         </p>
         <div class="mt-7 flex flex-wrap items-center gap-3">
-          <a href="home.html" class="inline-flex items-center gap-2 h-10 px-4 rounded bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition-all duration-150">
-            <i data-lucide="layout-dashboard" class="h-4 w-4"></i>
-            Open the workspace
-          </a>
-          <a href="#moments" class="inline-flex items-center gap-1.5 h-10 px-4 rounded text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
+          <a href="#moments" class="inline-flex items-center gap-2 h-10 px-4 rounded bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition-all duration-150">
             See it in action
             <i data-lucide="arrow-right" class="h-4 w-4"></i>
           </a>
@@ -521,11 +521,7 @@
           <p class="text-sm text-muted-foreground leading-relaxed mb-3">
             When one specialist needs another's input, it asks. <span class="font-mono text-xs">ask</span>, <span class="font-mono text-xs">negotiate</span>, and <span class="font-mono text-xs">report_blocker</span> are built-in commands, with chain-budget guards against runaway loops. The agent you ask answers from its own memory — not from a merged super-bot.
           </p>
-          <code class="block text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded px-2 py-1.5 mb-3">ask(target_agent_id, question)</code>
-          <a href="mesh.html" class="text-xs font-medium text-foreground hover:underline inline-flex items-center gap-1">
-            See the live mesh
-            <i data-lucide="arrow-right" class="h-3 w-3"></i>
-          </a>
+          <code class="block text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded px-2 py-1.5">ask(target_agent_id, question)</code>
         </div>
 
         <!-- Pillar 2 — Humans steer, review, hand off -->
@@ -558,10 +554,6 @@
               </button>
             </div>
           </div>
-          <a href="task-detail.html" class="text-xs font-medium text-foreground hover:underline inline-flex items-center gap-1">
-            See a review flow
-            <i data-lucide="arrow-right" class="h-3 w-3"></i>
-          </a>
         </div>
 
         <!-- Pillar 3 — Context crosses, doesn't pool -->
