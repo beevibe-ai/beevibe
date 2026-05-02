@@ -1,9 +1,15 @@
 /**
  * Human chat surface — `POST /chat`. Resolves the caller's primary
  * (team/org) agent and runs one synchronous AgentSession turn with
- * `type='chat'`. Multi-turn continuity via `prior_session_id` (runtime
- * spawns with `--resume`). Synchronous-only for now; streaming is a
- * follow-up.
+ * `type='chat'`. Multi-turn continuity via `prior_session_id`. The chat
+ * UI mints the session id client-side and passes it as `session_id` so
+ * it can subscribe to `session.step` SSE events for real-time tool
+ * streaming before the run starts.
+ *
+ * Two structured signals come back alongside the response text:
+ *   - `view_refs`: entity ids the agent mentioned, hydrated as cards
+ *   - `open_view`: an `<open_view path="..."/>` directive parsed out of
+ *     the response so the UI can render a prominent "Open this →" CTA
  */
 
 import { Router, type RequestHandler, type Response } from "express";
@@ -31,12 +37,66 @@ export interface ChatRoutesDeps {
   makeMemoryAgent: (agentId: string) => MemoryAgent;
 }
 
+const ENTITY_ID_RE = /\b((?:task|agent|sess)_[A-Za-z0-9]{12})\b/g;
+const OPEN_VIEW_RE =
+  /<open_view\s+path="([^"]+)"(?:\s+label="([^"]+)")?\s*\/?>(?:\s*<\/open_view>)?/i;
+
+const CHAT_DIRECTIVES = `
+You are responding inside a chat surface — not a CLI. Two display
+directives the UI understands:
+
+1. **Reference any task / agent / session by its full id** (e.g.
+   \`task_abc123def456\`) inline in your response. The UI hydrates
+   each id as a clickable card linking to the detail page.
+
+2. **When the user clearly wants to land on a specific page** (e.g.
+   "show me the mesh", "open the billing task"), end your response
+   with one directive on its own line:
+
+   \`<open_view path="/the/path" label="Optional CTA label" />\`
+
+   Valid paths: \`/tasks\`, \`/tasks/<task_id>\`, \`/agents\`,
+   \`/agents/<agent_id>\`, \`/mesh\`, \`/memory\`, \`/promotions\`,
+   \`/dashboard\`. The UI renders this as a prominent "Open this →"
+   button below your message and strips the directive from the visible
+   text. Use this sparingly — only when the user's intent is clearly
+   navigational, not for every mention.
+`.trim();
+
 function handleError(err: unknown, res: Response): void {
   console.error("[chat route]", err);
   res.status(500).json({
     error: "internal_error",
     message: err instanceof Error ? err.message : String(err),
   });
+}
+
+/**
+ * Parse out the `<open_view path="..." label="..."/>` directive (if any),
+ * extract referenced entity ids, and return the cleaned visible response.
+ */
+function processResponse(raw: string): {
+  visible: string;
+  view_refs: string[];
+  open_view?: { path: string; label?: string };
+} {
+  const match = raw.match(OPEN_VIEW_RE);
+  const open_view = match?.[1]
+    ? { path: match[1], ...(match[2] ? { label: match[2] } : {}) }
+    : undefined;
+  const visible = match ? raw.replace(OPEN_VIEW_RE, "").trim() : raw;
+
+  const seen = new Set<string>();
+  const view_refs: string[] = [];
+  for (const m of visible.matchAll(ENTITY_ID_RE)) {
+    const id = m[1];
+    if (id && !seen.has(id)) {
+      seen.add(id);
+      view_refs.push(id);
+    }
+  }
+
+  return open_view ? { visible, view_refs, open_view } : { visible, view_refs };
 }
 
 export function createChatRouter(deps: ChatRoutesDeps): Router {
@@ -57,6 +117,10 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
     }
     const priorSessionId =
       typeof body.prior_session_id === "string" ? body.prior_session_id : undefined;
+    const callerSessionId =
+      typeof body.session_id === "string" && /^sess_[A-Za-z0-9]{12}$/.test(body.session_id)
+        ? body.session_id
+        : undefined;
 
     // Resolve the caller to their primary agent — team-tier preferred, org
     // as fallback. IC agents are intentionally excluded (they're
@@ -96,15 +160,21 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         intent: messageRaw,
         workspace,
         type: "chat",
+        sessionId: callerSessionId,
         priorSessionId,
+        extraSystemPromptAppend: CHAT_DIRECTIVES,
       });
+
+      const { visible, view_refs, open_view } = processResponse(session.result_summary ?? "");
 
       res.json({
         ok: true,
         agent: { id: agent.id, name: agent.name, hierarchy: agent.hierarchy_level },
         session_id: session.id,
-        response: session.result_summary ?? "",
+        response: visible,
         status: session.status,
+        view_refs,
+        ...(open_view ? { open_view } : {}),
       });
     } catch (err) {
       handleError(err, res);

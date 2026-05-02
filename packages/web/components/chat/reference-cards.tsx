@@ -8,27 +8,6 @@ import { useTask } from "@/lib/hooks/use-tasks";
 import { sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
-const ID_RE = /\b((?:task|agent|sess)_[A-Za-z0-9]{12})\b/g;
-
-/**
- * Extract referenced entity ids from agent response text. The chat agent
- * tends to mention ids it created or queried in its summary — surfacing
- * them as clickable cards turns the conversation into a navigation hub.
- * Order-preserving + deduped.
- */
-export function extractEntityIds(text: string): string[] {
-  const seen = new Set<string>();
-  const out: string[] = [];
-  for (const m of text.matchAll(ID_RE)) {
-    const id = m[1];
-    if (id && !seen.has(id)) {
-      seen.add(id);
-      out.push(id);
-    }
-  }
-  return out;
-}
-
 export function ReferenceCards({ ids }: { ids: string[] }) {
   if (ids.length === 0) return null;
   return (

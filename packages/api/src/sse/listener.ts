@@ -103,10 +103,17 @@ export class SseListener {
 
 function parseEvent(payload: string): BvEvent | undefined {
   try {
-    const raw = JSON.parse(payload) as { event?: unknown; id?: unknown };
-    if (typeof raw.event === "string" && typeof raw.id === "string") {
-      return { event: raw.event, id: raw.id };
-    }
+    const raw = JSON.parse(payload) as {
+      event?: unknown;
+      id?: unknown;
+      data?: unknown;
+    };
+    if (typeof raw.event !== "string" || typeof raw.id !== "string") return undefined;
+    const data =
+      raw.data && typeof raw.data === "object" && !Array.isArray(raw.data)
+        ? (raw.data as Record<string, unknown>)
+        : undefined;
+    return data ? { event: raw.event, id: raw.id, data } : { event: raw.event, id: raw.id };
   } catch {
     // ignore malformed payload
   }

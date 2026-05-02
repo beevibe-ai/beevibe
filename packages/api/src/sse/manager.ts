@@ -11,6 +11,13 @@ export interface BvEvent {
   event: string;
   /** Row id of whatever changed. */
   id: string;
+  /**
+   * Optional structured payload. Cache-invalidation events (task.updated
+   * etc.) leave this undefined — the browser refetches via the existing
+   * GET endpoints. Push events (session.step, …) carry the data inline
+   * so subscribers can render without a round-trip.
+   */
+  data?: Record<string, unknown>;
 }
 
 export type SseSubscriber = (event: BvEvent) => void;

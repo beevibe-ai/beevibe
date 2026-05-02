@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, MessageSquare, RotateCcw, Send, Sparkles } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { AlertTriangle, ArrowRight, MessageSquare, RotateCcw, Send, Sparkles } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
+import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
 import { sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
-import { ReferenceCards, extractEntityIds } from "@/components/chat/reference-cards";
+import { ReferenceCards } from "@/components/chat/reference-cards";
 
 const PROMPT_SUGGESTIONS = [
   "What's on the team's plate today?",
@@ -18,7 +19,8 @@ const PROMPT_SUGGESTIONS = [
 
 export function ChatClient() {
   const [draft, setDraft] = useState("");
-  const { messages, send, reset, isPending, error } = useChat();
+  const { messages, send, reset, isPending, error, pendingSessionId } = useChat();
+  const liveSteps = useChatStream(pendingSessionId);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -26,7 +28,7 @@ export function ChatClient() {
       top: transcriptRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [messages, isPending]);
+  }, [messages, isPending, liveSteps.length]);
 
   if (!isApiConfigured) {
     return (
@@ -86,7 +88,7 @@ export function ChatClient() {
           ) : (
             messages.map((m) => <Bubble key={m.id} message={m} />)
           )}
-          {isPending ? <Thinking /> : null}
+          {isPending ? <Thinking steps={liveSteps} /> : null}
           {error ? (
             <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
               <div className="flex items-center gap-1.5 text-status-failed font-medium mb-1">
@@ -127,12 +129,8 @@ export function ChatClient() {
 
 function Bubble({ message }: { message: ChatMessage }) {
   const isUser = message.role === "user";
-  // Detect referenced ids only on agent responses — the user's own prompts
-  // shouldn't render cards (would just echo back what they typed).
-  const refIds = useMemo(
-    () => (isUser ? [] : extractEntityIds(message.content)),
-    [isUser, message.content],
-  );
+  // Server now supplies view_refs per turn; fall back to empty if missing.
+  const refIds = !isUser ? message.view_refs ?? [] : [];
   return (
     <div className={cn("flex", isUser ? "justify-end" : "justify-start")}>
       <div
@@ -145,6 +143,7 @@ function Bubble({ message }: { message: ChatMessage }) {
       >
         {message.content}
         {refIds.length > 0 ? <ReferenceCards ids={refIds} /> : null}
+        {message.open_view ? <OpenViewCta open_view={message.open_view} /> : null}
         {message.session_id ? (
           <div className="mt-1.5 text-[10px] font-mono opacity-70">
             <Link href={sessionHref(message.session_id)} className="hover:underline">
@@ -157,16 +156,52 @@ function Bubble({ message }: { message: ChatMessage }) {
   );
 }
 
-function Thinking() {
+function OpenViewCta({ open_view }: { open_view: { path: string; label?: string } }) {
+  return (
+    <Link
+      href={open_view.path}
+      className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-foreground text-background hover:opacity-90 transition-opacity px-3 py-1.5 text-xs font-medium cursor-pointer"
+    >
+      {open_view.label ?? "Open this"}
+      <ArrowRight className="h-3 w-3" />
+    </Link>
+  );
+}
+
+function Thinking({ steps }: { steps: ChatStreamStep[] }) {
+  // Surface only tool steps; the final summary arrives via the synchronous
+  // POST /chat response (so it shows as a regular agent bubble, not here).
+  const visible = steps.filter((s) => s.kind === "tool_call" || s.kind === "tool_result");
   return (
     <div className="flex justify-start">
-      <div className="rounded-lg px-3 py-2 text-sm bg-secondary text-muted-foreground border border-border italic">
-        <span className="inline-flex items-center gap-1">
-          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse" />
-          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:200ms]" />
-          <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:400ms]" />
-        </span>
-        <span className="ml-2">thinking…</span>
+      <div className="max-w-[80%] rounded-lg px-3 py-2 text-sm bg-secondary text-foreground border border-border">
+        <div className="flex items-center gap-2 text-muted-foreground italic">
+          <span className="inline-flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse" />
+            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:200ms]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:400ms]" />
+          </span>
+          <span>thinking…</span>
+          {visible.length > 0 ? (
+            <span className="text-[10px] tabular-nums opacity-70 ml-auto">
+              {visible.length} step{visible.length === 1 ? "" : "s"}
+            </span>
+          ) : null}
+        </div>
+        {visible.length > 0 ? (
+          <ul className="mt-2 space-y-1 text-[11px] text-muted-foreground/90">
+            {visible.slice(-6).map((s) => (
+              <li key={s.event_id} className="flex items-baseline gap-1.5 truncate">
+                {s.tool_name ? (
+                  <span className="font-mono text-foreground/80">{s.tool_name}</span>
+                ) : (
+                  <span className="font-mono text-foreground/60">{s.kind}</span>
+                )}
+                <span className="text-muted-foreground truncate">{s.content}</span>
+              </li>
+            ))}
+          </ul>
+        ) : null}
       </div>
     </div>
   );
@@ -206,4 +241,3 @@ function EmptyHint({
     </div>
   );
 }
-

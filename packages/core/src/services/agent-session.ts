@@ -56,6 +56,14 @@ export interface AgentSessionRunInput {
   /** Step-by-step notifier for live UIs. */
   onStep?: (step: RuntimeStep) => void;
   /**
+   * Per-call system prompt addition appended after `agent.runtime_config.
+   * system_prompt_addition` and the memory briefing. Used by surfaces that
+   * need session-shape-specific guidance — e.g. the chat route teaches the
+   * agent the `<open_view path="..." />` directive without polluting the
+   * agent's persistent runtime config.
+   */
+  extraSystemPromptAppend?: string;
+  /**
    * Skip the `onSessionComplete` hook for this run. Used by
    * `postDispatchCheck`'s retry path to break the otherwise-recursive call
    * (retry → hook → another postDispatchCheck → another retry → …).
@@ -115,7 +123,11 @@ export class AgentSession {
       );
     }
     const baseline = agent.runtime_config.system_prompt_addition ?? "";
-    const system_prompt_append = [baseline, briefing.systemPromptAppend]
+    const system_prompt_append = [
+      baseline,
+      briefing.systemPromptAppend,
+      input.extraSystemPromptAppend ?? "",
+    ]
       .filter((s) => s.length > 0)
       .join("\n\n");
 

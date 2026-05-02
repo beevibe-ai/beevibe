@@ -51,6 +51,12 @@ export interface ChatSendInput {
   message: string;
   /** Previous turn's session id — enables `--resume` continuity. */
   prior_session_id?: string;
+  /**
+   * Caller-supplied session id for the new turn. Lets the chat UI subscribe
+   * to `session.step` SSE events for this id BEFORE the server starts the
+   * run, so streaming step rendering doesn't miss the early events.
+   */
+  session_id?: string;
 }
 
 export interface ChatTurnResponse {
@@ -59,6 +65,13 @@ export interface ChatTurnResponse {
   session_id: string;
   response: string;
   status: "running" | "succeeded" | "failed" | "cancelled";
+  /** Entity ids the agent referenced in its response (task_*, agent_*, sess_*). */
+  view_refs: string[];
+  /**
+   * If the agent emitted an `<open_view path="..."/>` directive, the
+   * resolved path is here so the chat UI can render a prominent "Open this →" CTA.
+   */
+  open_view?: { path: string; label?: string };
 }
 
 export type EscalationResolveInput =
