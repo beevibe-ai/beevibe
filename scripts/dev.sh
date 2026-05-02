@@ -182,7 +182,11 @@ if [ "$TUNNEL_ENABLED" = "1" ]; then
   trap 'cleanup_tunnel_files; kill 0' EXIT
 
   (
-    cloudflared tunnel --url "http://localhost:${BEEVIBE_API_PORT}" 2>&1 | while IFS= read -r line; do
+    # --protocol http2: disable QUIC. Recent cloudflared versions hit
+    # "context canceled" on the datagram handler when behind some
+    # NATs/firewalls; HTTP/2 is rock-solid and just as fast for
+    # demo-scale traffic.
+    cloudflared tunnel --protocol http2 --url "http://localhost:${BEEVIBE_API_PORT}" 2>&1 | while IFS= read -r line; do
       echo "[tunnel-api] $line"
       if [[ "$line" =~ (https://[^[:space:]]+\.trycloudflare\.com) ]] && [ ! -s "$api_url_file" ]; then
         echo "${BASH_REMATCH[1]}" > "$api_url_file"
@@ -211,7 +215,7 @@ if [ "$TUNNEL_ENABLED" = "1" ]; then
   sleep 4
 
   (
-    cloudflared tunnel --url "http://localhost:${BEEVIBE_WEB_PORT}" 2>&1 | while IFS= read -r line; do
+    cloudflared tunnel --protocol http2 --url "http://localhost:${BEEVIBE_WEB_PORT}" 2>&1 | while IFS= read -r line; do
       echo "[tunnel-web] $line"
       if [[ "$line" =~ (https://[^[:space:]]+\.trycloudflare\.com) ]] && [ ! -s "$web_url_file" ]; then
         echo "${BASH_REMATCH[1]}" > "$web_url_file"
