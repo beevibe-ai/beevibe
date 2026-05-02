@@ -8,7 +8,7 @@
     "node": ">=20.0.0"
   },
   "scripts": {
-    "init": "tsx scripts/init.ts",
+    "bootstrap": "tsx scripts/init.ts",
     "build": "turbo build",
     "dev": "bash scripts/dev.sh",
     "lint": "turbo lint",

@@ -59,10 +59,10 @@ anything's missing.
 git clone https://github.com/beevibe-ai/beevibe.git
 cd beevibe
 pnpm install
-pnpm init
+pnpm bootstrap
 ```
 
-`pnpm init` is a one-shot first-run setup. It does six things, in
+`pnpm bootstrap` is a one-shot first-run setup. It does six things, in
 order, and is idempotent — re-running on a populated install is a
 no-op:
 
@@ -132,7 +132,7 @@ sidebar is hidden — this is a focused wizard, not a chrome-laden page.
 >
 > [ Set up my team agent → ]
 
-One button. No account form — `pnpm init` already minted your admin
+One button. No account form — `pnpm bootstrap` already minted your admin
 key and the browser inherited it via `.env`.
 
 ### Step 3b — Runtime check
@@ -321,7 +321,7 @@ populate this page is by talking to your team agent.*
 
 | Command | What it does |
 |---|---|
-| `pnpm init` | First-run setup. Idempotent. |
+| `pnpm bootstrap` | First-run setup. Idempotent. |
 | `pnpm dev` | Bring up postgres + api + executor. `--no-tunnel` to skip cloudflared. |
 | `pnpm dev` + `pnpm --filter @beevibe/web dev` | Full local stack with web UI. |
 | `pnpm migrate up` / `pnpm migrate down` | Apply / roll back migrations. |
@@ -333,12 +333,12 @@ populate this page is by talking to your team agent.*
 
 ## Troubleshooting
 
-**`pnpm init` says "Docker daemon isn't running."**
+**`pnpm bootstrap` says "Docker daemon isn't running."**
 Start Docker Desktop. Mac: `open -a Docker`. Wait ~10 seconds, re-run.
 
 **Web UI shows "Chat not connected."**
 `NEXT_PUBLIC_BV_API_URL` or `NEXT_PUBLIC_BV_USER_KEY` is unset in
-`.env`. Re-run `pnpm init` to repair.
+`.env`. Re-run `pnpm bootstrap` to repair.
 
 **Welcome wizard's "Claude CLI" check fails.**
 Either `claude` isn't on the api server's `PATH`, or you haven't run
@@ -367,7 +367,7 @@ down` once then `up` again to re-establish a clean state, or drop the
 db and recreate.
 
 **The team agent doesn't have an api_key.**
-Re-run `pnpm init` — it'll detect the existing person but missing
+Re-run `pnpm bootstrap` — it'll detect the existing person but missing
 agent and re-provision just the team agent.
 
 ---

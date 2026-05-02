@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * `pnpm beevibe init` — first-run setup for a fresh clone.
+ * `pnpm bootstrap` — first-run setup for a fresh clone.
  *
  * Walks the user from `git clone` to "running with a chat-ready team
  * agent" in one shell command:
@@ -11,12 +11,17 @@
  *      for pg_isready.
  *   3. Runs migrations (idempotent).
  *   4. Provisions an admin person (bv_u_ key) and a top-level team agent
- *      tied to them, IF none exist for the configured admin email. The
- *      bv_u_ key is printed once for paste-into NEXT_PUBLIC_BV_USER_KEY.
- *   5. Writes the bv_u_ key into .env's NEXT_PUBLIC_BV_USER_KEY so
- *      `pnpm dev` + the web shell are connected on first start.
+ *      tied to them, IF none exist for the configured admin email.
+ *   5. Writes the bv_u_ key into BOTH `.env` (so api/executor pick it up)
+ *      AND `packages/web/.env.local` (Next.js doesn't read repo-root
+ *      env files; without this the web shows "not connected").
  *   6. Tells the user to run `pnpm dev` — we don't spawn it ourselves so
  *      the user retains stdout / Ctrl+C semantics.
+ *
+ * The script is named `bootstrap` because `pnpm init` and `pnpm setup`
+ * are both pnpm built-in commands (one creates a package.json, the
+ * other configures pnpm itself by mutating ~/.zshrc) and would shadow
+ * any same-named workspace script.
  *
  * Idempotent: re-running on a populated .env / postgres / db just
  * reports state and exits with no changes.
@@ -34,6 +39,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
 const ENV_PATH = join(REPO_ROOT, ".env");
 const ENV_EXAMPLE_PATH = join(REPO_ROOT, ".env.example");
+// Next.js doesn't read repo-root .env — its dev server only picks up
+// .env.local within the package. Without this file the web shell can't
+// see NEXT_PUBLIC_BV_USER_KEY and renders the "not connected" empty state.
+const WEB_ENV_PATH = join(REPO_ROOT, "packages/web/.env.local");
 const ADMIN_EMAIL_DEFAULT = "admin@beevibe.local";
 const TEAM_AGENT_NAME_DEFAULT = "Team agent";
 
@@ -48,7 +57,7 @@ const warn = (msg: string) => console.log(`  ${yellow("!")} ${msg}`);
 const step = (n: number, msg: string) => console.log(`\n${bold(`Step ${n}.`)} ${msg}`);
 
 async function main(): Promise<void> {
-  console.log(`${bold("beevibe init")} — first-run setup\n`);
+  console.log(`${bold("beevibe bootstrap")} — first-run setup\n`);
   console.log(dim("This will set up a local-only stack: postgres + api + executor + web."));
   console.log(dim("Re-running is safe; existing setup is detected and skipped.\n"));
 
@@ -272,14 +281,31 @@ async function ensureAdminAndTeamAgent(): Promise<string> {
 // ─────────────────────────────────────────────────────────────────────────
 
 function writeWebUserKey(userKey: string): void {
+  // Root .env: api/executor read this. Keep it in sync so anything that
+  // shells out can pick up the user key too.
   const env = readEnv(ENV_PATH);
-  if (env.NEXT_PUBLIC_BV_USER_KEY === userKey) {
-    ok("NEXT_PUBLIC_BV_USER_KEY already set");
+  if (env.NEXT_PUBLIC_BV_USER_KEY !== userKey) {
+    env.NEXT_PUBLIC_BV_USER_KEY = userKey;
+    writeEnv(env);
+    ok(`NEXT_PUBLIC_BV_USER_KEY written to .env: ${dim(userKey.slice(0, 12) + "…")}`);
+  } else {
+    ok("NEXT_PUBLIC_BV_USER_KEY already set in .env");
+  }
+
+  // packages/web/.env.local: Next.js's actual source of truth. Without
+  // this the web shell renders "beevibe isn't connected yet" even though
+  // the api server is up.
+  const webEnv = existsSync(WEB_ENV_PATH) ? readEnv(WEB_ENV_PATH) : {};
+  const apiUrl = env.NEXT_PUBLIC_BV_API_URL ?? "http://localhost:3000";
+  if (webEnv.NEXT_PUBLIC_BV_USER_KEY === userKey && webEnv.NEXT_PUBLIC_BV_API_URL === apiUrl) {
+    ok("packages/web/.env.local already in sync");
     return;
   }
-  env.NEXT_PUBLIC_BV_USER_KEY = userKey;
-  writeEnv(env);
-  ok(`NEXT_PUBLIC_BV_USER_KEY written to .env: ${dim(userKey.slice(0, 12) + "…")}`);
+  const webContents =
+    `NEXT_PUBLIC_BV_API_URL=${apiUrl}\n` +
+    `NEXT_PUBLIC_BV_USER_KEY=${userKey}\n`;
+  writeFileSync(WEB_ENV_PATH, webContents);
+  ok(`packages/web/.env.local written (web shell will pick up the key on next start)`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
