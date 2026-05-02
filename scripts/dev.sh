@@ -139,7 +139,15 @@ WEB_ENV_FILE="packages/web/.env.local"
 
 start_web() {
   if [ "$WEB_ENABLED" != "1" ]; then return; fi
-  PORT="$BEEVIBE_WEB_PORT" pnpm --filter @beevibe/web dev 2>&1 \
+  # CRITICAL: unset NEXT_PUBLIC_BV_USER_KEY in the spawned env. The
+  # root .env carries the admin's bv_u_ as a dev convenience; sourcing
+  # it earlier pulled it into our shell, and Next.js bakes any
+  # NEXT_PUBLIC_* env var into the CLIENT bundle. With it set, every
+  # remote visitor would be auto-signed-in as the admin — a real leak
+  # once the web is publicly tunneled. Forcing unset means visitors
+  # have to paste their own bv_u_ on /sign-in.
+  PORT="$BEEVIBE_WEB_PORT" NEXT_PUBLIC_BV_USER_KEY="" \
+    pnpm --filter @beevibe/web dev 2>&1 \
     | sed -u 's/^/[web] /' &
 }
 
