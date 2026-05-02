@@ -37,10 +37,11 @@ inline as cards or "Open this →" buttons in the conversation.
   This is what powers the chat — *not* an Anthropic API key.
 - **OpenAI API key** (`sk-...`) — for memory fact embeddings (1536-dim,
   text-embedding-3-small) used by the agent's memory recall.
-- **Anthropic API key** (`sk-ant-...`) — *only* for server-side fact
-  merging and promotion (post-session memory operations). The chat
-  itself doesn't use it. The api server still requires it at boot for
-  now; making it optional is a follow-up.
+- **Anthropic API key** (`sk-ant-...`) — **optional.** Only used for
+  server-side fact merging and promotion (post-session memory
+  operations). When skipped, memory still works — facts are stored
+  and recalled — but near-duplicates won't be merged and promotions
+  won't fire. Chat and tasks don't depend on it.
 
 The init script checks for these and bails with a useful message if
 anything's missing.
@@ -67,10 +68,10 @@ order, and is idempotent — re-running on a populated install is a
 no-op:
 
 1. **Create `.env`** from `.env.example` if missing.
-2. **Prompt for `ANTHROPIC_API_KEY` + `OPENAI_API_KEY`** if `.env`
-   has placeholders. The keys are written to `.env` only — never sent
-   anywhere else by the script. (Once your stack is running, the api
-   server reads them from the same `.env`.)
+2. **Prompt for `OPENAI_API_KEY`** (required) and `ANTHROPIC_API_KEY`
+   (optional — press Enter to skip; memory merge/promotion will
+   silently no-op). Written to `.env` only — never sent anywhere else
+   by the script. (The api/executor read them from the same `.env`.)
 3. **Bring up Postgres** via `docker compose up -d postgres`. Waits
    for `pg_isready`.
 4. **Apply migrations** via `pnpm migrate up`. About a dozen migrations

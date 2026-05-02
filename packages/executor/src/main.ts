@@ -2,11 +2,14 @@
 import { config as loadEnv } from "dotenv";
 import { bootstrap } from "./bootstrap.js";
 
+// ANTHROPIC_API_KEY intentionally NOT required: when missing, the
+// memory pipeline (FactStore merge / FactPromoter evaluate) silently
+// no-ops. Task agents spawn the `claude` CLI for their LLM, which
+// authenticates via the host's `~/.claude/` credentials.
 const REQUIRED_ENV = [
   "DATABASE_URL",
   "BEEVIBE_MCP_SERVER_URL",
   "OPENAI_API_KEY",
-  "ANTHROPIC_API_KEY",
 ] as const;
 
 async function main(): Promise<void> {
@@ -25,7 +28,7 @@ async function main(): Promise<void> {
     databaseUrl: process.env.DATABASE_URL!,
     mcpServerUrl: process.env.BEEVIBE_MCP_SERVER_URL!,
     openaiApiKey: process.env.OPENAI_API_KEY!,
-    anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     workspaceRoot: process.env.WORKSPACE_ROOT,
     pollIntervalMs: process.env.POLL_INTERVAL_MS
       ? Number(process.env.POLL_INTERVAL_MS)

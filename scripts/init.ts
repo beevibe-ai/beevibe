@@ -125,28 +125,49 @@ async function ensureEnvFile(): Promise<EnvState> {
   const env = readEnv(ENV_PATH);
 
   const placeholderHints = ["placeholder", "fill-in", "your-key"];
-  const isPlaceholder = (v: string | undefined) =>
-    !v || placeholderHints.some((h) => v.toLowerCase().includes(h));
+  const looksLikePlaceholder = (v: string) =>
+    placeholderHints.some((h) => v.toLowerCase().includes(h));
 
   const rl = readline.createInterface({ input, output });
-  const ask = async (label: string, current: string | undefined, secret = false) => {
-    if (!isPlaceholder(current)) return current!;
-    const prompt = secret
-      ? `    ${label} (paste, will be stored in .env): `
-      : `    ${label}: `;
+  const ask = async (
+    label: string,
+    current: string | undefined,
+    opts: { required?: boolean; help?: string } = {},
+  ) => {
+    const required = opts.required ?? true;
+    // Required: prompt when missing/empty/placeholder.
+    // Optional: prompt only when the value LOOKS like a placeholder (a
+    // truly empty value means "user already chose to skip"; don't re-ask
+    // on every bootstrap re-run).
+    const needsPrompt = required
+      ? !current || looksLikePlaceholder(current)
+      : !!current && looksLikePlaceholder(current);
+    if (!needsPrompt) return current ?? "";
+    if (opts.help) console.log(`    ${dim(opts.help)}`);
+    const prompt = required
+      ? `    ${label} (required, paste): `
+      : `    ${label} (optional, press Enter to skip): `;
     const value = (await rl.question(prompt)).trim();
-    if (!value) {
+    if (required && !value) {
       throw new Error(`${label} is required`);
     }
     return value;
   };
 
-  const anthropic = await ask("ANTHROPIC_API_KEY (sk-ant-...)", env.ANTHROPIC_API_KEY, true);
-  const openai = await ask("OPENAI_API_KEY (sk-...)", env.OPENAI_API_KEY, true);
+  const openai = await ask("OPENAI_API_KEY (sk-...)", env.OPENAI_API_KEY, {
+    required: true,
+    help: "Used for memory recall (text-embedding-3-small).",
+  });
+  const anthropic = await ask("ANTHROPIC_API_KEY (sk-ant-...)", env.ANTHROPIC_API_KEY, {
+    required: false,
+    help:
+      "Optional — only used for memory fact merging + promotion. Chat and tasks " +
+      "use the `claude` CLI directly (run `claude login` once).",
+  });
   rl.close();
 
-  env.ANTHROPIC_API_KEY = anthropic;
   env.OPENAI_API_KEY = openai;
+  env.ANTHROPIC_API_KEY = anthropic;
 
   // Apply DATABASE_URL default if unset.
   env.DATABASE_URL ||= "postgresql://beevibe:beevibe@localhost:5433/beevibe";

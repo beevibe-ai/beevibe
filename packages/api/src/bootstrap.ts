@@ -43,7 +43,15 @@ import { SseListener } from "./sse/listener.js";
 export interface BootstrapConfig {
   databaseUrl: string;
   openaiApiKey: string;
-  anthropicApiKey: string;
+  /**
+   * Anthropic API key for the server-side memory pipeline (FactStore
+   * merging + FactPromoter scope-promotion). OPTIONAL: when missing,
+   * memory still works — facts are stored, retrieved by vector search,
+   * and surfaced in briefings — but near-duplicates won't be merged
+   * and promotions won't fire. Chat + tasks are unaffected (those
+   * spawn the `claude` CLI which authenticates via `~/.claude/`).
+   */
+  anthropicApiKey?: string;
   /**
    * MCP server URL embedded in per-agent mcp-config.json files. Used by
    * mesh-spawned target agents to call back into this api server. Same
@@ -98,9 +106,21 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const escalationRepo = new PostgresEscalationRepository(pool);
   const sessionEventRepo = new PostgresSessionEventRepository(pool);
 
-  // External services (LLM + embeddings) for memory pipeline
+  // External services (LLM + embeddings) for memory pipeline.
+  // The Anthropic LLM is optional — without it FactStore skips
+  // merge-on-similar and FactPromoter returns no-promotion. Log a
+  // one-line warning at startup so an operator who expected memory
+  // promotion isn't quietly without it.
   const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
-  const llm = new AnthropicLlmProvider({ apiKey: cfg.anthropicApiKey });
+  const llm = cfg.anthropicApiKey
+    ? new AnthropicLlmProvider({ apiKey: cfg.anthropicApiKey })
+    : undefined;
+  if (!llm) {
+    console.warn(
+      "[bootstrap] ANTHROPIC_API_KEY not set — memory fact merging + promotion disabled. " +
+        "Chat and tasks unaffected (they use the claude CLI directly).",
+    );
+  }
 
   // M3 memory services
   const coreMemory = new CoreMemory({ repo: coreMemoryRepo });

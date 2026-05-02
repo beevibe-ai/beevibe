@@ -30,7 +30,12 @@ export interface BootstrapConfig {
   databaseUrl: string;
   mcpServerUrl: string;
   openaiApiKey: string;
-  anthropicApiKey: string;
+  /**
+   * Optional. When missing, FactStore + FactPromoter degrade to no-op
+   * for merge/promotion (memory still stores facts and recalls them).
+   * See `packages/api/src/bootstrap.ts` for the full rationale.
+   */
+  anthropicApiKey?: string;
   /** Default `~/.beevibe/workspaces`. */
   workspaceRoot?: string;
   /** Default 30_000ms. */
@@ -75,9 +80,19 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
   const memoryFactRepo = new PostgresMemoryFactRepository(pool);
 
-  // External-service adapters
+  // External-service adapters. LLM is optional — when missing, FactStore
+  // + FactPromoter degrade gracefully (no merge, no promotion). Chat +
+  // tasks unaffected because they spawn the `claude` CLI which auths
+  // via ~/.claude/, not via ANTHROPIC_API_KEY.
   const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
-  const llm = new AnthropicLlmProvider({ apiKey: cfg.anthropicApiKey });
+  const llm = cfg.anthropicApiKey
+    ? new AnthropicLlmProvider({ apiKey: cfg.anthropicApiKey })
+    : undefined;
+  if (!llm) {
+    console.warn(
+      "[executor] ANTHROPIC_API_KEY not set — memory merge/promotion disabled.",
+    );
+  }
 
   // Workspace + runtime (shared with M6 via the factory)
   const workspaceManager = new LocalWorkspaceManager({

@@ -25,7 +25,14 @@ const MERGE_TEMPERATURE = 0.2;
 export interface FactStoreDeps {
   repo: MemoryFactRepository;
   embed: EmbeddingService;
-  llm: LlmProvider;
+  /**
+   * LLM used to merge near-duplicate observations into one coherent fact.
+   * Optional: when absent, `addOrMerge` always inserts a new fact (no
+   * dedup-merge), keeping memory functional in installs without an
+   * Anthropic API key. Memory may grow with semantic-near-dupes; the
+   * vector search still surfaces them by similarity at recall time.
+   */
+  llm?: LlmProvider;
 }
 
 export class FactStore {
@@ -56,7 +63,12 @@ export class FactStore {
       fact_types: [fact_type],
     });
 
-    if (!neighbor) {
+    // No neighbor, OR neighbor exists but no LLM is available to merge —
+    // either way, insert a new row. The "no LLM" branch is the graceful-
+    // degraded mode for installs without an Anthropic API key: we accept
+    // some semantic duplication in exchange for keeping memory writes
+    // working at all.
+    if (!neighbor || !this.deps.llm) {
       return this.deps.repo.create({
         id: factId(),
         agent_id: agentId,

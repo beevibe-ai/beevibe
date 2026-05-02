@@ -58,7 +58,14 @@ const PROMOTE_MAX_TOKENS = 300;
 const PROMOTE_TEMPERATURE = 0;
 
 export interface FactPromoterDeps {
-  llm: LlmProvider;
+  /**
+   * LLM used to evaluate ic→team→org promotion candidates. Optional:
+   * when absent, `evaluate` returns `{promoted: false}` for every fact
+   * (same shape as the existing org-scope short-circuit). Facts stay at
+   * their current scope; the install still works, you just don't get
+   * automatic scope-widening.
+   */
+  llm?: LlmProvider;
 }
 
 /**
@@ -79,6 +86,14 @@ export class FactPromoter {
         promoted: false,
         target_scope: null,
         reason: "Already at org scope — no higher target.",
+      };
+    }
+
+    if (!this.deps.llm) {
+      return {
+        promoted: false,
+        target_scope: null,
+        reason: "No LLM provider configured; promotion evaluation skipped.",
       };
     }
 
