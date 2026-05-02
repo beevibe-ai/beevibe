@@ -36,9 +36,7 @@ fi
 
 # ─────────────────── env file ───────────────────
 if [ ! -f .env ]; then
-  echo "==> .env missing. Creating from .env.example..."
-  cp .env.example .env
-  echo "    Edit .env to add ANTHROPIC_API_KEY and OPENAI_API_KEY, then re-run."
+  echo "==> .env missing. Run \`pnpm bootstrap\` first to provision the local stack."
   exit 1
 fi
 
@@ -48,7 +46,9 @@ set -a
 set +a
 
 # Required (no sensible default — must come from .env).
-required_vars=(DATABASE_URL OPENAI_API_KEY ANTHROPIC_API_KEY)
+# OPENAI_API_KEY + ANTHROPIC_API_KEY are intentionally NOT required:
+# memory operations degrade gracefully without each. Chat works either way.
+required_vars=(DATABASE_URL)
 for v in "${required_vars[@]}"; do
   if [ -z "${!v:-}" ]; then
     echo "✗ Missing required env var in .env: $v"
