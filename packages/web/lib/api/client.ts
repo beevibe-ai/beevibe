@@ -102,6 +102,23 @@ export interface ChatTurnResponse {
   open_view?: { path: string; label?: string };
 }
 
+export interface ChatHistoryMessage {
+  id: string;
+  role: "user" | "agent";
+  content: string;
+  session_id?: string;
+  view_refs?: string[];
+  open_view?: { path: string; label?: string };
+}
+
+export interface ChatHistoryResponse {
+  ok: true;
+  agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" } | null;
+  messages: ChatHistoryMessage[];
+  /** The most recent session id, used to chain `prior_session_id` on the next turn. */
+  prior_session_id: string | null;
+}
+
 export type EscalationResolveInput =
   | {
       source: "initiator" | "counterparty";
@@ -190,6 +207,9 @@ export const api = {
      */
     send: (input: ChatSendInput) =>
       fetchJson<ChatTurnResponse>("/chat", { method: "POST", body: input }),
+    /** Recent conversation, oldest first. Used to rehydrate after a reload. */
+    history: (opts: ReadOptions = {}) =>
+      fetchJson<ChatHistoryResponse>("/chat", { signal: opts.signal }),
   },
   me: {
     /** Identity + onboarding state for the welcome flow. */

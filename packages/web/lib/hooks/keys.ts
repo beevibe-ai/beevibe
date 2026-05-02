@@ -37,4 +37,8 @@ export const queryKeys = {
     self: () => ["me", "self"] as const,
     health: () => ["me", "health"] as const,
   },
+  chat: {
+    all: ["chat"] as const,
+    history: () => ["chat", "history"] as const,
+  },
 } as const;

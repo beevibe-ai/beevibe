@@ -1,8 +1,14 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type ChatTurnResponse } from "@/lib/api/client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  api,
+  type ChatHistoryMessage,
+  type ChatHistoryResponse,
+  type ChatTurnResponse,
+} from "@/lib/api/client";
+import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "./keys";
 
 export interface ChatMessage {
@@ -37,21 +43,54 @@ function mintSessionId(): string {
   return `sess_${suffix}`;
 }
 
+function fromHistory(m: ChatHistoryMessage): ChatMessage {
+  return {
+    id: m.id,
+    role: m.role,
+    content: m.content,
+    ...(m.session_id ? { session_id: m.session_id } : {}),
+    ...(m.view_refs ? { view_refs: m.view_refs } : {}),
+    ...(m.open_view ? { open_view: m.open_view } : {}),
+  };
+}
+
 /**
- * Local-state chat history — no React Query cache for the conversation
- * itself (each turn is a fresh DB session row anyway). The mutation runs
- * the turn; on success we append the agent's response. Cache invalidation
- * for tasks/dashboard/sessions falls out automatically from `useLiveUpdates`
- * (SSE `task.created`, `session.updated`, … events) — no explicit refetch.
+ * Conversation state for the chat surface.
  *
- * Continuity across turns is via `prior_session_id` — we send the latest
- * agent session id with each user message, and the runtime spawns with
- * `--resume` so the agent has the full conversation history.
+ * Hydrates from `GET /chat` on mount so a reload doesn't lose the
+ * conversation — sessions are persisted server-side (the `session`
+ * table) and reconstructed as messages by the route handler. New turns
+ * append to local state and chain `prior_session_id` to whatever the
+ * latest session id is (history's last, or the most recent mutation's
+ * response).
+ *
+ * Cache invalidation for tasks/dashboard/sessions rides the SSE channel
+ * via `useLiveUpdates` — no explicit refetch from this hook.
  */
 export function useChat() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
   const [priorSessionId, setPriorSessionId] = useState<string | undefined>();
   const queryClient = useQueryClient();
+
+  const history = useQuery<ChatHistoryResponse>({
+    queryKey: queryKeys.chat.history(),
+    queryFn: ({ signal }) => api.chat.history({ signal }),
+    enabled: isApiConfigured,
+    staleTime: Infinity, // refetch only on explicit invalidation (e.g. reset)
+  });
+
+  // Initialize prior_session_id from history once it lands. If the user
+  // sends a new turn, that takes over (setPriorSessionId in onSuccess);
+  // we only seed once per history load.
+  const seededFor = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    const data = history.data;
+    if (!data) return;
+    const seedKey = data.prior_session_id ?? "<empty>";
+    if (seededFor.current === seedKey) return;
+    seededFor.current = seedKey;
+    setPriorSessionId(data.prior_session_id ?? undefined);
+  }, [history.data]);
 
   const mutation = useMutation<
     ChatTurnResponse,
@@ -65,7 +104,7 @@ export function useChat() {
         prior_session_id: priorSessionId,
       }),
     onSuccess: (data) => {
-      setMessages((prev) => [
+      setLocalMessages((prev) => [
         ...prev,
         {
           id: localId(),
@@ -79,8 +118,7 @@ export function useChat() {
       // Only the first turn of a conversation can flip the server's
       // onboarding flag — refetch /me so the welcome wizard exits
       // automatically. Subsequent turns can't change onboarding state, so
-      // we skip the invalidation entirely. Other invalidations
-      // (tasks, dashboard, sessions) ride the SSE channel.
+      // we skip the invalidation entirely.
       if (priorSessionId === undefined) {
         queryClient.invalidateQueries({ queryKey: queryKeys.me.all });
       }
@@ -88,22 +126,41 @@ export function useChat() {
     },
   });
 
+  // Concatenate history (server-truth, oldest first) + locally-appended
+  // turns from this mount. The two sets never overlap by construction:
+  // history is everything BEFORE this mount; localMessages is everything
+  // ADDED by this mount's mutations.
+  const messages = useMemo<ChatMessage[]>(() => {
+    const seed = history.data?.messages ?? [];
+    return [...seed.map(fromHistory), ...localMessages];
+  }, [history.data, localMessages]);
+
   const send = useCallback(
     (rawMessage: string) => {
       const trimmed = rawMessage.trim();
       if (!trimmed || mutation.isPending) return;
       const sessionId = mintSessionId();
-      setMessages((prev) => [...prev, { id: localId(), role: "user", content: trimmed }]);
+      setLocalMessages((prev) => [...prev, { id: localId(), role: "user", content: trimmed }]);
       mutation.mutate({ message: trimmed, sessionId });
     },
     [mutation],
   );
 
   const reset = useCallback(() => {
-    setMessages([]);
+    setLocalMessages([]);
     setPriorSessionId(undefined);
+    seededFor.current = undefined;
     mutation.reset();
-  }, [mutation]);
+    // Drop the cached history so the next mount fetches fresh — and so
+    // the current view becomes empty immediately rather than re-showing
+    // the last conversation.
+    queryClient.setQueryData(queryKeys.chat.history(), {
+      ok: true,
+      agent: history.data?.agent ?? null,
+      messages: [],
+      prior_session_id: null,
+    } satisfies ChatHistoryResponse);
+  }, [mutation, queryClient, history.data?.agent]);
 
   return {
     messages,
@@ -117,5 +174,7 @@ export function useChat() {
      * SSE events for this turn.
      */
     pendingSessionId: mutation.isPending ? mutation.variables?.sessionId : undefined,
+    /** History query state, for showing a "loading prior conversation…" indicator. */
+    isLoadingHistory: history.isLoading,
   };
 }

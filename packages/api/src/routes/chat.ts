@@ -1,15 +1,21 @@
 /**
- * Human chat surface — `POST /chat`. Resolves the caller's primary
- * (team/org) agent and runs one synchronous AgentSession turn with
- * `type='chat'`. Multi-turn continuity via `prior_session_id`. The chat
- * UI mints the session id client-side and passes it as `session_id` so
- * it can subscribe to `session.step` SSE events for real-time tool
- * streaming before the run starts.
+ * Human chat surface.
  *
- * Two structured signals come back alongside the response text:
+ * `POST /chat`: resolves the caller's primary (team/org) agent and runs
+ * one synchronous AgentSession turn with `type='chat'`. Multi-turn
+ * continuity via `prior_session_id`. The chat UI mints the session id
+ * client-side and passes it as `session_id` so it can subscribe to
+ * `session.step` SSE events for real-time tool streaming before the run
+ * starts. Response carries:
  *   - `view_refs`: entity ids the agent mentioned, hydrated as cards
  *   - `open_view`: an `<open_view path="..."/>` directive parsed out of
  *     the response so the UI can render a prominent "Open this →" CTA
+ *
+ * `GET /chat`: returns the last N chat sessions for the caller's primary
+ * agent, reconstructed as `{role, content, session_id, view_refs?,
+ * open_view?}` messages so the chat surface can rehydrate after a
+ * reload. Sessions are persisted server-side (the `session` table); the
+ * client just lost its component-state copy of the conversation.
  */
 
 import { Router, type RequestHandler, type Response } from "express";
@@ -91,6 +97,15 @@ Skip the \`<open_view>\` directive on this onboarding turn — the user is
 already where they need to be.
 `.trim();
 
+interface HistoryMessage {
+  id: string;
+  role: "user" | "agent";
+  content: string;
+  session_id?: string;
+  view_refs?: string[];
+  open_view?: { path: string; label?: string };
+}
+
 function handleError(err: unknown, res: Response): void {
   console.error("[chat route]", err);
   res.status(500).json({
@@ -127,9 +142,68 @@ function processResponse(raw: string): {
   return open_view ? { visible, view_refs, open_view } : { visible, view_refs };
 }
 
+const HISTORY_LIMIT = 50;
+
 export function createChatRouter(deps: ChatRoutesDeps): Router {
   const router = Router();
   router.use(deps.authMiddleware);
+
+  router.get("/", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const agent = await deps.agentRepo.findTopLevelForOwner(req.caller.personId);
+    if (!agent) {
+      // No primary agent yet → no history. Return empty rather than 404
+      // so the chat UI can render its empty state instead of crashing.
+      res.json({ ok: true, agent: null, messages: [], prior_session_id: null });
+      return;
+    }
+
+    const all = await deps.sessionRepo.listForAgent(agent.id);
+    // Filter to chat-type only and slice to the most recent N. The repo
+    // returns DESC by created_at; reverse so the oldest renders first.
+    const recent = all.filter((s) => s.type === "chat").slice(0, HISTORY_LIMIT);
+    const oldestFirst = [...recent].reverse();
+
+    const messages: HistoryMessage[] = [];
+    for (const s of oldestFirst) {
+      // User turn — always present (the intent the user typed).
+      messages.push({
+        id: `u_${s.id}`,
+        role: "user",
+        content: s.intent,
+      });
+      // Agent turn — only when the session produced output.
+      const summary = s.result_summary ?? "";
+      if (summary) {
+        const { visible, view_refs, open_view } = processResponse(summary);
+        messages.push({
+          id: `a_${s.id}`,
+          role: "agent",
+          content: visible,
+          session_id: s.id,
+          ...(view_refs.length > 0 ? { view_refs } : {}),
+          ...(open_view ? { open_view } : {}),
+        });
+      } else if (s.status === "failed") {
+        // Surface the failure so the user sees what happened on reload
+        // instead of a phantom "user said X, agent never replied" gap.
+        messages.push({
+          id: `a_${s.id}`,
+          role: "agent",
+          content: s.error || "(turn failed — no response)",
+          session_id: s.id,
+        });
+      }
+    }
+
+    res.json({
+      ok: true,
+      agent: { id: agent.id, name: agent.name, hierarchy: agent.hierarchy_level },
+      messages,
+      // Latest session id so the next turn chains correctly.
+      prior_session_id: oldestFirst.length > 0 ? oldestFirst[oldestFirst.length - 1]!.id : null,
+    });
+  });
 
   router.post("/", async (req, res) => {
     if (!requireHuman(req, res)) return;
