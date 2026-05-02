@@ -199,11 +199,6 @@
       <nav class="hidden md:flex items-center gap-6 text-sm text-muted-foreground">
         <a href="#promise" class="hover:text-foreground transition-colors">How it works</a>
         <a href="#moments" class="hover:text-foreground transition-colors">Demo</a>
-        <a href="#" class="hover:text-foreground transition-colors">Docs</a>
-        <a href="#" class="hover:text-foreground transition-colors inline-flex items-center gap-1">
-          <i data-lucide="github" class="h-4 w-4"></i>
-          GitHub
-        </a>
       </nav>
       <div class="flex items-center gap-2">
         <button id="theme-toggle" class="h-8 w-8 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors" title="Toggle theme">
@@ -565,11 +560,7 @@
           <p class="text-sm text-muted-foreground leading-relaxed mb-3">
             Every ask, handoff, and review hands over only the context it needs — and records who said what. No shared pool. No universal knowledge graph. Agents stay specialized, and nothing gets lost between them.
           </p>
-          <code class="block text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded px-2 py-1.5 mb-3">memory_fact.agent_id NOT NULL</code>
-          <a href="agent-detail.html" class="text-xs font-medium text-foreground hover:underline inline-flex items-center gap-1">
-            See an agent's context
-            <i data-lucide="arrow-right" class="h-3 w-3"></i>
-          </a>
+          <code class="block text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded px-2 py-1.5">memory_fact.agent_id NOT NULL</code>
         </div>
 
       </div>
@@ -594,13 +585,9 @@
           <div class="md:col-span-2">
             <div class="text-xs font-mono text-muted-foreground mb-2">001 · DEPTH</div>
             <h3 class="text-xl font-semibold mb-3">An agent gets visibly sharper.</h3>
-            <p class="text-sm text-muted-foreground leading-relaxed mb-4">
+            <p class="text-sm text-muted-foreground leading-relaxed">
               Open <span class="font-mono text-foreground">agent_codebase</span>: 5 facts. Run a Claude Code session against your repo. Open it again: 8 facts, 2 of them merged from earlier ones. The agent is actually learning — not Claude in a costume.
             </p>
-            <a href="agent-detail.html" class="text-sm font-medium text-foreground hover:underline inline-flex items-center gap-1">
-              Open an agent's memory
-              <i data-lucide="arrow-right" class="h-4 w-4"></i>
-            </a>
           </div>
           <div class="md:col-span-3 rounded-lg border border-border bg-card p-5">
             <div class="flex items-center gap-3 mb-4">
@@ -655,13 +642,9 @@
           <div class="md:col-span-2 md:order-1">
             <div class="text-xs font-mono text-muted-foreground mb-2">002 · COMMONS</div>
             <h3 class="text-xl font-semibold mb-3">A fact earns promotion.</h3>
-            <p class="text-sm text-muted-foreground leading-relaxed mb-4">
+            <p class="text-sm text-muted-foreground leading-relaxed">
               When the same fact shows up across sessions, a promoter decides whether the rest of the team should see it — with a written reason. The shared pool is curated, not automatic, and the original agent stays attached.
             </p>
-            <a href="promotions.html" class="text-sm font-medium text-foreground hover:underline inline-flex items-center gap-1">
-              Read the promotion log
-              <i data-lucide="arrow-right" class="h-4 w-4"></i>
-            </a>
           </div>
         </div>
 
@@ -670,13 +653,9 @@
           <div class="md:col-span-2">
             <div class="text-xs font-mono text-muted-foreground mb-2">003 · MESH</div>
             <h3 class="text-xl font-semibold mb-3">Agents ask each other live.</h3>
-            <p class="text-sm text-muted-foreground leading-relaxed mb-4">
+            <p class="text-sm text-muted-foreground leading-relaxed">
               A session in <span class="font-mono text-foreground">ic-agent-1</span> calls <span class="font-mono text-foreground">ask(db-agent, …)</span>. The mesh activity feed shows the request and response in real time; <span class="font-mono text-foreground">db-agent</span> answers from <em>its own</em> memory. Specialists collaborating, not merging.
             </p>
-            <a href="mesh.html" class="text-sm font-medium text-foreground hover:underline inline-flex items-center gap-1">
-              Open the mesh view
-              <i data-lucide="arrow-right" class="h-4 w-4"></i>
-            </a>
           </div>
           <div class="md:col-span-3 rounded-lg border border-status-running/30 bg-status-running/5 p-5">
             <div class="flex items-center gap-2 mb-3 text-xs">
@@ -875,19 +854,9 @@ claude mcp add beevibe http://localhost:3002</pre>
         Your team's AI agents stop working in silos.<br>
         They start <span class="bg-primary text-primary-foreground px-1.5 -mx-0.5 rounded-sm">working together</span>.
       </h2>
-      <p class="text-muted-foreground leading-relaxed mb-7">
+      <p class="text-muted-foreground leading-relaxed">
         Beevibe is the open-source OS for hybrid teams — humans and persistent AI domain experts, in one workspace. Agents ask each other, escalate to humans, and grow expertise session over session.
       </p>
-      <div class="flex flex-wrap items-center justify-center gap-3">
-        <a href="#" class="inline-flex items-center gap-2 h-10 px-5 rounded bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition-all duration-150">
-          <i data-lucide="terminal" class="h-4 w-4"></i>
-          Quickstart
-        </a>
-        <a href="home.html" class="inline-flex items-center gap-1.5 h-10 px-5 rounded text-sm font-medium text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors">
-          Open the workspace
-          <i data-lucide="arrow-right" class="h-4 w-4"></i>
-        </a>
-      </div>
     </div>
   </section>
 
@@ -898,11 +867,6 @@ claude mcp add beevibe http://localhost:3002</pre>
           <span class="text-primary-foreground text-xs font-bold leading-none">B</span>
         </div>
         <span>Beevibe · MIT licensed · self-hosted</span>
-      </div>
-      <div class="flex items-center gap-5">
-        <a href="#" class="hover:text-foreground transition-colors">Docs</a>
-        <a href="#" class="hover:text-foreground transition-colors">GitHub</a>
-        <a href="#" class="hover:text-foreground transition-colors">Discord</a>
       </div>
     </div>
   </footer>
