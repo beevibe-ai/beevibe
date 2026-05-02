@@ -6,17 +6,25 @@
  *   whether to redirect into the wizard or pass through to chat.
  * - `POST /me/onboarding/complete` — flips `person.onboarding_completed_at`
  *   so the wizard exit cannot trap the user. Idempotent.
- * - `GET /health/llm` — runs a tiny call against each LLM/embedding
- *   provider so the welcome wizard can show a green-light "providers
- *   reachable" check before letting the user enter chat.
+ * - `GET /health/runtime` — verifies the dependencies the chat surface
+ *   actually needs:
+ *     - `claude` CLI present + spawnable (chat agents run as CLI
+ *       subprocesses; auth flows through `~/.claude/` credentials, not
+ *       through `ANTHROPIC_API_KEY`)
+ *     - OpenAI embeddings reachable (memory briefing's vector recall
+ *       relies on this; chat works without it but the team agent's
+ *       memory will be cold).
+ *   The Anthropic API key probe was deliberately removed: the chat
+ *   doesn't use it (server-side fact merging/promotion does, but those
+ *   fire post-session and surface their own errors via console.error).
  */
 
 import { Router, type RequestHandler } from "express";
 import type {
   AgentRepository,
   EmbeddingService,
-  LlmProvider,
   PersonRepository,
+  RuntimeRegistry,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 
@@ -24,7 +32,7 @@ export interface MeRoutesDeps {
   authMiddleware: RequestHandler;
   personRepo: PersonRepository;
   agentRepo: AgentRepository;
-  llm: LlmProvider;
+  runtimeRegistry: RuntimeRegistry;
   embed: EmbeddingService;
 }
 
@@ -68,29 +76,37 @@ export function createMeRouter(deps: MeRoutesDeps): Router {
     res.json({ ok: true, onboarding_completed_at: updated.onboarding_completed_at ?? null });
   });
 
-  router.get("/health/llm", async (req, res) => {
+  router.get("/health/runtime", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    // Run both checks in parallel; report each independently so the UI can
-    // tell the user which provider is broken (tutorial bug surface vs.
-    // upstream outage).
-    const [llmResult, embedResult] = await Promise.allSettled([
-      deps.llm.complete({
-        system: "You are a health probe.",
-        prompt: "ok",
-        maxTokens: 1,
-      }),
+    // The chat path: spawn `claude` CLI. The runtime port's healthCheck
+    // calls `claude --version` — fast, doesn't burn a turn.
+    const claudeRuntime = deps.runtimeRegistry["claude-code"];
+    const [cliResult, embedResult] = await Promise.allSettled([
+      claudeRuntime
+        ? claudeRuntime.healthCheck()
+        : Promise.reject(new Error("claude-code runtime not registered")),
       deps.embed.embed("ok"),
     ]);
 
-    const ok = llmResult.status === "fulfilled" && embedResult.status === "fulfilled";
+    const cliOk =
+      cliResult.status === "fulfilled" && cliResult.value.healthy;
+    const embedOk = embedResult.status === "fulfilled";
+    const ok = cliOk && embedOk;
+
     res.status(ok ? 200 : 503).json({
       ok,
-      anthropic: llmResult.status === "fulfilled"
+      claude_cli: cliOk
         ? { ok: true }
-        : { ok: false, message: errMsg(llmResult.reason) },
-      openai: embedResult.status === "fulfilled"
+        : {
+            ok: false,
+            message:
+              cliResult.status === "fulfilled"
+                ? cliResult.value.error ?? "claude --version exited non-zero"
+                : errMsg(cliResult.reason),
+          },
+      openai: embedOk
         ? { ok: true }
-        : { ok: false, message: errMsg(embedResult.reason) },
+        : { ok: false, message: errMsg((embedResult as PromiseRejectedResult).reason) },
     });
   });
 
@@ -99,7 +115,6 @@ export function createMeRouter(deps: MeRoutesDeps): Router {
 
 function errMsg(err: unknown): string {
   if (err instanceof Error) {
-    // Surface only the first line — provider SDKs often dump full stacks.
     return err.message.split("\n")[0]!.slice(0, 200);
   }
   return String(err).slice(0, 200);

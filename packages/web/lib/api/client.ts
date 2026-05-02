@@ -64,7 +64,9 @@ export interface MeResponse {
 
 export interface HealthResponse {
   ok: boolean;
-  anthropic: { ok: boolean; message?: string };
+  /** `claude` CLI presence — chat agents spawn as CLI subprocesses. */
+  claude_cli: { ok: boolean; message?: string };
+  /** OpenAI embeddings — used by the memory briefing's vector recall. */
   openai: { ok: boolean; message?: string };
 }
 
@@ -194,7 +196,7 @@ export const api = {
         { method: "POST" },
       ),
     health: (opts: ReadOptions = {}) =>
-      fetchJson<HealthResponse>("/health/llm", { signal: opts.signal }),
+      fetchJson<HealthResponse>("/health/runtime", { signal: opts.signal }),
   },
   escalations: {
     resolve: (id: string, input: EscalationResolveInput) =>

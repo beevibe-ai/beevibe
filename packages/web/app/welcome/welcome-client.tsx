@@ -178,23 +178,24 @@ function ProvidersStep({ onNext }: { onNext: () => void }) {
   return (
     <div className="space-y-6">
       <div className="space-y-2 text-center">
-        <h2 className="text-xl font-semibold">Provider check</h2>
+        <h2 className="text-xl font-semibold">Runtime check</h2>
         <p className="text-sm text-muted-foreground max-w-prose mx-auto">
-          beevibe uses Anthropic for your agents and OpenAI for memory embeddings.
-          We&apos;ll verify both keys before continuing.
+          Your team agent runs as a <span className="font-mono">claude</span> CLI
+          subprocess; OpenAI powers its memory recall. We&apos;ll verify both before
+          dropping you into chat.
         </p>
       </div>
 
       <div className="space-y-2 max-w-md mx-auto">
         <ProviderRow
-          label="Anthropic"
-          subtitle="powers your agents"
-          state={isLoading ? "loading" : data?.anthropic.ok ? "ok" : "fail"}
-          message={data?.anthropic.ok ? undefined : data?.anthropic.message}
+          label="Claude CLI"
+          subtitle="spawned per chat turn (uses ~/.claude/ login)"
+          state={isLoading ? "loading" : data?.claude_cli.ok ? "ok" : "fail"}
+          message={data?.claude_cli.ok ? undefined : data?.claude_cli.message}
         />
         <ProviderRow
           label="OpenAI"
-          subtitle="memory + embeddings"
+          subtitle="memory recall (text-embedding-3-small)"
           state={isLoading ? "loading" : data?.openai.ok ? "ok" : "fail"}
           message={data?.openai.ok ? undefined : data?.openai.message}
         />
@@ -214,12 +215,23 @@ function ProvidersStep({ onNext }: { onNext: () => void }) {
         </div>
       ) : null}
 
-      {data && !allOk ? (
+      {data && !data.claude_cli.ok ? (
         <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs max-w-md mx-auto">
-          <div className="text-status-failed font-medium mb-1">Provider keys not working</div>
+          <div className="text-status-failed font-medium mb-1">Claude CLI not found</div>
           <div className="text-muted-foreground">
-            Update <span className="font-mono">ANTHROPIC_API_KEY</span> and{" "}
-            <span className="font-mono">OPENAI_API_KEY</span> in your{" "}
+            Install Claude Code (<span className="font-mono">claude</span> on your{" "}
+            <span className="font-mono">PATH</span>) and run{" "}
+            <span className="font-mono">claude login</span> on the host where the api
+            server runs, then re-check.
+          </div>
+        </div>
+      ) : null}
+
+      {data && !data.openai.ok ? (
+        <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs max-w-md mx-auto">
+          <div className="text-status-failed font-medium mb-1">OpenAI key not working</div>
+          <div className="text-muted-foreground">
+            Update <span className="font-mono">OPENAI_API_KEY</span> in{" "}
             <span className="font-mono">.env</span>, restart{" "}
             <span className="font-mono">pnpm dev</span>, then re-check.
           </div>

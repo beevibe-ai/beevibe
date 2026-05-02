@@ -31,15 +31,25 @@ inline as cards or "Open this →" buttons in the conversation.
 
 - **Node 20+** and **pnpm 9+**
 - **Docker** (Docker Desktop on macOS works)
-- **Claude Code CLI** on `PATH` (`claude` command) — agents are spawned
-  as `claude` subprocesses in their own workspaces
-- **Anthropic API key** (`sk-ant-...`) — for chat agents and memory
-  fact merging/promotion
+- **Claude Code CLI** on `PATH` (`claude` command), logged in via
+  `claude login` — every agent (chat and tasks) runs as a `claude`
+  subprocess and authenticates through `~/.claude/` credentials.
+  This is what powers the chat — *not* an Anthropic API key.
 - **OpenAI API key** (`sk-...`) — for memory fact embeddings (1536-dim,
-  text-embedding-3-small)
+  text-embedding-3-small) used by the agent's memory recall.
+- **Anthropic API key** (`sk-ant-...`) — *only* for server-side fact
+  merging and promotion (post-session memory operations). The chat
+  itself doesn't use it. The api server still requires it at boot for
+  now; making it optional is a follow-up.
 
 The init script checks for these and bails with a useful message if
 anything's missing.
+
+> **Why the CLI and not the API key?** beevibe spawns `claude` per
+> session, and `runtime.ts` explicitly strips `ANTHROPIC_API_KEY` from
+> the subprocess env so subscription auth (via `claude login`) takes
+> precedence over per-token billing — see
+> [`packages/core/src/adapters/claude-code/runtime.ts`](../packages/core/src/adapters/claude-code/runtime.ts).
 
 ---
 
@@ -125,20 +135,28 @@ sidebar is hidden — this is a focused wizard, not a chrome-laden page.
 One button. No account form — `pnpm init` already minted your admin
 key and the browser inherited it via `.env`.
 
-### Step 3b — Provider check
+### Step 3b — Runtime check
 
-The wizard hits `GET /health/llm` on the api server. The api makes a
-1-token Claude completion + a tiny OpenAI embedding in parallel and
-reports each provider independently. You'll see two status rows:
+The wizard hits `GET /health/runtime` on the api server. The api runs
+two checks in parallel and reports each independently:
 
-- **Anthropic** ✓ powers your agents
-- **OpenAI** ✓ memory + embeddings
+- **Claude CLI** ✓ — runs `claude --version` via the runtime port to
+  confirm the binary is installed and spawnable. This is the one that
+  matters for chat: every chat turn spawns a `claude` subprocess, and
+  it authenticates via `~/.claude/` (your `claude login`), not via
+  `ANTHROPIC_API_KEY`.
+- **OpenAI** ✓ — runs a 1-token embedding to confirm the key works.
+  Used by the agent's memory recall during briefing.
 
-If a key is bad, the row goes red with the provider's error message
-inline (typically "401 Invalid API key"). Fix `.env`, restart `pnpm
-dev`, click "Re-check." The "Continue" button stays disabled until
-both pass — there's no point starting a chat if the LLM call will fail
-mid-turn.
+If the CLI check fails, install Claude Code and run `claude login` on
+the host where the api server runs. If the OpenAI check fails, fix
+`OPENAI_API_KEY` in `.env`, restart `pnpm dev`, click "Re-check." The
+"Continue" button stays disabled until both pass.
+
+> The wizard deliberately does *not* probe the Anthropic API key.
+> Chat doesn't use it — it's only used by server-side memory operations
+> (fact merging, fact promotion) which run post-session and surface
+> their own errors via console logs.
 
 ### Step 3c — Ready
 
@@ -322,8 +340,14 @@ Start Docker Desktop. Mac: `open -a Docker`. Wait ~10 seconds, re-run.
 `NEXT_PUBLIC_BV_API_URL` or `NEXT_PUBLIC_BV_USER_KEY` is unset in
 `.env`. Re-run `pnpm init` to repair.
 
-**Welcome wizard's "Anthropic" check fails with 401.**
-The key in `.env` is wrong or expired. Update `ANTHROPIC_API_KEY`,
+**Welcome wizard's "Claude CLI" check fails.**
+Either `claude` isn't on the api server's `PATH`, or you haven't run
+`claude login`. Install Claude Code, run `claude login`, restart
+`pnpm dev`, click "Re-check." (Note: the api server inherits the user
+that ran `pnpm dev` — the `~/.claude/` directory must be that user's.)
+
+**Welcome wizard's "OpenAI" check fails.**
+The key in `.env` is wrong or expired. Update `OPENAI_API_KEY`,
 restart `pnpm dev`, click "Re-check."
 
 **Chat reply takes 30+ seconds.**
@@ -356,8 +380,9 @@ agent and re-provision just the team agent.
 - **Async chat.** Each chat turn blocks the request for 5-30s. Fine
   for a single user; not for production scale. The streaming step
   events make the wait tolerable.
-- **Provider rate-limiting.** `/health/llm` is auth'd but unmetered.
-  Spam-clicking "Re-check" in the wizard costs ~$0.0005 per click.
+- **Provider rate-limiting.** `/health/runtime` is auth'd but unmetered.
+  Each "Re-check" click runs `claude --version` (free) + a tiny OpenAI
+  embedding (~$0.00005); spam-clicking is essentially free.
 - **Provider keys via UI.** Today keys live in `.env`. Editing them
   via the web would need a config table + provider re-init.
 - **Onboarding resume.** If you close the browser mid-wizard, you'll

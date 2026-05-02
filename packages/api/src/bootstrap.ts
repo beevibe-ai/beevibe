@@ -262,13 +262,14 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   server.getApp().use("/chat", chatRouter);
 
   // Onboarding/identity surface — `/me`, `/me/onboarding/complete`,
-  // `/health/llm`. The web's welcome wizard hits these to decide whether
-  // to redirect into onboarding and to show the provider-keys check.
+  // `/health/runtime`. The web's welcome wizard hits these to decide
+  // whether to redirect into onboarding and to verify the chat-path
+  // dependencies (claude CLI + OpenAI embeddings).
   const meRouter = createMeRouter({
     authMiddleware: server.getAuthMiddleware(),
     personRepo,
     agentRepo,
-    llm,
+    runtimeRegistry,
     embed,
   });
   server.getApp().use(meRouter);
