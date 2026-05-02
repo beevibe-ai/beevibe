@@ -67,9 +67,10 @@ export function MeshActivityFeed({ asks }: { asks?: MeshAsk[] }) {
             }
             description={
               all.length === 0
-                ? "When agents ask each other for help, those exchanges appear here."
+                ? "When agents ask each other for help, exchanges appear here. Ask your team agent to spawn a few subordinates and assign them work."
                 : undefined
             }
+            cta={all.length === 0 ? { href: "/", label: "Open chat" } : undefined}
           />
         </div>
       ) : (

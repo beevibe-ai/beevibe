@@ -19,6 +19,7 @@ import {
 } from "@beevibe/core/services/agent-session";
 import type {
   AgentRepository,
+  PersonRepository,
   RuntimeRegistry,
   SessionEventRepository,
   SessionRepository,
@@ -30,6 +31,7 @@ import { requireHuman } from "../auth/middleware.js";
 export interface ChatRoutesDeps {
   authMiddleware: RequestHandler;
   agentRepo: AgentRepository;
+  personRepo: PersonRepository;
   sessionRepo: SessionRepository;
   sessionEventRepo: SessionEventRepository;
   workspaceManager: WorkspaceManager;
@@ -61,6 +63,32 @@ directives the UI understands:
    button below your message and strips the directive from the visible
    text. Use this sparingly — only when the user's intent is clearly
    navigational, not for every mention.
+`.trim();
+
+const ONBOARDING_DIRECTIVES = `
+This is the user's FIRST EVER chat with you. They have just finished
+the welcome wizard and you have no memory of them yet. Your job in this
+turn:
+
+1. **Greet warmly and briefly.** One short paragraph; don't lecture.
+2. **Ask three questions in one message** so they can answer all at once
+   or one at a time:
+   - What do they do (role, current focus)?
+   - What kind of work would they like you to handle?
+   - How should you check in when you're unsure (always ask, default to
+     a best guess, etc.)?
+3. **Use \`update_core_memory\`** to save what you learn into your core
+   memory blocks AS the conversation progresses. The user can see those
+   writes happen — it's how they know you're listening. Don't wait until
+   the end.
+4. **At the end of this onboarding conversation** (when you have at
+   least the role + work-type signals), suggest 2–3 concrete first
+   tasks they might want you to handle, based on what they told you.
+   Reference any tasks you mint by their full \`task_*\` id so the UI
+   shows them as cards.
+
+Skip the \`<open_view>\` directive on this onboarding turn — the user is
+already where they need to be.
 `.trim();
 
 function handleError(err: unknown, res: Response): void {
@@ -122,10 +150,12 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         ? body.session_id
         : undefined;
 
-    // Resolve the caller to their primary agent — team-tier preferred, org
-    // as fallback. IC agents are intentionally excluded (they're
-    // subordinates, not entry points).
-    const agent = await deps.agentRepo.findTopLevelForOwner(req.caller.personId);
+    // Resolve caller + their primary agent (team preferred, org fallback)
+    // and the person row (for onboarding state) in parallel.
+    const [agent, person] = await Promise.all([
+      deps.agentRepo.findTopLevelForOwner(req.caller.personId),
+      deps.personRepo.findById(req.caller.personId),
+    ]);
     if (!agent) {
       res.status(404).json({
         error: "no_primary_agent",
@@ -134,6 +164,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
       });
       return;
     }
+    const isOnboarding = !person?.onboarding_completed_at;
 
     const runtime = deps.runtimeRegistry[agent.runtime_config.type];
     if (!runtime) {
@@ -162,10 +193,26 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         type: "chat",
         sessionId: callerSessionId,
         priorSessionId,
-        extraSystemPromptAppend: CHAT_DIRECTIVES,
+        extraSystemPromptAppend: isOnboarding
+          ? `${CHAT_DIRECTIVES}\n\n${ONBOARDING_DIRECTIVES}`
+          : CHAT_DIRECTIVES,
       });
 
       const { visible, view_refs, open_view } = processResponse(session.result_summary ?? "");
+
+      // Mark onboarding complete after the first successful chat turn —
+      // fire-and-forget so a slow update can't block the response. The
+      // welcome wizard polls `/me` and routes onward when this flips.
+      if (isOnboarding && session.status === "succeeded") {
+        deps.personRepo
+          .update(req.caller.personId, { onboarding_completed_at: new Date() })
+          .catch((err) =>
+            console.error(
+              "[chat route] onboarding_completed_at update failed:",
+              (err as Error).message,
+            ),
+          );
+      }
 
       res.json({
         ok: true,

@@ -32,4 +32,9 @@ export const queryKeys = {
     all: ["dashboard"] as const,
     summary: () => ["dashboard", "summary"] as const,
   },
+  me: {
+    all: ["me"] as const,
+    self: () => ["me", "self"] as const,
+    health: () => ["me", "health"] as const,
+  },
 } as const;

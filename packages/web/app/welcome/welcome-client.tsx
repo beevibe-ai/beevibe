@@ -1,0 +1,344 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  AlertTriangle,
+  ArrowRight,
+  Check,
+  Loader2,
+  MessageSquare,
+  Network,
+  Sparkles,
+  X,
+} from "lucide-react";
+import { isApiConfigured } from "@/lib/api/config";
+import { useLlmHealth, useMe } from "@/lib/hooks/use-me";
+import { cn } from "@/lib/utils";
+
+type Step = "intro" | "providers" | "ready";
+
+export function WelcomeClient() {
+  const router = useRouter();
+  const { data: me, isLoading } = useMe();
+  const [step, setStep] = useState<Step>("intro");
+
+  // Already onboarded — drop straight into chat. The /me query is the
+  // source of truth so a stale browser tab can't accidentally re-show
+  // the wizard after a fresh chat completed it.
+  useEffect(() => {
+    if (me && !me.needs_onboarding) {
+      router.replace("/");
+    }
+  }, [me, router]);
+
+  if (!isApiConfigured) {
+    return <NotConfigured />;
+  }
+
+  if (isLoading || (me && !me.needs_onboarding)) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <header className="border-b border-border/60 px-6 py-3">
+        <div className="max-w-3xl mx-auto flex items-center gap-2">
+          <div className="h-6 w-6 rounded-md bg-primary flex items-center justify-center">
+            <span className="text-primary-foreground text-[13px] font-bold leading-none">b</span>
+          </div>
+          <span className="text-sm font-semibold tracking-tight">beevibe</span>
+          <Stepper current={step} className="ml-auto" />
+        </div>
+      </header>
+
+      <main className="flex-1 flex items-center justify-center px-6 py-12">
+        <div className="max-w-2xl w-full">
+          {step === "intro" ? <IntroStep onNext={() => setStep("providers")} /> : null}
+          {step === "providers" ? <ProvidersStep onNext={() => setStep("ready")} /> : null}
+          {step === "ready" ? (
+            <ReadyStep onContinue={() => router.replace("/?from=welcome")} />
+          ) : null}
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function Stepper({ current, className }: { current: Step; className?: string }) {
+  const steps: Step[] = ["intro", "providers", "ready"];
+  const idx = steps.indexOf(current);
+  return (
+    <div className={cn("flex items-center gap-1.5 text-[10px] uppercase tracking-wider text-muted-foreground", className)}>
+      {steps.map((s, i) => (
+        <div key={s} className="flex items-center gap-1.5">
+          <span
+            className={cn(
+              "h-1.5 w-1.5 rounded-full transition-colors",
+              i <= idx ? "bg-primary" : "bg-muted-foreground/30",
+            )}
+          />
+          {i < steps.length - 1 ? (
+            <span className={cn("h-px w-4 transition-colors", i < idx ? "bg-primary" : "bg-muted-foreground/30")} />
+          ) : null}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function IntroStep({ onNext }: { onNext: () => void }) {
+  return (
+    <div className="space-y-8">
+      <div className="space-y-3 text-center">
+        <h1 className="text-2xl font-semibold tracking-tight">Welcome to beevibe.</h1>
+        <p className="text-base text-muted-foreground max-w-prose mx-auto leading-relaxed">
+          beevibe is a team of AI agents you manage by chatting with them.
+          You talk to your team agent; it spawns subordinates to do the work.
+        </p>
+      </div>
+
+      <FlowDiagram />
+
+      <div className="flex flex-col items-center gap-2">
+        <button
+          type="button"
+          onClick={onNext}
+          className="inline-flex items-center gap-2 h-10 px-5 rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer text-sm font-medium"
+        >
+          Set up my team agent
+          <ArrowRight className="h-4 w-4" />
+        </button>
+        <p className="text-xs text-muted-foreground">~30 seconds. No account needed.</p>
+      </div>
+    </div>
+  );
+}
+
+function FlowDiagram() {
+  return (
+    <div className="rounded-lg border border-border/60 bg-card p-6">
+      <div className="flex items-center justify-around text-center">
+        <DiagramNode icon={MessageSquare} label="You" caption="chat" />
+        <Arrow />
+        <DiagramNode icon={Sparkles} label="Team agent" caption="orchestrates" highlight />
+        <Arrow />
+        <DiagramNode icon={Network} label="Subordinates" caption="execute" />
+      </div>
+      <p className="mt-5 text-xs text-muted-foreground text-center max-w-md mx-auto">
+        Your team agent has full hierarchy tool access — it can mint tasks, query the
+        fleet, and surface results back to you in this chat.
+      </p>
+    </div>
+  );
+}
+
+function DiagramNode({
+  icon: Icon,
+  label,
+  caption,
+  highlight,
+}: {
+  icon: typeof MessageSquare;
+  label: string;
+  caption: string;
+  highlight?: boolean;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1.5">
+      <div
+        className={cn(
+          "h-12 w-12 rounded-full flex items-center justify-center border",
+          highlight
+            ? "bg-primary/10 border-primary/40 text-primary"
+            : "bg-secondary border-border text-foreground",
+        )}
+      >
+        <Icon className="h-5 w-5" />
+      </div>
+      <div className="text-xs font-medium">{label}</div>
+      <div className="text-[10px] uppercase tracking-wider text-muted-foreground">{caption}</div>
+    </div>
+  );
+}
+
+function Arrow() {
+  return <ArrowRight className="h-4 w-4 text-muted-foreground/60 shrink-0" />;
+}
+
+function ProvidersStep({ onNext }: { onNext: () => void }) {
+  const { data, isLoading, isError, refetch, isFetching } = useLlmHealth();
+
+  const allOk = data?.ok === true;
+
+  return (
+    <div className="space-y-6">
+      <div className="space-y-2 text-center">
+        <h2 className="text-xl font-semibold">Provider check</h2>
+        <p className="text-sm text-muted-foreground max-w-prose mx-auto">
+          beevibe uses Anthropic for your agents and OpenAI for memory embeddings.
+          We&apos;ll verify both keys before continuing.
+        </p>
+      </div>
+
+      <div className="space-y-2 max-w-md mx-auto">
+        <ProviderRow
+          label="Anthropic"
+          subtitle="powers your agents"
+          state={isLoading ? "loading" : data?.anthropic.ok ? "ok" : "fail"}
+          message={data?.anthropic.ok ? undefined : data?.anthropic.message}
+        />
+        <ProviderRow
+          label="OpenAI"
+          subtitle="memory + embeddings"
+          state={isLoading ? "loading" : data?.openai.ok ? "ok" : "fail"}
+          message={data?.openai.ok ? undefined : data?.openai.message}
+        />
+      </div>
+
+      {isError ? (
+        <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs max-w-md mx-auto">
+          <div className="flex items-center gap-1.5 text-status-failed font-medium mb-1">
+            <AlertTriangle className="h-3.5 w-3.5" />
+            Couldn&apos;t reach the api server
+          </div>
+          <div className="text-muted-foreground">
+            Make sure <span className="font-mono">pnpm dev</span> is running and{" "}
+            <span className="font-mono">NEXT_PUBLIC_BV_API_URL</span> /{" "}
+            <span className="font-mono">NEXT_PUBLIC_BV_USER_KEY</span> are set.
+          </div>
+        </div>
+      ) : null}
+
+      {data && !allOk ? (
+        <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs max-w-md mx-auto">
+          <div className="text-status-failed font-medium mb-1">Provider keys not working</div>
+          <div className="text-muted-foreground">
+            Update <span className="font-mono">ANTHROPIC_API_KEY</span> and{" "}
+            <span className="font-mono">OPENAI_API_KEY</span> in your{" "}
+            <span className="font-mono">.env</span>, restart{" "}
+            <span className="font-mono">pnpm dev</span>, then re-check.
+          </div>
+        </div>
+      ) : null}
+
+      <div className="flex items-center justify-center gap-2">
+        <button
+          type="button"
+          onClick={() => refetch()}
+          disabled={isFetching}
+          className="inline-flex items-center gap-1.5 h-9 px-3 rounded-md border border-border hover:bg-secondary transition-colors text-sm disabled:opacity-50 cursor-pointer"
+        >
+          {isFetching ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+          Re-check
+        </button>
+        <button
+          type="button"
+          onClick={onNext}
+          disabled={!allOk}
+          className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm font-medium"
+        >
+          Continue
+          <ArrowRight className="h-4 w-4" />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ProviderRow({
+  label,
+  subtitle,
+  state,
+  message,
+}: {
+  label: string;
+  subtitle: string;
+  state: "loading" | "ok" | "fail";
+  message?: string;
+}) {
+  return (
+    <div className="rounded-md border border-border bg-card p-3 flex items-center gap-3">
+      <StatusGlyph state={state} />
+      <div className="flex-1 min-w-0">
+        <div className="text-sm font-medium">{label}</div>
+        <div className="text-[11px] text-muted-foreground">{subtitle}</div>
+        {message ? (
+          <div className="text-[11px] text-status-failed mt-1 truncate" title={message}>
+            {message}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function StatusGlyph({ state }: { state: "loading" | "ok" | "fail" }) {
+  if (state === "loading") {
+    return (
+      <div className="h-7 w-7 rounded-full bg-secondary border border-border flex items-center justify-center">
+        <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (state === "ok") {
+    return (
+      <div className="h-7 w-7 rounded-full bg-status-done/15 border border-status-done/40 flex items-center justify-center">
+        <Check className="h-3.5 w-3.5 text-status-done" />
+      </div>
+    );
+  }
+  return (
+    <div className="h-7 w-7 rounded-full bg-status-failed/15 border border-status-failed/40 flex items-center justify-center">
+      <X className="h-3.5 w-3.5 text-status-failed" />
+    </div>
+  );
+}
+
+function ReadyStep({ onContinue }: { onContinue: () => void }) {
+  return (
+    <div className="space-y-6 text-center">
+      <div className="space-y-3">
+        <div className="mx-auto h-12 w-12 rounded-full bg-status-done/15 border border-status-done/40 flex items-center justify-center">
+          <Sparkles className="h-5 w-5 text-status-done" />
+        </div>
+        <h2 className="text-xl font-semibold">You&apos;re set.</h2>
+        <p className="text-sm text-muted-foreground max-w-prose mx-auto leading-relaxed">
+          Your team agent will introduce itself and ask you a few questions on the next
+          screen so it can save what it learns into its memory. Answer naturally — it
+          watches you type and writes to memory live.
+        </p>
+      </div>
+
+      <button
+        type="button"
+        onClick={onContinue}
+        className="inline-flex items-center gap-2 h-10 px-5 rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer text-sm font-medium"
+      >
+        Meet my team agent
+        <ArrowRight className="h-4 w-4" />
+      </button>
+    </div>
+  );
+}
+
+function NotConfigured() {
+  return (
+    <div className="min-h-screen flex items-center justify-center px-6">
+      <div className="max-w-md text-center text-sm text-muted-foreground space-y-2">
+        <MessageSquare className="h-6 w-6 mx-auto text-muted-foreground/60" />
+        <div className="text-foreground font-medium">beevibe isn&apos;t connected yet</div>
+        <p>
+          Set <span className="font-mono">NEXT_PUBLIC_BV_API_URL</span> +{" "}
+          <span className="font-mono">NEXT_PUBLIC_BV_USER_KEY</span> in your{" "}
+          <span className="font-mono">.env</span> and run{" "}
+          <span className="font-mono">pnpm dev</span> to get started.
+        </p>
+      </div>
+    </div>
+  );
+}

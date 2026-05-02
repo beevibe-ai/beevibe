@@ -82,7 +82,9 @@ describe("TasksClient — empty-state branches", () => {
     renderClient();
 
     expect(await screen.findByText("No tasks yet")).toBeInTheDocument();
-    expect(screen.getByText(/Create a task to assign work/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/talking to your team agent/i),
+    ).toBeInTheDocument();
   });
 
   it("renders the no-matching-search empty state when query has no matches", async () => {

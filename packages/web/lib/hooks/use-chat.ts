@@ -1,8 +1,9 @@
 "use client";
 
 import { useCallback, useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type ChatTurnResponse } from "@/lib/api/client";
+import { queryKeys } from "./keys";
 
 export interface ChatMessage {
   /** Stable key for React; not persisted. */
@@ -50,6 +51,7 @@ function mintSessionId(): string {
 export function useChat() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [priorSessionId, setPriorSessionId] = useState<string | undefined>();
+  const queryClient = useQueryClient();
 
   const mutation = useMutation<
     ChatTurnResponse,
@@ -75,6 +77,10 @@ export function useChat() {
         },
       ]);
       setPriorSessionId(data.session_id);
+      // The first chat turn flips the server's onboarding flag — refetch
+      // /me so the welcome wizard exits automatically. Other invalidations
+      // (tasks, dashboard, sessions) ride the SSE channel.
+      queryClient.invalidateQueries({ queryKey: queryKeys.me.all });
     },
   });
 

@@ -35,6 +35,7 @@ import { createEscalationRouter } from "./routes/escalation.js";
 import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
 import { createChatRouter } from "./routes/chat.js";
+import { createMeRouter } from "./routes/me.js";
 import { createStreamAuthMiddleware } from "./auth/middleware.js";
 import { SseManager } from "./sse/manager.js";
 import { SseListener } from "./sse/listener.js";
@@ -251,6 +252,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const chatRouter = createChatRouter({
     authMiddleware: server.getAuthMiddleware(),
     agentRepo,
+    personRepo,
     sessionRepo,
     sessionEventRepo,
     workspaceManager,
@@ -258,6 +260,18 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     makeMemoryAgent,
   });
   server.getApp().use("/chat", chatRouter);
+
+  // Onboarding/identity surface — `/me`, `/me/onboarding/complete`,
+  // `/health/llm`. The web's welcome wizard hits these to decide whether
+  // to redirect into onboarding and to show the provider-keys check.
+  const meRouter = createMeRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    personRepo,
+    agentRepo,
+    llm,
+    embed,
+  });
+  server.getApp().use(meRouter);
 
   const shutdown = async (): Promise<void> => {
     sessionCache.stopIdleSweep();

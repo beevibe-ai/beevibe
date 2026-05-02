@@ -1,0 +1,50 @@
+"use client";
+
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api, type HealthResponse, type MeResponse } from "@/lib/api/client";
+import { isApiConfigured } from "@/lib/api/config";
+import { queryKeys } from "./keys";
+
+/**
+ * Identity + onboarding state for the welcome wizard. Refetches on focus
+ * so a backgrounded window picks up server-side onboarding completion
+ * (e.g. the chat route flipped the column after the first turn).
+ */
+export function useMe() {
+  return useQuery<MeResponse>({
+    queryKey: queryKeys.me.self(),
+    queryFn: ({ signal }) => api.me.self({ signal }),
+    enabled: isApiConfigured,
+    staleTime: 0,
+  });
+}
+
+/** Polls every 1s while disabled is false — used during the wizard's wait. */
+export function useMePolling(enabled: boolean) {
+  return useQuery<MeResponse>({
+    queryKey: queryKeys.me.self(),
+    queryFn: ({ signal }) => api.me.self({ signal }),
+    enabled: isApiConfigured && enabled,
+    refetchInterval: enabled ? 1000 : false,
+  });
+}
+
+export function useLlmHealth(enabled = true) {
+  return useQuery<HealthResponse>({
+    queryKey: queryKeys.me.health(),
+    queryFn: ({ signal }) => api.me.health({ signal }),
+    enabled: isApiConfigured && enabled,
+    retry: false,
+    staleTime: 5_000,
+  });
+}
+
+export function useCompleteOnboarding() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.me.completeOnboarding(),
+    onSuccess: () => {
+      client.invalidateQueries({ queryKey: queryKeys.me.all });
+    },
+  });
+}

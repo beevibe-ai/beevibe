@@ -47,6 +47,27 @@ export interface CreateTaskInput {
   parent_task_id?: string;
 }
 
+export interface MeResponse {
+  person: {
+    id: string;
+    name: string;
+    email: string | null;
+    onboarding_completed_at: string | null;
+  };
+  primary_agent: {
+    id: string;
+    name: string;
+    hierarchy: "ic" | "team" | "org";
+  } | null;
+  needs_onboarding: boolean;
+}
+
+export interface HealthResponse {
+  ok: boolean;
+  anthropic: { ok: boolean; message?: string };
+  openai: { ok: boolean; message?: string };
+}
+
 export interface ChatSendInput {
   message: string;
   /** Previous turn's session id — enables `--resume` continuity. */
@@ -162,6 +183,18 @@ export const api = {
      */
     send: (input: ChatSendInput) =>
       fetchJson<ChatTurnResponse>("/chat", { method: "POST", body: input }),
+  },
+  me: {
+    /** Identity + onboarding state for the welcome flow. */
+    self: (opts: ReadOptions = {}) =>
+      fetchJson<MeResponse>("/me", { signal: opts.signal }),
+    completeOnboarding: () =>
+      fetchJson<{ ok: true; onboarding_completed_at: string | null }>(
+        "/me/onboarding/complete",
+        { method: "POST" },
+      ),
+    health: (opts: ReadOptions = {}) =>
+      fetchJson<HealthResponse>("/health/llm", { signal: opts.signal }),
   },
   escalations: {
     resolve: (id: string, input: EscalationResolveInput) =>

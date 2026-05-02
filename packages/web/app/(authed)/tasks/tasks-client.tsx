@@ -21,6 +21,7 @@ interface EmptyMessage {
   icon: LucideIcon;
   title: string;
   description: string;
+  cta?: { href: string; label: string };
 }
 
 export function TasksClient() {
@@ -96,11 +97,17 @@ function pickEmptyMessage(state: {
     };
   }
   if (state.isLoading || state.hasResults) return null;
+  if (state.hasQuery) {
+    return {
+      icon: ListChecks,
+      title: "No matching tasks",
+      description: "Try a different search.",
+    };
+  }
   return {
     icon: ListChecks,
-    title: state.hasQuery ? "No matching tasks" : "No tasks yet",
-    description: state.hasQuery
-      ? "Try a different search."
-      : "Create a task to assign work to an agent.",
+    title: "No tasks yet",
+    description: "Tasks are minted by talking to your team agent. Ask it what's worth doing.",
+    cta: { href: "/", label: "Open chat" },
   };
 }

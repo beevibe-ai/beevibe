@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, ArrowRight, MessageSquare, RotateCcw, Send, Sparkles } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
+import { useMe } from "@/lib/hooks/use-me";
 import { sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ReferenceCards } from "@/components/chat/reference-cards";
@@ -17,11 +19,34 @@ const PROMPT_SUGGESTIONS = [
   "Which agents are blocked right now?",
 ];
 
+const ONBOARDING_PROMPT_SUGGESTIONS = [
+  "Hi! Tell me what you're working on.",
+  "Introduce yourself.",
+  "What can you do for me?",
+];
+
 export function ChatClient() {
   const [draft, setDraft] = useState("");
   const { messages, send, reset, isPending, error, pendingSessionId } = useChat();
   const liveSteps = useChatStream(pendingSessionId);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { data: me } = useMe();
+
+  // The welcome wizard's last step navigates here with `?from=welcome`,
+  // which keeps us on /chat for the onboarding turn even though
+  // `needs_onboarding` is still true on the server (it flips after the
+  // first chat completes). Without this hint we'd ping-pong between
+  // /welcome and / during the first chat.
+  const fromWelcome = searchParams?.get("from") === "welcome";
+  const isOnboardingChat = !!me?.needs_onboarding && fromWelcome;
+
+  // First-run gate: if the caller hasn't completed the welcome wizard
+  // and didn't arrive here from it, bounce them to the wizard.
+  useEffect(() => {
+    if (me?.needs_onboarding && !fromWelcome) router.replace("/welcome");
+  }, [me?.needs_onboarding, fromWelcome, router]);
 
   useEffect(() => {
     transcriptRef.current?.scrollTo({
@@ -84,7 +109,11 @@ export function ChatClient() {
       <div ref={transcriptRef} className="flex-1 overflow-y-auto px-6 py-6">
         <div className="max-w-3xl mx-auto space-y-4">
           {messages.length === 0 ? (
-            <EmptyHint onPick={(s) => submit(s)} disabled={isPending} />
+            <EmptyHint
+              onPick={(s) => submit(s)}
+              disabled={isPending}
+              onboarding={isOnboardingChat}
+            />
           ) : (
             messages.map((m) => <Bubble key={m.id} message={m} />)
           )}
@@ -210,22 +239,31 @@ function Thinking({ steps }: { steps: ChatStreamStep[] }) {
 function EmptyHint({
   onPick,
   disabled,
+  onboarding,
 }: {
   onPick: (text: string) => void;
   disabled: boolean;
+  onboarding?: boolean;
 }) {
+  const suggestions = onboarding ? ONBOARDING_PROMPT_SUGGESTIONS : PROMPT_SUGGESTIONS;
   return (
     <div className="text-sm text-muted-foreground text-center pt-12">
       <MessageSquare className="h-7 w-7 mx-auto mb-3 text-muted-foreground/50" />
       <div className="mb-1 text-foreground font-medium text-base">
-        How can your team agent help?
+        {onboarding ? "Start the conversation" : "How can your team agent help?"}
       </div>
       <div className="mb-6 text-xs text-muted-foreground/80 max-w-md mx-auto">
-        Mint tasks, query the fleet, brief you on a project. Click a prompt to
-        start, or type your own below.
+        {onboarding
+          ? "Your team agent has questions for you. Pick a starter or just say hi — it'll save what it learns to its memory live."
+          : "Mint tasks, query the fleet, brief you on a project. Click a prompt to start, or type your own below."}
       </div>
-      <div className="grid sm:grid-cols-2 gap-2 max-w-2xl mx-auto text-left">
-        {PROMPT_SUGGESTIONS.map((s) => (
+      <div
+        className={cn(
+          "grid gap-2 max-w-2xl mx-auto text-left",
+          onboarding ? "sm:grid-cols-1" : "sm:grid-cols-2",
+        )}
+      >
+        {suggestions.map((s) => (
           <button
             key={s}
             type="button"
