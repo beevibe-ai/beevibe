@@ -7,7 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronsUpDown,
-  Home,
+  LayoutDashboard,
   ListChecks,
   type LucideIcon,
   MessageSquare,
@@ -42,8 +42,8 @@ type NavItem = {
 
 const QUICK_ACTIONS: QuickAction[] = [
   { label: "Search", icon: Search, onClick: () => {} },
-  { href: "/", label: "Home", icon: Home },
-  { href: "/chat", label: "Chat", icon: MessageSquare },
+  { href: "/", label: "Chat", icon: MessageSquare },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
 ];
 
 const WORKSPACE_ITEMS: NavItem[] = [
