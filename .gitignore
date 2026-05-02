@@ -13,3 +13,6 @@ coverage/
 .idea/
 .claude/
 .gstack/
+
+# Agent workspaces (always live under $WORKSPACE_ROOT or $HOME/.beevibe/workspaces, never under packages/).
+packages/*/agent_*/
