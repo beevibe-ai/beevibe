@@ -19,16 +19,6 @@ export function useMe() {
   });
 }
 
-/** Polls every 1s while disabled is false — used during the wizard's wait. */
-export function useMePolling(enabled: boolean) {
-  return useQuery<MeResponse>({
-    queryKey: queryKeys.me.self(),
-    queryFn: ({ signal }) => api.me.self({ signal }),
-    enabled: isApiConfigured && enabled,
-    refetchInterval: enabled ? 1000 : false,
-  });
-}
-
 export function useLlmHealth(enabled = true) {
   return useQuery<HealthResponse>({
     queryKey: queryKeys.me.health(),

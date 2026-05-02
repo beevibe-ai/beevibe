@@ -193,9 +193,9 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         type: "chat",
         sessionId: callerSessionId,
         priorSessionId,
-        extraSystemPromptAppend: isOnboarding
-          ? `${CHAT_DIRECTIVES}\n\n${ONBOARDING_DIRECTIVES}`
-          : CHAT_DIRECTIVES,
+        extraSystemPromptAppend: [CHAT_DIRECTIVES, isOnboarding ? ONBOARDING_DIRECTIVES : ""]
+          .filter((s) => s.length > 0)
+          .join("\n\n"),
       });
 
       const { visible, view_refs, open_view } = processResponse(session.result_summary ?? "");

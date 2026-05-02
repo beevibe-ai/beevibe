@@ -76,11 +76,15 @@ export function useChat() {
           ...(data.open_view ? { open_view: data.open_view } : {}),
         },
       ]);
-      setPriorSessionId(data.session_id);
-      // The first chat turn flips the server's onboarding flag — refetch
-      // /me so the welcome wizard exits automatically. Other invalidations
+      // Only the first turn of a conversation can flip the server's
+      // onboarding flag — refetch /me so the welcome wizard exits
+      // automatically. Subsequent turns can't change onboarding state, so
+      // we skip the invalidation entirely. Other invalidations
       // (tasks, dashboard, sessions) ride the SSE channel.
-      queryClient.invalidateQueries({ queryKey: queryKeys.me.all });
+      if (priorSessionId === undefined) {
+        queryClient.invalidateQueries({ queryKey: queryKeys.me.all });
+      }
+      setPriorSessionId(data.session_id);
     },
   });
 

@@ -28,6 +28,7 @@ import { fileURLToPath } from "node:url";
 import { execSync, spawnSync } from "node:child_process";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
+import { parse as parseDotenv } from "dotenv";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
@@ -57,7 +58,7 @@ async function main(): Promise<void> {
 
   // ── Step 2: docker postgres ─────────────────────────────────────────────
   step(2, "Postgres");
-  ensurePostgres();
+  await ensurePostgres();
 
   // ── Step 3: migrations ───────────────────────────────────────────────────
   step(3, "Migrations");
@@ -112,7 +113,7 @@ async function ensureEnvFile(): Promise<EnvState> {
     info(".env exists — checking required keys");
   }
 
-  const env = parseEnv(readFileSync(ENV_PATH, "utf-8"));
+  const env = readEnv(ENV_PATH);
 
   const placeholderHints = ["placeholder", "fill-in", "your-key"];
   const isPlaceholder = (v: string | undefined) =>
@@ -162,7 +163,7 @@ async function ensureEnvFile(): Promise<EnvState> {
 // Step 2: postgres via docker compose
 // ─────────────────────────────────────────────────────────────────────────
 
-function ensurePostgres(): void {
+async function ensurePostgres(): Promise<void> {
   try {
     execSync("docker info", { stdio: "ignore" });
   } catch {
@@ -192,7 +193,7 @@ function ensurePostgres(): void {
       ok(`pg_isready (${i + 1}s)`);
       return;
     }
-    sleepSync(1000);
+    await new Promise<void>((r) => setTimeout(r, 1000));
   }
   throw new Error("Postgres didn't become ready in 30s");
 }
@@ -222,52 +223,45 @@ async function ensureAdminAndTeamAgent(): Promise<string> {
   const agentRepo = new PostgresAgentRepository(pool);
   const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
 
+  const teamAgentInput = {
+    name: TEAM_AGENT_NAME_DEFAULT,
+    hierarchy_level: "team" as const,
+    runtime_config: { type: "claude-code" as const, model: "claude-opus-4-7" },
+  };
+
   try {
-    // Idempotent check: existing admin by email?
     const existing = await personRepo.findByEmail(ADMIN_EMAIL_DEFAULT);
-    if (existing && existing.api_key) {
-      ok(`Admin user already exists: ${dim(existing.id)}`);
-      const existingTeam = await agentRepo.findTopLevelForOwner(existing.id);
-      if (existingTeam) {
-        ok(`Team agent already exists: ${dim(existingTeam.id)}`);
-      } else {
-        info("No team agent for existing admin — provisioning one");
-        await provisionAgent(
-          { agentRepo, coreMemoryRepo },
-          {
-            id: agentId(),
-            name: TEAM_AGENT_NAME_DEFAULT,
-            owner_id: existing.id,
-            hierarchy_level: "team",
-            runtime_config: { type: "claude-code", model: "claude-opus-4-7" },
-          },
-        );
-        ok("Team agent provisioned");
-      }
+    if (!existing?.api_key) {
+      info("Provisioning admin person");
+      const { person, apiKey } = await provisionUser(
+        { personRepo },
+        { id: personId(), name: "Admin", email: ADMIN_EMAIL_DEFAULT },
+      );
+      ok(`Admin user: ${dim(person.id)} (${dim(ADMIN_EMAIL_DEFAULT)})`);
+
+      info("Provisioning team agent");
+      const { agent } = await provisionAgent(
+        { agentRepo, coreMemoryRepo },
+        { ...teamAgentInput, id: agentId(), owner_id: person.id },
+      );
+      ok(`Team agent: ${dim(agent.id)}`);
+      return apiKey;
+    }
+
+    ok(`Admin user already exists: ${dim(existing.id)}`);
+    const existingTeam = await agentRepo.findTopLevelForOwner(existing.id);
+    if (existingTeam) {
+      ok(`Team agent already exists: ${dim(existingTeam.id)}`);
       return existing.api_key;
     }
 
-    info("Provisioning admin person");
-    const { person, apiKey } = await provisionUser(
-      { personRepo },
-      { id: personId(), name: "Admin", email: ADMIN_EMAIL_DEFAULT },
-    );
-    ok(`Admin user: ${dim(person.id)} (${dim(ADMIN_EMAIL_DEFAULT)})`);
-
-    info("Provisioning team agent");
-    const { agent } = await provisionAgent(
+    info("No team agent for existing admin — provisioning one");
+    await provisionAgent(
       { agentRepo, coreMemoryRepo },
-      {
-        id: agentId(),
-        name: TEAM_AGENT_NAME_DEFAULT,
-        owner_id: person.id,
-        hierarchy_level: "team",
-        runtime_config: { type: "claude-code", model: "claude-opus-4-7" },
-      },
+      { ...teamAgentInput, id: agentId(), owner_id: existing.id },
     );
-    ok(`Team agent: ${dim(agent.id)}`);
-
-    return apiKey;
+    ok("Team agent provisioned");
+    return existing.api_key;
   } finally {
     await pool.end();
   }
@@ -278,7 +272,7 @@ async function ensureAdminAndTeamAgent(): Promise<string> {
 // ─────────────────────────────────────────────────────────────────────────
 
 function writeWebUserKey(userKey: string): void {
-  const env = parseEnv(readFileSync(ENV_PATH, "utf-8"));
+  const env = readEnv(ENV_PATH);
   if (env.NEXT_PUBLIC_BV_USER_KEY === userKey) {
     ok("NEXT_PUBLIC_BV_USER_KEY already set");
     return;
@@ -292,18 +286,8 @@ function writeWebUserKey(userKey: string): void {
 // helpers
 // ─────────────────────────────────────────────────────────────────────────
 
-function parseEnv(text: string): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const raw of text.split("\n")) {
-    const line = raw.trim();
-    if (!line || line.startsWith("#")) continue;
-    const eq = line.indexOf("=");
-    if (eq === -1) continue;
-    const key = line.slice(0, eq).trim();
-    const value = line.slice(eq + 1).trim().replace(/^"(.*)"$/, "$1");
-    out[key] = value;
-  }
-  return out;
+function readEnv(path: string): Record<string, string> {
+  return parseDotenv(readFileSync(path, "utf-8"));
 }
 
 function writeEnv(env: Record<string, string>): void {
@@ -330,13 +314,6 @@ function writeEnv(env: Record<string, string>): void {
     if (!seen.has(k)) rewritten.push(`${k}=${v}`);
   }
   writeFileSync(ENV_PATH, rewritten.join("\n"));
-}
-
-function sleepSync(ms: number): void {
-  const end = Date.now() + ms;
-  while (Date.now() < end) {
-    // busy-wait; cheap because we only do this 1s at a time inside a 30s loop
-  }
 }
 
 main().catch((err) => {

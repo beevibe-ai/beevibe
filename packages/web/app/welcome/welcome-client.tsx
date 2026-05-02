@@ -121,15 +121,15 @@ function IntroStep({ onNext }: { onNext: () => void }) {
 
 function FlowDiagram() {
   return (
-    <div className="rounded-lg border border-border/60 bg-card p-6">
-      <div className="flex items-center justify-around text-center">
+    <div className="rounded-lg border border-border/60 bg-card p-6 text-center">
+      <div className="flex items-center justify-around">
         <DiagramNode icon={MessageSquare} label="You" caption="chat" />
         <Arrow />
         <DiagramNode icon={Sparkles} label="Team agent" caption="orchestrates" highlight />
         <Arrow />
         <DiagramNode icon={Network} label="Subordinates" caption="execute" />
       </div>
-      <p className="mt-5 text-xs text-muted-foreground text-center max-w-md mx-auto">
+      <p className="mt-5 text-xs text-muted-foreground max-w-md mx-auto">
         Your team agent has full hierarchy tool access — it can mint tasks, query the
         fleet, and surface results back to you in this chat.
       </p>
