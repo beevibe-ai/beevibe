@@ -212,6 +212,7 @@ async function handleMcpRequest(
       mesh: deps.mesh,
       pool: deps.pool,
       memoryAgent,
+      sessionRepo: deps.sessionRepo,
     },
   );
 

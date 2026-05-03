@@ -6,6 +6,7 @@ import {
   PostgresNegotiationRepository,
   PostgresNegotiationRoundRepository,
   PostgresPersonRepository,
+  PostgresRoomRepository,
   PostgresSessionEventRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
@@ -37,6 +38,7 @@ import { createStreamRouter } from "./routes/stream.js";
 import { createChatRouter } from "./routes/chat.js";
 import { createMeRouter } from "./routes/me.js";
 import { createSignupRouter } from "./routes/signup.js";
+import { createRoomRouter } from "./routes/room.js";
 import { createStreamAuthMiddleware } from "./auth/middleware.js";
 import { SseManager } from "./sse/manager.js";
 import { SseListener } from "./sse/listener.js";
@@ -114,6 +116,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const negotiationRoundRepo = new PostgresNegotiationRoundRepository(pool);
   const escalationRepo = new PostgresEscalationRepository(pool);
   const sessionEventRepo = new PostgresSessionEventRepository(pool);
+  const roomRepo = new PostgresRoomRepository(pool);
 
   // External services. Both keys are optional — memory degrades
   // gracefully without each:
@@ -261,9 +264,25 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     agentRepo,
     personRepo,
     coreMemoryRepo,
+    roomRepo,
     enabled: signupEnabled,
   });
   server.getApp().use(signupRouter);
+
+  // Rooms — multi-tenant collaboration spaces. Mounted at /room (matches the
+  // singular-noun convention the rest of the api uses for collection roots).
+  const roomRouter = createRoomRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    roomRepo,
+    agentRepo,
+    personRepo,
+    sessionRepo,
+    sessionEventRepo,
+    workspaceManager,
+    runtimeRegistry,
+    makeMemoryAgent,
+  });
+  server.getApp().use("/room", roomRouter);
 
   // M6.4 human REST routes — bv_u_ only.
   const taskRouter = createTaskRouter({

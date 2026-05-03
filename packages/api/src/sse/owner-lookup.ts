@@ -72,15 +72,42 @@ export class OwnerLookup {
     }
 
     if (event.event.startsWith("session.")) {
-      // Session.step + session.updated both key off session.id.
-      const { rows } = await this.pool.query<{ owner: string | null }>(
-        `SELECT a.owner_id AS owner
+      // Session events: deliver to the agent owner AND, when the
+      // session was kicked off in a Room, every room member. This
+      // is what makes "two humans watch their team agents coordinate"
+      // work — a mesh-spawned session at user B's agent has room_id
+      // set, so user A also gets the events.
+      const { rows } = await this.pool.query<{ owner: string | null; room_id: string | null }>(
+        `SELECT a.owner_id AS owner, s.room_id
          FROM session s
          JOIN agent a ON a.id = s.agent_id
          WHERE s.id = $1`,
         [event.id],
       );
-      return rows[0]?.owner ? new Set([rows[0].owner]) : new Set();
+      const row = rows[0];
+      if (!row) return new Set();
+      const set = new Set<string>();
+      if (row.owner) set.add(row.owner);
+      if (row.room_id) {
+        const { rows: members } = await this.pool.query<{ person_id: string }>(
+          `SELECT person_id FROM room_member
+           WHERE room_id = $1 AND kind = 'person' AND person_id IS NOT NULL`,
+          [row.room_id],
+        );
+        for (const m of members) set.add(m.person_id);
+      }
+      return set;
+    }
+
+    if (event.event === "room.message") {
+      // event.id is the room_id (set by the trigger). Fan to every
+      // person member of the room.
+      const { rows } = await this.pool.query<{ person_id: string }>(
+        `SELECT person_id FROM room_member
+         WHERE room_id = $1 AND kind = 'person' AND person_id IS NOT NULL`,
+        [event.id],
+      );
+      return new Set(rows.map((r) => r.person_id));
     }
 
     if (event.event.startsWith("memory.fact.")) {

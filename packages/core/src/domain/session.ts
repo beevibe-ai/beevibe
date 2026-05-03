@@ -72,6 +72,8 @@ export interface Session {
   error?: string;
   usage?: SessionUsage;
   briefing?: SessionBriefingSnapshot;
+  /** Set when this session was kicked off inside a Room. SSE fanout uses it. */
+  room_id?: string;
   started_at?: Date;
   completed_at?: Date;
   created_at: Date;

@@ -85,14 +85,16 @@ export class PostgresSessionRepository implements SessionRepository {
          cli_session_id, workspace_path,
          process_pid, process_group_id,
          result_summary, exit_code, error, usage,
-         started_at, completed_at
+         started_at, completed_at,
+         room_id
        ) VALUES (
          $1, $2, $3, $4,
          $5, COALESCE($6, 'running'), $7,
          $8, $9,
          $10, $11,
          $12, $13, $14, $15,
-         $16, NULL
+         $16, NULL,
+         $17
        )
        RETURNING *`,
       [
@@ -112,6 +114,7 @@ export class PostgresSessionRepository implements SessionRepository {
         input.error ?? null,
         input.usage ?? null,
         input.started_at ?? null,
+        input.room_id ?? null,
       ],
     );
     return rowToSession(rows[0]!);
@@ -168,6 +171,7 @@ function rowToSession(row: SessionRow): Session {
     error: row.error ?? undefined,
     usage: (row.usage ?? undefined) as SessionUsage | undefined,
     briefing: (row.briefing ?? undefined) as SessionBriefingSnapshot | undefined,
+    room_id: row.room_id ?? undefined,
     started_at: row.started_at ?? undefined,
     completed_at: row.completed_at ?? undefined,
     created_at: row.created_at,

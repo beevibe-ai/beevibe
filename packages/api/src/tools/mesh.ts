@@ -8,7 +8,11 @@
  */
 
 import { randomUUID } from "node:crypto";
-import type { AgentRepository, TaskRepository } from "@beevibe/core";
+import type {
+  AgentRepository,
+  SessionRepository,
+  TaskRepository,
+} from "@beevibe/core";
 import type { TaskService } from "@beevibe/core/services/task-service";
 import type {
   EscalationService,
@@ -36,6 +40,8 @@ export interface MeshToolServices {
   escalationService: EscalationService;
   /** For pg_notify('escalation_created' / 'escalation_updated', id). */
   pool: Pool;
+  /** For looking up the caller's session.room_id when propagating to spawned targets. */
+  sessionRepo: SessionRepository;
 }
 
 export interface MeshToolContext {
@@ -119,11 +125,16 @@ function askTool(ctx: MeshToolContext, services: MeshToolServices): AgentTool {
           return { content: { error: "target_agent_id and question required" }, isError: true };
         }
         const requestId = randomUUID();
+        // If the asker's session is in a Room, propagate the room_id
+        // onto the target's spawned session so its events fan out to
+        // every room member (the cross-agent collaboration moment).
+        const askerSession = await services.sessionRepo.findById(ctx.beevibeSid);
         const response = await services.mesh.sendAsk(
           requestId,
           ctx.caller.agentId,
           target,
           question,
+          askerSession?.room_id,
         );
         return { content: projectAskResponse(response) };
       } catch (err) {

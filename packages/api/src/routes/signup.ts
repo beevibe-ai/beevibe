@@ -21,15 +21,18 @@ import {
   personId as makePersonId,
   provisionAgent,
   provisionUser,
+  roomId as makeRoomId,
   type AgentRepository,
   type CoreMemoryBlockRepository,
   type PersonRepository,
+  type RoomRepository,
 } from "@beevibe/core";
 
 export interface SignupRoutesDeps {
   agentRepo: AgentRepository;
   personRepo: PersonRepository;
   coreMemoryRepo: CoreMemoryBlockRepository;
+  roomRepo: RoomRepository;
   /** Default true. Set to false to 404 the route. */
   enabled?: boolean;
 }
@@ -107,6 +110,20 @@ export function createSignupRouter(deps: SignupRoutesDeps): Router {
           },
         );
         team = provisioned.agent;
+      }
+
+      // Auto-create a "Personal" room for first-time visitors so they
+      // land in a real room (the chat surface) rather than nowhere.
+      // Idempotent: if they already have one, leave it alone.
+      const existingRooms = await deps.roomRepo.listForPerson(person_id);
+      if (existingRooms.length === 0) {
+        const room = await deps.roomRepo.create({
+          id: makeRoomId(),
+          name: `${person_name}'s room`,
+          owner_person_id: person_id,
+        });
+        await deps.roomRepo.addPersonMember(room.id, person_id);
+        await deps.roomRepo.addAgentMember(room.id, team.id);
       }
 
       res.json({

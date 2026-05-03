@@ -19,6 +19,7 @@ import {
   Sparkles,
   Terminal,
   TrendingUp,
+  Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAgents } from "@/lib/hooks/use-agents";
@@ -45,6 +46,7 @@ type NavItem = {
 const QUICK_ACTIONS: QuickAction[] = [
   { label: "Search", icon: Search, onClick: () => {} },
   { href: "/", label: "Chat", icon: MessageSquare },
+  { href: "/rooms", label: "Rooms", icon: Users },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
 ];
 

@@ -69,6 +69,12 @@ export interface AgentSessionRunInput {
    * (retry → hook → another postDispatchCheck → another retry → …).
    */
   skipOnComplete?: boolean;
+  /**
+   * Stamp this session as belonging to a Room — events fan out via SSE
+   * to every room member rather than just the agent's owner, and
+   * mesh-spawned children inherit the same room_id.
+   */
+  roomId?: string;
 }
 
 /**
@@ -104,6 +110,7 @@ export class AgentSession {
       intent: input.intent,
       workspace_path: input.workspace.path,
       started_at: new Date(),
+      ...(input.roomId ? { room_id: input.roomId } : {}),
     });
 
     // 3. Resume lookup + briefing

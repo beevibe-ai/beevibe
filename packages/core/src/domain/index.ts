@@ -8,3 +8,4 @@ export * from "./work-product.js";
 export * from "./memory.js";
 export * from "./negotiation.js";
 export * from "./escalation.js";
+export * from "./room.js";

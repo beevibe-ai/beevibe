@@ -2,6 +2,7 @@ import type { ResolvedCaller } from "@beevibe/core/auth";
 import type {
   AgentRepository,
   CoreMemoryBlockRepository,
+  SessionRepository,
   TaskRepository,
   WorkProductRepository,
 } from "@beevibe/core";
@@ -28,6 +29,7 @@ export interface AssembleToolsServices {
   mesh: MeshServer;
   pool: Pool;
   memoryAgent: MemoryAgent;
+  sessionRepo: SessionRepository;
 }
 
 export interface AssembleToolsContext {
@@ -98,6 +100,7 @@ export function assembleTools(
     taskService: services.taskService,
     escalationService: services.escalationService,
     pool: services.pool,
+    sessionRepo: services.sessionRepo,
   };
   const meshTools =
     ctx.caller.hierarchyLevel === "ic"

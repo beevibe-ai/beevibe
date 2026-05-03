@@ -115,6 +115,42 @@ export interface ChatTurnResponse {
   suggested_actions?: string[];
 }
 
+export interface Room {
+  id: string;
+  name: string;
+  owner_person_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type RoomMemberDetail =
+  | { kind: "person"; id: string; name: string; email: string | null }
+  | {
+      kind: "agent";
+      id: string;
+      name: string;
+      hierarchy: HierarchyLevel;
+      owner_person_id: string;
+    };
+
+export interface RoomMessage {
+  id: string;
+  room_id: string;
+  kind: "human" | "agent";
+  content: string;
+  sender_person_id?: string;
+  sender_agent_id?: string;
+  session_id?: string;
+  created_at: string;
+}
+
+export interface RoomDetail {
+  ok: true;
+  room: Room;
+  members: RoomMemberDetail[];
+  messages: RoomMessage[];
+}
+
 export interface WorkProductDetail {
   id: string;
   task_id: string;
@@ -332,6 +368,25 @@ export const api = {
       fetchJson<WorkProductDetail>(`/work-product/${encodeURIComponent(id)}`, {
         signal: opts.signal,
       }),
+  },
+  rooms: {
+    list: (opts: ReadOptions = {}) =>
+      fetchJson<{ ok: true; rooms: Room[] }>("/room", { signal: opts.signal }),
+    get: (id: string, opts: ReadOptions = {}) =>
+      fetchJson<RoomDetail>(`/room/${encodeURIComponent(id)}`, { signal: opts.signal }),
+    create: (input: { name: string }) =>
+      fetchJson<{ ok: true; room: Room }>("/room", { method: "POST", body: input }),
+    invite: (id: string, input: { email: string }) =>
+      fetchJson<{
+        ok: true;
+        invited: { person_id: string; name: string; email: string | null };
+      }>(`/room/${encodeURIComponent(id)}/invite`, { method: "POST", body: input }),
+    sendMessage: (id: string, input: { content: string }) =>
+      fetchJson<{
+        ok: true;
+        message: RoomMessage;
+        agent_responses: RoomMessage[];
+      }>(`/room/${encodeURIComponent(id)}/message`, { method: "POST", body: input }),
   },
   signup: {
     /**

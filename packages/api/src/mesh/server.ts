@@ -106,6 +106,8 @@ export class MeshServer {
     fromAgentId: string,
     toAgentId: string,
     question: string,
+    /** Set when the asker is in a Room so the spawned target also gets fan-out. */
+    roomId?: string,
   ): Promise<AskResponse> {
     await this.checkMeshCapacity(toAgentId);
 
@@ -115,6 +117,7 @@ export class MeshServer {
       targetAgentId: toAgentId,
       type: "mesh_ask",
       intent,
+      ...(roomId ? { roomId } : {}),
     });
 
     return this.awaitResolver<AskResponse>(`${requestId}:asker`, DEFAULT_ASK_TIMEOUT_MS);
@@ -423,6 +426,12 @@ export class MeshServer {
     intent: string;
     /** Optional pre-generated sid (used by sendNegotiate). */
     sessionId?: string;
+    /**
+     * If the asker's session was inside a Room, propagate the room_id
+     * onto the spawned target session so its events fan out to every
+     * room member's browser — the cross-agent collaboration moment.
+     */
+    roomId?: string;
   }): Promise<void> {
     const agent = await this.deps.agentRepo.findById(opts.targetAgentId);
     if (!agent) {
@@ -453,6 +462,7 @@ export class MeshServer {
         intent: opts.intent,
         workspace,
         type: opts.type,
+        ...(opts.roomId ? { roomId: opts.roomId } : {}),
       })
       .catch((err: unknown) => {
         console.error(
