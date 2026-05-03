@@ -14,7 +14,6 @@ import {
   MessageSquare,
   Network,
   Plus,
-  Search,
   Settings2,
   Sparkles,
   Terminal,
@@ -27,11 +26,10 @@ import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
 
 type QuickAction = {
-  href?: string;
+  href: string;
   label: string;
   icon: LucideIcon;
   badge?: number;
-  onClick?: () => void;
 };
 
 type NavItem = {
@@ -44,7 +42,6 @@ type NavItem = {
 };
 
 const QUICK_ACTIONS: QuickAction[] = [
-  { label: "Search", icon: Search, onClick: () => {} },
   { href: "/", label: "Chat", icon: MessageSquare },
   { href: "/rooms", label: "Rooms", icon: Users },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -91,38 +88,23 @@ export function Sidebar() {
       <WorkspaceSwitcher />
 
       <div className="px-2 pt-1 pb-2 space-y-px">
-        {QUICK_ACTIONS.map((a) =>
-          a.href ? (
-            <Link
-              key={a.label}
-              href={a.href}
-              aria-current={pathname === a.href ? "page" : undefined}
-              className={cn(
-                "flex items-center gap-2.5 h-7 px-2 rounded-md text-sm transition-colors",
-                pathname === a.href
-                  ? "bg-secondary text-foreground font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
-              )}
-            >
-              <a.icon className="h-3.5 w-3.5 shrink-0" />
-              <span className="flex-1 truncate">{a.label}</span>
-              {a.badge ? <Badge value={a.badge} /> : null}
-            </Link>
-          ) : (
-            <button
-              key={a.label}
-              type="button"
-              onClick={a.onClick}
-              className="w-full flex items-center gap-2.5 h-7 px-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-colors cursor-pointer"
-            >
-              <a.icon className="h-3.5 w-3.5 shrink-0" />
-              <span className="flex-1 truncate text-left">{a.label}</span>
-              <kbd className="text-[10px] font-mono text-muted-foreground/70 bg-secondary/60 px-1 rounded border border-border">
-                ⌘K
-              </kbd>
-            </button>
-          ),
-        )}
+        {QUICK_ACTIONS.map((a) => (
+          <Link
+            key={a.label}
+            href={a.href}
+            aria-current={pathname === a.href ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-2.5 h-7 px-2 rounded-md text-sm transition-colors",
+              pathname === a.href
+                ? "bg-secondary text-foreground font-medium"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
+            )}
+          >
+            <a.icon className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1 truncate">{a.label}</span>
+            {a.badge ? <Badge value={a.badge} /> : null}
+          </Link>
+        ))}
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 pb-2 space-y-3" aria-label="Main">
