@@ -124,8 +124,38 @@ echo "  Executor:      health on http://localhost:${BEEVIBE_EXECUTOR_HEALTH_PORT
 echo "  Workspace:     ${WORKSPACE_ROOT:-~/.beevibe/workspaces}"
 echo ""
 
-# Kill all children on exit (Ctrl+C, error, normal end).
-trap 'kill 0' EXIT
+# Kill ALL beevibe-related children on exit. Plain `kill 0` only
+# reaches direct children of THIS shell, but `pnpm --filter` /
+# `tsx watch` / `cloudflared` daemons fork into their own process
+# groups and survive. The pkill matches go after them by name.
+# Idempotent: it's fine if the patterns match nothing on a
+# clean exit.
+cleanup() {
+  rm -f "${api_url_file:-}" "${web_url_file:-}" 2>/dev/null
+  pkill -f "tsx watch.*src/main\.ts" 2>/dev/null
+  pkill -f "next dev" 2>/dev/null
+  pkill -f "next-server" 2>/dev/null
+  pkill -f "cloudflared tunnel" 2>/dev/null
+  kill 0 2>/dev/null
+}
+trap cleanup EXIT
+trap cleanup INT TERM
+
+# Pre-flight: if a previous session left stale processes (Ctrl+Z'd
+# away, parent killed -9, etc.), clean them up before starting fresh.
+# Otherwise we'd accumulate duplicate cloudflared tunnels and the
+# bundle's baked api URL would point at a dead one.
+if pgrep -f "cloudflared tunnel.*localhost:${BEEVIBE_API_PORT}" >/dev/null 2>&1 ||
+   pgrep -f "cloudflared tunnel.*localhost:${BEEVIBE_WEB_PORT}" >/dev/null 2>&1 ||
+   pgrep -f "tsx watch.*src/main\.ts" >/dev/null 2>&1 ||
+   pgrep -f "next-server" >/dev/null 2>&1; then
+  echo "==> Killing leftover beevibe processes from a previous session..."
+  pkill -f "tsx watch.*src/main\.ts" 2>/dev/null
+  pkill -f "next dev" 2>/dev/null
+  pkill -f "next-server" 2>/dev/null
+  pkill -f "cloudflared tunnel" 2>/dev/null
+  sleep 1
+fi
 
 # api + executor go up first so they're listening when cloudflared and
 # the web dev server start probing.
