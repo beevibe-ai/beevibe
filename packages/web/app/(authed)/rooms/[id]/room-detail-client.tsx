@@ -34,7 +34,14 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
     queryKey: queryKeys.rooms.detail(roomId),
     queryFn: ({ signal }) => api.rooms.get(roomId, { signal }),
     enabled: isApiConfigured && !!roomId,
-    staleTime: 5_000,
+    staleTime: 1_000,
+    // Polling fallback — cloudflared trycloudflare quick tunnels
+    // buffer SSE responses, so the bv_event channel often fails to
+    // propagate to remote browsers. SSE remains the fast path when
+    // it works (sub-second latency); this 3s poll guarantees the
+    // room view eventually catches up regardless of the tunnel.
+    refetchInterval: 3_000,
+    refetchIntervalInBackground: false,
   });
 
   // Optimistic UI: snapshot the message text on send, push it into
