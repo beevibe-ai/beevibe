@@ -3,13 +3,32 @@ import { apiBaseUrl, getUserKey } from "./config";
 export class ApiError extends Error {
   readonly status: number;
   readonly body: unknown;
+  /** Server-supplied error code (e.g. "person_not_found"), when the body looks like {error}. */
+  readonly errorCode?: string;
+  /** Server-supplied human message — preferred for UI surfacing over raw HTTP status. */
+  readonly serverMessage?: string;
 
   constructor(message: string, status: number, body: unknown) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.body = body;
+    if (body && typeof body === "object") {
+      const b = body as { error?: unknown; message?: unknown };
+      if (typeof b.error === "string") this.errorCode = b.error;
+      if (typeof b.message === "string") this.serverMessage = b.message;
+    }
   }
+}
+
+/** Best-effort human-readable message: server message > error.message > raw status. */
+export function describeError(err: unknown): string {
+  if (err instanceof ApiError) {
+    if (err.serverMessage) return err.serverMessage;
+    if (err.errorCode) return err.errorCode.replace(/_/g, " ");
+    return err.message;
+  }
+  return err instanceof Error ? err.message : String(err);
 }
 
 /**

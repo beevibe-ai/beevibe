@@ -15,6 +15,7 @@ import {
 import { useMe } from "@/lib/hooks/use-me";
 import { isApiConfigured } from "@/lib/api/config";
 import { api, type RoomDetail, type RoomMemberDetail, type RoomMessage } from "@/lib/api/client";
+import { ApiError, describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { LivePanel } from "@/components/chat/live-panel";
@@ -188,14 +189,44 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
   const queryClient = useQueryClient();
   const [email, setEmail] = useState("");
   const [error, setError] = useState<string | null>(null);
+  /** When the invitee doesn't have an account yet, surface a share link they can use to sign up + auto-join. */
+  const [shareLink, setShareLink] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
   const invite = useMutation({
     mutationFn: () => api.rooms.invite(roomId, { email: email.trim() }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: queryKeys.rooms.detail(roomId) });
       onClose();
     },
-    onError: (err) => setError((err as Error).message),
+    onError: (err) => {
+      // person_not_found is the common case: the invitee hasn't signed up
+      // yet. Show a copyable share link instead — they sign up via that
+      // URL and land in this room as their first session.
+      if (err instanceof ApiError && err.errorCode === "person_not_found") {
+        const origin = typeof window !== "undefined" ? window.location.origin : "";
+        const link = `${origin}/sign-up?room=${encodeURIComponent(roomId)}&email=${encodeURIComponent(email.trim())}`;
+        setShareLink(link);
+        setError(null);
+      } else {
+        setShareLink(null);
+        setError(describeError(err));
+      }
+    },
   });
+
+  const copyLink = async () => {
+    if (!shareLink) return;
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // clipboard API can fail in non-secure contexts; user can still
+      // long-press the input and copy manually.
+    }
+  };
+
   return (
     <div
       className="fixed inset-0 z-30 bg-background/60 backdrop-blur-sm flex items-center justify-center"
@@ -207,14 +238,15 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
           e.preventDefault();
           if (!email.trim()) return;
           setError(null);
+          setShareLink(null);
           invite.mutate();
         }}
-        className="bg-card border border-border rounded-lg p-5 w-full max-w-sm shadow-md"
+        className="bg-card border border-border rounded-lg p-5 w-full max-w-md shadow-md"
       >
         <h3 className="text-sm font-semibold mb-1">Invite to room</h3>
         <p className="text-xs text-muted-foreground mb-3">
-          The invitee must already have a beevibe account. Their team agent joins the room
-          alongside them.
+          Enter the invitee&apos;s email. If they already have a beevibe account they&apos;re
+          added immediately. If not, you&apos;ll get a sign-up link to share.
         </p>
         <input
           type="email"
@@ -231,21 +263,46 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
             <span>{error}</span>
           </div>
         ) : null}
+        {shareLink ? (
+          <div className="mt-3 rounded border border-border bg-muted/40 p-3">
+            <div className="text-[11px] text-muted-foreground mb-1.5">
+              No account for that email yet. Send them this link — they&apos;ll sign up and
+              land in this room.
+            </div>
+            <div className="flex items-center gap-1.5">
+              <input
+                readOnly
+                value={shareLink}
+                className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-[11px] font-mono"
+                onFocus={(e) => e.currentTarget.select()}
+              />
+              <button
+                type="button"
+                onClick={copyLink}
+                className="h-7 px-2.5 rounded text-[11px] font-medium border border-border hover:bg-secondary transition-colors cursor-pointer shrink-0"
+              >
+                {copied ? "Copied" : "Copy"}
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="mt-4 flex items-center justify-end gap-2">
           <button
             type="button"
             onClick={onClose}
             className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer"
           >
-            Cancel
+            {shareLink ? "Done" : "Cancel"}
           </button>
-          <button
-            type="submit"
-            disabled={invite.isPending || email.trim().length === 0}
-            className="h-8 px-3 rounded text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {invite.isPending ? "Inviting…" : "Invite"}
-          </button>
+          {shareLink ? null : (
+            <button
+              type="submit"
+              disabled={invite.isPending || email.trim().length === 0}
+              className="h-8 px-3 rounded text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {invite.isPending ? "Inviting…" : "Invite"}
+            </button>
+          )}
         </div>
       </form>
     </div>

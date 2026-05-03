@@ -200,6 +200,28 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
     }
   });
 
+  // ── Self-join (post-invite-link signup) ───────────────────────────────
+  // Any signed-in caller can join any room they have the id for. URL is
+  // the bearer of trust — same model as Slack/Discord shareable invites.
+  // Caller's primary team agent is added as an agent member alongside.
+  router.post("/:id/join", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      const id = req.params.id ?? "";
+      const room = await deps.roomRepo.findById(id);
+      if (!room) {
+        res.status(404).json({ error: "room_not_found" });
+        return;
+      }
+      await deps.roomRepo.addPersonMember(id, req.caller.personId);
+      const team = await deps.agentRepo.findTopLevelForOwner(req.caller.personId);
+      if (team) await deps.roomRepo.addAgentMember(id, team.id);
+      res.json({ ok: true, room });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
   // ── Invite ─────────────────────────────────────────────────────────────
   router.post("/:id/invite", async (req, res) => {
     if (!requireHuman(req, res)) return;

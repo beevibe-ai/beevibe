@@ -381,6 +381,11 @@ export const api = {
         ok: true;
         invited: { person_id: string; name: string; email: string | null };
       }>(`/room/${encodeURIComponent(id)}/invite`, { method: "POST", body: input }),
+    /** Self-join — caller adds themselves + their team agent. Used after invite-link signup. */
+    join: (id: string) =>
+      fetchJson<{ ok: true; room: Room }>(`/room/${encodeURIComponent(id)}/join`, {
+        method: "POST",
+      }),
     sendMessage: (id: string, input: { content: string }) =>
       fetchJson<{
         ok: true;

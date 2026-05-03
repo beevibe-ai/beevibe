@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Loader2, Sparkles, UserPlus } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/http";
@@ -19,15 +19,22 @@ import { getUserKey, isApiConfigured, setUserKey } from "@/lib/api/config";
  */
 export function SignUpClient() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  // Invite-link flow: `?room=room_xxx&email=...` pre-fills the email,
+  // and on success the new visitor auto-joins that room (which puts
+  // their team agent in too) and lands there instead of /welcome.
+  const inviteRoomId = searchParams?.get("room") ?? null;
+  const inviteEmail = searchParams?.get("email") ?? "";
+
   const [name, setName] = useState("");
-  const [email, setEmail] = useState("");
+  const [email, setEmail] = useState(inviteEmail);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
   // If they already have a stored key, skip the form.
   useEffect(() => {
-    if (getUserKey()) router.replace("/");
-  }, [router]);
+    if (getUserKey()) router.replace(inviteRoomId ? `/rooms/${inviteRoomId}` : "/");
+  }, [router, inviteRoomId]);
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +47,20 @@ export function SignUpClient() {
     try {
       const res = await api.signup.create({ name: name.trim(), email: email.trim() });
       setUserKey(res.api_key);
+      // If this was an invite-link flow, the new user joins the target
+      // room directly (URL = bearer of trust). Their team agent gets
+      // added alongside. Best-effort: failure here doesn't block the
+      // happy path of just landing on /welcome.
+      if (inviteRoomId) {
+        try {
+          await api.rooms.join(inviteRoomId);
+          router.replace(`/rooms/${inviteRoomId}`);
+          return;
+        } catch {
+          // Fall through to /welcome and let the user discover the room
+          // manually if /join failed (e.g. room was deleted).
+        }
+      }
       // New visitors land in the onboarding chat; returning visitors
       // (existed=true) might already be past onboarding — in either
       // case `/welcome` does the right thing via /me's needs_onboarding.
