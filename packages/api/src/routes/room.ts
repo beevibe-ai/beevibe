@@ -203,10 +203,11 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
         res.status(404).json({ error: "room_not_found" });
         return;
       }
-      const [room, members, messages] = await Promise.all([
+      const [room, members, messages, runningSessions] = await Promise.all([
         deps.roomRepo.findById(id),
         deps.roomRepo.listMembers(id),
         deps.roomRepo.listMessages(id, 200),
+        deps.sessionRepo.listRunningInRoom(id),
       ]);
       if (!room) {
         res.status(404).json({ error: "room_not_found" });
@@ -234,11 +235,25 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
           owner_person_id: a!.owner_id,
         })),
       ];
+      // Typing indicators — agents currently working on a turn for
+      // this room. Hydrate names so the UI can render "Bob's team is
+      // typing…" without a second round-trip.
+      const agentByIdLocal = new Map(agents.filter((a) => a).map((a) => [a!.id, a!]));
+      const typing = runningSessions
+        .filter((s) => agentByIdLocal.has(s.agent_id))
+        .map((s) => ({
+          session_id: s.id,
+          agent_id: s.agent_id,
+          agent_name: agentByIdLocal.get(s.agent_id)!.name,
+          started_at: (s.started_at ?? s.created_at).toISOString(),
+        }));
+
       res.json({
         ok: true,
         room,
         members: memberDetail,
         messages: messages.map(toMessageReply),
+        typing,
       });
     } catch (err) {
       handleError(err, res);
@@ -512,12 +527,22 @@ async function runMentionedAgents(
         triggerPersonId,
         triggerContent,
       );
+      // Resume the agent's prior room conversation if it has one —
+      // warm prompt cache + continuous CLI memory rather than a
+      // cold-start every turn. The full transcript still rides on
+      // `intent` so an agent that hasn't talked in this room before
+      // (or whose CLI session expired) gets the same context.
+      const prior = await deps.sessionRepo.findLatestForAgentInRoom(
+        agent.id,
+        roomId,
+      );
       const session = await agentSession.run({
         agentId: agent.id,
         intent,
         workspace,
         type: "chat",
         roomId,
+        ...(prior ? { priorSessionId: prior.id } : {}),
         extraSystemPromptAppend: ROOM_DIRECTIVES,
       });
       const visible = session.result_summary ?? "";

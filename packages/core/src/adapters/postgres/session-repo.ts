@@ -36,6 +36,30 @@ export class PostgresSessionRepository implements SessionRepository {
     return rows[0] ? rowToSession(rows[0]) : undefined;
   }
 
+  async findLatestForAgentInRoom(
+    agentId: string,
+    roomId: string,
+  ): Promise<Session | undefined> {
+    const { rows } = await this.pool.query<SessionRow>(
+      `SELECT * FROM session
+        WHERE agent_id = $1 AND room_id = $2
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [agentId, roomId],
+    );
+    return rows[0] ? rowToSession(rows[0]) : undefined;
+  }
+
+  async listRunningInRoom(roomId: string): Promise<Session[]> {
+    const { rows } = await this.pool.query<SessionRow>(
+      `SELECT * FROM session
+        WHERE room_id = $1 AND status = 'running'
+        ORDER BY started_at ASC`,
+      [roomId],
+    );
+    return rows.map(rowToSession);
+  }
+
   async listForTask(taskId: string): Promise<Session[]> {
     const { rows } = await this.pool.query<SessionRow>(
       `SELECT * FROM session

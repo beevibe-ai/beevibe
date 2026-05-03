@@ -177,6 +177,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
               ))
             )}
             {send.isPending ? <Pending /> : null}
+            {data.typing.length > 0 ? <TypingIndicators typing={data.typing} /> : null}
             {send.error ? (
               <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
                 <div className="flex items-center gap-1.5 text-status-failed font-medium mb-1">
@@ -465,6 +466,36 @@ function MessageBubble({
           ))}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+function TypingIndicators({ typing }: { typing: NonNullable<RoomDetail["typing"]> }) {
+  return (
+    <div className="space-y-1.5">
+      {typing.map((t) => (
+        <div key={t.session_id} className="flex flex-col items-start">
+          <div className="text-[10px] text-muted-foreground/80 mb-0.5 px-1">
+            <span className="inline-flex items-center gap-1">
+              <Bot className="h-2.5 w-2.5" />
+              {t.agent_name}
+            </span>
+            <span className="ml-1.5 text-muted-foreground/60">
+              started {formatRelativeTime(t.started_at)}
+            </span>
+          </div>
+          <div className="rounded-lg px-3 py-2 bg-secondary text-foreground border border-border">
+            <div className="flex items-center gap-2 text-muted-foreground italic text-sm">
+              <span className="inline-flex items-center gap-1">
+                <span className="h-1.5 w-1.5 rounded-full bg-status-running animate-pulse" />
+                <span className="h-1.5 w-1.5 rounded-full bg-status-running animate-pulse [animation-delay:200ms]" />
+                <span className="h-1.5 w-1.5 rounded-full bg-status-running animate-pulse [animation-delay:400ms]" />
+              </span>
+              <span>typing…</span>
+            </div>
+          </div>
+        </div>
+      ))}
     </div>
   );
 }

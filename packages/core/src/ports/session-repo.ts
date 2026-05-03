@@ -17,6 +17,23 @@ export interface SessionRepository {
   /** Most recent session for this task (by created_at). */
   findLatestForTask(taskId: string): Promise<Session | undefined>;
 
+  /**
+   * Most recent session this agent had inside a given room. Used by
+   * the room route to chain `prior_session_id` so an agent resumes
+   * its CLI conversation across @-mentions in the same room (warm
+   * prompt cache + continuous agent memory) instead of cold-starting
+   * every turn.
+   */
+  findLatestForAgentInRoom(agentId: string, roomId: string): Promise<Session | undefined>;
+
+  /**
+   * In-flight sessions for a room — anything currently `running`.
+   * Used by the room view to render "X is typing…" indicators while
+   * the agent is working so the room doesn't fall silent during the
+   * 5–30s an agent takes to think.
+   */
+  listRunningInRoom(roomId: string): Promise<Session[]>;
+
   listForTask(taskId: string): Promise<Session[]>;
 
   listForAgent(agentId: string): Promise<Session[]>;

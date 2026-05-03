@@ -155,11 +155,20 @@ export interface RoomMessage {
   created_at: string;
 }
 
+export interface RoomTypingIndicator {
+  session_id: string;
+  agent_id: string;
+  agent_name: string;
+  started_at: string;
+}
+
 export interface RoomDetail {
   ok: true;
   room: Room;
   members: RoomMemberDetail[];
   messages: RoomMessage[];
+  /** Agents currently working on a turn for this room. */
+  typing: RoomTypingIndicator[];
 }
 
 export interface WorkProductDetail {
