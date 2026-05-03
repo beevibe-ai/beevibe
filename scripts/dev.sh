@@ -128,15 +128,15 @@ echo ""
 # reaches direct children of THIS shell, but `pnpm --filter` /
 # `tsx watch` / `cloudflared` daemons fork into their own process
 # groups and survive. The pkill matches go after them by name.
-# Idempotent: it's fine if the patterns match nothing on a
-# clean exit.
+# `|| true` suppresses pkill's non-zero exit when nothing matches,
+# which under `set -e` would otherwise abort the script.
 cleanup() {
-  rm -f "${api_url_file:-}" "${web_url_file:-}" 2>/dev/null
-  pkill -f "tsx watch.*src/main\.ts" 2>/dev/null
-  pkill -f "next dev" 2>/dev/null
-  pkill -f "next-server" 2>/dev/null
-  pkill -f "cloudflared tunnel" 2>/dev/null
-  kill 0 2>/dev/null
+  rm -f "${api_url_file:-}" "${web_url_file:-}" 2>/dev/null || true
+  pkill -f "tsx watch.*src/main\.ts" 2>/dev/null || true
+  pkill -f "next dev" 2>/dev/null || true
+  pkill -f "next-server" 2>/dev/null || true
+  pkill -f "cloudflared tunnel" 2>/dev/null || true
+  kill 0 2>/dev/null || true
 }
 trap cleanup EXIT
 trap cleanup INT TERM
@@ -150,10 +150,10 @@ if pgrep -f "cloudflared tunnel.*localhost:${BEEVIBE_API_PORT}" >/dev/null 2>&1 
    pgrep -f "tsx watch.*src/main\.ts" >/dev/null 2>&1 ||
    pgrep -f "next-server" >/dev/null 2>&1; then
   echo "==> Killing leftover beevibe processes from a previous session..."
-  pkill -f "tsx watch.*src/main\.ts" 2>/dev/null
-  pkill -f "next dev" 2>/dev/null
-  pkill -f "next-server" 2>/dev/null
-  pkill -f "cloudflared tunnel" 2>/dev/null
+  pkill -f "tsx watch.*src/main\.ts" 2>/dev/null || true
+  pkill -f "next dev" 2>/dev/null || true
+  pkill -f "next-server" 2>/dev/null || true
+  pkill -f "cloudflared tunnel" 2>/dev/null || true
   sleep 1
 fi
 
