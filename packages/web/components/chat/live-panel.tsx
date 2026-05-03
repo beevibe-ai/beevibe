@@ -255,7 +255,7 @@ function RecentActivity() {
                     {e.task_title ?? truncate(e.intent, 60)}
                   </span>
                   <span className="text-[10px] tabular-nums text-muted-foreground/80 shrink-0">
-                    {formatRelativeTime(new Date(e.started_at))}
+                    {formatRelativeTime(e.started_at)}
                   </span>
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground truncate flex items-center gap-1">

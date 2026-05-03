@@ -81,7 +81,7 @@ export function ConversationSidebar({
                         {c.title}
                       </div>
                       <span className="text-[10px] tabular-nums text-muted-foreground/80 shrink-0">
-                        {formatRelativeTime(new Date(c.last_at))}
+                        {formatRelativeTime(c.last_at)}
                       </span>
                     </div>
                     <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2 leading-snug">
