@@ -10,7 +10,14 @@ import type { AgentDisplay } from "@/lib/types/agents";
 import type { SessionDisplay } from "@/lib/types/sessions";
 import type { MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
-import type { Task, MemoryScope, TaskPriority } from "@beevibe/core";
+import type {
+  HierarchyLevel,
+  MemoryScope,
+  SessionStatus,
+  SessionType,
+  Task,
+  TaskPriority,
+} from "@beevibe/core";
 import type { Lifecycle } from "@/lib/tasks-grouping";
 
 export type TaskView = "all" | "mine" | "sprint" | "timeline";
@@ -106,6 +113,22 @@ export interface ChatTurnResponse {
    * label as the next user message.
    */
   suggested_actions?: string[];
+}
+
+export interface ActivityEntry {
+  id: string;
+  short_id: string;
+  agent_id: string;
+  agent_label: string;
+  agent_hierarchy: HierarchyLevel;
+  type: SessionType;
+  status: SessionStatus;
+  intent: string;
+  task_id: string | null;
+  task_title: string | null;
+  task_short_id: string | null;
+  started_at: string;
+  duration_label: string;
 }
 
 export interface SignupInput {
@@ -265,6 +288,14 @@ export const api = {
     conversations: (opts: ReadOptions = {}) =>
       fetchJson<ChatConversationsResponse>("/chat/conversations", {
         signal: opts.signal,
+      }),
+  },
+  activity: {
+    /** Recent sessions across the caller's agent tree. Used by the live chat rail. */
+    list: (opts: ReadOptions & { limit?: number } = {}) =>
+      fetchJson<ActivityEntry[]>("/activity", {
+        signal: opts.signal,
+        ...(opts.limit ? { query: { limit: opts.limit } } : {}),
       }),
   },
   signup: {

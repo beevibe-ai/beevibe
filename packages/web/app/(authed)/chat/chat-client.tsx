@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { ReferenceCards } from "@/components/chat/reference-cards";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ConversationSidebar } from "@/components/chat/conversation-sidebar";
+import { LivePanel } from "@/components/chat/live-panel";
 
 const PROMPT_SUGGESTIONS = [
   "What's on the team's plate today?",
@@ -188,6 +189,7 @@ export function ChatClient() {
           </div>
         </div>
       </div>
+      <LivePanel />
     </div>
   );
 }

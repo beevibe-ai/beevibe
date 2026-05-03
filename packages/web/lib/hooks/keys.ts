@@ -37,6 +37,10 @@ export const queryKeys = {
     self: () => ["me", "self"] as const,
     health: () => ["me", "health"] as const,
   },
+  activity: {
+    all: ["activity"] as const,
+    feed: () => ["activity", "feed"] as const,
+  },
   chat: {
     all: ["chat"] as const,
     /** Per-conversation history. `undefined` = the most recent conversation. */

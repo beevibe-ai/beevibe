@@ -48,6 +48,7 @@ LEFT JOIN (
   FROM memory_fact
   GROUP BY agent_id
 ) fc ON fc.agent_id = a.id
+WHERE ($1::text IS NULL OR a.owner_id = $1)
 ORDER BY
   CASE a.hierarchy_level WHEN 'org' THEN 0 WHEN 'team' THEN 1 ELSE 2 END,
   a.name ASC
@@ -72,8 +73,11 @@ function rowToAgentDisplay(row: AgentRow): AgentDisplay {
   };
 }
 
-export async function listAgents(pool: Pool): Promise<AgentDisplay[]> {
-  const { rows } = await pool.query<AgentRow>(LIST_SQL);
+export async function listAgents(
+  pool: Pool,
+  ownerId?: string,
+): Promise<AgentDisplay[]> {
+  const { rows } = await pool.query<AgentRow>(LIST_SQL, [ownerId ?? null]);
   return rows.map(rowToAgentDisplay);
 }
 
