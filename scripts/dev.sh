@@ -227,16 +227,17 @@ if [ "$TUNNEL_ENABLED" = "1" ]; then
   (
     # --protocol http2: disable QUIC. Recent cloudflared versions hit
     # "context canceled" on the datagram handler when behind some
-    # NATs/firewalls; HTTP/2 is rock-solid and just as fast for
-    # demo-scale traffic.
-    # NOTE: no --protocol flag. We previously used --protocol http2 to
-    # dodge a "context canceled" QUIC datagram error on a flaky
-    # network, but http2 mode BUFFERS SSE responses — server-sent
-    # events don't propagate through to remote browsers, only the
-    # local one. Default (auto, tries QUIC first) supports streaming
-    # properly. Re-add the http2 flag only if the demo network truly
-    # blocks UDP and SSE isn't critical.
-    cloudflared tunnel --url "http://localhost:${BEEVIBE_API_PORT}" 2>&1 | while IFS= read -r line; do
+    # --protocol http2: force TCP-based HTTP/2 instead of QUIC's UDP
+    # datagrams. QUIC fails on networks that drop UDP traffic
+    # (corporate firewalls, some hotel/conference WiFi) — manifests
+    # as "failed to run the datagram handler error=context canceled"
+    # in cloudflared logs and an unreachable tunnel from any remote
+    # browser. http2 buffers SSE responses, but client-side SSE
+    # detection in lib/sse.ts now falls back to polling automatically
+    # when no bytes arrive within 8s, so the buffering is invisible
+    # to the user. Net effect: works on every network, polling at 3s
+    # is the live-update path.
+    cloudflared tunnel --protocol http2 --url "http://localhost:${BEEVIBE_API_PORT}" 2>&1 | while IFS= read -r line; do
       echo "[tunnel-api] $line"
       if [[ "$line" =~ (https://[^[:space:]]+\.trycloudflare\.com) ]] && [ ! -s "$api_url_file" ]; then
         echo "${BASH_REMATCH[1]}" > "$api_url_file"
@@ -265,7 +266,7 @@ if [ "$TUNNEL_ENABLED" = "1" ]; then
   sleep 4
 
   (
-    cloudflared tunnel --url "http://localhost:${BEEVIBE_WEB_PORT}" 2>&1 | while IFS= read -r line; do
+    cloudflared tunnel --protocol http2 --url "http://localhost:${BEEVIBE_WEB_PORT}" 2>&1 | while IFS= read -r line; do
       echo "[tunnel-web] $line"
       if [[ "$line" =~ (https://[^[:space:]]+\.trycloudflare\.com) ]] && [ ! -s "$web_url_file" ]; then
         echo "${BASH_REMATCH[1]}" > "$web_url_file"
