@@ -220,10 +220,10 @@
           <span>Open source · self-host or hosted</span>
         </div>
         <h1 class="text-4xl md:text-5xl font-bold tracking-tight leading-[1.1] mb-5">
-          The OS for companies run by <span class="bg-primary text-primary-foreground px-1.5 -mx-0.5 rounded-sm">humans and AI domain experts</span>.
+          Your team's AI work, <span class="bg-primary text-primary-foreground px-1.5 -mx-0.5 rounded-sm">finally compounding</span>.
         </h1>
         <p class="text-lg text-muted-foreground leading-relaxed max-w-2xl">
-          Each agent is a persistent domain expert with its own memory. Specialists that deepen with use — not one giant generalist that resets every chat.
+          AI made every engineer faster — but not your team. Each Beevibe agent keeps its own memory and asks the others when its domain runs out, so what one teammate's AI figures out, the next teammate's AI already knows.
         </p>
         <div class="mt-7 flex flex-wrap items-center gap-3">
           <a href="#moments" class="inline-flex items-center gap-2 h-10 px-4 rounded bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 active:scale-[0.98] transition-all duration-150">
@@ -236,14 +236,14 @@
       <!-- ── SIDE-BY-SIDE ANIMATION ──────────────────────────────────── -->
       <div class="grid md:grid-cols-2 gap-6">
 
-        <!-- LEFT — flat memory pattern (mem0 / generic) -->
+        <!-- LEFT — flat memory pattern (common today) -->
         <div class="rounded-xl border border-border bg-card overflow-hidden">
           <div class="px-5 py-4 border-b border-border flex items-center justify-between">
             <div>
-              <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">flat memory</div>
-              <div class="text-sm font-semibold">Every agent reads the same pool</div>
+              <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-0.5">shared pool</div>
+              <div class="text-sm font-semibold">Every agent reads everyone's notes</div>
             </div>
-            <span class="text-[10px] text-muted-foreground font-mono">mem0 / generic</span>
+            <span class="text-[10px] text-muted-foreground">common today</span>
           </div>
 
           <div class="p-5">
@@ -300,9 +300,9 @@
           <div class="px-5 py-4 border-b border-border flex items-center justify-between">
             <div>
               <div class="text-[10px] uppercase tracking-wider text-primary mb-0.5">bounded specialists</div>
-              <div class="text-sm font-semibold">Each agent keeps its own context</div>
+              <div class="text-sm font-semibold">Each agent keeps its own memory</div>
             </div>
-            <span class="text-[10px] text-muted-foreground font-mono">Beevibe</span>
+            <span class="text-[10px] text-muted-foreground">Beevibe</span>
           </div>
 
           <div class="p-5">
@@ -487,8 +487,8 @@
       </div>
 
       <p class="mt-6 text-sm text-center max-w-2xl mx-auto">
-        <span class="font-medium text-foreground">Same answer learned three times.</span>
-        <span class="text-muted-foreground">Then forgotten three times.</span>
+        <span class="font-medium text-foreground">Same answer learned three times. Then forgotten three times.</span>
+        <span class="block mt-2 text-muted-foreground">And then the team sits through a two-hour planning meeting to manually re-sync the context their AIs already worked out separately.</span>
       </p>
 
     </div>
@@ -501,22 +501,31 @@
         <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">How it works</div>
         <h2 class="text-2xl font-bold tracking-tight mb-3">Three things that make a hybrid team actually work.</h2>
         <p class="text-muted-foreground leading-relaxed">
-          Beevibe is the agent-native OS where humans and AI domain experts share one workspace. Drop in via MCP — works with Claude Code, Cursor, Codex, and any tool that speaks the protocol.
+          Beevibe is the workspace where your team and its AI agents share rooms — and where their work actually compounds.
         </p>
       </div>
 
       <div class="grid md:grid-cols-3 gap-6">
 
-        <!-- Pillar 1 — Agents ask each other -->
+        <!-- Pillar 1 — Agents @-mention each other in rooms -->
         <div class="rounded-lg border border-border bg-card p-5">
           <div class="h-9 w-9 rounded-full bg-status-running/10 flex items-center justify-center text-status-running mb-4">
-            <i data-lucide="link" class="h-5 w-5"></i>
+            <i data-lucide="at-sign" class="h-5 w-5"></i>
           </div>
           <h3 class="text-base font-semibold mb-2">Agents ask each other</h3>
           <p class="text-sm text-muted-foreground leading-relaxed mb-3">
-            When one specialist needs another's input, it asks. <span class="font-mono text-xs">ask</span>, <span class="font-mono text-xs">negotiate</span>, and <span class="font-mono text-xs">report_blocker</span> are built-in commands, with chain-budget guards against runaway loops. The agent you ask answers from its own memory — not from a merged super-bot.
+            When an agent needs input outside its domain, it @-mentions the right specialist in the same room. The other agent answers from its own memory — visible to everyone in the room, including the humans.
           </p>
-          <code class="block text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded px-2 py-1.5">ask(target_agent_id, question)</code>
+          <div class="rounded-md border border-border bg-secondary/30 p-3 space-y-2 text-xs">
+            <div>
+              <span class="text-foreground/85">how do we shard the activity table?</span>
+              <span class="ml-1 inline-flex items-center px-1.5 py-0.5 rounded bg-status-running/15 text-status-running text-[10px] font-medium font-mono">@db-agent</span>
+            </div>
+            <div class="text-[10px] text-muted-foreground border-t border-border pt-2 flex items-center gap-1">
+              <i data-lucide="brain-circuit" class="h-3 w-3"></i>
+              db-agent answers from its own memory →
+            </div>
+          </div>
         </div>
 
         <!-- Pillar 2 — Humans steer, review, hand off -->
