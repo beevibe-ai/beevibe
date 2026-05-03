@@ -7,7 +7,6 @@ import {
   Bot,
   ChevronDown,
   ChevronRight,
-  ChevronsUpDown,
   LayoutDashboard,
   ListChecks,
   type LucideIcon,
@@ -85,7 +84,7 @@ export function Sidebar() {
 
   return (
     <aside className="w-[248px] shrink-0 bg-card border-r border-border/60 flex flex-col">
-      <WorkspaceSwitcher />
+      <WorkspaceHeader />
 
       <div className="px-2 pt-1 pb-2 space-y-px">
         {QUICK_ACTIONS.map((a) => (
@@ -155,23 +154,18 @@ export function Sidebar() {
   );
 }
 
-function WorkspaceSwitcher() {
+function WorkspaceHeader() {
   return (
-    <button
-      type="button"
-      aria-label="Switch owner"
-      className="group flex items-center gap-2 h-12 px-3 mx-2 mt-2 rounded-md hover:bg-secondary/70 cursor-pointer transition-colors"
-    >
+    <div className="flex items-center gap-2 h-12 px-3 mx-2 mt-2">
       <div className="h-6 w-6 rounded-md bg-primary flex items-center justify-center shrink-0">
         <span className="text-primary-foreground text-[13px] font-bold leading-none">b</span>
       </div>
-      <div className="flex-1 min-w-0 text-left">
+      <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold tracking-tight leading-tight truncate">
           beevibe
         </div>
       </div>
-      <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
-    </button>
+    </div>
   );
 }
 
