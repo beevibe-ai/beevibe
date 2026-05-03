@@ -14,6 +14,7 @@ import { ReferenceCards } from "@/components/chat/reference-cards";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ConversationSidebar } from "@/components/chat/conversation-sidebar";
 import { LivePanel } from "@/components/chat/live-panel";
+import { categoryAccent, formatTool } from "@/lib/tool-format";
 
 const PROMPT_SUGGESTIONS = [
   "What's on the team's plate today?",
@@ -277,21 +278,23 @@ function OpenViewCta({ open_view }: { open_view: { path: string; label?: string 
 
 function Thinking({ steps }: { steps: ChatStreamStep[] }) {
   // Split agent text from tool steps. Agent text is the response being
-  // written — we render it like a real bubble. Tools are the substrate
-  // beneath ("Reading file X", "Bash ls"). The final summary arrives via
-  // the synchronous POST /chat response and replaces this whole block.
-  const toolSteps = steps.filter((s) => s.kind === "tool_call" || s.kind === "tool_result");
+  // written; tools are the substrate beneath, categorized so the
+  // audience can SEE when the agent is asking another agent (mesh) vs
+  // saving memory vs reading a file. Final summary arrives via POST and
+  // replaces this whole block.
+  const toolSteps = steps.filter((s) => s.kind === "tool_call");
   const agentSteps = steps.filter((s) => s.kind === "agent");
-  // Show the most recent agent text — each Claude turn between tool calls
-  // emits one assistant block with that segment's text, so concatenating
-  // them gives the response so far. (Stream-json segments aren't deltas;
-  // they're full-text blocks separated by tool calls.)
+  // Each Claude turn between tool calls emits one assistant block — full
+  // text, not deltas — so concatenating gives the response-so-far.
   const streamingText = agentSteps.map((s) => s.content).join("\n\n");
-  const lastTool = toolSteps[toolSteps.length - 1];
+  // Show the latest 8 tool steps. With strong categorization the list
+  // stays scannable; the running pulse on the most recent makes it
+  // clear where the agent is "now."
+  const recentTools = toolSteps.slice(-8);
 
   return (
-    <div className="flex flex-col items-start">
-      <div className="max-w-[80%] rounded-lg px-3 py-2 bg-secondary text-foreground border border-border">
+    <div className="flex flex-col items-start w-full">
+      <div className="max-w-[80%] rounded-lg px-3 py-2 bg-secondary text-foreground border border-border w-full">
         {streamingText ? (
           <ChatMarkdown content={streamingText} />
         ) : (
@@ -304,29 +307,67 @@ function Thinking({ steps }: { steps: ChatStreamStep[] }) {
             <span>thinking…</span>
           </div>
         )}
-        {lastTool ? (
-          <div
-            className={cn(
-              "flex items-baseline gap-1.5 text-[11px] text-muted-foreground/90",
-              streamingText ? "mt-2 pt-2 border-t border-border/60" : "mt-1",
-            )}
-          >
-            <span className="inline-flex h-1.5 w-1.5 rounded-full bg-status-running animate-pulse shrink-0 self-center" />
-            {lastTool.tool_name ? (
-              <span className="font-mono text-foreground/80 shrink-0">{lastTool.tool_name}</span>
-            ) : (
-              <span className="font-mono text-foreground/60 shrink-0">{lastTool.kind}</span>
-            )}
-            <span className="text-muted-foreground truncate min-w-0">{lastTool.content}</span>
-            {toolSteps.length > 1 ? (
-              <span className="ml-auto tabular-nums opacity-60 shrink-0">
-                {toolSteps.length} step{toolSteps.length === 1 ? "" : "s"}
-              </span>
-            ) : null}
-          </div>
+        {recentTools.length > 0 ? (
+          <ToolStepList
+            steps={recentTools}
+            totalSteps={toolSteps.length}
+            withTopBorder={!!streamingText}
+          />
         ) : null}
       </div>
     </div>
+  );
+}
+
+function ToolStepList({
+  steps,
+  totalSteps,
+  withTopBorder,
+}: {
+  steps: ChatStreamStep[];
+  totalSteps: number;
+  withTopBorder: boolean;
+}) {
+  return (
+    <ul
+      className={cn(
+        "space-y-1 text-[11px]",
+        withTopBorder ? "mt-2 pt-2 border-t border-border/60" : "mt-1",
+      )}
+    >
+      {steps.map((step, idx) => {
+        const display = formatTool(step.tool_name, step.content);
+        const isLatest = idx === steps.length - 1;
+        return (
+          <li key={step.event_id} className="flex items-start gap-1.5">
+            <span
+              className={cn(
+                "shrink-0 inline-flex items-center justify-center h-4 w-4 rounded",
+                categoryAccent(display.category),
+                isLatest && "animate-pulse-breathe",
+              )}
+            >
+              <display.icon className="h-2.5 w-2.5" />
+            </span>
+            <div className="flex-1 min-w-0 leading-tight">
+              <div className="flex items-baseline gap-1.5">
+                <span className="font-medium text-foreground/85 shrink-0">{display.label}</span>
+                {display.detail ? (
+                  <span className="text-muted-foreground truncate min-w-0">
+                    {display.detail}
+                  </span>
+                ) : null}
+              </div>
+            </div>
+          </li>
+        );
+      })}
+      {totalSteps > steps.length ? (
+        <li className="text-[10px] text-muted-foreground/70 pl-5">
+          + {totalSteps - steps.length} earlier step{totalSteps - steps.length === 1 ? "" : "s"}
+        </li>
+      ) : null}
+    </ul>
   );
 }
 

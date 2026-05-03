@@ -72,13 +72,26 @@ describe("extractStepEvent", () => {
     expect(step?.description).toBe("/tmp/x");
   });
 
-  it("falls back to JSON.stringify for unknown input shapes", () => {
+  it("returns the lone string field for tools with one parameter", () => {
+    // When the input has a single string parameter we surface its
+    // value rather than a JSON blob — much more useful for unknown
+    // tools or future MCP additions.
     const step = extractStepEvent({
       type: "tool_use",
       name: "Custom",
       input: { foo: "bar" },
     });
-    expect(step?.description).toContain("foo");
+    expect(step?.description).toBe("bar");
+  });
+
+  it("falls back to JSON.stringify for unknown input shapes with multiple unknown fields", () => {
+    const step = extractStepEvent({
+      type: "tool_use",
+      name: "Custom",
+      input: { alpha: "x", beta: "y" },
+    });
+    expect(step?.description).toContain("alpha");
+    expect(step?.description).toContain("beta");
   });
 });
 

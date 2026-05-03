@@ -128,11 +128,42 @@ export function extractStepEvent(msg: StreamJsonMessage): RuntimeStep | null {
   return steps[0] ?? null;
 }
 
+/**
+ * Pull the most informative human-readable field out of a tool's input
+ * payload. Used by the chat UI's "what's the agent doing right now"
+ * bubble — the goal is "Read packages/foo.ts" not "{file_path: ...}".
+ *
+ * The first matching field wins; ordering reflects which tools we want
+ * to surface most prominently. Mesh and team-management fields come
+ * BEFORE generic ones (file_path, command) so when an agent calls
+ * `create_subordinate_agent({name: "Backend"})` we see the name, not a
+ * blob of JSON.
+ */
 function describeToolInput(input: Record<string, unknown>): string {
+  // Mesh + team-management tools — most demo-relevant.
+  if (typeof input.question === "string") return input.question.slice(0, 200);
+  if (typeof input.answer === "string") return input.answer.slice(0, 200);
+  if (typeof input.intent === "string") return input.intent.slice(0, 200);
+  if (typeof input.feedback === "string") return input.feedback.slice(0, 200);
+  if (typeof input.proposal === "string") return input.proposal.slice(0, 200);
+  if (typeof input.blocker_summary === "string") return input.blocker_summary.slice(0, 200);
+  if (typeof input.summary === "string") return input.summary.slice(0, 200);
+  // Identity-style fields used by create_subordinate_agent / get_agent_profile.
+  if (typeof input.name === "string" && typeof input.persona === "string")
+    return input.name.slice(0, 80);
+  // Generic Claude Code native tools.
   if (typeof input.file_path === "string") return input.file_path;
-  if (typeof input.command === "string") return input.command.slice(0, 100);
-  if (typeof input.query === "string") return input.query.slice(0, 100);
-  return JSON.stringify(input).slice(0, 100);
+  if (typeof input.command === "string") return input.command.slice(0, 200);
+  if (typeof input.query === "string") return input.query.slice(0, 200);
+  if (typeof input.pattern === "string") return input.pattern.slice(0, 200);
+  if (typeof input.path === "string") return input.path;
+  if (typeof input.url === "string") return input.url;
+  // Fall back to a single named field if there's only one, else JSON.
+  const keys = Object.keys(input);
+  if (keys.length === 1 && typeof input[keys[0]!] === "string") {
+    return (input[keys[0]!] as string).slice(0, 200);
+  }
+  return JSON.stringify(input).slice(0, 200);
 }
 
 /**
