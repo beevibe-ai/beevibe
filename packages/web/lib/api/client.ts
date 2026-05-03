@@ -404,6 +404,8 @@ export const api = {
         message: RoomMessage;
         /** Agents that were invoked in the background — their responses arrive via SSE. */
         invoked_agents: { id: string; name: string }[];
+        /** Why those agents were chosen — explicit mention, name match, "team" default, or none. */
+        invoked_reason: "mention" | "name" | "team-default" | "none";
       }>(`/room/${encodeURIComponent(id)}/message`, { method: "POST", body: input }),
   },
   signup: {

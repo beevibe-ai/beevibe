@@ -61,24 +61,42 @@ export interface RoomRoutesDeps {
 const ROOM_DIRECTIVES = `
 You are participating in a SHARED ROOM with multiple humans and one
 or more peer team agents. The conversation is a group chat — every
-message you produce is visible to ALL room members in real time. A
-few directives:
+message you produce is visible to ALL room members in real time.
+
+You're being invoked because a human addressed you in one of these
+ways:
+
+  - **Explicit \`@mention\` with your id** — they're talking
+    directly to you.
+  - **Your name appears in the message** ("Bob's team, can you...")
+    — same; they want you specifically.
+  - **Generic team-address** ("team", "agents", "specialist") — you
+    are the speaker's own team agent and they want a default voice.
+
+Other room members may include peer team agents from different
+humans' trees. They're addressable; your peer-check is relaxed for
+room co-members.
+
+Operating directives:
 
 1. **Address the room.** Multiple humans are watching; don't speak
    as if there's only one. When you reference a teammate by name,
    they see it.
 
-2. **You may collaborate with peer agents in this room** via the
-   \`ask\` and \`negotiate\` mesh tools. The peer-check is relaxed for
-   room co-members — you can ask each other directly even if you're
-   from different humans' trees. Use this when a peer's domain
-   knowledge is relevant.
+2. **Collaborate with peer agents** via the \`ask\` and \`negotiate\`
+   mesh tools when a peer's domain knowledge is relevant. Don't
+   hesitate — that's the design.
 
 3. **Reference any task / agent / session by full id** to make it
    clickable for everyone in the room.
 
 4. **End with 2–4 \`<suggest_action>\` chips** giving humans concrete
    next moves the way you'd in 1:1 chat.
+
+5. **Stay quiet when the room isn't talking to you.** If the recent
+   transcript shows humans chatting among themselves with no
+   agent-directed asks, a brief or terse reply (or a \`(no action
+   needed)\` ack) is the right behavior — don't manufacture work.
 `.trim();
 
 const MENTION_RE = /@([A-Za-z0-9_]+)/g;
@@ -315,15 +333,22 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
         content,
       });
 
-      // Resolve @mentions to agent ids. Match against full id, short
-      // id (last 6 chars after underscore), or exact name (CI). Agent
-      // must be a member of THIS room.
+      // Resolve who, if anyone, the message addresses. Order:
+      //   1. explicit @mention      → those agents
+      //   2. agent name in the text → that agent
+      //   3. "team" / "agents" word → speaker's own team agent
+      //   4. otherwise              → no one (pure human chat)
       const memberAgentIds = await deps.roomRepo.listMemberAgentIds(roomId);
       const memberAgents = (
         await Promise.all(memberAgentIds.map((id) => deps.agentRepo.findById(id)))
       ).filter((a) => a !== undefined);
 
-      const mentionedAgents = resolveMentions(content, memberAgents);
+      const speakerOwn = await deps.agentRepo.findTopLevelForOwner(req.caller.personId);
+      const { agents: addressed, reason } = resolveAddressees(
+        content,
+        memberAgents,
+        speakerOwn?.id,
+      );
 
       // Send the response now — agent runs are fire-and-forget. Each
       // agent's session_event stream + final room_message row fan
@@ -332,7 +357,8 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
       res.json({
         ok: true,
         message: toMessageReply(humanMsg),
-        invoked_agents: mentionedAgents.map((a) => ({ id: a.id, name: a.name })),
+        invoked_agents: addressed.map((a) => ({ id: a.id, name: a.name })),
+        invoked_reason: reason,
       });
 
       void runMentionedAgents(
@@ -340,7 +366,7 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
         roomId,
         req.caller.personId,
         content,
-        mentionedAgents,
+        addressed,
       );
     } catch (err) {
       handleError(err, res);
@@ -528,6 +554,49 @@ interface AgentMatchable {
   name: string;
 }
 
+export type AddresseeReason = "mention" | "name" | "team-default" | "none";
+
+/**
+ * Decide which agents (if any) should respond to a human room post.
+ * The rule is intentionally simple — humans should be able to predict
+ * exactly when an agent will chime in:
+ *
+ *   1. Explicit `@mention` — that agent. Wins over everything else.
+ *   2. Agent's name appears in the message ("Bob's team, can you...").
+ *   3. Generic team-address keywords ("team", "agents", "specialist")
+ *      with no specific addressee → speaker's own team agent.
+ *   4. Otherwise → no agent. Pure human-to-human chat stays silent.
+ *
+ * Returned agents run sequentially in `runMentionedAgents`. Reason is
+ * surfaced in the response so the UI can attribute "your team agent
+ * heard 'team' and chimed in" if we ever want to render it.
+ */
+export function resolveAddressees<A extends AgentMatchable>(
+  content: string,
+  memberAgents: readonly A[],
+  speakerOwnerAgentId: string | undefined,
+): { agents: A[]; reason: AddresseeReason } {
+  // 1. Explicit mention. @<full_id> | @<short_id> | @<normalized_name>.
+  const mentions = resolveMentions(content, memberAgents);
+  if (mentions.length > 0) return { agents: mentions, reason: "mention" };
+
+  // 2. Name-substring match. Agent's full normalized name must appear
+  // in the normalized message text. Min length 4 so nothing matches
+  // by accident on short common words.
+  const named = matchAgentsByName(content, memberAgents);
+  if (named.length > 0) return { agents: named, reason: "name" };
+
+  // 3. Generic team-address. Speaker's own team agent answers.
+  if (TEAM_ADDRESS_RE.test(content) && speakerOwnerAgentId) {
+    const own = memberAgents.find((a) => a.id === speakerOwnerAgentId);
+    if (own) return { agents: [own], reason: "team-default" };
+  }
+
+  return { agents: [], reason: "none" };
+}
+
+const TEAM_ADDRESS_RE = /\b(teams?|agents?|specialists?|assistants?)\b/i;
+
 /**
  * Match each `@mention` in `content` against a member agent. Tokens
  * after the @ may be the agent's full id, its short id (the suffix
@@ -536,7 +605,7 @@ interface AgentMatchable {
  */
 function resolveMentions<A extends AgentMatchable>(
   content: string,
-  memberAgents: A[],
+  memberAgents: readonly A[],
 ): A[] {
   const matches = [...content.matchAll(MENTION_RE)];
   if (matches.length === 0) return [];
@@ -565,4 +634,36 @@ function resolveMentions<A extends AgentMatchable>(
     }
   }
   return out;
+}
+
+/**
+ * Find agents whose normalized full name appears as a substring in
+ * the normalized message. Used for `Alice's team, draft a plan` style
+ * addressing where there's no `@`.
+ *
+ * Required min length 4 (so a single-letter agent name can't match
+ * accidentally on the article "a"). Skips matches that are also
+ * substrings of any room human's name to avoid "alice" → Alice's team
+ * when the speaker means Alice the human.
+ */
+function matchAgentsByName<A extends AgentMatchable>(
+  content: string,
+  memberAgents: readonly A[],
+): A[] {
+  const norm = normalize(content);
+  const out: A[] = [];
+  const seen = new Set<string>();
+  for (const a of memberAgents) {
+    const an = normalize(a.name);
+    if (an.length < 4) continue;
+    if (!norm.includes(an)) continue;
+    if (seen.has(a.id)) continue;
+    seen.add(a.id);
+    out.push(a);
+  }
+  return out;
+}
+
+function normalize(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
