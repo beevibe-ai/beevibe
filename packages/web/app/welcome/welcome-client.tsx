@@ -180,7 +180,12 @@ function Arrow() {
 function ProvidersStep({ onNext }: { onNext: () => void }) {
   const { data, isLoading, isError, refetch, isFetching } = useLlmHealth();
 
-  const allOk = data?.ok === true;
+  // Only the Claude CLI is a hard requirement — chat goes through the
+  // claude subprocess on every turn. OpenAI is optional: when it's
+  // absent or failing, memory recall is disabled but the team agent
+  // still chats fine. Don't gate the wizard on OpenAI.
+  const canProceed = data?.claude_cli.ok === true;
+  const openaiDegraded = !!data && !data.openai.ok && !data.openai.skipped;
 
   return (
     <div className="space-y-6">
@@ -246,13 +251,18 @@ function ProvidersStep({ onNext }: { onNext: () => void }) {
         </div>
       ) : null}
 
-      {data && !data.openai.ok && !data.openai.skipped ? (
-        <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs max-w-md mx-auto">
-          <div className="text-status-failed font-medium mb-1">OpenAI key not working</div>
+      {openaiDegraded ? (
+        <div className="rounded-lg border border-status-review/40 bg-status-review/5 p-3 text-xs max-w-md mx-auto">
+          <div className="text-status-review font-medium mb-1">
+            OpenAI key not working — memory will be off
+          </div>
           <div className="text-muted-foreground">
-            Update <span className="font-mono">OPENAI_API_KEY</span> in{" "}
-            <span className="font-mono">.env</span>, restart{" "}
-            <span className="font-mono">pnpm dev</span>, then re-check.
+            Chat still works without it; the team agent just won&apos;t recall
+            facts across sessions. To enable memory: update{" "}
+            <span className="font-mono">OPENAI_API_KEY</span> in{" "}
+            <span className="font-mono">.env</span> (or clear it to
+            silence this warning), restart <span className="font-mono">pnpm dev</span>,
+            then re-check. Or continue and fix it later.
           </div>
         </div>
       ) : null}
@@ -270,7 +280,7 @@ function ProvidersStep({ onNext }: { onNext: () => void }) {
         <button
           type="button"
           onClick={onNext}
-          disabled={!allOk}
+          disabled={!canProceed}
           className="inline-flex items-center gap-2 h-9 px-4 rounded-md bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer text-sm font-medium"
         >
           Continue
