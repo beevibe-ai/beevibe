@@ -5,14 +5,10 @@ import { useState } from "react";
 import {
   ArrowLeft,
   AlertTriangle,
-  ChevronDown,
-  ChevronRight,
-  ExternalLink,
   FileText,
   ListChecks,
   Terminal,
 } from "lucide-react";
-import { ChatMarkdown } from "@/components/chat/markdown";
 import { useTask } from "@/lib/hooks/use-tasks";
 import {
   useApproveTask,
@@ -333,55 +329,27 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
 }
 
 function WorkProductCard({ wp }: { wp: WorkProduct }) {
-  const [open, setOpen] = useState(false);
-  const hasSummary = !!wp.summary && wp.summary.trim().length > 0;
-  // External link types should always show the open-in-new-tab affordance
-  // even when the body is collapsed. For document/analysis/report types,
-  // the summary IS the artifact, so we lead with expand.
+  // Card → dedicated /work-products/[id] page where the body renders
+  // full-width with markdown. We used to inline-expand here, but the
+  // briefing bodies are real documents (audits, reports) — they want a
+  // page, not a sliver of a card.
   return (
-    <li className="rounded-lg border border-border bg-card overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        disabled={!hasSummary && !wp.url}
-        className="w-full flex items-start gap-3 p-3 text-left hover:bg-secondary/30 transition-colors disabled:cursor-default disabled:hover:bg-transparent"
-        aria-expanded={open}
+    <li>
+      <Link
+        href={`/work-products/${wp.id}`}
+        className="rounded-lg border border-border bg-card p-3 flex items-start gap-3 hover:bg-secondary/30 transition-colors"
       >
-        {hasSummary ? (
-          open ? (
-            <ChevronDown className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-          ) : (
-            <ChevronRight className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-          )
-        ) : (
-          <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-        )}
+        <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium">{wp.title}</div>
-          {hasSummary && !open ? (
+          {wp.summary ? (
             <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{wp.summary}</p>
           ) : null}
         </div>
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 mt-0.5">
           {wp.type.replace(/_/g, " ")}
         </span>
-      </button>
-      {open && hasSummary ? (
-        <div className="px-3 pb-3 pl-10 border-t border-border/60 pt-3">
-          <ChatMarkdown content={wp.summary!} />
-          {wp.url ? (
-            <a
-              href={wp.url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-3 inline-flex items-center gap-1.5 text-xs text-foreground/80 hover:text-foreground transition-colors"
-            >
-              <ExternalLink className="h-3 w-3" />
-              {wp.provider ? `Open in ${wp.provider}` : "Open"}
-            </a>
-          ) : null}
-        </div>
-      ) : null}
+      </Link>
     </li>
   );
 }

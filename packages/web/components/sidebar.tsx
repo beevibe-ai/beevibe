@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  Bot,
   ChevronDown,
   ChevronRight,
   ChevronsUpDown,
@@ -20,6 +21,7 @@ import {
   TrendingUp,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAgents } from "@/lib/hooks/use-agents";
 import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
 
@@ -127,7 +129,7 @@ export function Sidebar() {
           open={openAgents}
           onToggle={() => setOpenAgents((v) => !v)}
         >
-          <EmptyAgentList />
+          <AgentList pathname={pathname} />
         </Section>
 
         <Section
@@ -269,11 +271,70 @@ function NavRow({ item, pathname }: { item: NavItem; pathname: string }) {
   );
 }
 
-function EmptyAgentList() {
+function AgentList({ pathname }: { pathname: string }) {
+  const { data, isLoading } = useAgents();
+  if (isLoading) {
+    return (
+      <div className="h-7 pl-5 pr-2 flex items-center text-sm text-muted-foreground/60">
+        Loading…
+      </div>
+    );
+  }
+  const agents = data ?? [];
+  if (agents.length === 0) {
+    return (
+      <div className="px-5 py-1 text-xs text-muted-foreground/70 leading-relaxed">
+        No agents yet — your team agent will spawn specialists when you point it at a codebase.
+      </div>
+    );
+  }
+  // Team agents first (sort already does that — by hierarchy weight); then
+  // their IC subordinates indented one level. We don't render an explicit
+  // "all" footer link because clicking a name itself navigates to /agents/[id]
+  // and the section header already has nav-by-route on the icon.
   return (
-    <div className="h-7 pl-5 pr-2 flex items-center text-sm text-muted-foreground/60">
-      No agents yet
-    </div>
+    <ul>
+      {agents.map((a) => {
+        const active = pathname === `/agents/${a.id}`;
+        const indent = a.hierarchy === "ic" ? "pl-9" : "pl-5";
+        return (
+          <li key={a.id}>
+            <Link
+              href={`/agents/${a.id}`}
+              aria-current={active ? "page" : undefined}
+              className={cn(
+                "flex items-center gap-2 h-7 pr-2 rounded-md text-sm transition-colors",
+                indent,
+                active
+                  ? "bg-secondary text-foreground font-medium"
+                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
+              )}
+            >
+              <Bot className="h-3.5 w-3.5 shrink-0" />
+              <span className="flex-1 truncate">{a.name}</span>
+              <span
+                className={cn(
+                  "shrink-0 px-1 py-px rounded text-[9px] font-mono uppercase tracking-wide",
+                  a.hierarchy === "team" && "bg-hier-team/15 text-hier-team",
+                  a.hierarchy === "org" && "bg-hier-org/15 text-hier-org",
+                  a.hierarchy === "ic" && "bg-muted text-muted-foreground",
+                )}
+              >
+                {a.hierarchy}
+              </span>
+            </Link>
+          </li>
+        );
+      })}
+      <li>
+        <Link
+          href="/agents"
+          className="flex items-center h-7 pl-5 pr-2 rounded-md text-[11px] text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-colors"
+        >
+          View all →
+        </Link>
+      </li>
+    </ul>
   );
 }
 
