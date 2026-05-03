@@ -224,6 +224,7 @@ export function __resetSseStateForTests(): void {
   source = undefined;
   refCount = 0;
   listeners.clear();
+  statusListeners.clear();
   sseDisabled = false;
   status = "connecting";
 }

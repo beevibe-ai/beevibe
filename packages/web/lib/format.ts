@@ -40,6 +40,19 @@ export function shortId(id: string): string {
   return `#${trimmed.slice(0, 6)}`;
 }
 
+/**
+ * Strip the typed-id prefix and return what's left — used as the
+ * stable "@token" form for room mentions and as the short URL
+ * fragment in the conversation sidebar. e.g. `agent_kBpTkqiCbsB3` →
+ * `kBpTkqiCbsB3`. Falls back to the full id when there's no
+ * underscore (which shouldn't happen for typed ids, but cheap to
+ * guard).
+ */
+export function idSuffix(id: string): string {
+  const i = id.indexOf("_");
+  return i < 0 ? id : id.slice(i + 1) || id;
+}
+
 export function sessionHref(sid: string, taskId?: string): string {
   // The full id starts with "sess_"; route URLs use the 6-char suffix.
   const sessionShort = sid.startsWith("sess_") ? sid.slice(5, 11) : sid.slice(0, 6);

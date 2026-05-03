@@ -21,7 +21,7 @@ import { ChatMarkdown } from "@/components/chat/markdown";
 import { LivePanel } from "@/components/chat/live-panel";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
-import { formatRelativeTime, sessionHref, shortId } from "@/lib/format";
+import { formatRelativeTime, idSuffix, sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 export function RoomDetailClient({ roomId }: { roomId: string }) {
@@ -575,7 +575,7 @@ function Composer({
     return agents
       .filter((a) => {
         const norm = a.name.toLowerCase().replace(/[^a-z0-9]/g, "");
-        const short = a.id.split("_").slice(1).join("_").toLowerCase();
+        const short = idSuffix(a.id).toLowerCase();
         return norm.includes(q) || short.includes(q);
       })
       .slice(0, 6);
@@ -593,7 +593,7 @@ function Composer({
     if (!mentionContext) return;
     // Use short id as the inserted token — the server resolver
     // accepts it reliably and it's much shorter than full id.
-    const short = agent.id.split("_").slice(1).join("_") || agent.id;
+    const short = idSuffix(agent.id);
     const before = draft.slice(0, mentionContext.queryStart);
     const after = draft.slice(cursor);
     const insertion = `@${short} `;
@@ -681,7 +681,7 @@ function Composer({
                       <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                       <span className="flex-1 truncate">{a.name}</span>
                       <span className="text-[10px] font-mono text-muted-foreground/70 shrink-0">
-                        {a.id.split("_").slice(1).join("_") || a.id}
+                        {idSuffix(a.id)}
                       </span>
                     </button>
                   </li>
@@ -729,7 +729,7 @@ function Composer({
               <span
                 key={a.id}
                 className="inline-flex items-center gap-1 text-foreground/80"
-                title={`@${a.id.split("_").slice(1).join("_") || a.id}`}
+                title={`@${idSuffix(a.id)}`}
               >
                 <Bot className="h-2.5 w-2.5" />
                 {a.name}

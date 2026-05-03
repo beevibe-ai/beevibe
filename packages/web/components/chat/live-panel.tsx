@@ -46,31 +46,34 @@ export function LivePanel() {
   );
 }
 
+const LIVE_STATUS_LABELS = {
+  live: {
+    dot: "bg-status-running animate-pulse-breathe",
+    label: "live · streams via SSE",
+    title: undefined as string | undefined,
+  },
+  "polling-only": {
+    dot: "bg-status-review",
+    label: "polling every 3s",
+    title: "SSE was buffered by the proxy. Updates still arrive every ~3s via polling.",
+  },
+  connecting: {
+    dot: "bg-muted-foreground/60 animate-pulse",
+    label: "connecting…",
+    title: undefined as string | undefined,
+  },
+} as const;
+
 function LiveStatusFooter() {
   const [status, setStatus] = useState(getLiveStatus());
   useEffect(() => subscribeLiveStatus(setStatus), []);
-  const dotClass =
-    status === "live"
-      ? "bg-status-running animate-pulse-breathe"
-      : status === "polling-only"
-      ? "bg-status-review"
-      : "bg-muted-foreground/60 animate-pulse";
-  const label =
-    status === "live"
-      ? "live · streams via SSE"
-      : status === "polling-only"
-      ? "polling every 3s"
-      : "connecting…";
-  const title =
-    status === "polling-only"
-      ? "SSE was buffered by the proxy. Updates still arrive every ~3s via polling."
-      : undefined;
+  const { dot, label, title } = LIVE_STATUS_LABELS[status];
   return (
     <footer
       className="border-t border-border/60 px-3 py-2 text-[10px] text-muted-foreground/80 flex items-center gap-1.5"
       title={title}
     >
-      <span className={cn("inline-block h-1 w-1 rounded-full", dotClass)} />
+      <span className={cn("inline-block h-1 w-1 rounded-full", dot)} />
       {label}
     </footer>
   );

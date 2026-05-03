@@ -28,6 +28,7 @@ import {
 import {
   roomId as makeRoomId,
   roomMessageId as makeRoomMessageId,
+  type Agent,
   type AgentRepository,
   type PersonRepository,
   type Room,
@@ -494,12 +495,10 @@ async function runMentionedAgents(
   roomId: string,
   triggerPersonId: string,
   triggerContent: string,
-  agents: { id: string; runtime_config: { type: string } }[],
+  agents: Agent[],
 ): Promise<void> {
-  for (const a of agents) {
+  for (const agent of agents) {
     try {
-      const agent = await deps.agentRepo.findById(a.id);
-      if (!agent) continue;
       const runtime = deps.runtimeRegistry[agent.runtime_config.type];
       if (!runtime) {
         await deps.roomRepo.appendMessage({
@@ -556,7 +555,7 @@ async function runMentionedAgents(
       });
     } catch (err) {
       console.error(
-        `[room route] agent ${a.id} failed during room ${roomId} turn:`,
+        `[room route] agent ${agent.id} failed during room ${roomId} turn:`,
         err instanceof Error ? err.message : err,
       );
       try {
@@ -564,7 +563,7 @@ async function runMentionedAgents(
           id: makeRoomMessageId(),
           room_id: roomId,
           kind: "agent",
-          sender_agent_id: a.id,
+          sender_agent_id: agent.id,
           content: `(error: ${(err as Error).message})`,
         });
       } catch {

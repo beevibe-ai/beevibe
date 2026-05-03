@@ -23,9 +23,6 @@ export default function RoomError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Surface to the console for the operator's DevTools — Next.js
-    // already logs server-side, this also makes the client-side
-    // stack accessible without DevTools open.
     console.error("[room route]", error);
   }, [error]);
 
