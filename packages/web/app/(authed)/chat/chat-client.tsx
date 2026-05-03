@@ -15,7 +15,7 @@ import { ReferenceCards } from "@/components/chat/reference-cards";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ConversationSidebar } from "@/components/chat/conversation-sidebar";
 import { LivePanel } from "@/components/chat/live-panel";
-import { categoryAccent, formatTool } from "@/lib/tool-format";
+import { ToolStepList } from "@/components/chat/tool-step-list";
 
 const PROMPT_SUGGESTIONS = [
   "What's on the team's plate today?",
@@ -318,58 +318,6 @@ function Thinking({ steps }: { steps: ChatStreamStep[] }) {
         ) : null}
       </div>
     </div>
-  );
-}
-
-function ToolStepList({
-  steps,
-  totalSteps,
-  withTopBorder,
-}: {
-  steps: ChatStreamStep[];
-  totalSteps: number;
-  withTopBorder: boolean;
-}) {
-  return (
-    <ul
-      className={cn(
-        "space-y-1 text-[11px]",
-        withTopBorder ? "mt-2 pt-2 border-t border-border/60" : "mt-1",
-      )}
-    >
-      {steps.map((step, idx) => {
-        const display = formatTool(step.tool_name, step.content);
-        const isLatest = idx === steps.length - 1;
-        return (
-          <li key={step.event_id} className="flex items-start gap-1.5">
-            <span
-              className={cn(
-                "shrink-0 inline-flex items-center justify-center h-4 w-4 rounded",
-                categoryAccent(display.category),
-                isLatest && "animate-pulse-breathe",
-              )}
-            >
-              <display.icon className="h-2.5 w-2.5" />
-            </span>
-            <div className="flex-1 min-w-0 leading-tight">
-              <div className="flex items-baseline gap-1.5">
-                <span className="font-medium text-foreground/85 shrink-0">{display.label}</span>
-                {display.detail ? (
-                  <span className="text-muted-foreground truncate min-w-0">
-                    {display.detail}
-                  </span>
-                ) : null}
-              </div>
-            </div>
-          </li>
-        );
-      })}
-      {totalSteps > steps.length ? (
-        <li className="text-[10px] text-muted-foreground/70 pl-5">
-          + {totalSteps - steps.length} earlier step{totalSteps - steps.length === 1 ? "" : "s"}
-        </li>
-      ) : null}
-    </ul>
   );
 }
 

@@ -18,6 +18,8 @@ import { api, type RoomDetail, type RoomMemberDetail, type RoomMessage } from "@
 import { ApiError, describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
 import { ChatMarkdown } from "@/components/chat/markdown";
+import { ToolStepList } from "@/components/chat/tool-step-list";
+import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
 import { LivePanel } from "@/components/chat/live-panel";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
@@ -476,28 +478,67 @@ function TypingIndicators({ typing }: { typing: NonNullable<RoomDetail["typing"]
   return (
     <div className="space-y-1.5">
       {typing.map((t) => (
-        <div key={t.session_id} className="flex flex-col items-start">
-          <div className="text-[10px] text-muted-foreground/80 mb-0.5 px-1">
-            <span className="inline-flex items-center gap-1">
-              <Bot className="h-2.5 w-2.5" />
-              {t.agent_name}
-            </span>
-            <span className="ml-1.5 text-muted-foreground/60">
-              started {formatRelativeTime(t.started_at)}
-            </span>
-          </div>
-          <div className="rounded-lg px-3 py-2 bg-secondary text-foreground border border-border">
-            <div className="flex items-center gap-2 text-muted-foreground italic text-sm">
-              <span className="inline-flex items-center gap-1">
-                <span className="h-1.5 w-1.5 rounded-full bg-status-running animate-pulse" />
-                <span className="h-1.5 w-1.5 rounded-full bg-status-running animate-pulse [animation-delay:200ms]" />
-                <span className="h-1.5 w-1.5 rounded-full bg-status-running animate-pulse [animation-delay:400ms]" />
-              </span>
-              <span>typing…</span>
-            </div>
-          </div>
-        </div>
+        <TypingBubble key={t.session_id} typing={t} />
       ))}
+    </div>
+  );
+}
+
+function TypingBubble({ typing: t }: { typing: NonNullable<RoomDetail["typing"]>[number] }) {
+  // Two sources of tool-call steps merged by event_id:
+  //   - polled (`t.recent_steps`) — works through any tunnel, refreshes
+  //     every 3s with the room poll
+  //   - SSE (`useChatStream`) — sub-second when the proxy doesn't
+  //     buffer; empty when the SSE detector has fallen back to polling
+  // Audience sees Read / Bash / ask / save_memory / search_memory
+  // calls land live (or every 3s in polling-only mode).
+  const sseSteps = useChatStream(t.session_id);
+  const polled: ChatStreamStep[] = (t.recent_steps ?? []).map((s) => ({
+    event_id: s.event_id,
+    kind: s.kind,
+    tool_name: s.tool_name ?? undefined,
+    content: s.content,
+    received_at: 0,
+  }));
+  const seen = new Set<string>();
+  const merged: ChatStreamStep[] = [];
+  for (const s of [...polled, ...sseSteps]) {
+    if (seen.has(s.event_id)) continue;
+    seen.add(s.event_id);
+    merged.push(s);
+  }
+  const toolSteps = merged.filter((s) => s.kind === "tool_call");
+  const recentTools = toolSteps.slice(-6);
+  const totalSteps = Math.max(toolSteps.length, t.total_steps ?? 0);
+
+  return (
+    <div className="flex flex-col items-start">
+      <div className="text-[10px] text-muted-foreground/80 mb-0.5 px-1">
+        <span className="inline-flex items-center gap-1">
+          <Bot className="h-2.5 w-2.5" />
+          {t.agent_name}
+        </span>
+        <span className="ml-1.5 text-muted-foreground/60">
+          started {formatRelativeTime(t.started_at)}
+        </span>
+      </div>
+      <div className="max-w-[80%] rounded-lg px-3 py-2 bg-secondary text-foreground border border-border w-full">
+        <div className="flex items-center gap-2 text-muted-foreground italic text-sm">
+          <span className="inline-flex items-center gap-1">
+            <span className="h-1.5 w-1.5 rounded-full bg-status-running animate-pulse" />
+            <span className="h-1.5 w-1.5 rounded-full bg-status-running animate-pulse [animation-delay:200ms]" />
+            <span className="h-1.5 w-1.5 rounded-full bg-status-running animate-pulse [animation-delay:400ms]" />
+          </span>
+          <span>typing…</span>
+        </div>
+        {recentTools.length > 0 ? (
+          <ToolStepList
+            steps={recentTools}
+            totalSteps={totalSteps}
+            withTopBorder
+          />
+        ) : null}
+      </div>
     </div>
   );
 }

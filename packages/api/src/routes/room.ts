@@ -237,17 +237,31 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
         })),
       ];
       // Typing indicators — agents currently working on a turn for
-      // this room. Hydrate names so the UI can render "Bob's team is
-      // typing…" without a second round-trip.
+      // this room. Each entry includes the most recent N tool calls
+      // for the session so the room view can render the live tool
+      // transcript regardless of whether SSE is alive (cloudflared
+      // http2 mode buffers SSE; polling is the floor).
       const agentByIdLocal = new Map(agents.filter((a) => a).map((a) => [a!.id, a!]));
-      const typing = runningSessions
-        .filter((s) => agentByIdLocal.has(s.agent_id))
-        .map((s) => ({
+      const typingRunning = runningSessions.filter((s) => agentByIdLocal.has(s.agent_id));
+      const eventsBySession = await Promise.all(
+        typingRunning.map((s) => deps.sessionEventRepo.listBySession(s.id, 20)),
+      );
+      const typing = typingRunning.map((s, idx) => {
+        const evs = eventsBySession[idx] ?? [];
+        return {
           session_id: s.id,
           agent_id: s.agent_id,
           agent_name: agentByIdLocal.get(s.agent_id)!.name,
           started_at: (s.started_at ?? s.created_at).toISOString(),
-        }));
+          recent_steps: evs.slice(-6).map((e) => ({
+            event_id: e.id,
+            kind: e.kind,
+            tool_name: e.tool_name ?? null,
+            content: e.content.slice(0, 200),
+          })),
+          total_steps: evs.length,
+        };
+      });
 
       res.json({
         ok: true,

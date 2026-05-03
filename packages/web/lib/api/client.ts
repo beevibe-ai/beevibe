@@ -155,11 +155,21 @@ export interface RoomMessage {
   created_at: string;
 }
 
+export interface RoomTypingStep {
+  event_id: string;
+  kind: "agent" | "tool_call" | "tool_result" | "summary";
+  tool_name: string | null;
+  content: string;
+}
+
 export interface RoomTypingIndicator {
   session_id: string;
   agent_id: string;
   agent_name: string;
   started_at: string;
+  /** Last ~6 tool calls for this session, polled. SSE may add more on top. */
+  recent_steps: RoomTypingStep[];
+  total_steps: number;
 }
 
 export interface RoomDetail {
