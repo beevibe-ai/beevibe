@@ -300,20 +300,18 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   });
   server.getApp().use("/escalation", escalationRouter);
 
-  // M8.2 read-only view routes — bv_u_ only. Direct-to-pool composers in
-  // src/views/* return UI-shaped DTOs; no core repos touched on the read
-  // path so the agent-execution surface stays uncoupled from web display.
-  const viewRouter = createViewRouter({
-    authMiddleware: server.getAuthMiddleware(),
-    pool,
-    agentRepo,
-  });
-  server.getApp().use(viewRouter);
-
   // M8 final integration (#45): SSE live-updates flow.
   // Triggers in migration 1778300000000 emit on `bv_event`; SseListener
   // LISTENs on a dedicated pg.Client and fans out via SseManager;
   // /api/stream pushes to subscribed browsers.
+  //
+  // Mount BEFORE viewRouter — viewRouter applies authMiddleware at
+  // root via `router.use(authMiddleware)`, which runs for every
+  // request entering it. The plain auth middleware doesn't see the
+  // `?token=` query param the EventSource uses (browsers can't set
+  // custom headers on EventSource), so it 401s before /api/stream
+  // gets a chance with its own query-aware middleware. Same trap
+  // signupRouter hit; same fix.
   const sseManager = new SseManager();
   const ownerLookup = new OwnerLookup(pool);
   const sseListener = new SseListener({
@@ -327,6 +325,16 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     sseManager,
   });
   server.getApp().use("/api", streamRouter);
+
+  // M8.2 read-only view routes — bv_u_ only. Direct-to-pool composers in
+  // src/views/* return UI-shaped DTOs; no core repos touched on the read
+  // path so the agent-execution surface stays uncoupled from web display.
+  const viewRouter = createViewRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    pool,
+    agentRepo,
+  });
+  server.getApp().use(viewRouter);
 
   // Demo prep: human chat surface. Posting a message synchronously runs
   // one turn of the caller's primary (team/org) agent through
