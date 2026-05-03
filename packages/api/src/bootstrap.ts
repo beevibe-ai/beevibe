@@ -36,6 +36,7 @@ import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
 import { createChatRouter } from "./routes/chat.js";
 import { createMeRouter } from "./routes/me.js";
+import { createSignupRouter } from "./routes/signup.js";
 import { createStreamAuthMiddleware } from "./auth/middleware.js";
 import { SseManager } from "./sse/manager.js";
 import { SseListener } from "./sse/listener.js";
@@ -244,6 +245,25 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     makeMemoryAgent,
   });
   server.getApp().use("/mcp", mcpRouter);
+
+  // Self-serve signup. UNAUTHENTICATED — anyone with the public web URL
+  // can mint a person + team agent + bv_u_ in one POST. Idempotent on
+  // email so users who lose their key can recover. Set
+  // BEEVIBE_SIGNUP_ENABLED=0 in .env to disable in locked-down deploys.
+  //
+  // MUST be mounted BEFORE any router that does `router.use(authMiddleware)`
+  // at root (viewRouter, meRouter). Express runs a router's
+  // root-level middleware for every request that enters the router,
+  // even ones that don't match any of its routes — so a 401-emitting
+  // auth check upstream short-circuits before signup gets a chance.
+  const signupEnabled = process.env.BEEVIBE_SIGNUP_ENABLED !== "0";
+  const signupRouter = createSignupRouter({
+    agentRepo,
+    personRepo,
+    coreMemoryRepo,
+    enabled: signupEnabled,
+  });
+  server.getApp().use(signupRouter);
 
   // M6.4 human REST routes — bv_u_ only.
   const taskRouter = createTaskRouter({

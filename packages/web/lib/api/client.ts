@@ -108,6 +108,21 @@ export interface ChatTurnResponse {
   suggested_actions?: string[];
 }
 
+export interface SignupInput {
+  name: string;
+  email: string;
+}
+
+export interface SignupResponse {
+  ok: true;
+  /** Freshly minted (or recovered) bv_u_ key. Persist client-side and use as Bearer. */
+  api_key: string;
+  person: { id: string; name: string; email: string };
+  primary_agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" };
+  /** True when an existing person with this email was returned instead of created. */
+  existed: boolean;
+}
+
 export interface ChatHistoryMessage {
   id: string;
   role: "user" | "agent";
@@ -251,6 +266,15 @@ export const api = {
       fetchJson<ChatConversationsResponse>("/chat/conversations", {
         signal: opts.signal,
       }),
+  },
+  signup: {
+    /**
+     * Self-serve signup. Mints a person + their primary team agent +
+     * a fresh bv_u_ key. Unauthenticated. Idempotent on email — if a
+     * person with that email already exists, returns their existing key.
+     */
+    create: (input: SignupInput) =>
+      fetchJson<SignupResponse>("/signup", { method: "POST", body: input }),
   },
   me: {
     /** Identity + onboarding state for the welcome flow. */

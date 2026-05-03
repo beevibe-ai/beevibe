@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, KeyRound, Loader2, LogIn } from "lucide-react";
@@ -131,9 +132,11 @@ export function SignInClient() {
         </button>
 
         <footer className="mt-5 pt-4 border-t border-border/60 text-[11px] text-muted-foreground leading-relaxed">
-          Don&apos;t have a key? Ask your admin to run{" "}
-          <span className="font-mono text-foreground/80">pnpm provision-user</span> with your
-          name + email.
+          Don&apos;t have a key?{" "}
+          <Link href="/sign-up" className="text-foreground/80 hover:underline">
+            Sign up
+          </Link>{" "}
+          for one — takes about 5 seconds.
         </footer>
       </form>
     </main>
