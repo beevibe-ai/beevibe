@@ -486,6 +486,17 @@ function Pending() {
   );
 }
 
+/**
+ * Composer with @-mention autocomplete.
+ *
+ * Detects the in-progress `@<query>` token at the textarea cursor,
+ * surfaces a typeahead list of room agents matching by name (case-
+ * insensitive substring), inserts the selected agent's short id —
+ * the canonical form the server-side resolver matches reliably.
+ *
+ * Up/Down navigates, Enter/Tab selects, Esc closes. Plain Enter (no
+ * dropdown) submits the message as before.
+ */
 function Composer({
   draft,
   setDraft,
@@ -499,22 +510,164 @@ function Composer({
   isPending: boolean;
   members: RoomMemberDetail[];
 }) {
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const [cursor, setCursor] = useState(0);
+  const [highlight, setHighlight] = useState(0);
+
+  // Mention candidates: agents in the room. Persons can be added too,
+  // but only agents are addressable as work targets — humans get
+  // notified by SSE either way.
+  const agents = useMemo(
+    () =>
+      members.filter(
+        (m): m is Extract<RoomMemberDetail, { kind: "agent" }> => m.kind === "agent",
+      ),
+    [members],
+  );
+
+  // Detect an in-progress `@query` ending at the cursor. Triggers the
+  // dropdown when found.
+  const mentionContext = useMemo(() => {
+    const before = draft.slice(0, cursor);
+    const m = before.match(/(^|[\s\n])@([\w'.\- ]*)$/);
+    if (!m) return null;
+    const queryStart = before.length - m[2].length - 1; // include the `@`
+    return { query: m[2], queryStart };
+  }, [draft, cursor]);
+
+  const matches = useMemo(() => {
+    if (!mentionContext) return [];
+    const q = mentionContext.query.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (q === "") return agents.slice(0, 6);
+    return agents
+      .filter((a) => {
+        const norm = a.name.toLowerCase().replace(/[^a-z0-9]/g, "");
+        const short = a.id.split("_").slice(1).join("_").toLowerCase();
+        return norm.includes(q) || short.includes(q);
+      })
+      .slice(0, 6);
+  }, [agents, mentionContext]);
+
+  const dropdownOpen = mentionContext !== null && matches.length > 0;
+
+  // Reset highlight whenever the candidate list changes (typing
+  // narrows the list — the previous index is probably stale).
+  useEffect(() => {
+    setHighlight(0);
+  }, [matches.length, mentionContext?.query]);
+
+  const insertMention = (agent: Extract<RoomMemberDetail, { kind: "agent" }>) => {
+    if (!mentionContext) return;
+    // Use short id as the inserted token — the server resolver
+    // accepts it reliably and it's much shorter than full id.
+    const short = agent.id.split("_").slice(1).join("_") || agent.id;
+    const before = draft.slice(0, mentionContext.queryStart);
+    const after = draft.slice(cursor);
+    const insertion = `@${short} `;
+    const next = before + insertion + after;
+    setDraft(next);
+    // Move cursor to end of insertion.
+    queueMicrotask(() => {
+      const ta = textareaRef.current;
+      if (!ta) return;
+      const pos = before.length + insertion.length;
+      ta.setSelectionRange(pos, pos);
+      setCursor(pos);
+      ta.focus();
+    });
+  };
+
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (dropdownOpen) {
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHighlight((i) => (i + 1) % matches.length);
+        return;
+      }
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHighlight((i) => (i - 1 + matches.length) % matches.length);
+        return;
+      }
+      if (e.key === "Enter" || e.key === "Tab") {
+        e.preventDefault();
+        const a = matches[highlight];
+        if (a) insertMention(a);
+        return;
+      }
+      if (e.key === "Escape") {
+        e.preventDefault();
+        // Move cursor past the `@` to dismiss the dropdown without
+        // erasing the partial query.
+        const ta = textareaRef.current;
+        if (ta) {
+          const pos = cursor;
+          ta.setSelectionRange(pos, pos);
+        }
+        return;
+      }
+    }
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       submit();
     }
   };
-  // Suggest @mentions by listing agent names.
-  const agents = members.filter((m): m is Extract<RoomMemberDetail, { kind: "agent" }> => m.kind === "agent");
+
+  const onSelect = (e: React.SyntheticEvent<HTMLTextAreaElement>) => {
+    setCursor(e.currentTarget.selectionStart ?? 0);
+  };
+
   return (
     <div className="border-t border-border/60 px-6 py-4">
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-3xl mx-auto relative">
+        {dropdownOpen ? (
+          <div className="absolute bottom-full left-0 mb-1 w-72 max-w-full rounded-md border border-border bg-popover shadow-md z-10 overflow-hidden">
+            <div className="px-2 py-1 text-[10px] uppercase tracking-wider text-muted-foreground/70 border-b border-border/60 bg-muted/30">
+              Mention an agent
+            </div>
+            <ul role="listbox">
+              {matches.map((a, i) => {
+                const isHi = i === highlight;
+                return (
+                  <li key={a.id}>
+                    <button
+                      type="button"
+                      role="option"
+                      aria-selected={isHi}
+                      onMouseEnter={() => setHighlight(i)}
+                      onMouseDown={(e) => {
+                        // Prevent textarea blur, which would clobber selection.
+                        e.preventDefault();
+                        insertMention(a);
+                      }}
+                      className={cn(
+                        "w-full text-left flex items-center gap-2 px-2.5 py-1.5 text-sm cursor-pointer",
+                        isHi ? "bg-secondary text-foreground" : "text-foreground/85 hover:bg-secondary/60",
+                      )}
+                    >
+                      <Bot className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="flex-1 truncate">{a.name}</span>
+                      <span className="text-[10px] font-mono text-muted-foreground/70 shrink-0">
+                        {a.id.split("_").slice(1).join("_") || a.id}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        ) : null}
         <div className="flex items-end gap-2">
           <textarea
+            ref={textareaRef}
             value={draft}
-            onChange={(e) => setDraft(e.target.value)}
+            onChange={(e) => {
+              setDraft(e.target.value);
+              setCursor(e.target.selectionStart ?? e.target.value.length);
+            }}
             onKeyDown={onKeyDown}
+            onSelect={onSelect}
+            onClick={onSelect}
             placeholder="Type a message — use @ to mention an agent (Enter to send, Shift+Enter for newline)"
             rows={2}
             disabled={isPending}
@@ -534,24 +687,21 @@ function Composer({
             )}
           </button>
         </div>
-        {agents.length > 0 ? (
+        {agents.length > 0 && !dropdownOpen ? (
           <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-muted-foreground">
-            <span className="text-muted-foreground/70">Agents in this room:</span>
-            {agents.map((a) => {
-              const tag = `@${a.id.split("_").slice(1).join("_") || a.id}`;
-              return (
-                <button
-                  key={a.id}
-                  type="button"
-                  onClick={() => setDraft((draft + " " + tag).trimStart())}
-                  className="inline-flex items-center gap-1 rounded border border-border bg-card hover:bg-secondary px-1.5 py-0.5 text-foreground/80 transition-colors cursor-pointer"
-                  title={`Mention ${a.name}`}
-                >
-                  <Bot className="h-2.5 w-2.5" />
-                  {a.name}
-                </button>
-              );
-            })}
+            <span className="text-muted-foreground/70">Tip: type</span>
+            <span className="font-mono">@</span>
+            <span className="text-muted-foreground/70">to mention any of:</span>
+            {agents.map((a) => (
+              <span
+                key={a.id}
+                className="inline-flex items-center gap-1 text-foreground/80"
+                title={`@${a.id.split("_").slice(1).join("_") || a.id}`}
+              >
+                <Bot className="h-2.5 w-2.5" />
+                {a.name}
+              </span>
+            ))}
           </div>
         ) : null}
       </div>
