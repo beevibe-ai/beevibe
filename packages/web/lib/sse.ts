@@ -40,23 +40,99 @@ function invalidate(client: QueryClient, eventName: string) {
 // ── Shared EventSource bus ─────────────────────────────────────────────────
 // One EventSource per page; many subscribers. useLiveUpdates handles cache
 // invalidation; useSseEvents lets components subscribe to raw events.
+//
+// Buffering-proxy detection: cloudflared trycloudflare quick tunnels
+// buffer SSE responses, so the EventSource opens but no data ever
+// arrives → browser times out → reconnect → repeat (the "stream
+// canceled by remote" log spam). If the first connection attempt
+// receives no data within HEALTH_TIMEOUT_MS, we mark SSE as
+// unhealthy for this page session and stop trying. Polling carries
+// the load. UI exposes the status via `getLiveStatus()`.
 
 type Listener = (e: BvEvent) => void;
+
+const HEALTH_TIMEOUT_MS = 8_000;
+
+type LiveStatus = "connecting" | "live" | "polling-only";
 
 let source: EventSource | undefined;
 let refCount = 0;
 const listeners = new Set<Listener>();
+let sseDisabled = false;
+let status: LiveStatus = "connecting";
+const statusListeners = new Set<(s: LiveStatus) => void>();
+
+function setStatus(next: LiveStatus): void {
+  if (status === next) return;
+  status = next;
+  for (const cb of statusListeners) {
+    try {
+      cb(status);
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+export function getLiveStatus(): LiveStatus {
+  return status;
+}
+
+export function subscribeLiveStatus(cb: (s: LiveStatus) => void): () => void {
+  statusListeners.add(cb);
+  return () => {
+    statusListeners.delete(cb);
+  };
+}
 
 function ensureSource(): EventSource | undefined {
   if (!isApiConfigured || !apiBaseUrl || typeof window === "undefined") return undefined;
   if (source) return source;
+  // Once we've decided the proxy buffers SSE, don't keep trying — the
+  // browser would auto-reconnect every ~6s and spam the api log.
+  if (sseDisabled) return undefined;
   const key = getUserKey();
   // No key = unauthenticated; bail. Visitor needs to sign in first.
   if (!key) return undefined;
   const url = new URL(`${apiBaseUrl}/api/stream`);
   url.searchParams.set("token", key);
-  source = new EventSource(url.toString(), { withCredentials: true });
-  source.onmessage = (e) => {
+  setStatus("connecting");
+  const created = new EventSource(url.toString(), { withCredentials: true });
+  source = created;
+
+  let receivedAnyData = false;
+
+  // Health probe — if we don't see any bytes within HEALTH_TIMEOUT_MS,
+  // assume the proxy is buffering and disable SSE for the rest of
+  // this tab session. The server emits ":connected\n\n" + a heartbeat
+  // every 5s, so on a healthy connection we trip this within ~1s.
+  const healthTimer = setTimeout(() => {
+    if (!receivedAnyData && source === created) {
+      console.info(
+        "[sse] no bytes within %dms — proxy likely buffering; falling back to polling.",
+        HEALTH_TIMEOUT_MS,
+      );
+      sseDisabled = true;
+      setStatus("polling-only");
+      try {
+        created.close();
+      } catch {
+        /* ignore */
+      }
+      source = undefined;
+    }
+  }, HEALTH_TIMEOUT_MS);
+
+  const ackData = () => {
+    if (!receivedAnyData) {
+      receivedAnyData = true;
+      clearTimeout(healthTimer);
+      setStatus("live");
+    }
+  };
+
+  created.onmessage = (e) => {
+    ackData();
     try {
       const parsed = JSON.parse(e.data) as Partial<BvEvent>;
       if (typeof parsed.event !== "string" || typeof parsed.id !== "string") return;
@@ -73,9 +149,29 @@ function ensureSource(): EventSource | undefined {
         }
       }
     } catch {
-      // heartbeats / non-JSON
+      // heartbeats (": ..." comment lines) or non-JSON; the data
+      // arrival itself is the signal we needed.
     }
   };
+
+  // EventSource fires onerror when the stream drops. If we haven't
+  // received any data, treat it like the buffering case and stop
+  // retrying. If we DID receive data, EventSource will auto-reconnect
+  // and that's fine.
+  created.onerror = () => {
+    if (receivedAnyData) return; // let EventSource reconnect
+    console.info("[sse] error before any data — falling back to polling.");
+    sseDisabled = true;
+    setStatus("polling-only");
+    clearTimeout(healthTimer);
+    try {
+      created.close();
+    } catch {
+      /* ignore */
+    }
+    if (source === created) source = undefined;
+  };
+
   return source;
 }
 
@@ -128,6 +224,8 @@ export function __resetSseStateForTests(): void {
   source = undefined;
   refCount = 0;
   listeners.clear();
+  sseDisabled = false;
+  status = "connecting";
 }
 
 export function useLiveUpdates() {

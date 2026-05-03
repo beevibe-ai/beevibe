@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
@@ -15,6 +16,7 @@ import {
 import { api, type ActivityEntry } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
+import { getLiveStatus, subscribeLiveStatus } from "@/lib/sse";
 import { formatRelativeTime, sessionHref, shortId } from "@/lib/format";
 import type { AgentDisplay } from "@/lib/types/agents";
 import type { TaskListItem } from "@/lib/types/tasks";
@@ -39,11 +41,38 @@ export function LivePanel() {
         <ActiveWork />
         <RecentActivity />
       </div>
-      <footer className="border-t border-border/60 px-3 py-2 text-[10px] text-muted-foreground/80 flex items-center gap-1.5">
-        <span className="inline-block h-1 w-1 rounded-full bg-status-running animate-pulse-breathe" />
-        live · streams via SSE
-      </footer>
+      <LiveStatusFooter />
     </aside>
+  );
+}
+
+function LiveStatusFooter() {
+  const [status, setStatus] = useState(getLiveStatus());
+  useEffect(() => subscribeLiveStatus(setStatus), []);
+  const dotClass =
+    status === "live"
+      ? "bg-status-running animate-pulse-breathe"
+      : status === "polling-only"
+      ? "bg-status-review"
+      : "bg-muted-foreground/60 animate-pulse";
+  const label =
+    status === "live"
+      ? "live · streams via SSE"
+      : status === "polling-only"
+      ? "polling every 3s"
+      : "connecting…";
+  const title =
+    status === "polling-only"
+      ? "SSE was buffered by the proxy. Updates still arrive every ~3s via polling."
+      : undefined;
+  return (
+    <footer
+      className="border-t border-border/60 px-3 py-2 text-[10px] text-muted-foreground/80 flex items-center gap-1.5"
+      title={title}
+    >
+      <span className={cn("inline-block h-1 w-1 rounded-full", dotClass)} />
+      {label}
+    </footer>
   );
 }
 
