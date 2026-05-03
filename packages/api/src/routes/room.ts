@@ -308,13 +308,109 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
         invoked_agents: mentionedAgents.map((a) => ({ id: a.id, name: a.name })),
       });
 
-      void runMentionedAgents(deps, roomId, content, mentionedAgents);
+      void runMentionedAgents(
+        deps,
+        roomId,
+        req.caller.personId,
+        content,
+        mentionedAgents,
+      );
     } catch (err) {
       handleError(err, res);
     }
   });
 
   return router;
+}
+
+const ROOM_CONTEXT_TURNS = 25;
+const ROOM_CONTEXT_PREVIEW_CHARS = 800;
+
+/**
+ * Build a room-aware intent prompt. Without the rest of the
+ * conversation, an @-mentioned agent sees only the literal message
+ * the human typed — frequently just `@<agent_id>`, which gives it
+ * nothing to act on. Inline the recent transcript + the room's
+ * member list so the agent has the same context the humans have.
+ */
+async function buildRoomIntent(
+  deps: RoomRoutesDeps,
+  roomId: string,
+  selfAgentId: string,
+  triggerPersonId: string,
+  triggerContent: string,
+): Promise<string> {
+  const [room, members, allMessages] = await Promise.all([
+    deps.roomRepo.findById(roomId),
+    deps.roomRepo.listMembers(roomId),
+    deps.roomRepo.listMessages(roomId, ROOM_CONTEXT_TURNS + 1),
+  ]);
+  if (!room) return triggerContent;
+
+  // Hydrate members for display labels.
+  const personIds = members.filter((m) => m.kind === "person").map((m) => m.subject_id);
+  const agentIds = members.filter((m) => m.kind === "agent").map((m) => m.subject_id);
+  const [persons, agents] = await Promise.all([
+    Promise.all(personIds.map((pid) => deps.personRepo.findById(pid))),
+    Promise.all(agentIds.map((aid) => deps.agentRepo.findById(aid))),
+  ]);
+  const personById = new Map(persons.filter((p) => p).map((p) => [p!.id, p!]));
+  const agentById = new Map(agents.filter((a) => a).map((a) => [a!.id, a!]));
+
+  const labelFor = (m: { kind: "human" | "agent"; sender_person_id?: string; sender_agent_id?: string }): string => {
+    if (m.kind === "human" && m.sender_person_id) {
+      return personById.get(m.sender_person_id)?.name ?? "human";
+    }
+    if (m.kind === "agent" && m.sender_agent_id) {
+      const ag = agentById.get(m.sender_agent_id);
+      return ag ? `${ag.name} (${ag.id})` : "agent";
+    }
+    return "?";
+  };
+
+  // The triggering message is appended fresh below; the listMessages
+  // call already includes it, so trim it off the history slice to
+  // avoid duplication.
+  const history = allMessages.slice(0, -1).slice(-ROOM_CONTEXT_TURNS);
+  const transcript = history
+    .map((m) => {
+      const truncated =
+        m.content.length > ROOM_CONTEXT_PREVIEW_CHARS
+          ? m.content.slice(0, ROOM_CONTEXT_PREVIEW_CHARS - 1) + "…"
+          : m.content;
+      return `${labelFor(m)}: ${truncated}`;
+    })
+    .join("\n\n");
+
+  const memberLines: string[] = [];
+  for (const p of persons) if (p) memberLines.push(`- ${p.name} (human, ${p.id})`);
+  for (const a of agents) {
+    if (!a) continue;
+    const tag = a.id === selfAgentId ? " [you]" : "";
+    memberLines.push(`- ${a.name} (agent, ${a.id})${tag}`);
+  }
+
+  const triggerName = personById.get(triggerPersonId)?.name ?? "a human";
+
+  return `<room name="${room.name.replace(/"/g, "&quot;")}" id="${room.id}">
+You are participating in a shared room. The full member list and
+recent conversation are below — read them so you understand what's
+being discussed before you reply.
+
+## Members
+${memberLines.join("\n")}
+
+${
+  transcript
+    ? `## Recent conversation (oldest first)\n${transcript}\n`
+    : "## Recent conversation\n(none yet — this is the first turn)\n"
+}
+
+## Latest message addressed to you
+${triggerName} said: ${triggerContent}
+
+Respond as ${selfAgentId}. Speak directly to the room.
+</room>`;
 }
 
 /**
@@ -328,7 +424,8 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
 async function runMentionedAgents(
   deps: RoomRoutesDeps,
   roomId: string,
-  intent: string,
+  triggerPersonId: string,
+  triggerContent: string,
   agents: { id: string; runtime_config: { type: string } }[],
 ): Promise<void> {
   for (const a of agents) {
@@ -355,6 +452,13 @@ async function runMentionedAgents(
         memoryAgent: deps.makeMemoryAgent(agent.id),
       };
       const agentSession = new AgentSession(agentSessionDeps);
+      const intent = await buildRoomIntent(
+        deps,
+        roomId,
+        agent.id,
+        triggerPersonId,
+        triggerContent,
+      );
       const session = await agentSession.run({
         agentId: agent.id,
         intent,

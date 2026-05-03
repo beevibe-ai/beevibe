@@ -14,7 +14,7 @@ import { Router, type RequestHandler } from "express";
 import { requireHuman } from "../auth/middleware.js";
 import type { BvEvent, SseManager } from "../sse/manager.js";
 
-const HEARTBEAT_INTERVAL_MS = 25_000;
+const HEARTBEAT_INTERVAL_MS = 5_000;
 
 export interface StreamRoutesDeps {
   authMiddleware: RequestHandler;
@@ -36,6 +36,14 @@ export function createStreamRouter(deps: StreamRoutesDeps): Router {
     });
     res.flushHeaders?.();
 
+    // Immediate flush so the browser EventSource transitions to OPEN
+    // and (critically) cloudflared / any intermediate HTTP/2 proxy
+    // commits to streaming mode instead of buffering. Without this
+    // first byte, http2 proxies may hold the response until the
+    // first interval-driven heartbeat 25s later — by which time the
+    // EventSource has already timed out.
+    res.write(": connected\n\n");
+
     const send = (event: BvEvent) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
@@ -45,6 +53,9 @@ export function createStreamRouter(deps: StreamRoutesDeps): Router {
     // users on the same process never see each other's task / agent /
     // session activity.
     const unsubscribe = deps.sseManager.subscribe(req.caller.personId, send);
+    // Heartbeat every 5s instead of 25s — cloudflared's HTTP/2 stream
+    // can drop "idle" connections aggressively, and the original 25s
+    // matched nginx defaults. 5s is well within any common timeout.
     const heartbeat = setInterval(() => {
       res.write(": heartbeat\n\n");
     }, HEARTBEAT_INTERVAL_MS);

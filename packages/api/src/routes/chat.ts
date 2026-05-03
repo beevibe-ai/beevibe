@@ -49,11 +49,13 @@ const ENTITY_ID_RE = /\b((?:task|agent|sess)_[A-Za-z0-9]{12})\b/g;
 const OPEN_VIEW_RE =
   /<open_view\s+path="([^"]+)"(?:\s+label="([^"]+)")?\s*\/?>(?:\s*<\/open_view>)?/i;
 // Multiple per turn allowed — each becomes a clickable chip below the
-// bubble. Tolerates attributes in any order (label first OR prompt
-// first), self-closing or paired tags, extra whitespace. Captures the
-// whole tag in group 1 so we can re-extract individual attributes.
+// bubble. Tolerates:
+//   - any attribute order:  <suggest_action label="X" prompt="Y" />
+//   - self-closing or paired tags:  <suggest_action ... />  vs  </suggest_action>
+//   - inline-text form (no attributes):  <suggest_action>Foo</suggest_action>
+// Group 1 captures attributes; group 2 captures inline text (when paired).
 const SUGGEST_ACTION_RE =
-  /<suggest_action\b([^>]*?)\/?>(?:\s*<\/suggest_action>)?/gi;
+  /<suggest_action\b([^>]*)>(?:([\s\S]*?)<\/suggest_action>)?/gi;
 const ATTR_LABEL_RE = /\blabel\s*=\s*"([^"]*)"/i;
 const ATTR_PROMPT_RE = /\bprompt\s*=\s*"([^"]*)"/i;
 
@@ -198,8 +200,16 @@ function processResponse(raw: string): {
   const seenLabels = new Set<string>();
   for (const m of raw.matchAll(SUGGEST_ACTION_RE)) {
     const attrs = m[1] ?? "";
-    const label = attrs.match(ATTR_LABEL_RE)?.[1]?.trim();
-    const prompt = attrs.match(ATTR_PROMPT_RE)?.[1]?.trim();
+    const inline = m[2]?.trim();
+    const attrLabel = attrs.match(ATTR_LABEL_RE)?.[1]?.trim();
+    const attrPrompt = attrs.match(ATTR_PROMPT_RE)?.[1]?.trim();
+    // Three valid forms:
+    //   <suggest_action label="X" prompt="Y" />  → label=X, prompt=Y
+    //   <suggest_action label="X" />             → label=X, prompt=undef
+    //   <suggest_action>X</suggest_action>       → label=X, prompt=undef
+    //   <suggest_action label="X">Y</suggest_action> → label=X, prompt=Y
+    const label = attrLabel ?? inline;
+    const prompt = attrPrompt ?? (attrLabel && inline ? inline : undefined);
     if (!label || seenLabels.has(label)) continue;
     seenLabels.add(label);
     suggestedActions.push(prompt ? { label, prompt } : { label });
