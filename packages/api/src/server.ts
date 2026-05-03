@@ -26,12 +26,31 @@ export interface BeevibeApiServerConfig {
    * Default: localhost ports 3000-3010 for dev convenience.
    */
   corsOrigins?: string[];
+  /**
+   * Origin regex patterns to allow in addition to `corsOrigins`. Used
+   * for demo deployments where the web origin is a dynamic tunnel URL
+   * (e.g. `*.trycloudflare.com`) and we don't know the exact host
+   * ahead of time. Matched against the full origin string.
+   */
+  corsOriginPatterns?: RegExp[];
 }
 
 const DEFAULT_CORS_ORIGINS = Array.from({ length: 11 }, (_, i) => [
   `http://localhost:${3000 + i}`,
   `http://127.0.0.1:${3000 + i}`,
 ]).flat();
+
+/**
+ * Default origin patterns — accept demo tunnel URLs (cloudflared
+ * trycloudflare + ngrok free tier) so `pnpm dev --tunnel` works
+ * without needing the exact dynamic hostname known at boot. Production
+ * deploys with a stable origin should pass an explicit `corsOrigins`
+ * list and clear `corsOriginPatterns`.
+ */
+const DEFAULT_CORS_ORIGIN_PATTERNS: RegExp[] = [
+  /^https:\/\/[a-z0-9-]+\.trycloudflare\.com$/,
+  /^https:\/\/[a-z0-9-]+\.ngrok-free\.app$/,
+];
 
 const API_LANDING_HTML = `<!doctype html>
 <html lang="en">
@@ -60,14 +79,16 @@ const API_LANDING_HTML = `<!doctype html>
  * `Authorization` is exposed as an allowed header so EventSource + bv_u_
  * Bearer flows work cross-origin.
  */
-function corsMiddleware(allowed: string[]): RequestHandler {
-  if (allowed.length === 0) {
+function corsMiddleware(allowed: string[], patterns: RegExp[]): RequestHandler {
+  if (allowed.length === 0 && patterns.length === 0) {
     return (_req, _res, next) => next();
   }
   const allowSet = new Set(allowed);
+  const matches = (origin: string): boolean =>
+    allowSet.has(origin) || patterns.some((re) => re.test(origin));
   return (req: Request, res: Response, next): void => {
     const origin = req.header("origin");
-    if (origin && allowSet.has(origin)) {
+    if (origin && matches(origin)) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Credentials", "true");
       res.setHeader("Vary", "Origin");
@@ -104,7 +125,12 @@ export class BeevibeApiServer {
     this.app = express();
     // CORS must run before json() so OPTIONS preflights are answered
     // without trying to parse a body.
-    this.app.use(corsMiddleware(config.corsOrigins ?? DEFAULT_CORS_ORIGINS));
+    this.app.use(
+      corsMiddleware(
+        config.corsOrigins ?? DEFAULT_CORS_ORIGINS,
+        config.corsOriginPatterns ?? DEFAULT_CORS_ORIGIN_PATTERNS,
+      ),
+    );
     this.app.use(json());
 
     this.authMiddleware = createAuthMiddleware(config.authDeps);
