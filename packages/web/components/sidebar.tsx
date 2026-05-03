@@ -13,7 +13,6 @@ import {
   MessageSquare,
   Network,
   Plus,
-  Settings2,
   Sparkles,
   Terminal,
   TrendingUp,
@@ -142,13 +141,6 @@ export function Sidebar() {
       <div className="p-2 border-t border-border/60 flex items-center gap-1">
         <UserWidget />
         <ThemeToggle />
-        <button
-          type="button"
-          aria-label="Sidebar settings"
-          className="h-8 w-8 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors shrink-0"
-        >
-          <Settings2 className="h-4 w-4" />
-        </button>
       </div>
     </aside>
   );
