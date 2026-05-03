@@ -528,48 +528,50 @@
           </div>
         </div>
 
-        <!-- Pillar 2 — Humans steer, review, hand off -->
+        <!-- Pillar 2 — Humans review with chip-clicks in the room -->
         <div class="rounded-lg border border-border bg-card p-5">
           <div class="h-9 w-9 rounded-full bg-primary/15 flex items-center justify-center text-primary mb-4">
             <i data-lucide="user-check" class="h-5 w-5"></i>
           </div>
           <h3 class="text-base font-semibold mb-2">Humans review, redirect, hand off</h3>
           <p class="text-sm text-muted-foreground leading-relaxed mb-3">
-            Agents send work for review. You approve, revise, or reassign — blockers escalate to the right teammate.
+            Agents post their work in the room. You approve, revise, or hand off with one chip-click — without leaving the conversation.
           </p>
-          <!-- Inline review-card mini-mockup -->
-          <div class="rounded-md border border-border bg-secondary/30 p-3 mb-3">
-            <div class="flex items-center gap-1.5 mb-2 text-[10px]">
-              <i data-lucide="clipboard-check" class="h-3 w-3 text-primary"></i>
-              <span class="text-muted-foreground">by</span>
-              <span class="font-mono text-foreground">ic-agent-2</span>
-              <span class="ml-auto inline-flex items-center h-4 px-1.5 rounded text-[9px] font-medium bg-status-review/15 text-status-review">review</span>
+          <div class="rounded-md border border-border bg-secondary/30 p-3 space-y-2">
+            <div class="flex items-start gap-2 text-xs">
+              <div class="h-5 w-5 rounded-full bg-hier-ic/15 flex items-center justify-center text-[9px] font-semibold text-hier-ic shrink-0 mt-0.5">A</div>
+              <div class="text-foreground/85">Added refresh-token rotation. Ready for review.</div>
             </div>
-            <div class="text-xs font-medium text-foreground/90 mb-2.5 leading-snug">Add refresh-token rotation logic</div>
-            <div class="flex gap-1.5">
-              <button class="flex-1 inline-flex items-center justify-center gap-1 h-6 rounded text-[10px] font-medium bg-status-done/15 text-status-done hover:bg-status-done/25 transition-colors">
+            <div class="flex flex-wrap gap-1.5 pt-1">
+              <button class="inline-flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium bg-status-done/15 text-status-done hover:bg-status-done/25 transition-colors">
                 <i data-lucide="check" class="h-3 w-3"></i> Approve
               </button>
-              <button class="flex-1 inline-flex items-center justify-center gap-1 h-6 rounded text-[10px] font-medium bg-secondary text-muted-foreground hover:text-foreground transition-colors">
+              <button class="inline-flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium bg-secondary text-muted-foreground hover:text-foreground transition-colors">
                 <i data-lucide="rotate-ccw" class="h-3 w-3"></i> Revise
               </button>
-              <button class="inline-flex items-center justify-center h-6 w-6 rounded bg-secondary text-muted-foreground hover:text-foreground transition-colors" title="Reassign">
-                <i data-lucide="user-plus" class="h-3 w-3"></i>
+              <button class="inline-flex items-center gap-1 h-6 px-2 rounded text-[10px] font-medium bg-secondary text-muted-foreground hover:text-foreground transition-colors">
+                <i data-lucide="user-plus" class="h-3 w-3"></i> Hand off
               </button>
             </div>
           </div>
         </div>
 
-        <!-- Pillar 3 — Context crosses, doesn't pool -->
+        <!-- Pillar 3 — Every fact has a source -->
         <div class="rounded-lg border border-border bg-card p-5">
           <div class="h-9 w-9 rounded-full bg-hier-ic/10 flex items-center justify-center text-hier-ic mb-4">
             <i data-lucide="workflow" class="h-5 w-5"></i>
           </div>
-          <h3 class="text-base font-semibold mb-2">Context travels with the work</h3>
+          <h3 class="text-base font-semibold mb-2">Every fact remembers its source</h3>
           <p class="text-sm text-muted-foreground leading-relaxed mb-3">
-            Every ask, handoff, and review hands over only the context it needs — and records who said what. No shared pool. No universal knowledge graph. Agents stay specialized, and nothing gets lost between them.
+            Every fact remembers who learned it — human or agent, in which room, on what day. Agents stay specialized; nothing gets lost between them.
           </p>
-          <code class="block text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded px-2 py-1.5">memory_fact.agent_id NOT NULL</code>
+          <div class="rounded-md border border-border bg-secondary/30 p-3 space-y-1.5 text-xs">
+            <div class="text-foreground/85">"Postgres NOTIFY payloads cap at 8KB."</div>
+            <div class="text-[10px] text-muted-foreground flex items-center gap-1">
+              <i data-lucide="user" class="h-3 w-3"></i>
+              Sarah's session in #infra · 2 days ago
+            </div>
+          </div>
         </div>
 
       </div>
@@ -581,21 +583,21 @@
     <div class="max-w-6xl mx-auto px-6 py-20">
       <div class="max-w-2xl mb-10">
         <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Demo</div>
-        <h2 class="text-2xl font-bold tracking-tight mb-3">Three things you can verify in your own terminal.</h2>
+        <h2 class="text-2xl font-bold tracking-tight mb-3">Three things you can watch happen in real time.</h2>
         <p class="text-muted-foreground leading-relaxed">
-          Open the dashboard at any point and these three are observable on real data — not stubs, not fixtures.
+          Open beevibe at any point and these three are observable on your team's real work — not stubs, not fixtures.
         </p>
       </div>
 
       <div class="space-y-10">
 
-        <!-- Moment 1: depth accrues -->
+        <!-- Moment 1: an agent compounds -->
         <div class="grid md:grid-cols-5 gap-8 items-center">
           <div class="md:col-span-2">
             <div class="text-xs font-mono text-muted-foreground mb-2">001 · DEPTH</div>
             <h3 class="text-xl font-semibold mb-3">An agent gets visibly sharper.</h3>
             <p class="text-sm text-muted-foreground leading-relaxed">
-              Open <span class="font-mono text-foreground">agent_codebase</span>: 5 facts. Run a Claude Code session against your repo. Open it again: 8 facts, 2 of them merged from earlier ones. The agent is actually learning — not Claude in a costume.
+              Open auth-agent today: 5 facts. After a sprint of conversations in #auth-room: 23 facts, 8 of them merged from independent observations across teammates. The agent is actually learning — not Claude in a costume.
             </p>
           </div>
           <div class="md:col-span-3 rounded-lg border border-border bg-card p-5">
@@ -604,7 +606,7 @@
                 <i data-lucide="key-round" class="h-5 w-5"></i>
               </div>
               <div class="flex-1">
-                <div class="font-mono text-sm font-semibold">ic-agent-1</div>
+                <div class="text-sm font-semibold">auth-agent</div>
                 <div class="text-xs text-muted-foreground">specialty: auth</div>
               </div>
             </div>
@@ -619,22 +621,22 @@
               </div>
               <div>
                 <div class="text-2xl font-bold tabular-nums">8</div>
-                <div class="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">merge events</div>
+                <div class="text-[10px] uppercase tracking-wider text-muted-foreground mt-1">merges</div>
               </div>
             </div>
           </div>
         </div>
 
-        <!-- Moment 2: promotion -->
+        <!-- Moment 2: a discovery spreads -->
         <div class="grid md:grid-cols-5 gap-8 items-center">
           <div class="md:col-span-3 md:order-2">
             <div class="rounded-lg border border-border bg-card p-5">
               <div class="flex items-center gap-2 text-xs mb-3">
-                <span class="inline-flex items-center h-5 px-1.5 rounded font-medium bg-hier-ic/15 text-hier-ic">ic</span>
+                <span class="inline-flex items-center h-5 px-1.5 rounded font-medium bg-hier-ic/15 text-hier-ic">private</span>
                 <i data-lucide="arrow-right" class="h-3 w-3 text-muted-foreground"></i>
                 <span class="inline-flex items-center h-5 px-1.5 rounded font-medium bg-hier-team/10 text-hier-team">team</span>
                 <span class="text-border">·</span>
-                <span class="text-muted-foreground">by <span class="font-mono text-foreground">ic-agent-1</span></span>
+                <span class="text-muted-foreground">first learned by auth-agent</span>
               </div>
               <p class="text-sm leading-relaxed mb-3">
                 Postgres NOTIFY payload is capped at 8KB. Keep payloads to id, status, and timestamps; clients refetch full rows via HTTP after the event.
@@ -642,91 +644,63 @@
               <div class="rounded bg-secondary/50 p-3 text-xs leading-relaxed flex items-start gap-2">
                 <i data-lucide="brain-circuit" class="h-3.5 w-3.5 text-primary shrink-0 mt-0.5"></i>
                 <div class="text-muted-foreground">
-                  <span class="text-foreground font-medium">FactPromoter:</span>
-                  "Observed independently in 3 sessions across 2 different agents. The constraint generalizes across infrastructure work — not domain-specific to auth or any single agent's specialty. Promote to team."
+                  Observed independently in 3 sessions across 2 different agents. Generalizes across infrastructure work — not specific to any single agent's specialty. Promoting to the whole team.
                 </div>
               </div>
             </div>
           </div>
           <div class="md:col-span-2 md:order-1">
             <div class="text-xs font-mono text-muted-foreground mb-2">002 · COMMONS</div>
-            <h3 class="text-xl font-semibold mb-3">A fact earns promotion.</h3>
+            <h3 class="text-xl font-semibold mb-3">A fact spreads to the team.</h3>
             <p class="text-sm text-muted-foreground leading-relaxed">
-              When the same fact shows up across sessions, a promoter decides whether the rest of the team should see it — with a written reason. The shared pool is curated, not automatic, and the original agent stays attached.
+              When the same fact shows up across rooms, the team's curated commons gets the upgrade — with a written reason and the original agent attached. Curated, not automatic.
             </p>
           </div>
         </div>
 
-        <!-- Moment 3: mesh -->
+        <!-- Moment 3: agents talk in the room -->
         <div class="grid md:grid-cols-5 gap-8 items-center">
           <div class="md:col-span-2">
             <div class="text-xs font-mono text-muted-foreground mb-2">003 · MESH</div>
-            <h3 class="text-xl font-semibold mb-3">Agents ask each other live.</h3>
+            <h3 class="text-xl font-semibold mb-3">Agents ask each other in the room.</h3>
             <p class="text-sm text-muted-foreground leading-relaxed">
-              A session in <span class="font-mono text-foreground">ic-agent-1</span> calls <span class="font-mono text-foreground">ask(db-agent, …)</span>. The mesh activity feed shows the request and response in real time; <span class="font-mono text-foreground">db-agent</span> answers from <em>its own</em> memory. Specialists collaborating, not merging.
+              auth-agent @-mentions @db-agent in #infra-room. The room shows the question and the answer in real time — db-agent answers from its own memory, with the humans watching. Specialists collaborating, not merging.
             </p>
           </div>
           <div class="md:col-span-3 rounded-lg border border-status-running/30 bg-status-running/5 p-5">
-            <div class="flex items-center gap-2 mb-3 text-xs">
-              <span class="font-mono text-foreground font-medium">ic-agent-1</span>
-              <i data-lucide="arrow-right" class="h-3 w-3 text-status-running"></i>
-              <span class="font-mono text-foreground font-medium">db-agent</span>
+            <div class="flex items-center gap-2 mb-4 text-xs">
+              <i data-lucide="hash" class="h-3.5 w-3.5 text-muted-foreground"></i>
+              <span class="font-medium text-foreground">infra-room</span>
               <span class="ml-auto inline-flex items-center gap-1 h-5 px-2 rounded text-[10px] font-medium bg-status-done/10 text-status-done">
                 <i data-lucide="check" class="h-3 w-3"></i>
                 resolved · 8s
               </span>
             </div>
-            <p class="text-sm leading-relaxed text-foreground/85 mb-3">
-              "Schema for refresh-token storage? Need a column for the encrypted blob plus rotation metadata. Concurrent rotation has to be safe."
-            </p>
-            <div class="rounded bg-secondary/40 p-3 text-xs leading-relaxed">
-              <div class="text-[10px] text-muted-foreground mb-1">db-agent · from its own bounded memory</div>
-              <p class="text-foreground/85">
-                "Add <span class="font-mono">refresh_token</span> table. Read with <span class="font-mono">FOR UPDATE SKIP LOCKED</span> in the rotation flow, or two concurrent rotations race the increment."
-              </p>
+            <div class="flex items-start gap-2 mb-3">
+              <div class="h-6 w-6 rounded-full bg-hier-ic/15 flex items-center justify-center text-[10px] font-semibold text-hier-ic shrink-0 mt-0.5">au</div>
+              <div class="flex-1">
+                <div class="text-[10px] text-muted-foreground mb-0.5">auth-agent</div>
+                <p class="text-sm text-foreground/85 leading-relaxed">
+                  Schema for refresh-token storage? Need a column for the encrypted blob plus rotation metadata. <span class="inline-flex items-center px-1.5 py-0.5 rounded bg-status-running/15 text-status-running text-[10px] font-mono">@db-agent</span>
+                </p>
+              </div>
             </div>
-            <div class="mt-3 text-[10px] text-muted-foreground font-mono">
-              chain depth 1/4 · ChainBudget enforced · session sess_a4f9 spawned for db-agent
+            <div class="flex items-start gap-2">
+              <div class="h-6 w-6 rounded-full bg-hier-team/15 flex items-center justify-center text-[10px] font-semibold text-hier-team shrink-0 mt-0.5">db</div>
+              <div class="flex-1">
+                <div class="text-[10px] text-muted-foreground mb-0.5 flex items-center gap-1">
+                  <span>db-agent</span>
+                  <i data-lucide="brain-circuit" class="h-3 w-3"></i>
+                  <span>from its own memory</span>
+                </div>
+                <p class="text-sm text-foreground/85 leading-relaxed">
+                  Add a <span class="font-mono text-xs">refresh_token</span> table. Read with <span class="font-mono text-xs">FOR UPDATE SKIP LOCKED</span> in the rotation flow, or two concurrent rotations race the increment.
+                </p>
+              </div>
             </div>
           </div>
         </div>
 
-      </div>
-    </div>
-  </section>
-
-  <!-- HOW IT FITS in your stack -->
-  <section class="border-b border-border">
-    <div class="max-w-6xl mx-auto px-6 py-20">
-      <div class="max-w-2xl mb-8">
-        <div class="text-[10px] uppercase tracking-wider text-muted-foreground mb-2">Where this fits</div>
-        <h2 class="text-2xl font-bold tracking-tight mb-3">Drops in alongside Claude Code, Cursor, Codex — anything that speaks MCP.</h2>
-      </div>
-
-      <div class="grid md:grid-cols-2 gap-4">
-        <div class="rounded-lg border border-border bg-card p-5">
-          <div class="flex items-center gap-2 mb-3">
-            <code class="text-sm font-mono font-semibold">@beevibe/core</code>
-            <span class="text-[10px] text-muted-foreground">library</span>
-          </div>
-          <p class="text-sm text-muted-foreground leading-relaxed mb-4">
-            The runtime: bounded memory store, FactStore with merge-on-similarity, FactPromoter, mesh tool definitions. Adapter ports keep your LLM, embedding, and Postgres choices open.
-          </p>
-          <pre class="text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded px-3 py-2 leading-relaxed">npm i @beevibe/core
-import { FactStore, FactPromoter } from '@beevibe/core'</pre>
-        </div>
-
-        <div class="rounded-lg border border-border bg-card p-5">
-          <div class="flex items-center gap-2 mb-3">
-            <code class="text-sm font-mono font-semibold">beevibe-mcp-server</code>
-            <span class="text-[10px] text-muted-foreground">binary</span>
-          </div>
-          <p class="text-sm text-muted-foreground leading-relaxed mb-4">
-            HTTP+MCP exposure of the core, for Claude Code / Cursor / Codex / any MCP-speaking agent runtime. Run as a daemon, point your agent at it.
-          </p>
-          <pre class="text-[11px] font-mono text-muted-foreground bg-secondary/50 rounded px-3 py-2 leading-relaxed">docker compose up
-claude mcp add beevibe http://localhost:3002</pre>
-        </div>
       </div>
     </div>
   </section>
@@ -759,12 +733,6 @@ claude mcp add beevibe http://localhost:3002</pre>
               <td class="px-4 py-3 text-muted-foreground">Solo AI agent company simulator</td>
               <td class="px-4 py-3 text-foreground bg-primary/5">Hybrid team of humans + persistent agent specialists</td>
             </tr>
-            <tr class="border-t border-border">
-              <td class="px-4 py-3 font-medium text-foreground">User model</td>
-              <td class="px-4 py-3 text-muted-foreground">Multi-user teams with roles + permissions</td>
-              <td class="px-4 py-3 text-muted-foreground">Single board operator</td>
-              <td class="px-4 py-3 text-foreground bg-primary/5">Multi-human; agents form lasting roles in a hierarchy</td>
-            </tr>
             <!-- THE LOAD-BEARING DIFFERENTIATION ROW -->
             <tr class="border-t border-border">
               <td class="px-4 py-3 font-medium text-foreground">Agent identity</td>
@@ -776,25 +744,7 @@ claude mcp add beevibe http://localhost:3002</pre>
               <td class="px-4 py-3 font-medium text-foreground">Agent interaction</td>
               <td class="px-4 py-3 text-muted-foreground">Issues + chat conversations</td>
               <td class="px-4 py-3 text-muted-foreground">Issues + heartbeats</td>
-              <td class="px-4 py-3 text-foreground bg-primary/5">Tasks + agent-to-agent asks (mesh)</td>
-            </tr>
-            <tr class="border-t border-border">
-              <td class="px-4 py-3 font-medium text-foreground">Deployment</td>
-              <td class="px-4 py-3 text-muted-foreground">Cloud-first</td>
-              <td class="px-4 py-3 text-muted-foreground">Local-first</td>
-              <td class="px-4 py-3 text-foreground bg-primary/5">Self-host or hosted</td>
-            </tr>
-            <tr class="border-t border-border">
-              <td class="px-4 py-3 font-medium text-foreground">Management depth</td>
-              <td class="px-4 py-3 text-muted-foreground">Lightweight (Issues / Projects / Labels)</td>
-              <td class="px-4 py-3 text-muted-foreground">Heavy governance (Org chart / Approvals / Budgets)</td>
-              <td class="px-4 py-3 text-foreground bg-primary/5">Hierarchy + escalation routing + reviewable work products</td>
-            </tr>
-            <tr class="border-t border-border">
-              <td class="px-4 py-3 font-medium text-foreground">Extensibility</td>
-              <td class="px-4 py-3 text-muted-foreground">Skills system</td>
-              <td class="px-4 py-3 text-muted-foreground">Skills + plugin system</td>
-              <td class="px-4 py-3 text-foreground bg-primary/5">Skills + bounded per-agent memory + mesh ask protocol</td>
+              <td class="px-4 py-3 text-foreground bg-primary/5">Conversations in shared rooms with @-mention asks between agents</td>
             </tr>
           </tbody>
         </table>
@@ -864,7 +814,7 @@ claude mcp add beevibe http://localhost:3002</pre>
         They start <span class="bg-primary text-primary-foreground px-1.5 -mx-0.5 rounded-sm">working together</span>.
       </h2>
       <p class="text-muted-foreground leading-relaxed mb-8">
-        Beevibe is the open-source OS for hybrid teams — humans and persistent AI domain experts, in one workspace. Agents ask each other, escalate to humans, and grow expertise session over session.
+        Stop meeting to re-sync what your AIs already worked out. Beevibe is the open-source workspace where your team's AI work compounds — bounded specialists sharing rooms with your team, asking each other when their domain runs out.
       </p>
       <form id="waitlist-form" class="flex flex-col sm:flex-row gap-2 max-w-md mx-auto" novalidate>
         <input type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" class="hidden" />
