@@ -167,8 +167,8 @@ export interface RoomDetail {
   room: Room;
   members: RoomMemberDetail[];
   messages: RoomMessage[];
-  /** Agents currently working on a turn for this room. */
-  typing: RoomTypingIndicator[];
+  /** Agents currently working on a turn for this room. May be omitted by older server builds. */
+  typing?: RoomTypingIndicator[];
 }
 
 export interface WorkProductDetail {

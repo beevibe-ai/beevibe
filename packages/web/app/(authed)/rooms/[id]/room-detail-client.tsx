@@ -177,7 +177,9 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
               ))
             )}
             {send.isPending ? <Pending /> : null}
-            {data.typing.length > 0 ? <TypingIndicators typing={data.typing} /> : null}
+            {(data.typing?.length ?? 0) > 0 ? (
+              <TypingIndicators typing={data.typing!} />
+            ) : null}
             {send.error ? (
               <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
                 <div className="flex items-center gap-1.5 text-status-failed font-medium mb-1">
