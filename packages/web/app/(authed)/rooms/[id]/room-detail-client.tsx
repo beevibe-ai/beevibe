@@ -37,11 +37,69 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
     staleTime: 5_000,
   });
 
+  // Optimistic UI: snapshot the message text on send, push it into
+  // the cached room detail so the sender sees their own line
+  // immediately. Real version arrives via SSE invalidation. We
+  // dedupe by content + sender on the merge so the optimistic line
+  // gets replaced by the persisted one without flickering.
   const send = useMutation({
-    mutationFn: () => api.rooms.sendMessage(roomId, { content: draft.trim() }),
-    onSuccess: () => {
-      setDraft("");
+    mutationFn: (content: string) =>
+      api.rooms.sendMessage(roomId, { content }),
+    onMutate: (content: string) => {
+      const optimisticId = `optimistic-${Date.now()}`;
+      queryClient.setQueryData<RoomDetail>(
+        queryKeys.rooms.detail(roomId),
+        (prev) => {
+          if (!prev || !me?.person.id) return prev;
+          return {
+            ...prev,
+            messages: [
+              ...prev.messages,
+              {
+                id: optimisticId,
+                room_id: roomId,
+                kind: "human",
+                content,
+                sender_person_id: me.person.id,
+                created_at: new Date().toISOString(),
+              },
+            ],
+          };
+        },
+      );
+      return { optimisticId };
+    },
+    onSuccess: (res, _content, ctx) => {
+      // Replace the optimistic line with the persisted server row in
+      // place — no flicker, no duplicate render. SSE invalidation
+      // catches anything we miss.
+      if (ctx) {
+        queryClient.setQueryData<RoomDetail>(
+          queryKeys.rooms.detail(roomId),
+          (prev) => {
+            if (!prev) return prev;
+            const idx = prev.messages.findIndex((m) => m.id === ctx.optimisticId);
+            if (idx === -1) return prev;
+            const next = prev.messages.slice();
+            next[idx] = res.message;
+            return { ...prev, messages: next };
+          },
+        );
+      }
+      // Background refetch so we pick up agent responses arriving
+      // via SSE in case events lag.
       queryClient.invalidateQueries({ queryKey: queryKeys.rooms.detail(roomId) });
+    },
+    onError: (_err, _content, ctx) => {
+      // Roll back the optimistic line so the user can retry.
+      if (!ctx) return;
+      queryClient.setQueryData<RoomDetail>(
+        queryKeys.rooms.detail(roomId),
+        (prev) =>
+          prev
+            ? { ...prev, messages: prev.messages.filter((m) => m.id !== ctx.optimisticId) }
+            : prev,
+      );
     },
   });
 
@@ -82,8 +140,10 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
 
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
-    if (draft.trim().length === 0 || send.isPending) return;
-    send.mutate();
+    const content = draft.trim();
+    if (content.length === 0 || send.isPending) return;
+    setDraft(""); // clear textarea optimistically so re-typing feels instant
+    send.mutate(content);
   };
 
   return (

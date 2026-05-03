@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, ArrowRight, MessageSquare, Plus, Send, Sparkles } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
+import type { SuggestedAction } from "@/lib/api/client";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
 import { useMe } from "@/lib/hooks/use-me";
@@ -234,30 +235,31 @@ function Bubble({
         ) : null}
       </div>
       {suggestions.length > 0 && onSuggest ? (
-        <SuggestedActions labels={suggestions} onPick={onSuggest} />
+        <SuggestedActions actions={suggestions} onPick={onSuggest} />
       ) : null}
     </div>
   );
 }
 
 function SuggestedActions({
-  labels,
+  actions,
   onPick,
 }: {
-  labels: string[];
-  onPick: (label: string) => void;
+  actions: SuggestedAction[];
+  onPick: (text: string) => void;
 }) {
   return (
     <div className="mt-2 max-w-[80%] flex flex-wrap gap-1.5">
-      {labels.map((label) => (
+      {actions.map((a) => (
         <button
-          key={label}
+          key={a.label}
           type="button"
-          onClick={() => onPick(label)}
+          onClick={() => onPick(a.prompt ?? a.label)}
+          title={a.prompt && a.prompt !== a.label ? a.prompt : undefined}
           className="text-left rounded-md border border-border bg-card hover:bg-secondary hover:border-foreground/30 px-2.5 py-1.5 text-xs text-foreground transition-colors cursor-pointer flex items-center gap-1.5"
         >
           <Sparkles className="h-3 w-3 shrink-0 text-muted-foreground" />
-          <span>{label}</span>
+          <span>{a.label}</span>
         </button>
       ))}
     </div>

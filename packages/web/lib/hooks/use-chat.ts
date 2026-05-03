@@ -7,6 +7,7 @@ import {
   type ChatHistoryMessage,
   type ChatHistoryResponse,
   type ChatTurnResponse,
+  type SuggestedAction,
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "./keys";
@@ -22,8 +23,8 @@ export interface ChatMessage {
   view_refs?: string[];
   /** Resolved `<open_view>` directive — rendered as an "Open this →" CTA. */
   open_view?: { path: string; label?: string };
-  /** Resolved `<suggest_action>` chips — clicking sends the label as a turn. */
-  suggested_actions?: string[];
+  /** Resolved `<suggest_action>` chips — chip shows label, clicking sends prompt (or label). */
+  suggested_actions?: SuggestedAction[];
 }
 
 let nextLocalId = 0;

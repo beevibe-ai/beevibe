@@ -94,6 +94,13 @@ export interface ChatSendInput {
   session_id?: string;
 }
 
+export interface SuggestedAction {
+  /** Short text shown on the chip. */
+  label: string;
+  /** Optional longer message sent on click — defaults to label. */
+  prompt?: string;
+}
+
 export interface ChatTurnResponse {
   ok: true;
   agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" };
@@ -112,7 +119,7 @@ export interface ChatTurnResponse {
    * label becomes a clickable chip below the bubble that re-sends the
    * label as the next user message.
    */
-  suggested_actions?: string[];
+  suggested_actions?: SuggestedAction[];
 }
 
 export interface Room {
@@ -218,7 +225,7 @@ export interface ChatHistoryMessage {
   session_id?: string;
   view_refs?: string[];
   open_view?: { path: string; label?: string };
-  suggested_actions?: string[];
+  suggested_actions?: SuggestedAction[];
 }
 
 export interface ChatHistoryResponse {
@@ -389,8 +396,10 @@ export const api = {
     sendMessage: (id: string, input: { content: string }) =>
       fetchJson<{
         ok: true;
+        /** The persisted human message — returned synchronously. */
         message: RoomMessage;
-        agent_responses: RoomMessage[];
+        /** Agents that were invoked in the background — their responses arrive via SSE. */
+        invoked_agents: { id: string; name: string }[];
       }>(`/room/${encodeURIComponent(id)}/message`, { method: "POST", body: input }),
   },
   signup: {

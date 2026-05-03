@@ -274,9 +274,12 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
         return;
       }
 
-      // Persist the human message first — it shows immediately to all
-      // room members via SSE while any mentioned agents run in the
-      // background.
+      // Persist the human message FIRST + return immediately. The
+      // bv_event trigger fires room.message → SSE → every member's
+      // browser invalidates and refetches → human's words appear in
+      // ALL panes within a tick. Critical for the demo: while one
+      // user is typing, the other should see "is sending..." → "did
+      // send" without 30s of silence waiting for an agent run.
       const humanMsg = await deps.roomRepo.appendMessage({
         id: makeRoomMessageId(),
         room_id: roomId,
@@ -295,63 +298,98 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
 
       const mentionedAgents = resolveMentions(content, memberAgents);
 
-      // Run mentioned agents sequentially (one room turn at a time
-      // keeps the conversation legible — parallel responses would
-      // interleave confusingly). Each runs with room_id stamped so
-      // its session events fan out to every room member.
-      const agentResponses: MessageReply[] = [];
-      for (const agent of mentionedAgents) {
-        const runtime = deps.runtimeRegistry[agent.runtime_config.type];
-        if (!runtime) {
-          await deps.roomRepo.appendMessage({
-            id: makeRoomMessageId(),
-            room_id: roomId,
-            kind: "agent",
-            sender_agent_id: agent.id,
-            content: `(error: runtime '${agent.runtime_config.type}' not registered)`,
-          });
-          continue;
-        }
-        const workspace = await deps.workspaceManager.ensureWorkspace({ agent });
-        const agentSessionDeps: AgentSessionDeps = {
-          agentRepo: deps.agentRepo,
-          sessionRepo: deps.sessionRepo,
-          sessionEventRepo: deps.sessionEventRepo,
-          runtime,
-          memoryAgent: deps.makeMemoryAgent(agent.id),
-        };
-        const agentSession = new AgentSession(agentSessionDeps);
-        const session = await agentSession.run({
-          agentId: agent.id,
-          intent: content,
-          workspace,
-          type: "chat",
-          roomId,
-          extraSystemPromptAppend: ROOM_DIRECTIVES,
-        });
-        const visible = session.result_summary ?? "";
-        const persisted = await deps.roomRepo.appendMessage({
-          id: makeRoomMessageId(),
-          room_id: roomId,
-          kind: "agent",
-          sender_agent_id: agent.id,
-          content: visible,
-          session_id: session.id,
-        });
-        agentResponses.push(toMessageReply(persisted));
-      }
-
+      // Send the response now — agent runs are fire-and-forget. Each
+      // agent's session_event stream + final room_message row fan
+      // out via SSE as they happen. Sequential (not parallel) so the
+      // room transcript stays readable.
       res.json({
         ok: true,
         message: toMessageReply(humanMsg),
-        agent_responses: agentResponses,
+        invoked_agents: mentionedAgents.map((a) => ({ id: a.id, name: a.name })),
       });
+
+      void runMentionedAgents(deps, roomId, content, mentionedAgents);
     } catch (err) {
       handleError(err, res);
     }
   });
 
   return router;
+}
+
+/**
+ * Run @mentioned agents sequentially in the background. Each writes
+ * its final response as a `room_message` row, which fires the
+ * room.message bv_event trigger so every member's browser refetches
+ * and renders it in the same tick. Failures are logged + persisted as
+ * an agent-kind message so room members can see what went wrong
+ * instead of staring at silence.
+ */
+async function runMentionedAgents(
+  deps: RoomRoutesDeps,
+  roomId: string,
+  intent: string,
+  agents: { id: string; runtime_config: { type: string } }[],
+): Promise<void> {
+  for (const a of agents) {
+    try {
+      const agent = await deps.agentRepo.findById(a.id);
+      if (!agent) continue;
+      const runtime = deps.runtimeRegistry[agent.runtime_config.type];
+      if (!runtime) {
+        await deps.roomRepo.appendMessage({
+          id: makeRoomMessageId(),
+          room_id: roomId,
+          kind: "agent",
+          sender_agent_id: agent.id,
+          content: `(error: runtime '${agent.runtime_config.type}' not registered)`,
+        });
+        continue;
+      }
+      const workspace = await deps.workspaceManager.ensureWorkspace({ agent });
+      const agentSessionDeps: AgentSessionDeps = {
+        agentRepo: deps.agentRepo,
+        sessionRepo: deps.sessionRepo,
+        sessionEventRepo: deps.sessionEventRepo,
+        runtime,
+        memoryAgent: deps.makeMemoryAgent(agent.id),
+      };
+      const agentSession = new AgentSession(agentSessionDeps);
+      const session = await agentSession.run({
+        agentId: agent.id,
+        intent,
+        workspace,
+        type: "chat",
+        roomId,
+        extraSystemPromptAppend: ROOM_DIRECTIVES,
+      });
+      const visible = session.result_summary ?? "";
+      await deps.roomRepo.appendMessage({
+        id: makeRoomMessageId(),
+        room_id: roomId,
+        kind: "agent",
+        sender_agent_id: agent.id,
+        content: visible,
+        session_id: session.id,
+      });
+    } catch (err) {
+      console.error(
+        `[room route] agent ${a.id} failed during room ${roomId} turn:`,
+        err instanceof Error ? err.message : err,
+      );
+      try {
+        await deps.roomRepo.appendMessage({
+          id: makeRoomMessageId(),
+          room_id: roomId,
+          kind: "agent",
+          sender_agent_id: a.id,
+          content: `(error: ${(err as Error).message})`,
+        });
+      } catch {
+        // best-effort
+      }
+    }
+  }
 }
 
 interface AgentMatchable {

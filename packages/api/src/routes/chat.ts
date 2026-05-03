@@ -48,9 +48,14 @@ export interface ChatRoutesDeps {
 const ENTITY_ID_RE = /\b((?:task|agent|sess)_[A-Za-z0-9]{12})\b/g;
 const OPEN_VIEW_RE =
   /<open_view\s+path="([^"]+)"(?:\s+label="([^"]+)")?\s*\/?>(?:\s*<\/open_view>)?/i;
-// Multiple per turn allowed — each becomes a clickable chip below the bubble.
+// Multiple per turn allowed — each becomes a clickable chip below the
+// bubble. Tolerates attributes in any order (label first OR prompt
+// first), self-closing or paired tags, extra whitespace. Captures the
+// whole tag in group 1 so we can re-extract individual attributes.
 const SUGGEST_ACTION_RE =
-  /<suggest_action\s+label="([^"]+)"\s*\/?>(?:\s*<\/suggest_action>)?/gi;
+  /<suggest_action\b([^>]*?)\/?>(?:\s*<\/suggest_action>)?/gi;
+const ATTR_LABEL_RE = /\blabel\s*=\s*"([^"]*)"/i;
+const ATTR_PROMPT_RE = /\bprompt\s*=\s*"([^"]*)"/i;
 
 const CHAT_DIRECTIVES = `
 You are responding inside a chat surface — not a CLI. Three display
@@ -79,10 +84,13 @@ directives the UI understands:
 
    \`<suggest_action label="Approve as-is and spin up the team" />\`
 
-   The UI renders each as a clickable chip below your reply; clicking
-   it sends the label as the user's next message. Make the labels
-   self-contained (the agent will receive them with no extra context),
-   imperative, and short — under ~80 chars. Skip the chips entirely
+   Optionally pair with a longer \`prompt\` attribute — the chip
+   shows \`label\`, but clicking sends \`prompt\` as the user's next
+   message:
+
+   \`<suggest_action label="Approve" prompt="Approve as-is and spin up all three specialists now." />\`
+
+   Keep \`label\` short (under ~80 chars). Skip the chips entirely
    when there's nothing concrete to choose.
 `.trim();
 
@@ -151,7 +159,7 @@ interface HistoryMessage {
   session_id?: string;
   view_refs?: string[];
   open_view?: { path: string; label?: string };
-  suggested_actions?: string[];
+  suggested_actions?: SuggestedAction[];
 }
 
 function handleError(err: unknown, res: Response): void {
@@ -160,6 +168,13 @@ function handleError(err: unknown, res: Response): void {
     error: "internal_error",
     message: err instanceof Error ? err.message : String(err),
   });
+}
+
+export interface SuggestedAction {
+  /** Short text shown on the chip. */
+  label: string;
+  /** Optional fuller text sent on click — defaults to label. */
+  prompt?: string;
 }
 
 /**
@@ -172,19 +187,24 @@ function processResponse(raw: string): {
   visible: string;
   view_refs: string[];
   open_view?: { path: string; label?: string };
-  suggested_actions?: string[];
+  suggested_actions?: SuggestedAction[];
 } {
   const openMatch = raw.match(OPEN_VIEW_RE);
   const open_view = openMatch?.[1]
     ? { path: openMatch[1], ...(openMatch[2] ? { label: openMatch[2] } : {}) }
     : undefined;
 
-  const suggestedSet = new Set<string>();
+  const suggestedActions: SuggestedAction[] = [];
+  const seenLabels = new Set<string>();
   for (const m of raw.matchAll(SUGGEST_ACTION_RE)) {
-    const label = m[1]?.trim();
-    if (label && !suggestedSet.has(label)) suggestedSet.add(label);
+    const attrs = m[1] ?? "";
+    const label = attrs.match(ATTR_LABEL_RE)?.[1]?.trim();
+    const prompt = attrs.match(ATTR_PROMPT_RE)?.[1]?.trim();
+    if (!label || seenLabels.has(label)) continue;
+    seenLabels.add(label);
+    suggestedActions.push(prompt ? { label, prompt } : { label });
   }
-  const suggested_actions = suggestedSet.size > 0 ? [...suggestedSet] : undefined;
+  const suggested_actions = suggestedActions.length > 0 ? suggestedActions : undefined;
 
   let visible = raw;
   if (openMatch) visible = visible.replace(OPEN_VIEW_RE, "");
