@@ -139,14 +139,19 @@ WEB_ENV_FILE="packages/web/.env.local"
 
 start_web() {
   if [ "$WEB_ENABLED" != "1" ]; then return; fi
-  # CRITICAL: unset NEXT_PUBLIC_BV_USER_KEY in the spawned env. The
-  # root .env carries the admin's bv_u_ as a dev convenience; sourcing
-  # it earlier pulled it into our shell, and Next.js bakes any
-  # NEXT_PUBLIC_* env var into the CLIENT bundle. With it set, every
-  # remote visitor would be auto-signed-in as the admin — a real leak
-  # once the web is publicly tunneled. Forcing unset means visitors
-  # have to paste their own bv_u_ on /sign-in.
-  PORT="$BEEVIBE_WEB_PORT" NEXT_PUBLIC_BV_USER_KEY="" \
+  local api_url="$1"
+  # CRITICAL: pass NEXT_PUBLIC_* explicitly. We sourced root .env at
+  # the top of the script (set -a), which exported the admin's
+  # bv_u_ key + the localhost api URL into our shell environment.
+  # Next.js reads process.env BEFORE .env.local, so the inherited
+  # vars would override the freshly-written tunnel URL — every
+  # remote visitor's bundle would call http://localhost:3000 (which
+  # their browser blocks as mixed content from an https origin) and
+  # be auto-signed-in as the admin. Override both here so the
+  # spawned env reflects the actual deployment we want.
+  PORT="$BEEVIBE_WEB_PORT" \
+    NEXT_PUBLIC_BV_API_URL="$api_url" \
+    NEXT_PUBLIC_BV_USER_KEY="" \
     pnpm --filter @beevibe/web dev 2>&1 \
     | sed -u 's/^/[web] /' &
 }
@@ -216,7 +221,7 @@ if [ "$TUNNEL_ENABLED" = "1" ]; then
   api_url=$(cat "$api_url_file")
   echo "==> API tunnel: $api_url"
   write_web_api_url "$api_url"
-  start_web
+  start_web "$api_url"
 
   # Give Next.js a couple seconds to bind $BEEVIBE_WEB_PORT before we
   # cloudflared-tunnel it; otherwise the first remote connection 1033s.
@@ -274,7 +279,7 @@ EOF
 else
   # Local-only mode: web points at the local api port; no tunneling.
   write_web_api_url "http://localhost:${BEEVIBE_API_PORT}"
-  start_web
+  start_web "http://localhost:${BEEVIBE_API_PORT}"
 fi
 
 wait
