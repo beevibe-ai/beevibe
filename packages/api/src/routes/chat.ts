@@ -33,6 +33,7 @@ import type {
 } from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 import { requireHuman } from "../auth/middleware.js";
+import { processResponse, type SuggestedAction } from "./directives.js";
 
 export interface ChatRoutesDeps {
   authMiddleware: RequestHandler;
@@ -44,20 +45,6 @@ export interface ChatRoutesDeps {
   runtimeRegistry: RuntimeRegistry;
   makeMemoryAgent: (agentId: string) => MemoryAgent;
 }
-
-const ENTITY_ID_RE = /\b((?:task|agent|sess)_[A-Za-z0-9]{12})\b/g;
-const OPEN_VIEW_RE =
-  /<open_view\s+path="([^"]+)"(?:\s+label="([^"]+)")?\s*\/?>(?:\s*<\/open_view>)?/i;
-// Multiple per turn allowed — each becomes a clickable chip below the
-// bubble. Tolerates:
-//   - any attribute order:  <suggest_action label="X" prompt="Y" />
-//   - self-closing or paired tags:  <suggest_action ... />  vs  </suggest_action>
-//   - inline-text form (no attributes):  <suggest_action>Foo</suggest_action>
-// Group 1 captures attributes; group 2 captures inline text (when paired).
-const SUGGEST_ACTION_RE =
-  /<suggest_action\b([^>]*)>(?:([\s\S]*?)<\/suggest_action>)?/gi;
-const ATTR_LABEL_RE = /\blabel\s*=\s*"([^"]*)"/i;
-const ATTR_PROMPT_RE = /\bprompt\s*=\s*"([^"]*)"/i;
 
 const CHAT_DIRECTIVES = `
 You are responding inside a chat surface — not a CLI. Three display
@@ -170,73 +157,6 @@ function handleError(err: unknown, res: Response): void {
     error: "internal_error",
     message: err instanceof Error ? err.message : String(err),
   });
-}
-
-export interface SuggestedAction {
-  /** Short text shown on the chip. */
-  label: string;
-  /** Optional fuller text sent on click — defaults to label. */
-  prompt?: string;
-}
-
-/**
- * Parse out display directives (`<open_view>`, `<suggest_action>`),
- * extract referenced entity ids, and return the cleaned visible
- * response. Directives are stripped from the visible text so the
- * markdown renderer never sees them.
- */
-function processResponse(raw: string): {
-  visible: string;
-  view_refs: string[];
-  open_view?: { path: string; label?: string };
-  suggested_actions?: SuggestedAction[];
-} {
-  const openMatch = raw.match(OPEN_VIEW_RE);
-  const open_view = openMatch?.[1]
-    ? { path: openMatch[1], ...(openMatch[2] ? { label: openMatch[2] } : {}) }
-    : undefined;
-
-  const suggestedActions: SuggestedAction[] = [];
-  const seenLabels = new Set<string>();
-  for (const m of raw.matchAll(SUGGEST_ACTION_RE)) {
-    const attrs = m[1] ?? "";
-    const inline = m[2]?.trim();
-    const attrLabel = attrs.match(ATTR_LABEL_RE)?.[1]?.trim();
-    const attrPrompt = attrs.match(ATTR_PROMPT_RE)?.[1]?.trim();
-    // Three valid forms:
-    //   <suggest_action label="X" prompt="Y" />  → label=X, prompt=Y
-    //   <suggest_action label="X" />             → label=X, prompt=undef
-    //   <suggest_action>X</suggest_action>       → label=X, prompt=undef
-    //   <suggest_action label="X">Y</suggest_action> → label=X, prompt=Y
-    const label = attrLabel ?? inline;
-    const prompt = attrPrompt ?? (attrLabel && inline ? inline : undefined);
-    if (!label || seenLabels.has(label)) continue;
-    seenLabels.add(label);
-    suggestedActions.push(prompt ? { label, prompt } : { label });
-  }
-  const suggested_actions = suggestedActions.length > 0 ? suggestedActions : undefined;
-
-  let visible = raw;
-  if (openMatch) visible = visible.replace(OPEN_VIEW_RE, "");
-  if (suggested_actions) visible = visible.replace(SUGGEST_ACTION_RE, "");
-  visible = visible.trim();
-
-  const seen = new Set<string>();
-  const view_refs: string[] = [];
-  for (const m of visible.matchAll(ENTITY_ID_RE)) {
-    const id = m[1];
-    if (id && !seen.has(id)) {
-      seen.add(id);
-      view_refs.push(id);
-    }
-  }
-
-  return {
-    visible,
-    view_refs,
-    ...(open_view ? { open_view } : {}),
-    ...(suggested_actions ? { suggested_actions } : {}),
-  };
 }
 
 const HISTORY_LIMIT = 50;

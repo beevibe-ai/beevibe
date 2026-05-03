@@ -162,12 +162,17 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
             {data.messages.length === 0 ? (
               <EmptyMessages members={data.members} />
             ) : (
-              data.messages.map((m) => (
+              data.messages.map((m, i) => (
                 <MessageBubble
                   key={m.id}
                   message={m}
                   members={data.members}
                   myPersonId={me?.person.id}
+                  showSuggestions={!send.isPending && i === data.messages.length - 1}
+                  onSuggest={(text) => {
+                    setDraft(text);
+                    setTimeout(() => submit(), 0);
+                  }}
                 />
               ))
             )}
@@ -380,10 +385,14 @@ function MessageBubble({
   message,
   members,
   myPersonId,
+  showSuggestions,
+  onSuggest,
 }: {
   message: RoomMessage;
   members: RoomMemberDetail[];
   myPersonId?: string;
+  showSuggestions?: boolean;
+  onSuggest?: (text: string) => void;
 }) {
   const sender = useMemo(() => {
     if (message.kind === "human") {
@@ -395,6 +404,7 @@ function MessageBubble({
   const isMine =
     message.kind === "human" && message.sender_person_id === myPersonId;
   const isAgent = message.kind === "agent";
+  const suggestions = showSuggestions ? message.suggested_actions ?? [] : [];
 
   return (
     <div className={cn("flex flex-col", isMine ? "items-end" : "items-start")}>
@@ -439,6 +449,22 @@ function MessageBubble({
           </div>
         ) : null}
       </div>
+      {suggestions.length > 0 && onSuggest ? (
+        <div className="mt-2 max-w-[80%] flex flex-wrap gap-1.5">
+          {suggestions.map((a) => (
+            <button
+              key={a.label}
+              type="button"
+              onClick={() => onSuggest(a.prompt ?? a.label)}
+              title={a.prompt && a.prompt !== a.label ? a.prompt : undefined}
+              className="text-left rounded-md border border-border bg-card hover:bg-secondary hover:border-foreground/30 px-2.5 py-1.5 text-xs text-foreground transition-colors cursor-pointer flex items-center gap-1.5"
+            >
+              <Sparkles className="h-3 w-3 shrink-0 text-muted-foreground" />
+              <span>{a.label}</span>
+            </button>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }

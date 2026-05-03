@@ -148,6 +148,10 @@ export interface RoomMessage {
   sender_person_id?: string;
   sender_agent_id?: string;
   session_id?: string;
+  /** Entity ids the agent referenced in this message, hydrated as cards. */
+  view_refs?: string[];
+  open_view?: { path: string; label?: string };
+  suggested_actions?: SuggestedAction[];
   created_at: string;
 }
 

@@ -40,6 +40,11 @@ import {
 } from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 import { requireHuman } from "../auth/middleware.js";
+import {
+  processResponse,
+  type OpenView,
+  type SuggestedAction,
+} from "./directives.js";
 
 export interface RoomRoutesDeps {
   authMiddleware: RequestHandler;
@@ -86,17 +91,39 @@ interface MessageReply {
   sender_person_id?: string;
   sender_agent_id?: string;
   session_id?: string;
+  view_refs?: string[];
+  open_view?: OpenView;
+  suggested_actions?: SuggestedAction[];
   created_at: string;
 }
 
 function toMessageReply(m: RoomMessage): MessageReply {
+  // Agent messages may contain `<suggest_action>` / `<open_view>`
+  // directives + inline entity refs. Strip them from the visible
+  // content here so the markdown renderer never sees raw XML, and
+  // surface the parsed directives as siblings on the reply so the
+  // chat UI can render chips + CTAs the same way it does in /chat.
+  if (m.kind === "agent") {
+    const parsed = processResponse(m.content);
+    return {
+      id: m.id,
+      room_id: m.room_id,
+      kind: m.kind,
+      content: parsed.visible,
+      ...(m.sender_agent_id ? { sender_agent_id: m.sender_agent_id } : {}),
+      ...(m.session_id ? { session_id: m.session_id } : {}),
+      ...(parsed.view_refs.length > 0 ? { view_refs: parsed.view_refs } : {}),
+      ...(parsed.open_view ? { open_view: parsed.open_view } : {}),
+      ...(parsed.suggested_actions ? { suggested_actions: parsed.suggested_actions } : {}),
+      created_at: m.created_at.toISOString(),
+    };
+  }
   return {
     id: m.id,
     room_id: m.room_id,
     kind: m.kind,
     content: m.content,
     ...(m.sender_person_id ? { sender_person_id: m.sender_person_id } : {}),
-    ...(m.sender_agent_id ? { sender_agent_id: m.sender_agent_id } : {}),
     ...(m.session_id ? { session_id: m.session_id } : {}),
     created_at: m.created_at.toISOString(),
   };
