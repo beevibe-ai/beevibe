@@ -172,7 +172,14 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
                   myPersonId={me?.person.id}
                   showSuggestions={!send.isPending && i === data.messages.length - 1}
                   onSuggest={(text) => {
-                    setDraft(text);
+                    // Suggestion chips are implicitly addressed to the agent
+                    // who emitted them — without an explicit @mention the
+                    // server-side addressee resolver would route to nobody
+                    // and the agent would silently not respond.
+                    const senderId = m.sender_agent_id;
+                    const short = senderId ? idSuffix(senderId) : "";
+                    const addressed = short ? `@${short} ${text}` : text;
+                    setDraft(addressed);
                     setTimeout(() => submit(), 0);
                   }}
                 />
