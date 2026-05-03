@@ -68,27 +68,38 @@ export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
 
   return {
     async prepareBriefing(intent: string): Promise<BriefingResult> {
+      // Core memory blocks always work — they're a plain DB read, no
+      // external provider needed. Pull them first.
+      const blocks = await deps.coreMemory.read(deps.agentId);
+
       // Without an embedding service we can't do vector recall — return
       // a blocks-only briefing. Core memory still works, archival memory
       // is empty for this session. The agent operates without recall
       // until the operator provides an OPENAI_API_KEY and writes start
       // landing in memory_fact again.
-      if (!deps.embed) {
-        const blocks = await deps.coreMemory.read(deps.agentId);
+      if (!deps.embed) return composeBriefing(blocks, []);
+
+      // Tolerate runtime failures of the embed provider (invalid key,
+      // network blip, rate limit, etc.). Memory recall is best-effort;
+      // a flaky embedding probe must NEVER crash the chat turn. Log
+      // and degrade to blocks-only so the caller sees a usable
+      // briefing either way.
+      try {
+        const queryVec = await deps.embed.embed(intent);
+        const facts = await deps.factStore.search({
+          agent_id: deps.agentId,
+          scope: ["ic", "team", "org"],
+          embedding: queryVec,
+          limit: factsPerBriefing,
+          min_similarity: BRIEFING_RECALL_FLOOR,
+        });
+        return composeBriefing(blocks, facts);
+      } catch (err) {
+        console.warn(
+          `[MemoryAgent] embed/search failed (degrading to blocks-only briefing): ${(err as Error).message}`,
+        );
         return composeBriefing(blocks, []);
       }
-      const [blocks, queryVec] = await Promise.all([
-        deps.coreMemory.read(deps.agentId),
-        deps.embed.embed(intent),
-      ]);
-      const facts = await deps.factStore.search({
-        agent_id: deps.agentId,
-        scope: ["ic", "team", "org"],
-        embedding: queryVec,
-        limit: factsPerBriefing,
-        min_similarity: BRIEFING_RECALL_FLOOR,
-      });
-      return composeBriefing(blocks, facts);
     },
 
     async onTaskComplete(sessionId: string): Promise<void> {
