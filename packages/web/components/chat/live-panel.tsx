@@ -36,7 +36,11 @@ import { cn } from "@/lib/utils";
  * sessions show up side-by-side in recent activity.
  */
 export function LivePanel() {
-  const [collapsed, toggleCollapsed] = useCollapsible("bv-livepanel-collapsed");
+  // Default collapsed: chat is the focal surface, the live panel is a
+  // peek-when-needed thing. Keeping it expanded by default ate ~288px
+  // of horizontal real estate every time someone opened /chat for a
+  // quick reply. User toggle still wins (persisted).
+  const [collapsed, toggleCollapsed] = useCollapsible("bv-livepanel-collapsed", true);
   if (!isApiConfigured) return null;
 
   if (collapsed) {
