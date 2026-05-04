@@ -122,14 +122,43 @@ describe("parseClaudeStreamJson", () => {
     expect(result.cli_session_id).toBe("cli_sess_abc");
   });
 
-  it("extracts usage with cost, tokens, and model", () => {
+  it("extracts usage with cost, tokens, and model (M9.8: cache fields default to 0 when absent)", () => {
     const result = parseClaudeStreamJson(sampleStream, 0);
     expect(result.usage).toEqual({
       input_tokens: 1500,
       output_tokens: 200,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
       cost_usd: 0.0123,
       model: "claude-opus-4-7",
     });
+  });
+
+  it("M9.8: extracts cache_creation_input_tokens and cache_read_input_tokens when present", () => {
+    const stream = JSON.stringify({
+      type: "result",
+      session_id: "cli_sess_xyz",
+      total_cost_usd: 0.05,
+      model: "claude-opus-4-7",
+      usage: {
+        input_tokens: 5234,
+        output_tokens: 412,
+        cache_creation_input_tokens: 0,
+        cache_read_input_tokens: 4988,
+      },
+    });
+    const result = parseClaudeStreamJson(stream, 0);
+    expect(result.usage).toEqual({
+      input_tokens: 5234,
+      output_tokens: 412,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 4988,
+      cost_usd: 0.05,
+      model: "claude-opus-4-7",
+    });
+    // Cache hit ratio assertion: ~95% of input tokens read from cache.
+    const ratio = result.usage!.cache_read_input_tokens! / result.usage!.input_tokens!;
+    expect(ratio).toBeGreaterThan(0.9);
   });
 
   it("correlates tool_result with its tool_use via tool_use_id", () => {
