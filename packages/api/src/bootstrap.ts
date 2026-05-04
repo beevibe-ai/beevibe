@@ -1,3 +1,4 @@
+import path from "node:path";
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
@@ -59,6 +60,12 @@ export interface BootstrapConfig {
   sessionCacheIdleTimeoutMs?: number;
   /** Default `~/.beevibe/workspaces`. */
   workspaceRoot?: string;
+  /**
+   * Default `process.cwd()/skills`. Path to the canonical skills directory in
+   * the repo (M9.3). LocalWorkspaceManager.ensureWorkspace tier-syncs from
+   * here into each agent's `<workspace>/.claude/skills/`.
+   */
+  skillsSourceDir?: string;
 }
 
 export interface BootstrapResult {
@@ -127,12 +134,15 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   // + runtime registry from M5 (shared across executor + api per the M6
   // composition-root design — both processes can spawn target agent CLIs
   // and the mcp-config.json file-existence guard handles cross-process
-  // contention).
+  // contention). M9.3: workspaceManager needs the runtime registry to look
+  // up each agent's declared runtime per-call; construct registry first.
+  const runtimeRegistry = createDefaultRuntimeRegistry();
   const workspaceManager = new LocalWorkspaceManager({
     workspaceRoot: cfg.workspaceRoot,
     mcpServerUrl: cfg.mcpServerUrl,
+    runtimeRegistry,
+    skillsSourceDir: cfg.skillsSourceDir ?? path.resolve(process.cwd(), "skills"),
   });
-  const runtimeRegistry = createDefaultRuntimeRegistry();
 
   /**
    * Per-agent MemoryAgent factory. Closed over shared services. Used by:

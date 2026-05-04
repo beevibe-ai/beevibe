@@ -1,3 +1,4 @@
+import path from "node:path";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   PostgresAgentRepository,
@@ -32,6 +33,12 @@ export interface BootstrapConfig {
   anthropicApiKey: string;
   /** Default `~/.beevibe/workspaces`. */
   workspaceRoot?: string;
+  /**
+   * Default `process.cwd()/skills`. Path to the canonical skills directory in
+   * the repo (M9.3). LocalWorkspaceManager.ensureWorkspace tier-syncs from
+   * here into each agent's `<workspace>/.claude/skills/`.
+   */
+  skillsSourceDir?: string;
   /** Default 30_000ms. */
   pollIntervalMs?: number;
   /** Default 3001. */
@@ -77,12 +84,17 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
   const llm = new AnthropicLlmProvider({ apiKey: cfg.anthropicApiKey });
 
-  // Workspace + runtime (shared with M6 via the factory)
+  // Workspace + runtime (shared with M6 via the factory).
+  // M9.3: workspaceManager needs the runtime registry to look up the agent's
+  // declared runtime per-call and resolve its skills discovery dir; construct
+  // registry first so we can pass it in.
+  const runtimeRegistry = createDefaultRuntimeRegistry();
   const workspaceManager = new LocalWorkspaceManager({
     workspaceRoot: cfg.workspaceRoot,
     mcpServerUrl: cfg.mcpServerUrl,
+    runtimeRegistry,
+    skillsSourceDir: cfg.skillsSourceDir ?? path.resolve(process.cwd(), "skills"),
   });
-  const runtimeRegistry = createDefaultRuntimeRegistry();
 
   // Memory services
   const coreMemory = new CoreMemory({ repo: coreMemoryRepo });
