@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ArrowRight, MessageSquare, Plus, Send, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, MessageSquare, Send, Sparkles } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
 import type { SuggestedAction } from "@/lib/api/client";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
@@ -118,23 +118,12 @@ export function ChatClient() {
         onNew={startNewConversation}
       />
       <div className="flex-1 flex flex-col overflow-hidden">
-        <header className="px-6 pt-6 pb-3 border-b border-border/60 flex items-baseline justify-between">
-          <div>
-            <h1 className="text-xl font-semibold tracking-tight">Chat with your team agent</h1>
-            <p className="text-xs text-muted-foreground mt-0.5 max-w-prose">
-              Ask the team agent to do things — mint tasks, query the fleet, brief you on a
-              project. It has full hierarchy tool access during the turn.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={startNewConversation}
-            disabled={isPending || isFresh}
-            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Plus className="h-3 w-3" />
-            New conversation
-          </button>
+        {/* Header is intentionally minimal: page title alone, no instruction
+            paragraph (happy talk), no "New conversation" button (the
+            conversation sidebar already owns that affordance). The chat
+            surface itself communicates what this page is — words don't help. */}
+        <header className="px-6 pt-5 pb-3 border-b border-border/60">
+          <h1 className="text-sm font-medium text-muted-foreground">Chat</h1>
         </header>
 
         <div ref={transcriptRef} className="flex-1 overflow-y-auto px-6 py-6">
