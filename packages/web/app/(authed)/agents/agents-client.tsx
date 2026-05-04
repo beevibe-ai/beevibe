@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, Bot } from "lucide-react";
+import { useMemo, useState } from "react";
+import { AlertTriangle, Bot, Search } from "lucide-react";
 import { useAgents } from "@/lib/hooks/use-agents";
 import { isApiConfigured } from "@/lib/api/config";
 import { OrgChart } from "@/components/agents/org-chart";
@@ -14,28 +15,63 @@ import type { AgentDisplay } from "@/lib/types/agents";
 
 export function AgentsClient() {
   const { data, isLoading, isError } = useAgents();
-  const count = data?.length ?? 0;
+  const [query, setQuery] = useState("");
+
+  // Filter on name + specialization, case-insensitive substring. Replaces
+  // the old sidebar AgentList shortcut: power users used to drill into a
+  // specific agent from the rail; now they hit /agents and type-to-find.
+  const filtered = useMemo(() => {
+    if (!data) return undefined;
+    const q = query.trim().toLowerCase();
+    if (!q) return data;
+    return data.filter((a) => {
+      const name = a.display_name.toLowerCase();
+      const spec = a.specialization?.toLowerCase() ?? "";
+      return name.includes(q) || spec.includes(q);
+    });
+  }, [data, query]);
+
+  const totalCount = data?.length ?? 0;
+  const filteredCount = filtered?.length ?? 0;
+  const isFiltering = query.trim().length > 0;
 
   return (
     <div className="flex-1 overflow-auto">
       <div className="pt-8 pb-12 px-6">
-        <div className="max-w-5xl mx-auto mb-8">
-          <div className="text-base text-muted-foreground">
-            {count > 0 ? (
+        <div className="max-w-5xl mx-auto mb-6 flex items-center gap-4">
+          <div className="text-sm text-muted-foreground flex-shrink-0">
+            {isFiltering ? (
               <>
-                <span className="text-foreground font-medium tabular-nums">{count}</span>{" "}
-                {count === 1 ? "agent" : "agents"} in your org.
+                <span className="text-foreground font-medium tabular-nums">{filteredCount}</span>{" "}
+                of {totalCount}
+              </>
+            ) : totalCount > 0 ? (
+              <>
+                <span className="text-foreground font-medium tabular-nums">{totalCount}</span>{" "}
+                {totalCount === 1 ? "agent" : "agents"} in your org
               </>
             ) : (
               <>
-                <span className="text-foreground font-medium">No agents</span> in your org yet.
+                <span className="text-foreground font-medium">No agents</span> in your org yet
               </>
             )}
           </div>
+          {totalCount > 0 ? (
+            <div className="relative flex-1 max-w-xs ml-auto">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Find an agent…"
+                className="w-full h-8 pl-8 pr-2.5 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/60"
+              />
+            </div>
+          ) : null}
         </div>
 
         <div className="max-w-5xl mx-auto">
-          <Body data={data} isLoading={isLoading} isError={isError} />
+          <Body data={filtered} isLoading={isLoading} isError={isError} isFiltering={isFiltering} />
         </div>
       </div>
     </div>
@@ -46,10 +82,12 @@ function Body({
   data,
   isLoading,
   isError,
+  isFiltering,
 }: {
   data: AgentDisplay[] | undefined;
   isLoading: boolean;
   isError: boolean;
+  isFiltering: boolean;
 }) {
   if (!isApiConfigured) {
     return (
@@ -82,6 +120,13 @@ function Body({
   }
 
   if (!data || data.length === 0) {
+    if (isFiltering) {
+      return (
+        <div className="rounded-lg border border-dashed border-border">
+          <EmptyState icon={Search} title="No agents match" />
+        </div>
+      );
+    }
     return (
       <>
         <OrgChart />

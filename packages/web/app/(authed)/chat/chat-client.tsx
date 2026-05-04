@@ -13,7 +13,6 @@ import { sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ReferenceCards } from "@/components/chat/reference-cards";
 import { ChatMarkdown } from "@/components/chat/markdown";
-import { LivePanel } from "@/components/chat/live-panel";
 import { ToolStepList } from "@/components/chat/tool-step-list";
 
 const PROMPT_SUGGESTIONS = [
@@ -176,7 +175,6 @@ export function ChatClient() {
           </div>
         </div>
       </div>
-      <LivePanel />
     </div>
   );
 }
