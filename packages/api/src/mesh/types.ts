@@ -67,3 +67,19 @@ export class MeshMaxRoundsError extends Error {
     this.name = "MeshMaxRoundsError";
   }
 }
+
+/**
+ * Thrown when a team/org agent calls `negotiate` with an IC target. ICs are
+ * workers, not deciders — they don't have `respond_negotiate` (M9.1) so a
+ * negotiation against them would hang forever. Use `ask` (lateral one-shot)
+ * or `create_task` (downward delegation) instead.
+ */
+export class CannotNegotiateWithIcError extends Error {
+  readonly code = "CANNOT_NEGOTIATE_WITH_IC";
+  constructor(public readonly meta: { agentId: string }) {
+    super(
+      `cannot negotiate with IC agent ${meta.agentId} — ICs are workers, not deciders. Use ask() or create_task() instead.`,
+    );
+    this.name = "CannotNegotiateWithIcError";
+  }
+}

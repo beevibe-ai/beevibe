@@ -19,6 +19,7 @@ import type { ResolvedCaller } from "@beevibe/core/auth";
 import type { AgentTool, AgentToolResult } from "./types.js";
 import type { MeshServer } from "../mesh/server.js";
 import {
+  CannotNegotiateWithIcError,
   MeshCapacityError,
   MeshMaxRoundsError,
   type AskResponse,
@@ -52,6 +53,12 @@ function asError(err: unknown, extra: Record<string, unknown> = {}): AgentToolRe
     };
   }
   if (err instanceof MeshMaxRoundsError) {
+    return {
+      content: { error: err.code, ...err.meta, message: err.message },
+      isError: true,
+    };
+  }
+  if (err instanceof CannotNegotiateWithIcError) {
     return {
       content: { error: err.code, ...err.meta, message: err.message },
       isError: true,
@@ -461,14 +468,19 @@ function escalateToHumansTool(
 // ── Assemble mesh tool sets ──────────────────────────────────────────────
 
 /**
- * IC tier mesh tools. ICs can't INITIATE lateral coordination (no `ask` or
- * `negotiate`), but they DO need response-side tools because team-tier
- * agents can target ICs with `ask` / `negotiate` — when that happens the
- * IC is spawned as a mesh_ask / mesh_negotiate peer and must call
- * `respond_ask` / `respond_negotiate` to deliver its answer through the
- * resolver. Without these, the asker's tool call hangs until the upstream
- * timeout. ICs also keep `report_blocker` as the canonical escalate-to-
- * parent path.
+ * IC tier mesh tools (M9.1). ICs are workers, not deciders — they don't
+ * INITIATE coordination and they don't participate in multi-round
+ * negotiations as peers. They DO answer one-shot questions (team-tier
+ * agents can target ICs with `ask`) and they CAN escalate upward via
+ * `report_blocker`.
+ *
+ * Excluded from IC tier:
+ *   - `ask` / `negotiate` — initiation is team/org only
+ *   - `respond_negotiate` — M9.1 server guardrail rejects negotiate
+ *     against IC targets, so the IC is never spawned as a negotiation
+ *     peer; the tool would be unreachable
+ *   - `escalate_to_humans` — escalation is for stuck negotiations
+ *     (initiator-only) and ICs don't initiate
  */
 export function buildIcMeshTools(
   ctx: MeshToolContext,
@@ -476,7 +488,6 @@ export function buildIcMeshTools(
 ): AgentTool[] {
   return [
     respondAskTool(ctx, services),
-    respondNegotiateTool(ctx, services),
     reportBlockerTool(ctx, services),
   ];
 }
