@@ -10,6 +10,7 @@
   "scripts": {
     "bootstrap": "tsx scripts/init.ts",
     "provision-user": "tsx scripts/provision-user.ts",
+    "seed-demo": "tsx scripts/seed-demo.ts",
     "build": "turbo build",
     "dev": "bash scripts/dev.sh",
     "lint": "turbo lint",
