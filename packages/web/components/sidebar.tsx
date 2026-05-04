@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Bot,
   ChevronDown,
@@ -23,6 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useAgents } from "@/lib/hooks/use-agents";
 import { useCollapsible } from "@/lib/hooks/use-collapsible";
+import { ConversationSidebar } from "./chat/conversation-sidebar";
 import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
 
@@ -80,19 +81,22 @@ const KNOWLEDGE_ITEMS: NavItem[] = [
 
 export function Sidebar() {
   const pathname = usePathname();
+  const router = useRouter();
+  const searchParams = useSearchParams();
   const [openAgents, setOpenAgents] = useState(true);
   const [openWorkspace, setOpenWorkspace] = useState(true);
   const [openKnowledge, setOpenKnowledge] = useState(true);
-  // Chat is conversation-first — its own conversation rail already gives
-  // the user the navigation they need on this page, so we default the
-  // app sidebar collapsed to free real estate for the bubbles. User
-  // toggle still wins (persisted to localStorage); this only changes the
-  // initial value when no preference is stored.
-  const isChatRoute = pathname?.startsWith("/chat") ?? false;
-  const [collapsed, toggleCollapsed] = useCollapsible(
-    "bv-sidebar-collapsed",
-    isChatRoute,
-  );
+  // /chat (and /, which renders ChatClient too) is a chat surface;
+  // when there, the sidebar swaps its sections for the conversation
+  // list — Notion-style one-rail morphing instead of stacking three.
+  const isChatRoute = pathname === "/" || (pathname?.startsWith("/chat") ?? false);
+  const [collapsed, toggleCollapsed] = useCollapsible("bv-sidebar-collapsed");
+
+  const conversationId = searchParams?.get("c") ?? undefined;
+  const isFresh = searchParams?.get("new") === "1";
+  const startNewConversation = useCallback(() => {
+    router.push("/chat?new=1");
+  }, [router]);
 
   // Keyboard shortcut: Cmd-\ (Mac) / Ctrl-\ (others) toggles the
   // sidebar. Without this, a fresh user on /chat sees a 36px rail
@@ -153,38 +157,46 @@ export function Sidebar() {
         ))}
       </div>
 
-      <nav className="flex-1 overflow-y-auto px-2 pb-2 space-y-3" aria-label="Main">
-        <Section
-          title="Agents"
-          open={openAgents}
-          onToggle={() => setOpenAgents((v) => !v)}
-        >
-          <AgentList pathname={pathname} />
-        </Section>
+      {isChatRoute ? (
+        <ConversationSidebar
+          activeConversationId={conversationId}
+          isFresh={isFresh}
+          onNew={startNewConversation}
+        />
+      ) : (
+        <nav className="flex-1 overflow-y-auto px-2 pb-2 space-y-3" aria-label="Main">
+          <Section
+            title="Agents"
+            open={openAgents}
+            onToggle={() => setOpenAgents((v) => !v)}
+          >
+            <AgentList pathname={pathname} />
+          </Section>
 
-        <Section
-          title="Workspace"
-          open={openWorkspace}
-          onToggle={() => setOpenWorkspace((v) => !v)}
-        >
-          {WORKSPACE_ITEMS.map((item) => (
-            <div key={item.href}>
-              <NavRow item={item} pathname={pathname} />
-              {item.href === "/tasks" ? <ActiveSessionPin pathname={pathname} /> : null}
-            </div>
-          ))}
-        </Section>
+          <Section
+            title="Workspace"
+            open={openWorkspace}
+            onToggle={() => setOpenWorkspace((v) => !v)}
+          >
+            {WORKSPACE_ITEMS.map((item) => (
+              <div key={item.href}>
+                <NavRow item={item} pathname={pathname} />
+                {item.href === "/tasks" ? <ActiveSessionPin pathname={pathname} /> : null}
+              </div>
+            ))}
+          </Section>
 
-        <Section
-          title="Knowledge"
-          open={openKnowledge}
-          onToggle={() => setOpenKnowledge((v) => !v)}
-        >
-          {KNOWLEDGE_ITEMS.map((item) => (
-            <NavRow key={item.href} item={item} pathname={pathname} />
-          ))}
-        </Section>
-      </nav>
+          <Section
+            title="Knowledge"
+            open={openKnowledge}
+            onToggle={() => setOpenKnowledge((v) => !v)}
+          >
+            {KNOWLEDGE_ITEMS.map((item) => (
+              <NavRow key={item.href} item={item} pathname={pathname} />
+            ))}
+          </Section>
+        </nav>
+      )}
 
       <div className="p-2 border-t border-border/60 flex items-center gap-1">
         <UserWidget />

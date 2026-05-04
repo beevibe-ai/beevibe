@@ -49,11 +49,17 @@ function bucketize(list: readonly ChatConversationSummary[]): Record<Bucket, Cha
 }
 
 /**
- * Past conversations list. The chat surface treats each chain (linked by
+ * Past conversations list, embedded inside the main app sidebar when on
+ * /chat (Notion-style: one rail morphs by route, two rails would be
+ * noise). The chat surface treats each chain (linked by
  * `prior_session_id`) as one conversation. Server returns the head session
  * id + a preview; clicking a row navigates to `/chat?c=<head_id>` which
  * fetches that conversation's messages and chains the next turn from
  * there.
+ *
+ * No outer aside / border / background — the parent sidebar owns chrome.
+ * This component just renders the New-conversation button + the bucketed
+ * list inside whatever container it's slotted into.
  */
 export function ConversationSidebar({
   activeConversationId,
@@ -78,8 +84,8 @@ export function ConversationSidebar({
   const effectiveActive = activeConversationId ?? (isFresh ? undefined : latestId);
 
   return (
-    <aside className="w-64 shrink-0 border-r border-border/60 flex flex-col overflow-hidden bg-card/40">
-      <div className="px-3 pt-3 pb-2 border-b border-border/60">
+    <div className="flex flex-col flex-1 min-h-0">
+      <div className="px-2 pt-1 pb-2">
         <button
           type="button"
           onClick={onNew}
@@ -99,7 +105,7 @@ export function ConversationSidebar({
           <BucketedList list={list} effectiveActive={effectiveActive} />
         )}
       </div>
-    </aside>
+    </div>
   );
 }
 

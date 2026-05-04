@@ -13,7 +13,6 @@ import { sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ReferenceCards } from "@/components/chat/reference-cards";
 import { ChatMarkdown } from "@/components/chat/markdown";
-import { ConversationSidebar } from "@/components/chat/conversation-sidebar";
 import { LivePanel } from "@/components/chat/live-panel";
 import { ToolStepList } from "@/components/chat/tool-step-list";
 
@@ -67,8 +66,6 @@ export function ChatClient() {
     }
   }, [isFresh, messages.length, isPending, searchParams, router]);
 
-  const startNewConversation = () => router.push("/chat?new=1");
-
   // First-run gate: if the caller hasn't completed the welcome wizard
   // and didn't arrive here from it, bounce them to the wizard.
   useEffect(() => {
@@ -112,11 +109,10 @@ export function ChatClient() {
 
   return (
     <div className="flex-1 flex overflow-hidden">
-      <ConversationSidebar
-        activeConversationId={conversationParam}
-        isFresh={isFresh}
-        onNew={startNewConversation}
-      />
+      {/* Conversation list lives in the main app sidebar (Notion-style:
+          one rail morphs by route). Standalone ConversationSidebar
+          here would stack three rails, which is what the design audit
+          flagged as the chat page's biggest cognitive-load source. */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header is intentionally minimal: page title alone, no instruction
             paragraph (happy talk), no "New conversation" button (the
