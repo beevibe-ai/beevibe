@@ -180,10 +180,12 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
         bearerToken: alice.apiKey,
       });
 
-      // Human gets full briefing as instructions
+      // Human gets full briefing as instructions. M9.4: core_memory is
+      // always emitted (even empty). <archival_memory> only appears when
+      // there are facts to surface — fresh agent with no archival writes
+      // hasn't built any yet, so just core_memory at this point.
       const inst = client.getInstructions();
       expect(inst).toContain("<core_memory>");
-      expect(inst).toContain("<archival_memory>");
 
       // Server should have assigned a Mcp-Session-Id (transport tracks it)
       const mcpSid = transport.sessionId;

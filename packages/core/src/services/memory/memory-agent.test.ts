@@ -89,6 +89,8 @@ describe("MemoryAgent.prepareBriefing", () => {
 
     const briefing = await agent.prepareBriefing("Add logging to the auth module.");
 
+    // M9.4: core_memory in system prompt; archival_memory in user message
+    // prefix; memory_tools section dropped (covered by skill #10).
     expect(briefing.systemPromptAppend).toContain("<core_memory>");
     expect(briefing.systemPromptAppend).toContain(
       '<block name="persona">Senior infra engineer.</block>',
@@ -96,16 +98,17 @@ describe("MemoryAgent.prepareBriefing", () => {
     expect(briefing.systemPromptAppend).toContain(
       '<block name="domain">TypeScript, Postgres.</block>',
     );
-    expect(briefing.systemPromptAppend).toContain("<archival_memory>");
-    expect(briefing.systemPromptAppend).toContain(
+    expect(briefing.systemPromptAppend).not.toContain("<archival_memory>");
+    expect(briefing.systemPromptAppend).not.toContain("<memory_tools>");
+
+    expect(briefing.userMessagePrefix).toContain("<archival_memory>");
+    expect(briefing.userMessagePrefix).toContain(
       '<fact type="preference" scope="ic">Prefers pnpm over npm.</fact>',
     );
-    expect(briefing.systemPromptAppend).toContain(
+    expect(briefing.userMessagePrefix).toContain(
       '<fact type="gotcha" scope="team">DB schema is on public.</fact>',
     );
-    expect(briefing.systemPromptAppend).toContain("<memory_tools>");
-    expect(briefing.systemPromptAppend).toContain("save_memory");
-    expect(briefing.systemPromptAppend).toContain("update_core_memory");
+    expect(briefing.userMessagePrefix).not.toContain("<core_memory>");
 
     expect(briefing.snapshot.block_count).toBe(2);
     expect(briefing.snapshot.fact_count).toBe(2);
@@ -147,11 +150,14 @@ describe("MemoryAgent.prepareBriefing", () => {
     ]);
 
     const briefing = await agent.prepareBriefing("x");
-    const append = briefing.systemPromptAppend;
-    expect(append).toContain("knows &lt;html&gt; &amp; JSX");
-    expect(append).toContain("works with &lt;div&gt; tags");
-    const contentOnly = append
-      .replace(/<\/?core_memory>|<\/?archival_memory>|<\/?memory_tools>/g, "")
+    // System prompt: core_memory (escaped block content)
+    expect(briefing.systemPromptAppend).toContain("knows &lt;html&gt; &amp; JSX");
+    // User message: archival_memory (escaped fact content)
+    expect(briefing.userMessagePrefix).toContain("works with &lt;div&gt; tags");
+
+    const allText = briefing.systemPromptAppend + briefing.userMessagePrefix;
+    const contentOnly = allText
+      .replace(/<\/?core_memory>|<\/?archival_memory>/g, "")
       .replace(/<block [^>]+>/g, "")
       .replace(/<\/block>/g, "")
       .replace(/<fact [^>]+>/g, "")
@@ -160,14 +166,17 @@ describe("MemoryAgent.prepareBriefing", () => {
     expect(contentOnly).not.toMatch(/<html>/);
   });
 
-  it("renders empty <core_memory> / <archival_memory> when there's nothing to show", async () => {
+  it("renders empty <core_memory> in system prompt and EMPTY userMessagePrefix when there's nothing to show", async () => {
     vi.mocked(coreMemory.read).mockResolvedValue([]);
     vi.mocked(embed.embed).mockResolvedValue([]);
     vi.mocked(factStore.search).mockResolvedValue([]);
 
     const briefing = await agent.prepareBriefing("anything");
+    // M9.4: empty <core_memory> still rendered (caller can rely on the tag);
+    // userMessagePrefix is empty entirely (no <archival_memory> wrapper for
+    // zero facts — keeps the user message clean when there's nothing to show).
     expect(briefing.systemPromptAppend).toMatch(/<core_memory>\s*<\/core_memory>/);
-    expect(briefing.systemPromptAppend).toMatch(/<archival_memory>\s*<\/archival_memory>/);
+    expect(briefing.userMessagePrefix).toBe("");
     expect(briefing.snapshot.block_count).toBe(0);
     expect(briefing.snapshot.fact_count).toBe(0);
   });

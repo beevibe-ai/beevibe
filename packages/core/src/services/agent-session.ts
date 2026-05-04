@@ -111,11 +111,20 @@ export class AgentSession {
       .filter((s) => s.length > 0)
       .join("\n\n");
 
+    // M9.4: prepend per-session archival memory to the user message
+    // (intent), keeping it OUT of the system prompt so the system prompt
+    // stays cache-stable across sessions for the same agent. Empty string
+    // when there are no facts to surface; skip the prefix entirely in that
+    // case to keep the intent unchanged.
+    const intent = briefing.userMessagePrefix
+      ? `${briefing.userMessagePrefix}\n\n${input.intent}`
+      : input.intent;
+
     // 4. Execute
     let result: RuntimeResult;
     try {
       result = await this.deps.runtime.execute({
-        intent: input.intent,
+        intent,
         workspace: input.workspace,
         system_prompt_append,
         // Per-agent runtime config flows here. ClaudeCodeRuntime reads these

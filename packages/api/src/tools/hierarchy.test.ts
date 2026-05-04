@@ -104,6 +104,7 @@ function buildServices(overrides: {
   const memoryAgent = {
     prepareBriefing: vi.fn(async () => ({
       systemPromptAppend: "<core_memory></core_memory>",
+      userMessagePrefix: "",
       snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] },
     })),
     onTaskComplete: vi.fn(async () => {}),
@@ -270,6 +271,7 @@ describe("search_context", () => {
       memoryAgent: {
         prepareBriefing: vi.fn(async () => ({
           systemPromptAppend: briefing,
+          userMessagePrefix: "",
           snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] },
         })),
       } as Partial<MemoryAgent>,

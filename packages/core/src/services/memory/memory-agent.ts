@@ -17,17 +17,37 @@ const BRIEFING_RECALL_FLOOR = 0.35;
 const DEFAULT_FACTS_PER_BRIEFING = 10;
 
 export interface BriefingResult {
-  /** XML block appended to the agent's system prompt. */
+  /**
+   * XML block appended to the agent's system prompt. Contains
+   * `<core_memory>` only — the stable per-agent slice. Cache-friendly
+   * across sessions of the same agent (M9.4).
+   */
   systemPromptAppend: string;
+  /**
+   * XML block prepended to the user's first message (the `intent`).
+   * Contains `<archival_memory>` — the per-session top-k vector recall.
+   * Lives in the user prompt rather than system prompt because vector
+   * hits change every session and would otherwise bust the system-prompt
+   * cache for everything that follows (M9.4 — per Claude Code's own
+   * engineering guidance: "use messages instead of system prompt for
+   * varying content").
+   *
+   * Empty string when there are no archival facts to surface.
+   */
+  userMessagePrefix: string;
   /** Structured snapshot persisted on the session row for the UI to render. */
   snapshot: SessionBriefingSnapshot;
 }
 
 export interface MemoryAgent {
   /**
-   * Pre-session: compose the `<core_memory>` + `<archival_memory>` XML block.
-   * Returns both the assembled prompt string AND a structured snapshot
-   * for persistence on the session row.
+   * Pre-session: compose the `<core_memory>` (system) + `<archival_memory>`
+   * (user-message) XML blocks. Splits along the stability axis so the
+   * stable system-prompt portion can be cached across sessions; the
+   * per-session retrieval lives in the user message instead.
+   *
+   * Returns both prompt strings AND a structured snapshot for persistence
+   * on the session row.
    */
   prepareBriefing(intent: string): Promise<BriefingResult>;
   /** Post-session: promote facts written during this session if warranted. */
@@ -172,24 +192,25 @@ function composeBriefing(
     charTotal += f.content.length;
   }
 
-  const lines = ["<core_memory>"];
-  if (blockLines.length > 0) lines.push(...blockLines);
-  lines.push("</core_memory>");
-  lines.push("<archival_memory>");
-  if (factLines.length > 0) lines.push(...factLines);
-  lines.push("</archival_memory>");
-  lines.push("<memory_tools>");
-  lines.push("When you learn a durable fact, call save_memory(content, fact_type).");
-  lines.push(
-    "When your identity/focus shifts, call update_core_memory(block_name, operation, content[, old_content]).",
-  );
-  lines.push(
-    "(These MCP tools are wired in M6. Before M6 lands, describe intended memory updates at the end of your response.)",
-  );
-  lines.push("</memory_tools>");
+  // M9.4: split along stability axis. core_memory (mostly stable per
+  // agent) → system prompt; archival_memory (per-session vector hits) →
+  // user message prefix. The <memory_tools> section was dropped — the
+  // beevibe-memory-management skill (M9.7) covers the "when to call
+  // save_memory / update_core_memory" guidance.
+  const systemLines = ["<core_memory>"];
+  if (blockLines.length > 0) systemLines.push(...blockLines);
+  systemLines.push("</core_memory>");
+
+  const userLines: string[] = [];
+  if (factLines.length > 0) {
+    userLines.push("<archival_memory>");
+    userLines.push(...factLines);
+    userLines.push("</archival_memory>");
+  }
 
   return {
-    systemPromptAppend: lines.join("\n"),
+    systemPromptAppend: systemLines.join("\n"),
+    userMessagePrefix: userLines.join("\n"),
     snapshot: {
       block_count: blocks.length,
       fact_count: facts.length,
