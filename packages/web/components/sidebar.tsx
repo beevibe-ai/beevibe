@@ -12,6 +12,8 @@ import {
   type LucideIcon,
   MessageSquare,
   Network,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   Sparkles,
   Terminal,
@@ -20,6 +22,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useAgents } from "@/lib/hooks/use-agents";
+import { useCollapsible } from "@/lib/hooks/use-collapsible";
 import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
 
@@ -80,10 +83,30 @@ export function Sidebar() {
   const [openAgents, setOpenAgents] = useState(true);
   const [openWorkspace, setOpenWorkspace] = useState(true);
   const [openKnowledge, setOpenKnowledge] = useState(true);
+  const [collapsed, toggleCollapsed] = useCollapsible("bv-sidebar-collapsed");
+
+  if (collapsed) {
+    return (
+      <aside
+        aria-label="Sidebar (collapsed)"
+        className="w-9 shrink-0 bg-card border-r border-border/60 flex flex-col items-center pt-3"
+      >
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label="Expand sidebar"
+          title="Expand sidebar"
+          className="h-7 w-7 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside className="w-[248px] shrink-0 bg-card border-r border-border/60 flex flex-col">
-      <WorkspaceHeader />
+      <WorkspaceHeader onCollapse={toggleCollapsed} />
 
       <div className="px-2 pt-1 pb-2 space-y-px">
         {QUICK_ACTIONS.map((a) => (
@@ -146,7 +169,7 @@ export function Sidebar() {
   );
 }
 
-function WorkspaceHeader() {
+function WorkspaceHeader({ onCollapse }: { onCollapse: () => void }) {
   return (
     <div className="flex items-center gap-2 h-12 px-3 mx-2 mt-2">
       <div className="h-6 w-6 rounded-md bg-primary flex items-center justify-center shrink-0">
@@ -157,6 +180,15 @@ function WorkspaceHeader() {
           beevibe
         </div>
       </div>
+      <button
+        type="button"
+        onClick={onCollapse}
+        aria-label="Collapse sidebar"
+        title="Collapse sidebar"
+        className="h-6 w-6 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors shrink-0"
+      >
+        <PanelLeftClose className="h-3.5 w-3.5" />
+      </button>
     </div>
   );
 }

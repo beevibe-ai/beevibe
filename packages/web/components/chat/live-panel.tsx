@@ -9,6 +9,8 @@ import {
   ListChecks,
   MessageCircle,
   Network,
+  PanelRightClose,
+  PanelRightOpen,
   ShieldQuestion,
   Sparkles,
   Wrench,
@@ -16,6 +18,7 @@ import {
 import { api, type ActivityEntry } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
+import { useCollapsible } from "@/lib/hooks/use-collapsible";
 import { getLiveStatus, subscribeLiveStatus } from "@/lib/sse";
 import { formatRelativeTime, sessionHref, shortId } from "@/lib/format";
 import type { AgentDisplay } from "@/lib/types/agents";
@@ -33,9 +36,44 @@ import { cn } from "@/lib/utils";
  * sessions show up side-by-side in recent activity.
  */
 export function LivePanel() {
+  const [collapsed, toggleCollapsed] = useCollapsible("bv-livepanel-collapsed");
   if (!isApiConfigured) return null;
+
+  if (collapsed) {
+    return (
+      <aside
+        aria-label="Live panel (collapsed)"
+        className="hidden lg:flex w-9 shrink-0 border-l border-border/60 bg-card/40 flex-col items-center pt-3"
+      >
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label="Expand live panel"
+          title="Expand live panel"
+          className="h-7 w-7 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
+        >
+          <PanelRightOpen className="h-4 w-4" />
+        </button>
+      </aside>
+    );
+  }
+
   return (
     <aside className="hidden lg:flex w-72 shrink-0 border-l border-border/60 bg-card/40 flex-col overflow-hidden">
+      <div className="flex items-center justify-between h-9 px-3 border-b border-border/60 shrink-0">
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70">
+          Live
+        </span>
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label="Collapse live panel"
+          title="Collapse live panel"
+          className="h-6 w-6 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
+        >
+          <PanelRightClose className="h-3.5 w-3.5" />
+        </button>
+      </div>
       <div className="flex-1 overflow-y-auto divide-y divide-border/60">
         <TeamRoster />
         <ActiveWork />
