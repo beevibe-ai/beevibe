@@ -324,17 +324,21 @@ function EmptyHint({
   onboarding?: boolean;
 }) {
   const suggestions = onboarding ? ONBOARDING_PROMPT_SUGGESTIONS : PROMPT_SUGGESTIONS;
+  // Onboarding keeps a brief prompt — that moment genuinely needs a
+  // little hand-holding. Returning users get bare suggestion cards;
+  // the cards self-explain, the textarea is right below.
   return (
-    <div className="text-sm text-muted-foreground text-center pt-12">
-      <MessageSquare className="h-7 w-7 mx-auto mb-3 text-muted-foreground/50" />
-      <div className="mb-1 text-foreground font-medium text-base">
-        {onboarding ? "Start the conversation" : "How can your team agent help?"}
-      </div>
-      <div className="mb-6 text-xs text-muted-foreground/80 max-w-md mx-auto">
-        {onboarding
-          ? "Your team agent has questions for you. Pick a starter or just say hi — it'll save what it learns to its memory live."
-          : "Mint tasks, query the fleet, brief you on a project. Click a prompt to start, or type your own below."}
-      </div>
+    <div className="pt-16">
+      {onboarding ? (
+        <div className="text-center mb-6">
+          <div className="mb-1 text-foreground font-medium text-base">
+            Start the conversation
+          </div>
+          <div className="text-xs text-muted-foreground/80 max-w-md mx-auto">
+            Your team agent has questions for you. Pick a starter or just say hi — it&apos;ll save what it learns to its memory live.
+          </div>
+        </div>
+      ) : null}
       <div
         className={cn(
           "grid gap-2 max-w-2xl mx-auto text-left",
