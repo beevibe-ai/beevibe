@@ -180,7 +180,11 @@ function updateProgressTool(
       "need a parent agent to unblock you). Do NOT use this to set " +
       "'in_progress' — the platform sets that automatically when your " +
       "session starts. The platform's review_policy may rewrite 'done' to " +
-      "'review' if a human reviewer is required.",
+      "'review' if a human reviewer is required. After this call, exit " +
+      "your session — the task is in its final state. The executor will " +
+      "not re-dispatch you on this task unless a human reviewer revises " +
+      "it (review_policy='require_human' path) or your parent calls " +
+      "revise_task on a blocked task.",
     schema: {
       type: "object",
       properties: {
@@ -233,7 +237,8 @@ function findUpTool(
     name: "find_up",
     description:
       "Find your direct parent agent in the hierarchy. Returns null for " +
-      "top-level agents (no parent).",
+      "top-level agents (no parent). Useful as the escalation target when " +
+      "calling report_blocker.",
     schema: { type: "object", properties: {} },
     handler: async () => {
       try {
@@ -254,7 +259,8 @@ function getAgentProfileTool(
     name: "get_agent_profile",
     description:
       "Look up a specific agent's profile by id. Returns null if the agent " +
-      "doesn't exist.",
+      "doesn't exist. Useful before ask/negotiate/create_task to verify " +
+      "role and hierarchy_level.",
     schema: {
       type: "object",
       properties: {
@@ -281,7 +287,10 @@ function getTaskTool(
 ): AgentTool {
   return {
     name: "get_task",
-    description: "Look up a task by id. Returns null if not found.",
+    description:
+      "Look up a task by id. Returns null if not found. Useful when an " +
+      "intent references a task_id but you need full title / description / " +
+      "status.",
     schema: {
       type: "object",
       properties: {
@@ -486,7 +495,8 @@ function findSubordinatesTool(
   return {
     name: "find_subordinates",
     description:
-      "List your direct subordinate agents (the IC agents reporting to you).",
+      "List your direct subordinate agents (the IC agents reporting to you). " +
+      "Call before create_task to pick the right assignee.",
     schema: { type: "object", properties: {} },
     handler: async () => {
       try {
@@ -531,7 +541,10 @@ function createTaskTool(
       "is inserted at status='assigned' so the executor picks it up. Use " +
       "find_subordinates first to choose the right agent. If this is a " +
       "sub-task of one you're working on, pass parent_task_id so the " +
-      "parent auto-completes when all subtasks finish.",
+      "parent auto-completes when all subtasks finish. For code tasks, " +
+      "pass repo_url so the assignee's workspace setup can clone + " +
+      "worktree it; for non-code tasks omit and put context in the " +
+      "description.",
     schema: {
       type: "object",
       properties: {
@@ -544,6 +557,10 @@ function createTaskTool(
           description: "Task priority. Default: medium.",
         },
         parent_task_id: { type: "string", description: "Parent task for auto-rollup." },
+        repo_url: {
+          type: "string",
+          description: "Git repo URL for code tasks (the assignee's pre-task-setup will clone + worktree it).",
+        },
       },
       required: ["intent", "agent_id"],
     },
@@ -589,6 +606,8 @@ function createTaskTool(
           creator_type: "agent",
           parent_task_id:
             typeof input.parent_task_id === "string" ? input.parent_task_id : undefined,
+          repo_url:
+            typeof input.repo_url === "string" && input.repo_url ? input.repo_url : undefined,
         });
         return {
           content: {
@@ -615,7 +634,10 @@ function checkWorkStatusTool(
     name: "check_work_status",
     description:
       "Check task status for yourself or one of your subordinates. Returns " +
-      "all of that agent's tasks plus a per-status count summary.",
+      "all of that agent's tasks plus a per-status count summary. This is " +
+      "the canonical status-check tool — DB read only, no session spawn. " +
+      "Do NOT use ask for status — that spawns the peer's CLI session " +
+      "unnecessarily for data already available here.",
     schema: {
       type: "object",
       properties: {
@@ -683,7 +705,7 @@ function reviseTaskTool(
       "your feedback. Executor picks up within ≤30s; the lower agent's " +
       "session resumes via --resume with your guidance injected as the " +
       "<context type=\"revision\" source=\"parent_agent\" from=\"blocked\"> " +
-      "block (M9 skill: post-blocker-revision).",
+      "block.",
     schema: {
       type: "object",
       properties: {

@@ -778,10 +778,9 @@ const blockerToReviseTask: Scenario = async (deps) => {
       "their feedback, acknowledge it, then call update_progress with " +
       "status='done' and summary='unblocked: ' + the feedback you received.\n" +
       "  - Otherwise (no revision context), you are stuck. Call the " +
-      `\`report_blocker\` MCP tool with parent_agent_id='${parentT.id}', the ` +
-      "task_id from the <task id> envelope, and description='I cannot " +
-      "find the right helper to use here.'. Then exit. Do NOT call " +
-      "update_progress in this case.",
+      "`report_blocker` MCP tool with the task_id from the <task id> " +
+      "envelope and description='I cannot find the right helper to " +
+      "use here.'. Then exit. Do NOT call update_progress in this case.",
   });
   const task = await seedTask(deps, {
     ownerId,
