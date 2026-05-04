@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -94,18 +94,34 @@ export function Sidebar() {
     isChatRoute,
   );
 
+  // Keyboard shortcut: Cmd-\ (Mac) / Ctrl-\ (others) toggles the
+  // sidebar. Without this, a fresh user on /chat sees a 36px rail
+  // they might not realize is interactive — the shortcut + a tooltip
+  // hint give two paths to discover it. Backslash chosen because
+  // it's unbound globally and doesn't collide with browser/editor
+  // defaults the way Cmd-B (bold) or Cmd-/ (search) do.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+        e.preventDefault();
+        toggleCollapsed();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleCollapsed]);
+
   if (collapsed) {
+    // The whole rail is the click target — no need to aim at the
+    // icon. Tooltip carries the shortcut so power users learn it.
     return (
-      <aside
-        aria-label="Sidebar (collapsed)"
-        className="w-9 shrink-0 bg-card border-r border-border/60 flex flex-col items-center pt-3"
-      >
+      <aside aria-label="Sidebar (collapsed)" className="w-9 shrink-0">
         <button
           type="button"
           onClick={toggleCollapsed}
-          aria-label="Expand sidebar"
-          title="Expand sidebar"
-          className="h-7 w-7 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
+          aria-label="Expand sidebar (⌘\\)"
+          title="Expand sidebar (⌘\\)"
+          className="w-full h-full bg-card border-r border-border/60 hover:bg-secondary/50 flex flex-col items-center pt-3 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
         >
           <PanelLeftOpen className="h-4 w-4" />
         </button>
@@ -192,8 +208,8 @@ function WorkspaceHeader({ onCollapse }: { onCollapse: () => void }) {
       <button
         type="button"
         onClick={onCollapse}
-        aria-label="Collapse sidebar"
-        title="Collapse sidebar"
+        aria-label="Collapse sidebar (⌘\)"
+        title="Collapse sidebar (⌘\)"
         className="h-6 w-6 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors shrink-0"
       >
         <PanelLeftClose className="h-3.5 w-3.5" />
