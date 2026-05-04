@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ArrowRight, MessageSquare, Send, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowRight, MessageSquare, Send } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
 import type { SuggestedAction } from "@/lib/api/client";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
@@ -245,10 +245,9 @@ function SuggestedActions({
           type="button"
           onClick={() => onPick(a.prompt ?? a.label)}
           title={a.prompt && a.prompt !== a.label ? a.prompt : undefined}
-          className="text-left rounded-md border border-border bg-card hover:bg-secondary hover:border-foreground/30 px-2.5 py-1.5 text-xs text-foreground transition-colors cursor-pointer flex items-center gap-1.5"
+          className="text-left rounded-md border border-border bg-card hover:bg-secondary hover:border-foreground/30 px-2.5 py-1.5 text-xs text-foreground transition-colors cursor-pointer"
         >
-          <Sparkles className="h-3 w-3 shrink-0 text-muted-foreground" />
-          <span>{a.label}</span>
+          {a.label}
         </button>
       ))}
     </div>
@@ -351,10 +350,9 @@ function EmptyHint({
             type="button"
             onClick={() => onPick(s)}
             disabled={disabled}
-            className="rounded-md border border-border bg-card hover:bg-secondary hover:border-foreground/30 px-3 py-2.5 text-sm text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex items-start gap-2"
+            className="rounded-md border border-border bg-card hover:bg-secondary hover:border-foreground/30 px-3 py-2.5 text-sm text-foreground text-left transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            <Sparkles className="h-3.5 w-3.5 shrink-0 mt-0.5 text-muted-foreground" />
-            <span>{s}</span>
+            {s}
           </button>
         ))}
       </div>
