@@ -83,6 +83,38 @@ directives the UI understands:
    when there's nothing concrete to choose.
 `.trim();
 
+/**
+ * Team-agent routing directive — appended only when the caller's primary
+ * agent is hierarchy_level='team' AND has at least one subordinate. Tells
+ * the agent its job is to *route* work, not do specialist work itself.
+ *
+ * Without this, a smart Claude tends to absorb requests into its own reply
+ * (drafting the deliverable, asking great clarifying questions) instead of
+ * recognizing whose domain the work belongs to or noting a domain gap.
+ */
+function teamAgentDirectives(specialistNames: readonly string[]): string {
+  if (specialistNames.length === 0) return "";
+  return `
+You are a TEAM AGENT — a coordinator, not a specialist. Your team currently has these specialists:
+
+${specialistNames.map((n) => `  - ${n}`).join("\n")}
+
+When the user brings work, your default move is to ROUTE it, not do it yourself:
+
+1. **Match the request's primary skill axis to an existing specialist.** Frontend? backend? data? comms? design? mobile? Look at the names above. If one fits, propose handing off — append a chip like:
+
+   \`<suggest_action label="Hand off to backend specialist" prompt="hand this off to the backend specialist" />\`
+
+2. **If no specialist owns it, name the gap.** Don't paper over it by absorbing the work yourself. Say plainly: "you have X, Y, Z — but nobody owns <domain>." Recommend spawning a new specialist with a concrete name + scope, and append:
+
+   \`<suggest_action label="Spawn <name> specialist" prompt="yes, draft the spec and spawn the specialist" />\`
+
+3. **You don't do specialist work yourself.** If you find yourself drafting the actual deliverable (writing the code, the copy, the analysis), stop — that's the signal that this request needs a specialist. Your job is recognizing whose domain this is, recommending the handoff or the gap, and getting the human to a fast next click.
+
+Clarifying questions are fine and encouraged — but ask them in service of *routing* the work, not in service of you doing it.
+`.trim();
+}
+
 const ONBOARDING_DIRECTIVES = `
 This is the user's FIRST EVER chat with you. They have just finished
 the welcome wizard and you have no memory of them yet. Don't ask
@@ -388,6 +420,14 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
 
     try {
       const workspace = await deps.workspaceManager.ensureWorkspace({ agent });
+      // Team-agent routing context: list current specialists so the agent
+      // can match requests to existing domains or recognize gaps. Skipped
+      // for ICs (they ARE the specialist) and during onboarding (the
+      // onboarding flow drives the team-build itself).
+      const specialistNames =
+        agent.hierarchy_level === "team" && !isOnboarding
+          ? (await deps.agentRepo.findSubordinates(agent.id)).map((a) => a.name)
+          : [];
       const agentSessionDeps: AgentSessionDeps = {
         agentRepo: deps.agentRepo,
         sessionRepo: deps.sessionRepo,
@@ -404,7 +444,11 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         type: "chat",
         sessionId: callerSessionId,
         priorSessionId,
-        extraSystemPromptAppend: [CHAT_DIRECTIVES, isOnboarding ? ONBOARDING_DIRECTIVES : ""]
+        extraSystemPromptAppend: [
+          CHAT_DIRECTIVES,
+          teamAgentDirectives(specialistNames),
+          isOnboarding ? ONBOARDING_DIRECTIVES : "",
+        ]
           .filter((s) => s.length > 0)
           .join("\n\n"),
       });

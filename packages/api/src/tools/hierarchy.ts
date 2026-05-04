@@ -966,6 +966,11 @@ function createSubordinateAgentTool(
             parent_agent_id: parent.id,
             hierarchy_level: "ic",
             runtime_config,
+            // New specialists land tasks in `review` by default so the
+            // human stays in the loop on a freshly-minted agent's first
+            // outputs. Trust ramps up later by flipping this to
+            // `auto_done` once the specialist has a track record.
+            review_policy: "require_human",
           },
         );
 
