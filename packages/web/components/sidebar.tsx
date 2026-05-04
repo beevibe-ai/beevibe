@@ -83,7 +83,16 @@ export function Sidebar() {
   const [openAgents, setOpenAgents] = useState(true);
   const [openWorkspace, setOpenWorkspace] = useState(true);
   const [openKnowledge, setOpenKnowledge] = useState(true);
-  const [collapsed, toggleCollapsed] = useCollapsible("bv-sidebar-collapsed");
+  // Chat is conversation-first — its own conversation rail already gives
+  // the user the navigation they need on this page, so we default the
+  // app sidebar collapsed to free real estate for the bubbles. User
+  // toggle still wins (persisted to localStorage); this only changes the
+  // initial value when no preference is stored.
+  const isChatRoute = pathname?.startsWith("/chat") ?? false;
+  const [collapsed, toggleCollapsed] = useCollapsible(
+    "bv-sidebar-collapsed",
+    isChatRoute,
+  );
 
   if (collapsed) {
     return (
