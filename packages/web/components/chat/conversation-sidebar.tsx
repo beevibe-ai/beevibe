@@ -3,11 +3,50 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { MessageSquare, Plus } from "lucide-react";
-import { api, type ChatConversationsResponse } from "@/lib/api/client";
+import {
+  api,
+  type ChatConversationsResponse,
+  type ChatConversationSummary,
+} from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+
+type Bucket = "today" | "yesterday" | "this_week" | "older";
+
+const BUCKET_LABELS: Record<Bucket, string> = {
+  today: "Today",
+  yesterday: "Yesterday",
+  this_week: "This week",
+  older: "Older",
+};
+
+const BUCKET_ORDER: readonly Bucket[] = ["today", "yesterday", "this_week", "older"];
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function bucketOf(iso: string, now: number): Bucket {
+  const t = new Date(iso).getTime();
+  const today = new Date(now);
+  const today0 = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+  if (t >= today0) return "today";
+  if (t >= today0 - DAY_MS) return "yesterday";
+  if (t >= today0 - 7 * DAY_MS) return "this_week";
+  return "older";
+}
+
+function bucketize(list: readonly ChatConversationSummary[]): Record<Bucket, ChatConversationSummary[]> {
+  const now = Date.now();
+  const out: Record<Bucket, ChatConversationSummary[]> = {
+    today: [],
+    yesterday: [],
+    this_week: [],
+    older: [],
+  };
+  for (const c of list) out[bucketOf(c.last_at, now)].push(c);
+  return out;
+}
 
 /**
  * Past conversations list. The chat surface treats each chain (linked by
@@ -57,49 +96,89 @@ export function ConversationSidebar({
         ) : list.length === 0 ? (
           <SidebarEmpty />
         ) : (
-          <ul>
-            {list.map((c) => {
-              const active = effectiveActive === c.head_id;
-              return (
-                <li key={c.head_id}>
-                  <Link
-                    href={`/chat?c=${encodeURIComponent(c.head_id)}`}
-                    className={cn(
-                      "block px-3 py-2 mx-1 my-0.5 rounded transition-colors",
-                      active
-                        ? "bg-secondary"
-                        : "hover:bg-secondary/60",
-                    )}
-                  >
-                    <div className="flex items-baseline gap-1.5">
-                      <div
-                        className={cn(
-                          "text-xs font-medium truncate flex-1 min-w-0",
-                          active ? "text-foreground" : "text-foreground/85",
-                        )}
-                      >
-                        {c.title}
-                      </div>
-                      <span className="text-[10px] tabular-nums text-muted-foreground/80 shrink-0">
-                        {formatRelativeTime(c.last_at)}
-                      </span>
-                    </div>
-                    <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-2 leading-snug">
-                      {c.last_preview}
-                    </div>
-                    {c.turn_count > 1 ? (
-                      <div className="mt-0.5 text-[10px] text-muted-foreground/70 tabular-nums">
-                        {c.turn_count} turns
-                      </div>
-                    ) : null}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
+          <BucketedList list={list} effectiveActive={effectiveActive} />
         )}
       </div>
     </aside>
+  );
+}
+
+function BucketedList({
+  list,
+  effectiveActive,
+}: {
+  list: readonly ChatConversationSummary[];
+  effectiveActive: string | undefined;
+}) {
+  const buckets = bucketize(list);
+  return (
+    <div>
+      {BUCKET_ORDER.map((bucket) => {
+        const items = buckets[bucket];
+        if (items.length === 0) return null;
+        // Older items fade — visual ladder so the user's eye lands on
+        // recent activity first. The bucket itself is the time signal;
+        // fading reinforces it without adding chrome.
+        const stale = bucket === "older";
+        return (
+          <section key={bucket} className="mb-1.5 last:mb-0">
+            <div className="px-3 pt-2.5 pb-1 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/60">
+              {BUCKET_LABELS[bucket]}
+            </div>
+            <ul>
+              {items.map((c) => (
+                <ConversationRow
+                  key={c.head_id}
+                  c={c}
+                  active={effectiveActive === c.head_id}
+                  stale={stale}
+                />
+              ))}
+            </ul>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
+function ConversationRow({
+  c,
+  active,
+  stale,
+}: {
+  c: ChatConversationSummary;
+  active: boolean;
+  stale: boolean;
+}) {
+  return (
+    <li>
+      <Link
+        href={`/chat?c=${encodeURIComponent(c.head_id)}`}
+        className={cn(
+          "block px-3 py-1.5 mx-1 my-0.5 rounded transition-colors",
+          active ? "bg-secondary" : "hover:bg-secondary/60",
+          stale && !active && "opacity-60",
+        )}
+      >
+        <div className="flex items-baseline gap-1.5">
+          <div
+            className={cn(
+              "text-xs truncate flex-1 min-w-0",
+              active ? "text-foreground font-semibold" : "text-foreground/85 font-medium",
+            )}
+          >
+            {c.title}
+          </div>
+          <span className="text-[10px] tabular-nums text-muted-foreground/70 shrink-0">
+            {formatRelativeTime(c.last_at)}
+          </span>
+        </div>
+        <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1 leading-snug">
+          {c.last_preview}
+        </div>
+      </Link>
+    </li>
   );
 }
 
