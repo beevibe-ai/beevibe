@@ -121,6 +121,25 @@ function LiveStatusFooter() {
   );
 }
 
+/**
+ * Standalone status dot for embedding outside the LivePanel — the
+ * sidebar footer uses this so users see live/polling status even
+ * when the LivePanel is collapsed (the new default). Tooltip carries
+ * the label so the dot stays small.
+ */
+export function LiveStatusDot({ className }: { className?: string }) {
+  const [status, setStatus] = useState(getLiveStatus());
+  useEffect(() => subscribeLiveStatus(setStatus), []);
+  const { dot, label, title } = LIVE_STATUS_LABELS[status];
+  return (
+    <span
+      className={cn("inline-block h-1.5 w-1.5 rounded-full shrink-0", dot, className)}
+      title={title ?? label}
+      aria-label={label}
+    />
+  );
+}
+
 // ── Section header ─────────────────────────────────────────────────────
 
 function SectionHeader({

@@ -1,9 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { AlertTriangle, Bot, Search } from "lucide-react";
 import { useAgents } from "@/lib/hooks/use-agents";
+import { useSlashFocus } from "@/lib/hooks/use-slash-focus";
 import { isApiConfigured } from "@/lib/api/config";
 import { OrgChart } from "@/components/agents/org-chart";
 import { SpecializationTable } from "@/components/agents/specialization-table";
@@ -16,6 +17,8 @@ import type { AgentDisplay } from "@/lib/types/agents";
 export function AgentsClient() {
   const { data, isLoading, isError } = useAgents();
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
 
   // Filter on name + specialization, case-insensitive substring. Replaces
   // the old sidebar AgentList shortcut: power users used to drill into a
@@ -60,10 +63,11 @@ export function AgentsClient() {
             <div className="relative flex-1 max-w-xs ml-auto">
               <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
               <input
+                ref={searchRef}
                 type="text"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Find an agent…"
+                placeholder="Find an agent…  ( / )"
                 className="w-full h-8 pl-8 pr-2.5 rounded-md border border-border bg-card text-sm focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground/60"
               />
             </div>

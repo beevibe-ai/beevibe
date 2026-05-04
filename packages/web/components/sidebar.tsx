@@ -19,6 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useCollapsible } from "@/lib/hooks/use-collapsible";
 import { ConversationSidebar } from "./chat/conversation-sidebar";
+import { LiveStatusDot } from "./chat/live-panel";
 import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
 
@@ -162,6 +163,11 @@ export function Sidebar() {
 
       <div className="p-2 border-t border-border/60 flex items-center gap-1">
         <UserWidget />
+        {/* Always-visible live/polling indicator — LivePanel defaults
+            collapsed, so without this the user couldn't tell whether
+            updates were streaming or polling unless they expanded it.
+            Tooltip carries the verbose label. */}
+        <LiveStatusDot className="mx-1" />
         <ThemeToggle />
       </div>
     </aside>
