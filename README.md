@@ -67,7 +67,22 @@ pnpm test               # vitest (unit + integration)
 pnpm dev                # full local stack (postgres + api + executor + tunnel)
 pnpm migrate up         # apply migrations to DATABASE_URL
 pnpm migrate:test up    # apply migrations to DATABASE_URL_TEST
+pnpm install-skills     # install beevibe skills into ~/.claude/skills/
 ```
+
+## Skills
+
+Beevibe ships agent behavioral skills as `SKILL.md` files in `/skills/` (Anthropic [Agent Skills open standard](https://agentskills.io/specification)). The api and executor sync them into each agent's workspace at dispatch time automatically — agent-spawned sessions get them for free.
+
+For human users running `claude` locally and acting AS a beevibe agent (the M7 manual-smoke path), install them once into your local Claude Code skill discovery dir:
+
+```bash
+pnpm install-skills
+```
+
+The install is idempotent — re-run after `git pull` to refresh. Only dirs named exactly `beevibe` or starting with `beevibe-` in `~/.claude/skills/` are touched; your other personal skills are left alone.
+
+> **Reserved namespace**: the `beevibe-` prefix in `~/.claude/skills/` is reserved for skills shipped by this repo. If you author your own personal skills, use a different prefix (e.g., `mybeevibe-foo`) — anything not matching `beevibe-*` is invisible to the install command.
 
 ## Manual smoke against the tunnel
 
