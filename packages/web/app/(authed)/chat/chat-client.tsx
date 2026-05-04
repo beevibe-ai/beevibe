@@ -288,7 +288,11 @@ function Thinking({ steps }: { steps: ChatStreamStep[] }) {
   const agentSteps = steps.filter((s) => s.kind === "agent");
   // Each Claude turn between tool calls emits one assistant block — full
   // text, not deltas — so concatenating gives the response-so-far.
-  const streamingText = agentSteps.map((s) => s.content).join("\n\n");
+  // Each agent step is one text_delta from the runtime, so concatenation
+  // happens without a separator — the model's own newlines do paragraph
+  // breaks. (Pre-streaming, each step was a whole message and we joined
+  // with "\n\n"; that's wrong now since deltas are mid-sentence.)
+  const streamingText = agentSteps.map((s) => s.content).join("");
   // Show the latest 8 tool steps. With strong categorization the list
   // stays scannable; the running pulse on the most recent makes it
   // clear where the agent is "now."

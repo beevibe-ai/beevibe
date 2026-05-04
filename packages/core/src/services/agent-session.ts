@@ -138,10 +138,11 @@ export class AgentSession {
       .filter((s) => s.length > 0)
       .join("\n\n");
 
-    // Compose onStep: transcript persistence (fire-and-forget; never blocks
-    // the LLM-bound tail) followed by the caller's hook (if any). The
-    // kind passes through from the runtime so the SSE pipeline can carry
-    // both tool-call streams and assistant text streams to the chat UI.
+    // Compose onStep: every step gets persisted to session_event so the
+    // pg_notify trigger fires and SSE delivers it live. Text deltas are
+    // many per turn — accept the row count for now; the session detail
+    // page can collapse adjacent `agent` rows visually if needed. The
+    // alternative (coalescing here) would short-circuit SSE entirely.
     const eventRepo = this.deps.sessionEventRepo;
     const callerOnStep = input.onStep;
     const onStep = (step: RuntimeStep): void => {

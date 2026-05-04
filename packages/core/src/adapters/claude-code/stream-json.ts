@@ -12,6 +12,8 @@ export const STREAM_TYPE = {
   ToolResult: "tool_result",
   Result: "result",
   ContentBlockStart: "content_block_start",
+  /** Wrapper for SDK-shaped streaming events emitted by `--include-partial-messages`. */
+  StreamEvent: "stream_event",
 } as const;
 
 export const BLOCK_TYPE = {
@@ -27,6 +29,18 @@ interface ContentBlock {
   id?: string;
   tool_use_id?: string;
   content?: unknown;
+}
+
+/** Inner shape of `stream_event.event`. We only inspect a handful of fields. */
+interface StreamEventInner {
+  type: string;
+  index?: number;
+  delta?: {
+    type?: string;
+    text?: string;
+    partial_json?: string;
+  };
+  content_block?: ContentBlock;
 }
 
 export interface StreamJsonMessage {
@@ -54,6 +68,8 @@ export interface StreamJsonMessage {
   model?: string;
   result?: string;
   content_block?: ContentBlock;
+  /** Present on `stream_event` messages (--include-partial-messages). */
+  event?: StreamEventInner;
 }
 
 export function parseStreamJsonLine(line: string): StreamJsonMessage | null {
@@ -92,22 +108,35 @@ export function extractStepEvents(msg: StreamJsonMessage): RuntimeStep[] {
     ];
   }
 
-  // Assistant text + inline tool_use blocks. Stream-json emits one
-  // `assistant` message per LLM output between tool calls; its content
-  // is one or more blocks. We surface text blocks as `agent` steps so
-  // the chat UI can show the response being written, and tool_use
-  // blocks (when they appear here rather than as standalone messages)
-  // as `tool_call` steps.
+  // SDK-shaped streaming events from --include-partial-messages. Emit
+  // text deltas as `agent` steps so the chat UI sees text appearing as
+  // the model writes it. Tool input deltas (`input_json_delta`) are
+  // skipped — we wait for the whole tool input on the post-block
+  // `assistant` message so the tool_call step has full args.
+  if (msg.type === STREAM_TYPE.StreamEvent && msg.event) {
+    const ev = msg.event;
+    if (ev.type === "content_block_delta" && ev.delta?.type === "text_delta") {
+      const text = ev.delta.text ?? "";
+      if (text.length === 0) return [];
+      return [
+        {
+          kind: "agent",
+          description: text,
+          timestamp: now,
+        },
+      ];
+    }
+    return [];
+  }
+
+  // Whole-`assistant` message at end of each block. Text blocks were
+  // already streamed as deltas above (we always run with
+  // `--include-partial-messages`), so we only surface tool_use blocks
+  // here — they need the full input which deltas can't carry.
   if (msg.type === STREAM_TYPE.Assistant && msg.message && Array.isArray(msg.message.content)) {
     const out: RuntimeStep[] = [];
     for (const block of msg.message.content) {
-      if (block.type === BLOCK_TYPE.Text && typeof block.text === "string" && block.text.trim().length > 0) {
-        out.push({
-          kind: "agent",
-          description: block.text,
-          timestamp: now,
-        });
-      } else if (block.type === BLOCK_TYPE.ToolUse) {
+      if (block.type === BLOCK_TYPE.ToolUse) {
         out.push({
           kind: "tool_call",
           tool: block.name ?? "unknown",
