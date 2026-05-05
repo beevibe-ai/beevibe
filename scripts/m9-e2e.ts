@@ -87,8 +87,8 @@ const TABLES = [
 ];
 
 const HEALTH_DEADLINE_MS = 15_000;
-const TASK_DEADLINE_MS = 90_000;
-const SHUTDOWN_DEADLINE_MS = 5_000;
+const TASK_DEADLINE_MS = 180_000; // multi-round negotiations + code-task git ops
+const SHUTDOWN_DEADLINE_MS = 15_000; // 5s was tight when 4+ agents are running
 const CACHE_HIT_RATIO_THRESHOLD = 0.5; // conservative; M9.4 should hit >0.7 in practice
 
 // ───────────────────────── helpers ─────────────────────────
@@ -684,10 +684,49 @@ async function main(): Promise<void> {
       `task ${askTask.id} → done|failed`,
     );
 
+    // ── Scenario 13: skill firing — beevibe-team-mesh-negotiation ──
+    log("→ Scenario 13: provision second team peer; negotiation flow → mesh-negotiation firing");
+    const { agent: negPeer } = await provisionAgent(
+      {
+        agentRepo: deps.agents,
+        coreMemoryRepo: deps.coreMemoryRepo,
+      },
+      {
+        id: makeAgentId(),
+        name: "m9-neg-peer",
+        owner_id: owner.id,
+        hierarchy_level: "team",
+        runtime_config: DEFAULT_RUNTIME_CONFIG,
+      },
+    );
+    log(`  negotiation peer agent=${negPeer.id} (team-tier)`);
+    const negTask = await dispatchTask(
+      deps,
+      owner.id,
+      askerAgent.id,
+      `You need to coordinate a project split with peer agent_id="${negPeer.id}". ` +
+        `Propose: you handle the API changes; the peer handles the UI updates, both ` +
+        `landing by Friday. Use mcp__beevibe__negotiate(peer_id="${negPeer.id}", ` +
+        `proposal="...") to start. If the peer counters, work toward a mutually ` +
+        `acceptable plan over up to 3 rounds. Then update_progress with the final ` +
+        `agreement (or failure reason).`,
+      { title: "m9 smoke — negotiate split with team peer" },
+    );
+    log(`  task=${negTask.id} (asker → negotiation peer)`);
+    await pollUntil(
+      async () => {
+        const t = await deps.tasks.findById(negTask.id);
+        return t && (t.status === "done" || t.status === "failed") ? t : null;
+      },
+      (t) => t.status === "done" || t.status === "failed",
+      TASK_DEADLINE_MS,
+      `task ${negTask.id} → done|failed`,
+    );
+
     // ── Survey: ALL skill invocations across all sessions of all agents ──
     log("→ Survey: skill auto-discovery firing across all sessions, all agents");
     const allInvocations: Record<string, number> = {};
-    for (const aid of [agentId, peerAgentId, askerAgent.id]) {
+    for (const aid of [agentId, peerAgentId, askerAgent.id, negPeer.id]) {
       const wsDir = join(workspaceRoot, aid);
       const inv = await countSkillInvocations(wsDir);
       log(`  ${aid}: ${inv.totalSkillCalls} Skill calls`);
