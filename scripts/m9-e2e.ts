@@ -255,17 +255,106 @@ async function dispatchTask(
   ownerId: string,
   agentId: string,
   description: string,
+  opts: { repo_url?: string; title?: string } = {},
 ): Promise<Task> {
   return deps.tasks.create({
     id: makeTaskId(),
-    title: "m9 smoke",
+    title: opts.title ?? "m9 smoke",
     description,
     status: "assigned",
     priority: "medium",
     assignee_id: agentId,
     creator_id: ownerId,
     creator_type: "person",
+    repo_url: opts.repo_url,
   });
+}
+
+/**
+ * Read all Claude Code JSONL transcript files for a workspace and count
+ * Skill tool invocations. Used to determine if a given skill is actually
+ * firing in its target scenario.
+ *
+ * The JSONL path encoding: Claude Code writes per-cwd transcripts at
+ * ~/.claude/projects/<encoded-cwd>/<cli_session_id>.jsonl, where
+ * encoded-cwd replaces / with -.
+ */
+async function countSkillInvocations(workspaceDir: string): Promise<{
+  totalSkillCalls: number;
+  perSkill: Record<string, number>;
+}> {
+  const { readdir, readFile } = await import("node:fs/promises");
+  const { homedir } = await import("node:os");
+
+  const claudeProjectsDir = join(homedir(), ".claude", "projects");
+  // Resolve symlinks (macOS /var → /private/var) to match Claude Code's
+  // encoded path format. realpath returns canonical path.
+  const { realpath } = await import("node:fs/promises");
+  let canonical: string;
+  try {
+    canonical = await realpath(workspaceDir);
+  } catch {
+    canonical = workspaceDir;
+  }
+  // Claude Code encodes the cwd by replacing `/` AND `_` with `-`. So
+  // `/private/var/folders/.../agent_X` → `-private-var-folders-...-agent-X`.
+  const encodedCwd = canonical.replace(/[/_]/g, "-");
+
+  const projectDirs = await readdir(claudeProjectsDir).catch(() => []);
+  const matchingDir = projectDirs.find((d) => d.endsWith(encodedCwd));
+  if (!matchingDir) {
+    return { totalSkillCalls: 0, perSkill: {} };
+  }
+
+  const sessionDir = join(claudeProjectsDir, matchingDir);
+  const sessionFiles = (await readdir(sessionDir)).filter((f) => f.endsWith(".jsonl"));
+
+  const perSkill: Record<string, number> = {};
+  let totalSkillCalls = 0;
+
+  // Walk the JSON tree of each line looking for { name: "Skill",
+  // input: { skill: "..." } } anywhere — handles nested message.content
+  // arrays, content_block payloads, etc. without fragile regex.
+  function findSkillCalls(node: unknown, out: string[]): void {
+    if (Array.isArray(node)) {
+      for (const item of node) findSkillCalls(item, out);
+      return;
+    }
+    if (node && typeof node === "object") {
+      const obj = node as Record<string, unknown>;
+      if (
+        obj.name === "Skill" &&
+        obj.input &&
+        typeof obj.input === "object" &&
+        typeof (obj.input as Record<string, unknown>).skill === "string"
+      ) {
+        out.push((obj.input as Record<string, string>).skill);
+      }
+      for (const v of Object.values(obj)) findSkillCalls(v, out);
+    }
+  }
+
+  for (const file of sessionFiles) {
+    const content = await readFile(join(sessionDir, file), "utf-8");
+    for (const line of content.split("\n")) {
+      if (!line.trim()) continue;
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(line);
+      } catch {
+        continue;
+      }
+      const skills: string[] = [];
+      findSkillCalls(parsed, skills);
+      for (const skillName of skills) {
+        const normalized = skillName.replace(/^\//, "");
+        totalSkillCalls += 1;
+        perSkill[normalized] = (perSkill[normalized] ?? 0) + 1;
+      }
+    }
+  }
+
+  return { totalSkillCalls, perSkill };
 }
 
 // ───────────────────────── scenarios ─────────────────────────
@@ -496,6 +585,48 @@ async function main(): Promise<void> {
 
     // Scenario 9: cache_read_input_tokens > 0 on second session.
     await scenarioNine_cacheHitRatio(deps, agentId);
+
+    // ── Scenario 10: skill firing — beevibe-pre-task-setup ──
+    log("→ Scenario 10: dispatch task with repo_url; check pre-task-setup skill firing");
+    const codeTask = await dispatchTask(
+      deps,
+      owner.id,
+      agentId,
+      "Inspect the repo at the given URL — what files are in the repo root? List them.",
+      {
+        title: "m9 smoke — code task with repo_url",
+        repo_url: "https://github.com/octocat/Hello-World.git",
+      },
+    );
+    log(`  task=${codeTask.id} repo_url=https://github.com/octocat/Hello-World.git`);
+    await pollUntil(
+      async () => {
+        const t = await deps.tasks.findById(codeTask.id);
+        return t && (t.status === "done" || t.status === "failed") ? t : null;
+      },
+      (t) => t.status === "done" || t.status === "failed",
+      TASK_DEADLINE_MS,
+      `task ${codeTask.id} → done|failed`,
+    );
+
+    // Now survey ALL skill invocations across the agent's sessions.
+    log("→ Survey: skill auto-discovery firing across all sessions");
+    const workspaceDir = join(workspaceRoot, agentId);
+    const inv = await countSkillInvocations(workspaceDir);
+    log(`  total Skill tool calls: ${inv.totalSkillCalls}`);
+    if (inv.totalSkillCalls === 0) {
+      log("  ⚠ Zero Skill invocations across all 3 sessions");
+      log("    → confirms Claude Code's skill auto-discovery is conservative");
+      log("    → skills with universal triggers (pre-task-setup) likely not firing");
+      log("    → recommend: validate scenario-specific skills next; consider");
+      log("      promoting pre-task-setup content to system-prompt reminder if it");
+      log("      proves dead weight here too");
+    } else {
+      log("  per-skill invocation counts:");
+      for (const [name, count] of Object.entries(inv.perSkill)) {
+        log(`    ${name}: ${count}`);
+      }
+    }
 
     log("→ SIGTERM both subprocesses");
     const [apiCode, execCode] = await Promise.all([

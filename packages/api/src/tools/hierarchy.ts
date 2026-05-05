@@ -108,6 +108,7 @@ function projectTask(task: Task | undefined): Record<string, unknown> | null {
     creator_id: task.creator_id,
     creator_type: task.creator_type,
     parent_task_id: task.parent_task_id ?? null,
+    repo_url: task.repo_url ?? null,
     result_summary: task.result_summary ?? null,
     blocker_agent_id: task.blocker_agent_id ?? null,
     blocker_reason: task.blocker_reason ?? null,
