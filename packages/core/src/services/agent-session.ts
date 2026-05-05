@@ -11,6 +11,55 @@ import type {
 import type { SessionRepository } from "../ports/session-repo.js";
 import type { MemoryAgent } from "./memory/memory-agent.js";
 
+/**
+ * Always-on lifecycle baseline for agent-spawned task sessions (M9.5+
+ * empirical fix). Skill DESCRIPTIONS in Claude Code's auto-discovery block
+ * are passive selectors — the agent invokes the body only when it
+ * recognizes a description match. For trivial tasks ("reply with X") the
+ * agent answers and ends turn without consulting any skill, including the
+ * `beevibe-task-completion` skill that says "always call update_progress".
+ *
+ * The fix: inject the load-bearing lifecycle directives directly into the
+ * system prompt via `--append-system-prompt`. This guarantees the agent
+ * sees the rules without needing to invoke a Skill tool. Companion skills
+ * remain lazy-loaded for scenario-specific deep protocols (mesh negotiation,
+ * post-blocker revision, work-product decision tree, etc.) — those genuinely
+ * benefit from the on-demand load model.
+ *
+ * Cache-stable: identical text for every agent. Adds ~280 tokens to the
+ * system prompt; once cached (≥4096 token threshold for Opus 4.7), they're
+ * read at 0.1× rate.
+ *
+ * Keep in sync with skills/beevibe/SKILL.md body — same lifecycle, two
+ * locations (this constant ≡ canonical injection; SKILL.md ≡ documentation
+ * that Claude Code's metadata block surfaces for human readers / Skill tool
+ * invocations).
+ */
+const BEEVIBE_LIFECYCLE_REMINDER = `<beevibe_lifecycle>
+You are a beevibe agent (BEEVIBE_AGENT_ID env identifies you). Critical
+behavioral rules for every task session:
+
+1. Before exiting any task session, you MUST call mcp__beevibe__update_progress
+   with task_id (from your intent's <task id="..."/> tag), status, and
+   summary. Status: 'done' (succeeded), 'failed' (can't complete; summary
+   explains why), or 'blocked' (only if you already called report_blocker).
+   Summary: 1-3 sentences including any URLs / wp_* work-product ids the
+   human reviewer will need.
+
+2. Without update_progress, the platform fires a wasteful retry session 2s
+   after exit. Always call it before ending your turn.
+
+3. Exception: if you delegated work via mcp__beevibe__create_task during
+   this session (team/org tier), you are a parent task — DO NOT call
+   update_progress(done) yourself. The platform's children-rollup
+   auto-completes the parent when all subtasks settle.
+
+4. For multi-step protocols (work-product decisions, mesh negotiation,
+   git workspace setup, post-blocker revision, memory updates), the
+   relevant beevibe-* skill in .claude/skills/ has the deep guidance —
+   invoke via Skill tool when their description matches your situation.
+</beevibe_lifecycle>`;
+
 export interface AgentSessionDeps {
   agentRepo: AgentRepository;
   sessionRepo: SessionRepository;
@@ -106,8 +155,17 @@ export class AgentSession {
         (err as Error).message,
       );
     }
+    // Cache-friendly order: most-stable first.
+    //   1. BEEVIBE_LIFECYCLE_REMINDER (cross-agent constant)
+    //   2. agent.runtime_config.system_prompt_addition (per-agent baseline)
+    //   3. briefing.systemPromptAppend (= core_memory; mostly stable per agent)
+    // archival_memory lives separately on `intent` via M9.4's userMessagePrefix.
     const baseline = agent.runtime_config.system_prompt_addition ?? "";
-    const system_prompt_append = [baseline, briefing.systemPromptAppend]
+    const system_prompt_append = [
+      BEEVIBE_LIFECYCLE_REMINDER,
+      baseline,
+      briefing.systemPromptAppend,
+    ]
       .filter((s) => s.length > 0)
       .join("\n\n");
 

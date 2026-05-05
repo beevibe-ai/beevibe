@@ -99,8 +99,11 @@ function log(msg: string): void {
 
 function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) {
-    console.error(`    ✗ ${msg}`);
-    process.exit(1);
+    // Throw instead of process.exit(1) so the script's `finally` block
+    // (kills subprocesses + rmSync workspace) actually runs. Otherwise
+    // stale api/executor processes survive failures and intercept the
+    // next run's tasks with their old workspace root.
+    throw new Error(msg);
   }
 }
 
@@ -318,19 +321,34 @@ async function scenarioNine_cacheHitRatio(
   agentId: string,
 ): Promise<void> {
   log("→ Scenario 9: cache hit ratio on second session");
-  const result = await deps.pool.query<Session>(
-    `SELECT * FROM session WHERE agent_id = $1 ORDER BY started_at ASC`,
-    [agentId],
-  );
-  assert(
-    result.rows.length >= 2,
-    `expected at least 2 sessions for cache-ratio comparison; got ${result.rows.length}`,
+
+  // Race: task.status flips to 'done' when the agent calls update_progress
+  // (mid-CLI), but session.status + session.usage are written by agent-
+  // session step 5 AFTER the CLI subprocess exits and runtime.execute
+  // returns. Poll until the agent has 2 terminal sessions with usage.
+  const sessions = await pollUntil(
+    async () => {
+      const r = await deps.pool.query<Session>(
+        `SELECT * FROM session WHERE agent_id = $1 ORDER BY started_at ASC`,
+        [agentId],
+      );
+      const allTerminalWithUsage = r.rows.every(
+        (s) => s.status !== "running" && s.usage != null,
+      );
+      return r.rows.length >= 2 && allTerminalWithUsage ? r.rows : null;
+    },
+    (rows) => rows.length >= 2,
+    30_000,
+    "≥2 terminal sessions with usage populated",
   );
 
-  const second = result.rows[1]!;
-  const usage = second.usage;
-  assert(usage, `session ${second.id} has no usage`);
-  log(`  session_2 usage: input=${usage.input_tokens}, cache_read=${usage.cache_read_input_tokens}, cache_creation=${usage.cache_creation_input_tokens}`);
+  const second = sessions[1]!;
+  const usage = second.usage!;
+  log(
+    `  session_2 usage: input=${usage.input_tokens}, ` +
+      `cache_read=${usage.cache_read_input_tokens}, ` +
+      `cache_creation=${usage.cache_creation_input_tokens}`,
+  );
 
   const inputTokens = usage.input_tokens ?? 0;
   const cacheRead = usage.cache_read_input_tokens ?? 0;
