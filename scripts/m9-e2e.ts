@@ -282,15 +282,15 @@ async function scenarioOne_skillsInWorkspace(
   );
   const dirs = readdirSync(skillsDir).sort();
   log(`  found ${dirs.length} skills: ${dirs.join(", ")}`);
-  // IC tier: 8 universal skills.
-  assert(dirs.length === 8, `expected 8 IC-tier skills, got ${dirs.length}`);
+  // IC tier: 7 universal skills. (beevibe-task-completion removed in M9
+  // validation — non-load-bearing per control e2e + transcript analysis.)
+  assert(dirs.length === 7, `expected 7 IC-tier skills, got ${dirs.length}`);
   assert(dirs.includes("beevibe"), "umbrella skill missing");
-  assert(dirs.includes("beevibe-task-completion"), "task-completion skill missing");
   assert(
     !dirs.includes("beevibe-team-mesh-negotiation"),
     "team-only skill leaked into IC workspace",
   );
-  log("  ✓ IC tier sees 8 universal skills, no team-only leakage");
+  log("  ✓ IC tier sees 7 universal skills, no team-only leakage");
 }
 
 async function scenarioSix_oneSessionPerTask(
@@ -312,7 +312,7 @@ async function scenarioSix_oneSessionPerTask(
     result.rows.length === 1,
     `expected 1 session per leaf task; got ${result.rows.length} (M7 footgun?)`,
   );
-  log("  ✓ exactly one session — beevibe-task-completion skill is doing its job");
+  log("  ✓ exactly one session — BEEVIBE_LIFECYCLE_REMINDER reliably triggers update_progress");
   return result.rows;
 }
 

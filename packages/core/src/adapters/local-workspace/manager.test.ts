@@ -229,7 +229,7 @@ describe("LocalWorkspaceManager", () => {
 
     it("IC agent gets only universal skills synced into .claude/skills/", async () => {
       writeSourceSkill("beevibe");
-      writeSourceSkill("beevibe-task-completion");
+      writeSourceSkill("beevibe-pre-task-setup");
       writeSourceSkill("beevibe-team-mesh-negotiation");
 
       const ws = await manager.ensureWorkspace({
@@ -239,13 +239,13 @@ describe("LocalWorkspaceManager", () => {
       const skillsDir = join(ws.path, ".claude", "skills");
       const dirs = readdirSync(skillsDir).sort();
       expect(dirs).toContain("beevibe");
-      expect(dirs).toContain("beevibe-task-completion");
+      expect(dirs).toContain("beevibe-pre-task-setup");
       expect(dirs).not.toContain("beevibe-team-mesh-negotiation");
     });
 
     it("team agent gets universal + team-only skills", async () => {
       writeSourceSkill("beevibe");
-      writeSourceSkill("beevibe-task-completion");
+      writeSourceSkill("beevibe-pre-task-setup");
       writeSourceSkill("beevibe-team-mesh-negotiation");
 
       const ws = await manager.ensureWorkspace({
@@ -255,7 +255,7 @@ describe("LocalWorkspaceManager", () => {
       const skillsDir = join(ws.path, ".claude", "skills");
       const dirs = readdirSync(skillsDir).sort();
       expect(dirs).toContain("beevibe");
-      expect(dirs).toContain("beevibe-task-completion");
+      expect(dirs).toContain("beevibe-pre-task-setup");
       expect(dirs).toContain("beevibe-team-mesh-negotiation");
     });
 

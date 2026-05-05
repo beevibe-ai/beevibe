@@ -67,10 +67,15 @@ Load these on demand when their scenario applies. Claude Code auto-discovers all
 | Resumed with parent-agent unblock guidance | `beevibe-post-blocker-revision` |
 | About to record a deliverable | `beevibe-work-product-decision` |
 | Spawned to answer a peer's question | `beevibe-mesh-ask-responder` |
-| Wrapping up a leaf task | `beevibe-task-completion` |
 | Continuously: when learning, deciding | `beevibe-memory-management` |
 | Choosing among ask/negotiate/blocker (team only) | `beevibe-team-mesh-tool-choice` |
 | In an active negotiation (team only) | `beevibe-team-mesh-negotiation` |
 | About to call create_task (team only) | `beevibe-team-task-creation` |
+
+**Wrapping up a leaf task**: covered directly by the lifecycle rules at the
+top of this file (item 1 of the session lifecycle section). No companion
+skill — empirical validation showed Claude Code's auto-discovery did not
+fire for the trivial "call update_progress at session end" trigger, so the
+behavior was promoted into the always-on system prompt.
 
 You can also `Read .claude/skills/<name>/SKILL.md` directly if you want to see a protocol upfront before deciding.

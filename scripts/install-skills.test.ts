@@ -97,7 +97,7 @@ describe("validateSkill", () => {
 describe("installSkills", () => {
   it("installs valid skills into the target dir", async () => {
     await writeSkill("beevibe");
-    await writeSkill("beevibe-task-completion");
+    await writeSkill("beevibe-pre-task-setup");
 
     const report = await installSkills({
       sourceDir,
@@ -107,10 +107,10 @@ describe("installSkills", () => {
 
     expect(report.validated).toBe(true);
     expect(report.validationErrors).toEqual([]);
-    expect(report.syncResult?.added.sort()).toEqual(["beevibe", "beevibe-task-completion"]);
+    expect(report.syncResult?.added.sort()).toEqual(["beevibe", "beevibe-pre-task-setup"]);
 
     const dirs = await fs.readdir(targetDir);
-    expect(dirs.sort()).toEqual(["beevibe", "beevibe-task-completion"]);
+    expect(dirs.sort()).toEqual(["beevibe", "beevibe-pre-task-setup"]);
   });
 
   it("idempotent re-run — no changes when source unchanged", async () => {
@@ -146,8 +146,8 @@ describe("installSkills", () => {
 
   it("aborts on validation failure (no sync happens)", async () => {
     await writeSkill("beevibe");
-    // Make a malformed beevibe-task-completion (one of ALL_SKILLS).
-    const badDir = path.join(sourceDir, "beevibe-task-completion");
+    // Make a malformed beevibe-pre-task-setup (one of ALL_SKILLS).
+    const badDir = path.join(sourceDir, "beevibe-pre-task-setup");
     await fs.mkdir(badDir, { recursive: true });
     await fs.writeFile(path.join(badDir, "SKILL.md"), "no frontmatter at all");
 

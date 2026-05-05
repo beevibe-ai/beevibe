@@ -18,9 +18,16 @@ export const UNIVERSAL_SKILLS = [
   "beevibe-post-blocker-revision",
   "beevibe-pre-task-setup",
   "beevibe-session-resume",
-  "beevibe-task-completion",
   "beevibe-work-product-decision",
 ] as const;
+// `beevibe-task-completion` removed (M9.5 validation): its description was
+// non-load-bearing — control e2e showed 0 Skill invocations even WITH the
+// skill present, and update_progress was reliably called purely from the
+// BEEVIBE_LIFECYCLE_REMINDER injected into --append-system-prompt by
+// AgentSession. The leaf-vs-parent edge cases the skill body covered are
+// captured in (a) the lifecycle reminder's item 3 (`create_task` →
+// parent), (b) the `update_progress` tool description, and (c) the
+// `create_task` tool description.
 
 export const TEAM_ONLY_SKILLS = [
   "beevibe-team-mesh-negotiation",
