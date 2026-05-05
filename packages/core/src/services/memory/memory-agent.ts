@@ -50,6 +50,18 @@ export interface MemoryAgent {
    * on the session row.
    */
   prepareBriefing(intent: string): Promise<BriefingResult>;
+  /**
+   * Mid-session: vector-search the agent's archival facts by `query` and
+   * return ONLY the `<archival_memory>...</archival_memory>` XML envelope.
+   * Used by the `search_context` MCP tool — the agent already has its
+   * core_memory blocks in its system prompt, so re-rendering them on every
+   * search would be redundant DB work plus noise in the tool result.
+   *
+   * Always returns a non-empty XML envelope; on no hits, returns an empty
+   * `<archival_memory></archival_memory>` so the tool consumer has a
+   * predictable shape.
+   */
+  searchArchival(query: string): Promise<string>;
   /** Post-session: promote facts written during this session if warranted. */
   onTaskComplete(sessionId: string): Promise<void>;
 }
@@ -93,6 +105,18 @@ export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
         min_similarity: BRIEFING_RECALL_FLOOR,
       });
       return composeBriefing(blocks, facts);
+    },
+
+    async searchArchival(query: string): Promise<string> {
+      const queryVec = await deps.embed.embed(query);
+      const facts = await deps.factStore.search({
+        agent_id: deps.agentId,
+        scope: ["ic", "team", "org"],
+        embedding: queryVec,
+        limit: factsPerBriefing,
+        min_similarity: BRIEFING_RECALL_FLOOR,
+      });
+      return renderArchivalEnvelope(facts);
     },
 
     async onTaskComplete(sessionId: string): Promise<void> {
@@ -176,12 +200,8 @@ function composeBriefing(
     charTotal += b.content.length;
   }
 
-  const factLines: string[] = [];
   const factSnapshots: SessionBriefingSnapshot["facts"] = [];
   for (const f of facts) {
-    factLines.push(
-      `  <fact type="${escapeAttr(f.fact_type)}" scope="${f.scope}">${escapeText(f.content)}</fact>`,
-    );
     factSnapshots.push({
       scope: f.scope,
       content: f.content,
@@ -194,23 +214,20 @@ function composeBriefing(
 
   // M9.4: split along stability axis. core_memory (mostly stable per
   // agent) → system prompt; archival_memory (per-session vector hits) →
-  // user message prefix. The <memory_tools> section was dropped — the
-  // beevibe-memory-management skill (M9.7) covers the "when to call
-  // save_memory / update_core_memory" guidance.
+  // user message prefix.
   const systemLines = ["<core_memory>"];
   if (blockLines.length > 0) systemLines.push(...blockLines);
   systemLines.push("</core_memory>");
 
-  const userLines: string[] = [];
-  if (factLines.length > 0) {
-    userLines.push("<archival_memory>");
-    userLines.push(...factLines);
-    userLines.push("</archival_memory>");
-  }
+  // For prepareBriefing the archival half is empty when there are no
+  // facts (don't pollute the user message with an empty wrapper).
+  // searchArchival has the opposite contract — there it always emits
+  // the wrapper for shape predictability.
+  const userMessagePrefix = facts.length === 0 ? "" : renderArchivalEnvelope(facts);
 
   return {
     systemPromptAppend: systemLines.join("\n"),
-    userMessagePrefix: userLines.join("\n"),
+    userMessagePrefix,
     snapshot: {
       block_count: blocks.length,
       fact_count: facts.length,
@@ -219,6 +236,30 @@ function composeBriefing(
       facts: factSnapshots,
     },
   };
+}
+
+/**
+ * Format a single archival fact line with the date stamp from the row's
+ * `created_at`. Surfacing the date lets the agent judge staleness when
+ * reading retrieval results — a fact saved months ago may no longer hold
+ * and should be verified against current state before acting.
+ */
+function renderFact(f: MemoryFact): string {
+  const saved = f.created_at.toISOString().slice(0, 10);
+  return `  <fact type="${escapeAttr(f.fact_type)}" scope="${f.scope}" saved="${saved}">${escapeText(f.content)}</fact>`;
+}
+
+/**
+ * Wrap fact lines in the `<archival_memory>...</archival_memory>` envelope.
+ * Always emits the envelope (empty body when no facts) so callers like
+ * `searchArchival` get a predictable shape regardless of hit count.
+ */
+function renderArchivalEnvelope(facts: readonly MemoryFact[]): string {
+  if (facts.length === 0) return "<archival_memory></archival_memory>";
+  const lines = ["<archival_memory>"];
+  for (const f of facts) lines.push(renderFact(f));
+  lines.push("</archival_memory>");
+  return lines.join("\n");
 }
 
 function escapeAttr(s: string): string {

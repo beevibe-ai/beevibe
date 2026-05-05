@@ -12,6 +12,7 @@ function fakeMemoryAgent(opts: {
       userMessagePrefix: opts.userMessagePrefix ?? "",
       snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] },
     })),
+    searchArchival: vi.fn(async () => "<archival_memory></archival_memory>"),
     onTaskComplete: vi.fn(async () => {}),
   };
 }

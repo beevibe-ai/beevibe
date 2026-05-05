@@ -57,10 +57,19 @@ behavioral rules for every task session:
    update_progress(done) yourself. The platform's children-rollup
    auto-completes the parent when all subtasks settle.
 
-4. For multi-step protocols (work-product decisions, mesh negotiation,
-   git workspace setup, post-blocker revision), the relevant beevibe-*
-   skill in .claude/skills/ has the deep guidance — invoke via Skill tool
-   when their description matches your situation.
+4. When you produce a deliverable for the task (PR, written analysis,
+   design doc, etc.), record it via mcp__beevibe__create_work_product so
+   the human reviewer can find it from the task. ALWAYS call
+   mcp__beevibe__list_work_products(task_id) first — if a relevant work
+   product already exists for this task (e.g., on a revision session, the
+   PR you opened earlier), call mcp__beevibe__update_work_product on it;
+   never create a duplicate row. The 'type' arg must be one of:
+   pull_request, branch, commit, document, analysis, report, design,
+   artifact, preview.
+
+5. For multi-step protocols (mesh negotiation, git workspace setup), the
+   relevant beevibe-* skill in .claude/skills/ has the deep guidance —
+   invoke via Skill tool when their description matches your situation.
 </beevibe_lifecycle>`;
 
 const BEEVIBE_MEMORY_REMINDER = `<beevibe_memory>
@@ -93,11 +102,29 @@ When to update memory (proactively, mid-session):
 - You resolved something tricky → save_memory(rationale, "decision")
 - You hit a non-obvious gotcha → save_memory(...., "gotcha")
 - You found a pattern that worked → save_memory(..., "pattern")
+- A user/teammate stated a preference → save_memory(..., "preference")
 - Your role/domain shifted → update_core_memory(persona/constraints, ...)
 
-Default rule when in doubt: save_memory. Archival is forgiving; core memory
-is space-constrained. If a fact keeps surfacing across sessions, promote
-it to core memory later.
+Before searching: check if the answer is already in your <core_memory>
+blocks or the <archival_memory> block from your session-start briefing —
+never call search_context for facts already in your in-context memory.
+
+Promotion ladder (archival is the default, core is reserved):
+- save_memory writes archival — cheap and forgiving; that's where new
+  facts should go.
+- update_core_memory edits core — every byte ends up in every future
+  session's system prompt. Reserve for facts that have ALREADY surfaced
+  across multiple sessions AND belong in every future briefing.
+- Default rule when in doubt: save_memory. Promote later if the fact
+  keeps recurring.
+
+Staleness — retrieved facts carry saved=YYYY-MM-DD on the <fact> tag
+(both in your briefing and in search_context results). If a fact is
+months old, treat it as advisory: the world may have moved on. Verify
+against current state (read the code, ask, or check the DB) before
+relying on it. When you re-confirm an old fact, save_memory a fresh
+version with current date so future retrievals get the more recent
+write.
 </beevibe_memory>`;
 
 export interface AgentSessionDeps {

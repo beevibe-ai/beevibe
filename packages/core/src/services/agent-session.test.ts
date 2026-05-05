@@ -93,6 +93,7 @@ beforeEach(() => {
   };
   memoryAgent = {
     prepareBriefing: vi.fn(),
+    searchArchival: vi.fn<MemoryAgent["searchArchival"]>().mockResolvedValue(""),
     // Default to a resolved promise so the fire-and-forget .catch() has something to chain.
     onTaskComplete: vi.fn<MemoryAgent["onTaskComplete"]>().mockResolvedValue(),
   };

@@ -55,9 +55,14 @@ export function createUpdateCoreMemoryTool(
     name: "update_core_memory",
     description:
       "Edit one of your core-memory blocks (persona/domain/constraints/" +
-      "learnings/etc). These appear in every future session's briefing. " +
-      "Use append to add a paragraph, replace to substitute a specific " +
-      "passage. Prefer focused, durable edits over chatter.",
+      "learnings/etc). These appear in every future session's briefing — " +
+      "treat as expensive real estate. Use ONLY for stable, durable shifts " +
+      "that should appear in every future briefing: persona changes, " +
+      "long-term constraint changes, patterns confirmed across multiple " +
+      "sessions. NOT for one-shot facts (use save_memory instead). If " +
+      "unsure between core and archival, use save_memory; promote to core " +
+      "later if the fact recurs across sessions. Use append to add a " +
+      "paragraph, replace to substitute a specific passage.",
     schema: UPDATE_CORE_MEMORY_SCHEMA as Record<string, unknown>,
     handler: async (input) => {
       const blockName = input.block_name;

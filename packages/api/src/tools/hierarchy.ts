@@ -135,10 +135,14 @@ function searchContextTool(
   return {
     name: "search_context",
     description:
-      "Re-query your archival memory for facts relevant to a topic. The " +
-      "session-start briefing already contains top-k facts, but use this " +
-      "tool when you need to recall facts on a specific topic during the " +
-      "session (e.g., \"what did we decide about X for project Y?\").",
+      "Search your archival memory by semantic similarity. Use when the " +
+      "information you need is NOT already in your <core_memory> blocks or " +
+      "the <archival_memory> block from the session-start briefing — never " +
+      "search for facts already in your context. Query strategy: query by " +
+      "concept/meaning, not exact phrases; start broad, narrow if too many " +
+      "hits. Returned facts include a saved=YYYY-MM-DD attribute — if a " +
+      "retrieved fact is months old, treat it as advisory and verify " +
+      "against current state before relying on it.",
     schema: {
       type: "object",
       properties: {
@@ -155,12 +159,8 @@ function searchContextTool(
         if (!query) {
           return { content: { error: "query must be a non-empty string" }, isError: true };
         }
-        // prepareBriefing returns the full <core_memory> + <archival_memory>
-        // XML; for an in-session re-query we only need the archival side, but
-        // the cost of returning the whole envelope is cheap and it gives the
-        // agent the same shape they saw at session start.
-        const briefing = await services.memoryAgent.prepareBriefing(query);
-        return { content: { briefing: briefing.systemPromptAppend } };
+        const archival = await services.memoryAgent.searchArchival(query);
+        return { content: { archival } };
       } catch (err) {
         return asError(err);
       }
@@ -539,13 +539,25 @@ function createTaskTool(
     name: "create_task",
     description:
       "Create a task and assign it to one of your subordinates. The task " +
-      "is inserted at status='assigned' so the executor picks it up. Use " +
-      "find_subordinates first to choose the right agent. If this is a " +
-      "sub-task of one you're working on, pass parent_task_id so the " +
-      "parent auto-completes when all subtasks finish. For code tasks, " +
-      "pass repo_url so the assignee's workspace setup can clone + " +
-      "worktree it; for non-code tasks omit and put context in the " +
-      "description.",
+      "is inserted at status='assigned' so the executor picks it up. " +
+      "Title style — phrase as a concrete deliverable ('Add /v2 endpoint " +
+      "with cursor pagination', 'Draft Q3 retention analysis'), NOT vague " +
+      "intent ('look into pagination', 'help with retention'). The title " +
+      "is what the assignee opens their session with. Description style " +
+      "— pack in success criteria (how the assignee knows they're done), " +
+      "hard constraints (deadlines, must-not-touch areas, dependencies), " +
+      "and pointers to related work (prior task ids, work product ids, " +
+      "PRs, docs); the assignee won't see this conversation. " +
+      "Use find_subordinates first to pick the right agent: match the " +
+      "task to their persona/domain. If NO subordinate fits the task, do " +
+      "NOT reflexively assign to a poor-fit one — call report_blocker " +
+      "(or escalate_to_humans for top-level agents) to flag the capacity " +
+      "gap so an operator can decide between hiring/repurposing an agent " +
+      "or rescoping the task. If this is a sub-task of one you're working " +
+      "on, pass parent_task_id so the parent auto-completes when all " +
+      "subtasks finish. For code tasks, pass repo_url so the assignee's " +
+      "workspace setup can clone + worktree it; for non-code tasks omit " +
+      "and put context in the description.",
     schema: {
       type: "object",
       properties: {

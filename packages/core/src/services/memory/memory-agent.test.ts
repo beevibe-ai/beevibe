@@ -21,6 +21,11 @@ function makeBlock(name: string, content: string): CoreMemoryBlock {
   };
 }
 
+// Fixed date so renderFact's `saved="YYYY-MM-DD"` attribute is predictable
+// across test runs. Override per-fact when a test wants a different date
+// (e.g. to assert the staleness annotation matches the row's created_at).
+const FIXED_CREATED_AT = new Date("2026-01-15T00:00:00Z");
+
 function makeFact(overrides: Partial<MemoryFact> = {}): MemoryFact {
   return {
     id: "fact_1",
@@ -30,7 +35,7 @@ function makeFact(overrides: Partial<MemoryFact> = {}): MemoryFact {
     content: "Uses pnpm.",
     embedding: [],
     source_session_ids: ["sess_1"],
-    created_at: new Date(),
+    created_at: FIXED_CREATED_AT,
     ...overrides,
   };
 }
@@ -103,10 +108,10 @@ describe("MemoryAgent.prepareBriefing", () => {
 
     expect(briefing.userMessagePrefix).toContain("<archival_memory>");
     expect(briefing.userMessagePrefix).toContain(
-      '<fact type="preference" scope="ic">Prefers pnpm over npm.</fact>',
+      '<fact type="preference" scope="ic" saved="2026-01-15">Prefers pnpm over npm.</fact>',
     );
     expect(briefing.userMessagePrefix).toContain(
-      '<fact type="gotcha" scope="team">DB schema is on public.</fact>',
+      '<fact type="gotcha" scope="team" saved="2026-01-15">DB schema is on public.</fact>',
     );
     expect(briefing.userMessagePrefix).not.toContain("<core_memory>");
 
@@ -198,6 +203,71 @@ describe("MemoryAgent.prepareBriefing", () => {
     expect(factStore.search).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 3 }),
     );
+  });
+});
+
+describe("MemoryAgent.searchArchival", () => {
+  it("vector-searches with the query and returns archival envelope only", async () => {
+    vi.mocked(embed.embed).mockResolvedValue([0.7, 0.8]);
+    vi.mocked(factStore.search).mockResolvedValue([
+      makeFact({ content: "Auth uses JWT.", fact_type: "decision" }),
+    ]);
+
+    const result = await agent.searchArchival("how does auth work");
+
+    expect(result).toContain("<archival_memory>");
+    expect(result).toContain("</archival_memory>");
+    expect(result).toContain(
+      '<fact type="decision" scope="ic" saved="2026-01-15">Auth uses JWT.</fact>',
+    );
+    expect(result).not.toContain("<core_memory>");
+    expect(coreMemory.read).not.toHaveBeenCalled();
+  });
+
+  it("passes the query embedding to FactStore.search with the recall floor", async () => {
+    vi.mocked(embed.embed).mockResolvedValue([0.5, 0.5]);
+    vi.mocked(factStore.search).mockResolvedValue([]);
+
+    await agent.searchArchival("retention metrics");
+
+    expect(embed.embed).toHaveBeenCalledWith("retention metrics");
+    expect(factStore.search).toHaveBeenCalledWith({
+      agent_id: "agent_1",
+      scope: ["ic", "team", "org"],
+      embedding: [0.5, 0.5],
+      limit: 10,
+      min_similarity: 0.35,
+    });
+  });
+
+  it("returns an empty envelope on zero hits (predictable shape)", async () => {
+    vi.mocked(embed.embed).mockResolvedValue([]);
+    vi.mocked(factStore.search).mockResolvedValue([]);
+
+    const result = await agent.searchArchival("nothing matches");
+
+    expect(result).toBe("<archival_memory></archival_memory>");
+  });
+
+  it("surfaces row-specific created_at in each saved=YYYY-MM-DD attribute", async () => {
+    vi.mocked(embed.embed).mockResolvedValue([]);
+    vi.mocked(factStore.search).mockResolvedValue([
+      makeFact({
+        id: "fact_old",
+        content: "Old fact.",
+        created_at: new Date("2025-08-12T00:00:00Z"),
+      }),
+      makeFact({
+        id: "fact_recent",
+        content: "Recent fact.",
+        created_at: new Date("2026-04-30T00:00:00Z"),
+      }),
+    ]);
+
+    const result = await agent.searchArchival("x");
+
+    expect(result).toContain('saved="2025-08-12">Old fact.');
+    expect(result).toContain('saved="2026-04-30">Recent fact.');
   });
 });
 
