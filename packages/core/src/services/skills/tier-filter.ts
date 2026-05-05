@@ -11,34 +11,38 @@
 
 import type { HierarchyLevel } from "../../domain/agent.js";
 
-export const UNIVERSAL_SKILLS = [
-  "beevibe-mesh-ask-responder",
-  "beevibe-post-blocker-revision",
-  "beevibe-pre-task-setup",
-  "beevibe-session-resume",
-  "beevibe-work-product-decision",
-] as const;
+export const UNIVERSAL_SKILLS = ["beevibe-pre-task-setup"] as const;
 
-// Removed during M9.5 empirical validation (Skill auto-discovery doesn't fire
-// for "always-on" triggers — body never loads, content is dead weight in
-// system prompt). Each removed skill's load-bearing content moved to a
-// system-prompt reminder injected by AgentSession via --append-system-prompt:
-//   - `beevibe-task-completion` → BEEVIBE_LIFECYCLE_REMINDER (always call
-//     update_progress before exit; leaf-vs-parent rule)
-//   - `beevibe` (umbrella) → BEEVIBE_LIFECYCLE_REMINDER (identity guard +
-//     session lifecycle); other umbrella content (tool surface, skill catalog)
-//     is already provided by Claude Code's deferred-tool list and
-//     auto-discovered <skill_listing> attachment respectively
-//   - `beevibe-memory-management` → BEEVIBE_MEMORY_REMINDER (Letta pattern:
-//     active mid-session memory updates driven by system prompt + tool
-//     descriptions, not by skill descriptions which agents don't auto-load
-//     for continuous behaviors)
+export const TEAM_ONLY_SKILLS = ["beevibe-team-mesh-negotiation"] as const;
 
-export const TEAM_ONLY_SKILLS = [
-  "beevibe-team-mesh-negotiation",
-  "beevibe-team-mesh-tool-choice",
-  "beevibe-team-task-creation",
-] as const;
+// Skills culled during M9 empirical validation. The Letta pattern won out:
+// behavioral rules that fire CONTINUOUSLY or under generic triggers belong in
+// the system prompt or tool descriptions, not in skill descriptions (Claude
+// Code's auto-discovery is selector-only — bodies don't auto-load for vague
+// triggers, and "always-on" rules in skill bodies are dead weight). Skills
+// survive only when they encode HOW to do something deeply procedural, once
+// the agent has DECIDED to do it (e.g., git workspace setup, multi-round
+// negotiation protocol).
+//
+//   - `beevibe` (umbrella) + `beevibe-task-completion` → BEEVIBE_LIFECYCLE_REMINDER
+//     (always call update_progress; leaf-vs-parent rule; deliverable handling)
+//   - `beevibe-memory-management` → BEEVIBE_MEMORY_REMINDER (active
+//     mid-session memory writeback)
+//   - `beevibe-mesh-ask-responder` → coverage by intent-block guidance from
+//     the mesh server (the spawn intent already carries `respond_ask` directive)
+//   - `beevibe-session-resume` + `beevibe-post-blocker-revision` → covered
+//     by Claude Code's `--resume` mechanism (the executor dispatches the
+//     revision/post-escalation session with --resume on the prior cli_session_id,
+//     so the agent's conversation history already shows the worktree cd and
+//     prior tool calls; no re-orientation skill needed). Empirically validated
+//     in m9-e2e scenario 14: zero session-resume invocations, worktree reused
+//     correctly on revision dispatch.
+//   - `beevibe-work-product-decision` → BEEVIBE_LIFECYCLE_REMINDER (call
+//     list_work_products first to dedupe) + work-product MCP tool descriptions
+//   - `beevibe-team-mesh-tool-choice` → coverage by tool descriptions (each
+//     mesh tool's description already says when to use it vs alternatives)
+//   - `beevibe-team-task-creation` → moved into the create_task tool
+//     description (title style, description style, no-fit → report_blocker)
 
 /**
  * Resolve a tier to its skill membership set. Returns a fresh Set each call

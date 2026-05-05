@@ -1,14 +1,17 @@
 ---
 name: beevibe-pre-task-setup
 description: >
-  Git workspace setup for any beevibe task session. Use at the start of every
-  session that has a `<task>` intent block — checks for an existing repo
-  clone, pulls the base branch if present (clone if missing), and creates a
-  fresh worktree per task on a dedicated branch. Required even for resumed
-  sessions to ensure your cwd is the right worktree. If the task has no
-  repo_url, parse the intent description for repo context. Do NOT work
-  directly in the base clone — that stays on the default branch for easy
-  pulls and is shared across tasks. Use only when running as a beevibe agent.
+  Cold-start git workspace setup for a fresh beevibe task. Use at the start
+  of a session whose intent has a `<task>` block but NO `<context
+  type="revision">` or `<context type="post_escalation">` block — i.e. the
+  first dispatch of this task. Checks for an existing repo clone, pulls
+  the base branch if present (clone if missing), and creates a fresh
+  worktree per task on a dedicated branch. Do NOT use on a resumed session
+  — the executor passes `--resume` to Claude Code on revisions, so your
+  prior turn's `cd` and worktree state are already in your conversation
+  history; just continue. Do NOT work directly in the base clone — that
+  stays on the default branch for easy pulls and is shared across tasks.
+  Use only when running as a beevibe agent.
 ---
 
 # Pre-Task Setup
@@ -63,16 +66,10 @@ You're now in a clean per-task worktree. Make changes, commit them, push the bra
 - **Clean base**: the base clone stays on the default branch for easy pulls
 - **Easy reset**: if something goes wrong, just delete the worktree and re-create
 
-## Resumed sessions
+## Resumed sessions are NOT this skill
 
-If your session resumes (revision feedback, post-escalation), the worktree from the prior session usually still exists. Verify:
-
-```bash
-ls ~/.beevibe/workspaces/<agent_id>/<repo_name>-<task_id_short>/
-```
-
-If yes, `cd` into it. If missing (rare — manual cleanup, machine reset), re-create per steps 1-4.
+If your spawn intent contains `<context type="revision">` or `<context type="post_escalation">`, the executor used `--resume` to spawn you, so your prior turn's `cd <worktree>` and tool calls are already in your conversation history. Don't re-clone, don't re-worktree, don't re-invoke this skill — just continue from where you left off.
 
 ## Non-code tasks
 
-If the task is research/drafting/etc. with no `repo_url`, this skill mostly doesn't apply. You can work directly in your workspace dir without a worktree. Move to the relevant scenario skill (e.g., `beevibe-work-product-decision` when ready to record a deliverable).
+If the task is research/drafting/etc. with no `repo_url`, this skill mostly doesn't apply. You can work directly in your workspace dir without a worktree. When you produce a deliverable, follow the deliverable-handling rule in your `<beevibe_lifecycle>` reminder (call `list_work_products(task_id)` first to dedupe, then `create_work_product` or `update_work_product`).

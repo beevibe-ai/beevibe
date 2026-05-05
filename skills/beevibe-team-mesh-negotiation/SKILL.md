@@ -16,19 +16,36 @@ You're either initiating a negotiation, responding to one, or handling its escal
 
 ## Pre-flight: pick the right tool first
 
-If you're not sure `negotiate` is the right tool, see `beevibe-team-mesh-tool-choice` first. Common confusions:
+`negotiate` is for situations where there's STAKE on both sides and resolving requires back-and-forth. Common confusions:
 
 - For a one-shot question → use `ask` (no rounds, no stake)
-- For status queries → use `check_work_status` (DB read)
+- For status queries → use `check_work_status` (DB read; no session spawn)
 - For blocked work needing parent help → use `report_blocker`
+- For downward delegation to a subordinate → use `create_task`
 
-Use `negotiate` when there's STAKE on both sides and the resolution requires back-and-forth.
+If none of those fit and the disagreement is real, `negotiate` is correct.
 
 ---
 
 ## Initiator side (you call `negotiate`)
 
 You're proposing something to a peer. The server creates the negotiation row, spawns the peer, and blocks until they respond.
+
+### Link to your task
+
+If your negotiation pertains to a specific task you're working on (the common case — you're negotiating WHILE making progress on a task), pass `task_id` to `negotiate`:
+
+```
+negotiate(peer_id, proposal, task_id="<your_current_task_id>")
+```
+
+This stamps the negotiation row's `task_id` so:
+
+- If escalated, the human reviewer sees which task is blocked
+- Post-escalation re-dispatch finds your existing task to continue (vs creating a synthetic one)
+- Other agents and the audit log can correlate the negotiation with the task
+
+Omit `task_id` only when negotiating about something orthogonal to your current task (rare — usually means you should reconsider whether `negotiate` is the right tool).
 
 ### First proposal
 
@@ -57,6 +74,30 @@ Iterate toward something that addresses their signal while you keep YOUR non-neg
 After 2-3 rounds, if the peer's counter addresses your concerns, accept. Don't max out rounds for the sake of "winning" — burning turns has cost (tokens, time, peer capacity).
 
 `respond_negotiate(neg_id, 'accept', "Agreed. Proceeding with <chosen plan>.")` — terminal; the negotiation is closed.
+
+After accept returns, immediately persist the decision so future sessions don't re-litigate:
+
+```
+save_memory("Negotiation about <topic> with <peer> resolved with <chosen approach> because <rationale>.", "decision")
+```
+
+Then continue your task with the agreed plan.
+
+### When to reject
+
+`reject` is rare and terminal — use it only when no version of the proposal is workable from your side and there is no path forward via counter. Examples: the proposal would violate a hard constraint you can't move (compliance, capacity, ownership boundary) AND the peer's framing leaves no room to refactor it.
+
+If you find yourself reaching for `reject`, first ask: would a counter that surfaces my hard constraint move the conversation forward? If yes, counter. If no:
+
+```
+respond_negotiate(neg_id, 'reject', "Cannot proceed because <hard constraint>. Suggest <alternative path / different peer / different tool>.")
+```
+
+After reject:
+
+1. `save_memory("Rejected negotiation about <topic> with <peer> because <hard constraint>. Suggested <alternative>.", "decision")`
+2. If the rejection blocks YOUR task and you have no alternative path, call `report_blocker` so your parent can revise scope.
+3. Otherwise continue work along the alternative path.
 
 ### When to escalate (BEFORE max_rounds)
 
