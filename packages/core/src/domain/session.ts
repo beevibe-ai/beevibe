@@ -30,9 +30,12 @@ export interface SessionUsage {
    * Tokens read from cache (cache hit). Charged at ~0.1× base input rate.
    * Captured from Anthropic API's usage object via M9.8.
    *
-   * Cache hit ratio (cache_read_input_tokens / input_tokens) is the
-   * success metric for M9.4's briefing restructure — target >0.7 on the
-   * second-onward session of an agent within a 5min window.
+   * The three input counters are DISJOINT slices of the same prompt:
+   *   total_input = input_tokens + cache_creation_input_tokens + cache_read_input_tokens
+   *
+   * Cache hit ratio = cache_read / total_input. Target >0.7 on the
+   * second-onward session of an agent within a 5min cache window
+   * (M9.4 briefing restructure).
    */
   cache_read_input_tokens?: number;
   model?: string;

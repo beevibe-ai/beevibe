@@ -350,16 +350,26 @@ async function scenarioNine_cacheHitRatio(
       `cache_creation=${usage.cache_creation_input_tokens}`,
   );
 
+  // Anthropic's three input counters are DISJOINT slices of the same
+  // prompt: input_tokens (new, uncached) + cache_creation (written to
+  // cache) + cache_read (read from cache) = total input. Cache hit ratio
+  // = cache_read / total. The M9.4 target is >0.7 — most of a stable
+  // prompt should land via cache_read on the second-onward session.
   const inputTokens = usage.input_tokens ?? 0;
+  const cacheCreation = usage.cache_creation_input_tokens ?? 0;
   const cacheRead = usage.cache_read_input_tokens ?? 0;
-  assert(inputTokens > 0, `session_2 input_tokens=0 (CLI usage parse may be broken)`);
-  const ratio = cacheRead / inputTokens;
-  log(`  cache hit ratio = ${cacheRead}/${inputTokens} = ${ratio.toFixed(3)}`);
+  const totalInput = inputTokens + cacheCreation + cacheRead;
+  assert(totalInput > 0, `session_2 has zero total input tokens (CLI usage parse may be broken)`);
+  const ratio = cacheRead / totalInput;
+  log(
+    `  cache hit ratio = ${cacheRead} / (${inputTokens} + ${cacheCreation} + ${cacheRead}) ` +
+      `= ${cacheRead} / ${totalInput} = ${(ratio * 100).toFixed(1)}%`,
+  );
   assert(
     ratio > CACHE_HIT_RATIO_THRESHOLD,
-    `cache hit ratio ${ratio.toFixed(3)} below threshold ${CACHE_HIT_RATIO_THRESHOLD} — M9.4 briefing restructure not delivering`,
+    `cache hit ratio ${(ratio * 100).toFixed(1)}% below threshold ${(CACHE_HIT_RATIO_THRESHOLD * 100).toFixed(0)}% — M9.4 briefing restructure not delivering`,
   );
-  log(`  ✓ cache hit ratio above threshold (target >${CACHE_HIT_RATIO_THRESHOLD})`);
+  log(`  ✓ cache hit ratio above threshold (target >${(CACHE_HIT_RATIO_THRESHOLD * 100).toFixed(0)}%)`);
 }
 
 // ───────────────────────── main ─────────────────────────
