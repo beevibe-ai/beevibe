@@ -1050,15 +1050,14 @@ const bvUChat: Scenario = async (deps, stack) => {
 
   await client.connect(transport);
 
-  // Verify briefing in instructions.
+  // Verify briefing in instructions. Post-M9.4, the archival_memory
+  // wrapper is omitted when the agent has zero facts (avoid empty XML
+  // pollution); reviewer is fresh, so we only check <core_memory>. The
+  // save_memory round-trip below is what validates archival end-to-end.
   const instructions = client.getInstructions();
   assert(
     typeof instructions === "string" && instructions.includes("<core_memory>"),
     `instructions missing <core_memory>: ${instructions?.slice(0, 80)}`,
-  );
-  assert(
-    instructions.includes("<archival_memory>"),
-    `instructions missing <archival_memory>`,
   );
 
   // Verify Mcp-Session-Id was assigned.

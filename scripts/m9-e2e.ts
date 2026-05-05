@@ -371,18 +371,18 @@ async function scenarioOne_skillsInWorkspace(
   );
   const dirs = readdirSync(skillsDir).sort();
   log(`  found ${dirs.length} skills: ${dirs.join(", ")}`);
-  // IC tier: 5 universal skills. Three "always-on" skills removed in M9
-  // empirical validation (their content moved into BEEVIBE_LIFECYCLE_REMINDER
-  // + BEEVIBE_MEMORY_REMINDER injected by AgentSession into the system
-  // prompt): beevibe (umbrella), beevibe-task-completion, beevibe-memory-
-  // management.
-  assert(dirs.length === 5, `expected 5 IC-tier skills, got ${dirs.length}`);
+  // IC tier: 1 universal skill (beevibe-pre-task-setup). Resumed sessions
+  // use Claude Code's --resume so the prior turn's cwd + tool calls are in
+  // conversation history — no resume skill needed (validated in scenario 14:
+  // zero re-invocations, worktree reused correctly). See tier-filter.ts for
+  // the full skill-removal rationale.
+  assert(dirs.length === 1, `expected 1 IC-tier skill, got ${dirs.length}`);
   assert(dirs.includes("beevibe-pre-task-setup"), "pre-task-setup skill missing");
   assert(
     !dirs.includes("beevibe-team-mesh-negotiation"),
     "team-only skill leaked into IC workspace",
   );
-  log("  ✓ IC tier sees 5 universal skills, no team-only leakage");
+  log("  ✓ IC tier sees 1 universal skill, no team-only leakage");
 }
 
 async function scenarioSix_oneSessionPerTask(
@@ -586,15 +586,27 @@ async function main(): Promise<void> {
     // Scenario 9: cache_read_input_tokens > 0 on second session.
     await scenarioNine_cacheHitRatio(deps, agentId);
 
-    // ── Scenario 10: skill firing — beevibe-pre-task-setup ──
-    log("→ Scenario 10: dispatch task with repo_url; check pre-task-setup skill firing");
+    // ── Scenario 10: code task with repo_url — pre-task-setup auto-fire ──
+    // Natural multi-step git task: edit + commit on a per-task branch.
+    // Doing this WITHOUT the skill is awkward (where do you clone? what
+    // branch name?), so the skill's "clone → worktree → branch" protocol
+    // becomes the natural path. We assert two things:
+    //   (a) the Skill tool fired with skill="beevibe-pre-task-setup"
+    //       (auto-discovery actually triggered on this trigger)
+    //   (b) a Hello-World-* worktree exists in the agent workspace
+    //       (skill body's naming convention was followed)
+    // Skipped skill / ad-hoc clone-to-/tmp would fail BOTH.
+    log("→ Scenario 10: code task with repo_url; assert pre-task-setup auto-fires");
     const codeTask = await dispatchTask(
       deps,
       owner.id,
       agentId,
-      "Inspect the repo at the given URL — what files are in the repo root? List them.",
+      "Append the literal line 'edited by m9 smoke' to the end of the " +
+        "README in this repo, commit the change on a dedicated per-task " +
+        "branch, then report the branch name and commit SHA in your " +
+        "update_progress summary.",
       {
-        title: "m9 smoke — code task with repo_url",
+        title: "m9 smoke — edit README, commit on per-task branch",
         repo_url: "https://github.com/octocat/Hello-World.git",
       },
     );
@@ -609,23 +621,47 @@ async function main(): Promise<void> {
       `task ${codeTask.id} → done|failed`,
     );
 
-    // ── Scenario 11: skill firing — beevibe-work-product-decision ──
-    log("→ Scenario 11: deliverable-shaped task; check work-product-decision firing");
+    // (a) skill auto-fired
+    const codeWsDir = join(workspaceRoot, agentId);
+    const codeInv = await countSkillInvocations(codeWsDir);
+    const ptsCount = codeInv.perSkill["beevibe-pre-task-setup"] ?? 0;
+    log(`  pre-task-setup invocations after scenario 10: ${ptsCount}`);
+    assert(
+      ptsCount >= 1,
+      `expected pre-task-setup to auto-fire on a code task with repo_url; got 0 invocations (skill description not selecting reliably for this trigger?)`,
+    );
+
+    // (b) worktree convention followed
+    const codeWorktrees = readdirSync(codeWsDir).filter((d) =>
+      d.startsWith("Hello-World-"),
+    );
+    assert(
+      codeWorktrees.length >= 1,
+      `expected ≥1 Hello-World-* worktree after scenario 10; got ${codeWorktrees.length}`,
+    );
+    log(`  ✓ pre-task-setup auto-fired (${ptsCount}x); worktree(s): ${codeWorktrees.join(", ")}`);
+
+    // ── Scenario 11: deliverable handling via BEEVIBE_LIFECYCLE_REMINDER §4 ──
+    // Self-contained analysis task — no repo / file deps. Exercises:
+    //   - list_work_products(task_id) first (dedup check)
+    //   - create_work_product with type='analysis'
+    // (work-product-decision skill was removed post-M9; guidance lives in
+    // BEEVIBE_LIFECYCLE_REMINDER §4 + the work-product MCP tool descriptions.)
+    log("→ Scenario 11: deliverable-shaped task; expect list_work_products + create_work_product");
     const wpTask = await dispatchTask(
       deps,
       owner.id,
       agentId,
-      "Read the README.md inside the cloned Hello-World repo (already on disk from " +
-        "the previous task) and record what you find as an analysis-type work-product " +
-        "for this task. The summary should describe the README contents in 1-2 " +
-        "sentences. Always check existing work-products for this task first to avoid " +
-        "duplicates.",
+      "Compose a 2-sentence analysis answering 'why does automated testing " +
+        "matter in software projects?' and record it as a deliverable on " +
+        "this task so the human reviewer can find it from the task page. " +
+        "Make sure you don't create a duplicate if a similar deliverable " +
+        "already exists for this task.",
       {
-        title: "m9 smoke — record analysis as work-product",
-        repo_url: "https://github.com/octocat/Hello-World.git",
+        title: "m9 smoke — record short analysis as work-product",
       },
     );
-    log(`  task=${wpTask.id} (expects work-product-decision skill to fire)`);
+    log(`  task=${wpTask.id} (expects list_work_products → create_work_product → update_progress)`);
     await pollUntil(
       async () => {
         const t = await deps.tasks.findById(wpTask.id);
@@ -636,14 +672,28 @@ async function main(): Promise<void> {
       `task ${wpTask.id} → done|failed`,
     );
 
-    // ── Scenario 12: skill firing — beevibe-mesh-ask-responder ──
-    // Need a SECOND agent (the ask target). Provision one mid-test, then
-    // dispatch a task to our existing agent that requires asking the new
-    // one. Both agents must be team-tier or higher for `ask` to work in
-    // the existing agent's tool set... wait, IC has respond_ask too. So
-    // the asker must be team (has `ask`), and the target can be IC.
-    // For simplicity here, both can be team — `ask` works peer-to-peer.
-    log("→ Scenario 12: provision peer agent; ask flow → mesh-ask-responder firing");
+    const wpRows = (
+      await deps.pool.query<{ type: string }>(
+        `SELECT type FROM work_product WHERE task_id = $1`,
+        [wpTask.id],
+      )
+    ).rows;
+    assert(
+      wpRows.length === 1,
+      `expected exactly 1 work_product row for ${wpTask.id} (no dupes); got ${wpRows.length}`,
+    );
+    assert(
+      wpRows[0]!.type === "analysis",
+      `expected type='analysis'; got '${wpRows[0]!.type}'`,
+    );
+    log("  ✓ exactly one analysis work-product created (lifecycle reminder §4 dedup worked)");
+
+    // ── Scenario 12: mesh ask flow via tool descriptions + intent block ──
+    // (mesh-ask-responder skill removed post-M9 — peer behavior is driven
+    // by the spawn intent's <context type="ask_response"> block plus the
+    // respond_ask tool description telling the peer to call respond_ask.)
+    // Asker must be team-tier (has `ask`); target can be IC.
+    log("→ Scenario 12: provision peer agent; ask flow → respond_ask (no skill)");
     const peerOwner = owner; // share owner
     const { agentId: peerAgentId } = await provisionAgentNoWorkaround(deps, peerOwner.id, "m9-peer");
     log(`  peer agent=${peerAgentId}`);
@@ -668,9 +718,9 @@ async function main(): Promise<void> {
       deps,
       owner.id,
       askerAgent.id,
-      `Use the mcp__beevibe__ask tool to ask agent_id="${peerAgentId}" the literal ` +
-        `question "what is your agent_id?". When you receive the answer, include it ` +
-        `verbatim in your update_progress summary.`,
+      `You need a one-shot answer from a peer agent. Reach out to agent_id="${peerAgentId}" ` +
+        `with this exact question: "Please reply with the literal string 'peer-ack-v1'." ` +
+        `When you receive their answer, include it verbatim in your update_progress summary.`,
       { title: "m9 smoke — ask peer for their id" },
     );
     log(`  task=${askTask.id} (asker → peer)`);
@@ -704,12 +754,12 @@ async function main(): Promise<void> {
       deps,
       owner.id,
       askerAgent.id,
-      `You need to coordinate a project split with peer agent_id="${negPeer.id}". ` +
-        `Propose: you handle the API changes; the peer handles the UI updates, both ` +
-        `landing by Friday. Use mcp__beevibe__negotiate(peer_id="${negPeer.id}", ` +
-        `proposal="...") to start. If the peer counters, work toward a mutually ` +
-        `acceptable plan over up to 3 rounds. Then update_progress with the final ` +
-        `agreement (or failure reason).`,
+      `You need to coordinate a work split with peer agent_id="${negPeer.id}" — ` +
+        `there's stake on both sides and the peer is likely to push back on your ` +
+        `initial proposal. Propose: you handle the API changes; the peer handles ` +
+        `the UI updates, both landing by Friday. Work toward a mutually acceptable ` +
+        `plan with the peer over up to 3 rounds. Once you reach agreement (or fail), ` +
+        `update_progress with the final outcome.`,
       { title: "m9 smoke — negotiate split with team peer" },
     );
     log(`  task=${negTask.id} (asker → negotiation peer)`);
@@ -722,6 +772,176 @@ async function main(): Promise<void> {
       TASK_DEADLINE_MS,
       `task ${negTask.id} → done|failed`,
     );
+
+    // ── Scenario 14: revision flow — --resume reuses existing worktree ──
+    // Validates that the resumed session reuses the existing worktree from
+    // the original run instead of creating a duplicate. The executor passes
+    // --resume on revision dispatches, so the agent's conversation history
+    // already shows the prior `cd <worktree>`; no re-orientation skill is
+    // needed (and none is shipped — see tier-filter.ts).
+    log("→ Scenario 14: revision flow — --resume reuses existing worktree");
+
+    const wsDir = join(workspaceRoot, agentId);
+    const worktreesBefore = readdirSync(wsDir).filter((d) =>
+      d.startsWith("Hello-World-"),
+    );
+    log(`  Hello-World worktrees BEFORE revision: ${worktreesBefore.length} (${worktreesBefore.join(", ")})`);
+    assert(
+      worktreesBefore.length >= 1,
+      `precondition failed: expected ≥1 Hello-World worktree from scenario 10/11, got ${worktreesBefore.length}`,
+    );
+
+    log(`  setting codeTask=${codeTask.id} to needs_revision with revision context`);
+    await deps.tasks.update(codeTask.id, {
+      status: "needs_revision",
+      next_dispatch_context: {
+        kind: "revision",
+        feedback: "Re-list the files in the repo root, but include their sizes too.",
+        source: "human",
+        from_status: "review",
+      },
+    });
+
+    const sessionCountBefore = Number(
+      (
+        await deps.pool.query<{ count: string }>(
+          `SELECT COUNT(*)::text AS count FROM session WHERE task_id = $1`,
+          [codeTask.id],
+        )
+      ).rows[0]!.count,
+    );
+    log(`  session count for codeTask BEFORE revision: ${sessionCountBefore}`);
+
+    log("  waiting for executor to dispatch resumed session…");
+    await pollUntil(
+      async () => {
+        const r = await deps.pool.query<{ count: string }>(
+          `SELECT COUNT(*)::text AS count FROM session WHERE task_id = $1`,
+          [codeTask.id],
+        );
+        return Number(r.rows[0]!.count) > sessionCountBefore ? true : null;
+      },
+      (v) => v === true,
+      TASK_DEADLINE_MS,
+      `revision dispatch: new session for ${codeTask.id}`,
+    );
+
+    log("  waiting for resumed session to terminate…");
+    await pollUntil(
+      async () => {
+        const t = await deps.tasks.findById(codeTask.id);
+        return t && (t.status === "done" || t.status === "failed") ? t : null;
+      },
+      (t) => t.status === "done" || t.status === "failed",
+      TASK_DEADLINE_MS,
+      `revised codeTask ${codeTask.id} → done|failed`,
+    );
+
+    const worktreesAfter = readdirSync(wsDir).filter((d) =>
+      d.startsWith("Hello-World-"),
+    );
+    log(`  Hello-World worktrees AFTER revision: ${worktreesAfter.length} (${worktreesAfter.join(", ")})`);
+    assert(
+      worktreesAfter.length === worktreesBefore.length,
+      `expected resumed session to REUSE existing worktree; before=${worktreesBefore.length} after=${worktreesAfter.length}`,
+    );
+    log("  ✓ worktree reused on resume (no duplicate)");
+
+    // ── Scenario 15: memory tool auto-use + cross-session retrieval ──
+    // Tests whether the new memory tool descriptions + BEEVIBE_MEMORY_REMINDER
+    // drive the agent to USE save_memory on its own — without the prompt
+    // ever naming the tool. The agent must:
+    //   (a) recognize the announcement carries a memory-worthy fact (a
+    //       fabricated codename + cross-session relevance hint), and
+    //   (b) pick the right tier (archival via save_memory, not core).
+    // Phase B (fresh session) then validates the round-trip: agent can
+    // only answer from successful memory persistence + retrieval. The
+    // codename is fabricated so prior-knowledge guessing isn't an option.
+    log("→ Scenario 15: memory tool auto-use + cross-session retrieval");
+
+    const memAgentRow = await provisionAgentNoWorkaround(deps, owner.id, "m9-mem");
+    log(`  memory test agent=${memAgentRow.agentId}`);
+
+    log("  phase A — write: present a memory-worthy announcement (no tool named)");
+    const writeTask = await dispatchTask(
+      deps,
+      owner.id,
+      memAgentRow.agentId,
+      "You're going to receive an internal project announcement that may " +
+        "be relevant to future work. Read it carefully, then call " +
+        "update_progress(done) once you've processed it.\n\n" +
+        "Announcement: 'Project Q4-2026 has been internally codenamed " +
+        "HORIZON-FOX. The codename was approved by the steering committee " +
+        "on 2026-04-15. Going forward, refer to the project by this " +
+        "codename in all internal communications.'",
+      { title: "m9 memory write — process a project announcement" },
+    );
+    await pollUntil(
+      async () => {
+        const t = await deps.tasks.findById(writeTask.id);
+        return t && (t.status === "done" || t.status === "failed") ? t : null;
+      },
+      (t) => t.status === "done" || t.status === "failed",
+      TASK_DEADLINE_MS,
+      `write task ${writeTask.id} → done|failed`,
+    );
+
+    const factRows = (
+      await deps.pool.query<{ fact_type: string; content: string }>(
+        `SELECT fact_type, content FROM memory_fact
+         WHERE agent_id = $1 AND content ILIKE '%HORIZON-FOX%'`,
+        [memAgentRow.agentId],
+      )
+    ).rows;
+    assert(
+      factRows.length >= 1,
+      `expected agent to save_memory a fact mentioning HORIZON-FOX without being told; got ${factRows.length} matching rows (memory tool descriptions / BEEVIBE_MEMORY_REMINDER not driving auto-use?)`,
+    );
+    log(`  ✓ agent auto-saved ${factRows.length} fact(s) mentioning HORIZON-FOX`);
+    log(`    fact_type='${factRows[0]!.fact_type}' (agent's pick — any non-empty value passes)`);
+
+    // Tier check: agent should NOT have written this one-shot fact into
+    // core memory (per BEEVIBE_MEMORY_REMINDER's promotion ladder).
+    const coreLeak = (
+      await deps.pool.query<{ count: string }>(
+        `SELECT COUNT(*)::text AS count FROM core_memory_block
+         WHERE agent_id = $1 AND content ILIKE '%HORIZON-FOX%'`,
+        [memAgentRow.agentId],
+      )
+    ).rows[0]!.count;
+    assert(
+      Number(coreLeak) === 0,
+      `agent leaked one-shot fact into core_memory_block (expected save_memory only, no update_core_memory); ${coreLeak} core blocks mention HORIZON-FOX`,
+    );
+    log("  ✓ tier choice correct: archival only, no core-memory pollution");
+
+    log("  phase B — recall: fresh session asks for the codename (no hint)");
+    const recallTask = await dispatchTask(
+      deps,
+      owner.id,
+      memAgentRow.agentId,
+      "What is the internal codename for project Q4-2026? Reply with just " +
+        "the codename (a single hyphenated word) in your update_progress " +
+        "summary.",
+      { title: "m9 memory recall — query Q4-2026 codename" },
+    );
+    const recalled = await pollUntil(
+      async () => {
+        const t = await deps.tasks.findById(recallTask.id);
+        return t && (t.status === "done" || t.status === "failed") ? t : null;
+      },
+      (t) => t.status === "done" || t.status === "failed",
+      TASK_DEADLINE_MS,
+      `recall task ${recallTask.id} → done|failed`,
+    );
+
+    const recallSummary = recalled.result_summary ?? "";
+    log(`  recall summary (truncated): ${recallSummary.slice(0, 200)}`);
+    assert(
+      /HORIZON-FOX/i.test(recallSummary),
+      `expected recall summary to contain 'HORIZON-FOX' (round-trip via briefing recall or search_context); got: ${recallSummary}`,
+    );
+    log("  ✓ agent retrieved the fact across sessions (briefing or search_context)");
 
     // ── Survey: ALL skill invocations across all sessions of all agents ──
     log("→ Survey: skill auto-discovery firing across all sessions, all agents");
@@ -752,7 +972,7 @@ async function main(): Promise<void> {
     ]);
     log(`  api exit=${apiCode} exec exit=${execCode}`);
 
-    log("\n═══ ✓ m9-e2e passed (scenarios 1, 6, 9) ═══");
+    log("\n═══ ✓ m9-e2e passed (scenarios 1, 6, 9, 10-15) ═══");
     log("\nUnit-test coverage for the others:");
     log("  - sync.test.ts (10): mtime/size diff, namespace safety, idempotent re-run");
     log("  - install-skills.test.ts (11): validation + install + idempotency + namespace");
