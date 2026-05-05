@@ -609,21 +609,99 @@ async function main(): Promise<void> {
       `task ${codeTask.id} → done|failed`,
     );
 
-    // Now survey ALL skill invocations across the agent's sessions.
-    log("→ Survey: skill auto-discovery firing across all sessions");
-    const workspaceDir = join(workspaceRoot, agentId);
-    const inv = await countSkillInvocations(workspaceDir);
-    log(`  total Skill tool calls: ${inv.totalSkillCalls}`);
-    if (inv.totalSkillCalls === 0) {
-      log("  ⚠ Zero Skill invocations across all 3 sessions");
-      log("    → confirms Claude Code's skill auto-discovery is conservative");
-      log("    → skills with universal triggers (pre-task-setup) likely not firing");
-      log("    → recommend: validate scenario-specific skills next; consider");
-      log("      promoting pre-task-setup content to system-prompt reminder if it");
-      log("      proves dead weight here too");
-    } else {
-      log("  per-skill invocation counts:");
+    // ── Scenario 11: skill firing — beevibe-work-product-decision ──
+    log("→ Scenario 11: deliverable-shaped task; check work-product-decision firing");
+    const wpTask = await dispatchTask(
+      deps,
+      owner.id,
+      agentId,
+      "Read the README.md inside the cloned Hello-World repo (already on disk from " +
+        "the previous task) and record what you find as an analysis-type work-product " +
+        "for this task. The summary should describe the README contents in 1-2 " +
+        "sentences. Always check existing work-products for this task first to avoid " +
+        "duplicates.",
+      {
+        title: "m9 smoke — record analysis as work-product",
+        repo_url: "https://github.com/octocat/Hello-World.git",
+      },
+    );
+    log(`  task=${wpTask.id} (expects work-product-decision skill to fire)`);
+    await pollUntil(
+      async () => {
+        const t = await deps.tasks.findById(wpTask.id);
+        return t && (t.status === "done" || t.status === "failed") ? t : null;
+      },
+      (t) => t.status === "done" || t.status === "failed",
+      TASK_DEADLINE_MS,
+      `task ${wpTask.id} → done|failed`,
+    );
+
+    // ── Scenario 12: skill firing — beevibe-mesh-ask-responder ──
+    // Need a SECOND agent (the ask target). Provision one mid-test, then
+    // dispatch a task to our existing agent that requires asking the new
+    // one. Both agents must be team-tier or higher for `ask` to work in
+    // the existing agent's tool set... wait, IC has respond_ask too. So
+    // the asker must be team (has `ask`), and the target can be IC.
+    // For simplicity here, both can be team — `ask` works peer-to-peer.
+    log("→ Scenario 12: provision peer agent; ask flow → mesh-ask-responder firing");
+    const peerOwner = owner; // share owner
+    const { agentId: peerAgentId } = await provisionAgentNoWorkaround(deps, peerOwner.id, "m9-peer");
+    log(`  peer agent=${peerAgentId}`);
+    // Dispatch to the ORIGINAL agent (which is IC tier; ICs DON'T have
+    // `ask`). We need a TEAM agent to call ask. Provision a third agent
+    // that's team-tier to be the asker.
+    const { agent: askerAgent } = await provisionAgent(
+      {
+        agentRepo: deps.agents,
+        coreMemoryRepo: deps.coreMemoryRepo,
+      },
+      {
+        id: makeAgentId(),
+        name: "m9-asker",
+        owner_id: owner.id,
+        hierarchy_level: "team",
+        runtime_config: DEFAULT_RUNTIME_CONFIG,
+      },
+    );
+    log(`  asker agent=${askerAgent.id} (team-tier, has 'ask' tool)`);
+    const askTask = await dispatchTask(
+      deps,
+      owner.id,
+      askerAgent.id,
+      `Use the mcp__beevibe__ask tool to ask agent_id="${peerAgentId}" the literal ` +
+        `question "what is your agent_id?". When you receive the answer, include it ` +
+        `verbatim in your update_progress summary.`,
+      { title: "m9 smoke — ask peer for their id" },
+    );
+    log(`  task=${askTask.id} (asker → peer)`);
+    await pollUntil(
+      async () => {
+        const t = await deps.tasks.findById(askTask.id);
+        return t && (t.status === "done" || t.status === "failed") ? t : null;
+      },
+      (t) => t.status === "done" || t.status === "failed",
+      TASK_DEADLINE_MS,
+      `task ${askTask.id} → done|failed`,
+    );
+
+    // ── Survey: ALL skill invocations across all sessions of all agents ──
+    log("→ Survey: skill auto-discovery firing across all sessions, all agents");
+    const allInvocations: Record<string, number> = {};
+    for (const aid of [agentId, peerAgentId, askerAgent.id]) {
+      const wsDir = join(workspaceRoot, aid);
+      const inv = await countSkillInvocations(wsDir);
+      log(`  ${aid}: ${inv.totalSkillCalls} Skill calls`);
       for (const [name, count] of Object.entries(inv.perSkill)) {
+        log(`    ${name}: ${count}`);
+        allInvocations[name] = (allInvocations[name] ?? 0) + count;
+      }
+    }
+    log("");
+    log(`  Aggregate per-skill invocations:`);
+    if (Object.keys(allInvocations).length === 0) {
+      log(`    (none — all skills appear to be dead weight)`);
+    } else {
+      for (const [name, count] of Object.entries(allInvocations).sort()) {
         log(`    ${name}: ${count}`);
       }
     }
