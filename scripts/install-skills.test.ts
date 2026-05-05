@@ -96,7 +96,7 @@ describe("validateSkill", () => {
 
 describe("installSkills", () => {
   it("installs valid skills into the target dir", async () => {
-    await writeSkill("beevibe");
+    await writeSkill("beevibe-mesh-ask-responder");
     await writeSkill("beevibe-pre-task-setup");
 
     const report = await installSkills({
@@ -107,14 +107,14 @@ describe("installSkills", () => {
 
     expect(report.validated).toBe(true);
     expect(report.validationErrors).toEqual([]);
-    expect(report.syncResult?.added.sort()).toEqual(["beevibe", "beevibe-pre-task-setup"]);
+    expect(report.syncResult?.added.sort()).toEqual(["beevibe-mesh-ask-responder", "beevibe-pre-task-setup"]);
 
     const dirs = await fs.readdir(targetDir);
-    expect(dirs.sort()).toEqual(["beevibe", "beevibe-pre-task-setup"]);
+    expect(dirs.sort()).toEqual(["beevibe-mesh-ask-responder", "beevibe-pre-task-setup"]);
   });
 
   it("idempotent re-run — no changes when source unchanged", async () => {
-    await writeSkill("beevibe");
+    await writeSkill("beevibe-mesh-ask-responder");
 
     await installSkills({ sourceDir, targetDir, log: (m) => logs.push(m) });
     logs = [];
@@ -131,7 +131,7 @@ describe("installSkills", () => {
   });
 
   it("does NOT touch the user's other personal skills (different prefix)", async () => {
-    await writeSkill("beevibe");
+    await writeSkill("beevibe-mesh-ask-responder");
 
     // Pre-create a non-beevibe skill in target — simulating the user's own.
     await fs.mkdir(path.join(targetDir, "frontend-design"), { recursive: true });
@@ -145,7 +145,7 @@ describe("installSkills", () => {
   });
 
   it("aborts on validation failure (no sync happens)", async () => {
-    await writeSkill("beevibe");
+    await writeSkill("beevibe-mesh-ask-responder");
     // Make a malformed beevibe-pre-task-setup (one of ALL_SKILLS).
     const badDir = path.join(sourceDir, "beevibe-pre-task-setup");
     await fs.mkdir(badDir, { recursive: true });
@@ -167,7 +167,7 @@ describe("installSkills", () => {
   });
 
   it("dry-run validates but does not write", async () => {
-    await writeSkill("beevibe");
+    await writeSkill("beevibe-mesh-ask-responder");
 
     const report = await installSkills({
       sourceDir,

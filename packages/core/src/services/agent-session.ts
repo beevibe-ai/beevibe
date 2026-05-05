@@ -12,28 +12,31 @@ import type { SessionRepository } from "../ports/session-repo.js";
 import type { MemoryAgent } from "./memory/memory-agent.js";
 
 /**
- * Always-on lifecycle baseline for agent-spawned task sessions (M9.5+
- * empirical fix). Skill DESCRIPTIONS in Claude Code's auto-discovery block
- * are passive selectors — the agent invokes the body only when it
- * recognizes a description match. For trivial tasks ("reply with X") the
- * agent answers and ends turn without consulting any skill, including the
- * `beevibe-task-completion` skill that says "always call update_progress".
+ * Always-on baseline injected into the system prompt for every agent-
+ * spawned task session (M9.5+ empirical fix). Skill DESCRIPTIONS in Claude
+ * Code's auto-discovery block are passive selectors — the agent invokes
+ * the body only when it recognizes a specific intent-shape match. For
+ * trivial tasks ("reply with X") and continuous behaviors ("manage memory
+ * actively"), the agent never invokes any skill. Lifecycle + memory
+ * management therefore live here, not as skills.
  *
- * The fix: inject the load-bearing lifecycle directives directly into the
- * system prompt via `--append-system-prompt`. This guarantees the agent
- * sees the rules without needing to invoke a Skill tool. Companion skills
- * remain lazy-loaded for scenario-specific deep protocols (mesh negotiation,
- * post-blocker revision, work-product decision tree, etc.) — those genuinely
- * benefit from the on-demand load model.
+ * BEEVIBE_LIFECYCLE_REMINDER: identity + session lifecycle (always call
+ * update_progress before exit; leaf-vs-parent rule).
  *
- * Cache-stable: identical text for every agent. Adds ~280 tokens to the
- * system prompt; once cached (≥4096 token threshold for Opus 4.7), they're
- * read at 0.1× rate.
+ * BEEVIBE_MEMORY_REMINDER: Letta-pattern active memory management — the
+ * Letta team's empirical finding (echoed by their docs) is that
+ * memory-tool descriptions PLUS system-prompt instructions to use them
+ * actively are what drives mid-session memory updates. We adopt the same
+ * shape: tool descriptions tell the agent WHAT each tool does; this
+ * reminder tells the agent WHEN and WHY to invoke them.
  *
- * Keep in sync with skills/beevibe/SKILL.md body — same lifecycle, two
- * locations (this constant ≡ canonical injection; SKILL.md ≡ documentation
- * that Claude Code's metadata block surfaces for human readers / Skill tool
- * invocations).
+ * Cache-stable: identical text for every agent. Adds ~500 tokens combined;
+ * once cached (≥4096 token threshold for Opus 4.7), reads at 0.1× rate.
+ *
+ * Companion skills remain lazy-loaded for scenario-specific deep protocols
+ * (mesh negotiation, post-blocker revision, work-product decision tree,
+ * git workspace setup, etc.) — those have specific intent-shape triggers
+ * the agent recognizes.
  */
 const BEEVIBE_LIFECYCLE_REMINDER = `<beevibe_lifecycle>
 You are a beevibe agent (BEEVIBE_AGENT_ID env identifies you). Critical
@@ -55,10 +58,47 @@ behavioral rules for every task session:
    auto-completes the parent when all subtasks settle.
 
 4. For multi-step protocols (work-product decisions, mesh negotiation,
-   git workspace setup, post-blocker revision, memory updates), the
-   relevant beevibe-* skill in .claude/skills/ has the deep guidance —
-   invoke via Skill tool when their description matches your situation.
+   git workspace setup, post-blocker revision), the relevant beevibe-*
+   skill in .claude/skills/ has the deep guidance — invoke via Skill tool
+   when their description matches your situation.
 </beevibe_lifecycle>`;
+
+const BEEVIBE_MEMORY_REMINDER = `<beevibe_memory>
+You have two persistent memory layers — actively manage both THROUGHOUT
+the session, not just at the end. Mid-session memory updates compound
+across tasks; deferring them loses information when your conversation
+history is gone.
+
+Layer 1 — core memory (small, in-context per session, rendered into your
+system prompt at session start as <core_memory>...</core_memory>):
+- Edit via mcp__beevibe__update_core_memory(block_name, operation, content,
+  old_content?). operation ∈ {append, replace}.
+- Common blocks: persona / domain / constraints / learnings.
+- Use for STABLE shifts: persona updates ("I now also handle X"),
+  long-term constraint changes, durable patterns that should appear in
+  every future session's briefing.
+- Treat as expensive real estate — every byte is in every future system
+  prompt.
+
+Layer 2 — archival memory (vector-indexed, unbounded; the briefing's
+top-k hits arrive in your USER prompt as <archival_memory>...</archival_memory>):
+- Add via mcp__beevibe__save_memory(content, fact_type). One fact per call.
+  fact_type ∈ {belief, pattern, gotcha, preference, decision}.
+- Query mid-session via mcp__beevibe__search_context(query) for facts not
+  in your briefing's top-k.
+- Use for ONE-SHOT learnings: decision rationales, gotchas, surprising
+  patterns, niche facts. Cheap; default home.
+
+When to update memory (proactively, mid-session):
+- You resolved something tricky → save_memory(rationale, "decision")
+- You hit a non-obvious gotcha → save_memory(...., "gotcha")
+- You found a pattern that worked → save_memory(..., "pattern")
+- Your role/domain shifted → update_core_memory(persona/constraints, ...)
+
+Default rule when in doubt: save_memory. Archival is forgiving; core memory
+is space-constrained. If a fact keeps surfacing across sessions, promote
+it to core memory later.
+</beevibe_memory>`;
 
 export interface AgentSessionDeps {
   agentRepo: AgentRepository;
@@ -156,13 +196,15 @@ export class AgentSession {
       );
     }
     // Cache-friendly order: most-stable first.
-    //   1. BEEVIBE_LIFECYCLE_REMINDER (cross-agent constant)
+    //   1. BEEVIBE_LIFECYCLE_REMINDER + BEEVIBE_MEMORY_REMINDER
+    //      (cross-agent constants)
     //   2. agent.runtime_config.system_prompt_addition (per-agent baseline)
     //   3. briefing.systemPromptAppend (= core_memory; mostly stable per agent)
     // archival_memory lives separately on `intent` via M9.4's userMessagePrefix.
     const baseline = agent.runtime_config.system_prompt_addition ?? "";
     const system_prompt_append = [
       BEEVIBE_LIFECYCLE_REMINDER,
+      BEEVIBE_MEMORY_REMINDER,
       baseline,
       briefing.systemPromptAppend,
     ]

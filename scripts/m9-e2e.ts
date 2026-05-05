@@ -282,15 +282,18 @@ async function scenarioOne_skillsInWorkspace(
   );
   const dirs = readdirSync(skillsDir).sort();
   log(`  found ${dirs.length} skills: ${dirs.join(", ")}`);
-  // IC tier: 7 universal skills. (beevibe-task-completion removed in M9
-  // validation — non-load-bearing per control e2e + transcript analysis.)
-  assert(dirs.length === 7, `expected 7 IC-tier skills, got ${dirs.length}`);
-  assert(dirs.includes("beevibe"), "umbrella skill missing");
+  // IC tier: 5 universal skills. Three "always-on" skills removed in M9
+  // empirical validation (their content moved into BEEVIBE_LIFECYCLE_REMINDER
+  // + BEEVIBE_MEMORY_REMINDER injected by AgentSession into the system
+  // prompt): beevibe (umbrella), beevibe-task-completion, beevibe-memory-
+  // management.
+  assert(dirs.length === 5, `expected 5 IC-tier skills, got ${dirs.length}`);
+  assert(dirs.includes("beevibe-pre-task-setup"), "pre-task-setup skill missing");
   assert(
     !dirs.includes("beevibe-team-mesh-negotiation"),
     "team-only skill leaked into IC workspace",
   );
-  log("  ✓ IC tier sees 7 universal skills, no team-only leakage");
+  log("  ✓ IC tier sees 5 universal skills, no team-only leakage");
 }
 
 async function scenarioSix_oneSessionPerTask(

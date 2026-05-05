@@ -228,7 +228,7 @@ describe("LocalWorkspaceManager", () => {
     }
 
     it("IC agent gets only universal skills synced into .claude/skills/", async () => {
-      writeSourceSkill("beevibe");
+      writeSourceSkill("beevibe-mesh-ask-responder");
       writeSourceSkill("beevibe-pre-task-setup");
       writeSourceSkill("beevibe-team-mesh-negotiation");
 
@@ -238,13 +238,13 @@ describe("LocalWorkspaceManager", () => {
 
       const skillsDir = join(ws.path, ".claude", "skills");
       const dirs = readdirSync(skillsDir).sort();
-      expect(dirs).toContain("beevibe");
+      expect(dirs).toContain("beevibe-mesh-ask-responder");
       expect(dirs).toContain("beevibe-pre-task-setup");
       expect(dirs).not.toContain("beevibe-team-mesh-negotiation");
     });
 
     it("team agent gets universal + team-only skills", async () => {
-      writeSourceSkill("beevibe");
+      writeSourceSkill("beevibe-mesh-ask-responder");
       writeSourceSkill("beevibe-pre-task-setup");
       writeSourceSkill("beevibe-team-mesh-negotiation");
 
@@ -254,23 +254,23 @@ describe("LocalWorkspaceManager", () => {
 
       const skillsDir = join(ws.path, ".claude", "skills");
       const dirs = readdirSync(skillsDir).sort();
-      expect(dirs).toContain("beevibe");
+      expect(dirs).toContain("beevibe-mesh-ask-responder");
       expect(dirs).toContain("beevibe-pre-task-setup");
       expect(dirs).toContain("beevibe-team-mesh-negotiation");
     });
 
     it("re-sync after source SKILL.md edit propagates to existing workspace", async () => {
-      writeSourceSkill("beevibe", "# v1\n");
+      writeSourceSkill("beevibe-mesh-ask-responder", "# v1\n");
 
       const ws = await manager.ensureWorkspace({
         agent: makeAgent({ id: "agent_resync", hierarchy_level: "ic" }),
       });
-      const targetSkillFile = join(ws.path, ".claude", "skills", "beevibe", "SKILL.md");
+      const targetSkillFile = join(ws.path, ".claude", "skills", "beevibe-mesh-ask-responder", "SKILL.md");
       expect(readFileSync(targetSkillFile, "utf-8")).toContain("# v1");
 
       // Bump source content + mtime.
       await new Promise((r) => setTimeout(r, 20));
-      writeFileSync(join(skillsSourceDir, "beevibe", "SKILL.md"), "# v2 with more bytes\n");
+      writeFileSync(join(skillsSourceDir, "beevibe-mesh-ask-responder", "SKILL.md"), "# v2 with more bytes\n");
 
       await manager.ensureWorkspace({
         agent: makeAgent({ id: "agent_resync", hierarchy_level: "ic" }),
@@ -290,7 +290,7 @@ describe("LocalWorkspaceManager", () => {
     });
 
     it("does NOT touch user's other personal skills (different prefix)", async () => {
-      writeSourceSkill("beevibe");
+      writeSourceSkill("beevibe-mesh-ask-responder");
 
       // Pre-create a non-beevibe skill in the workspace's skills dir.
       // Simulates the user-global ~/.claude/skills case where personal

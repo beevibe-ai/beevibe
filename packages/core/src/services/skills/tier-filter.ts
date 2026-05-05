@@ -12,22 +12,27 @@
 import type { HierarchyLevel } from "../../domain/agent.js";
 
 export const UNIVERSAL_SKILLS = [
-  "beevibe",
-  "beevibe-memory-management",
   "beevibe-mesh-ask-responder",
   "beevibe-post-blocker-revision",
   "beevibe-pre-task-setup",
   "beevibe-session-resume",
   "beevibe-work-product-decision",
 ] as const;
-// `beevibe-task-completion` removed (M9.5 validation): its description was
-// non-load-bearing — control e2e showed 0 Skill invocations even WITH the
-// skill present, and update_progress was reliably called purely from the
-// BEEVIBE_LIFECYCLE_REMINDER injected into --append-system-prompt by
-// AgentSession. The leaf-vs-parent edge cases the skill body covered are
-// captured in (a) the lifecycle reminder's item 3 (`create_task` →
-// parent), (b) the `update_progress` tool description, and (c) the
-// `create_task` tool description.
+
+// Removed during M9.5 empirical validation (Skill auto-discovery doesn't fire
+// for "always-on" triggers — body never loads, content is dead weight in
+// system prompt). Each removed skill's load-bearing content moved to a
+// system-prompt reminder injected by AgentSession via --append-system-prompt:
+//   - `beevibe-task-completion` → BEEVIBE_LIFECYCLE_REMINDER (always call
+//     update_progress before exit; leaf-vs-parent rule)
+//   - `beevibe` (umbrella) → BEEVIBE_LIFECYCLE_REMINDER (identity guard +
+//     session lifecycle); other umbrella content (tool surface, skill catalog)
+//     is already provided by Claude Code's deferred-tool list and
+//     auto-discovered <skill_listing> attachment respectively
+//   - `beevibe-memory-management` → BEEVIBE_MEMORY_REMINDER (Letta pattern:
+//     active mid-session memory updates driven by system prompt + tool
+//     descriptions, not by skill descriptions which agents don't auto-load
+//     for continuous behaviors)
 
 export const TEAM_ONLY_SKILLS = [
   "beevibe-team-mesh-negotiation",

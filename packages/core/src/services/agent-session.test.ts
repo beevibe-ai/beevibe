@@ -132,18 +132,25 @@ describe("AgentSession.run", () => {
 
     expect(memoryAgent.prepareBriefing).toHaveBeenCalledWith("Reply with 'ok'.");
     const ctx = vi.mocked(runtime.execute).mock.calls[0]![0];
-    // System prompt has THREE pieces, in cache-stable order:
+    // System prompt has FOUR pieces, in cache-stable order:
     //   1. BEEVIBE_LIFECYCLE_REMINDER (always-on; M9.5+ empirical fix)
-    //   2. agent.runtime_config.system_prompt_addition (per-agent baseline)
-    //   3. briefing.systemPromptAppend (= core_memory; M9.4)
+    //   2. BEEVIBE_MEMORY_REMINDER (always-on; Letta pattern for active
+    //      mid-session memory management)
+    //   3. agent.runtime_config.system_prompt_addition (per-agent baseline)
+    //   4. briefing.systemPromptAppend (= core_memory; M9.4)
     expect(ctx.system_prompt_append).toContain("<beevibe_lifecycle>");
     expect(ctx.system_prompt_append).toContain("mcp__beevibe__update_progress");
+    expect(ctx.system_prompt_append).toContain("<beevibe_memory>");
+    expect(ctx.system_prompt_append).toContain("mcp__beevibe__save_memory");
+    expect(ctx.system_prompt_append).toContain("mcp__beevibe__update_core_memory");
     expect(ctx.system_prompt_append).toContain("Follow the house style.");
     expect(ctx.system_prompt_append).toContain("<core_memory></core_memory>");
-    // Lifecycle must come BEFORE the persona baseline (cache order).
+    // Reminders must come BEFORE the persona baseline (cache order).
     const lifecycleIdx = ctx.system_prompt_append.indexOf("<beevibe_lifecycle>");
+    const memoryIdx = ctx.system_prompt_append.indexOf("<beevibe_memory>");
     const baselineIdx = ctx.system_prompt_append.indexOf("Follow the house style.");
-    expect(lifecycleIdx).toBeLessThan(baselineIdx);
+    expect(lifecycleIdx).toBeLessThan(memoryIdx);
+    expect(memoryIdx).toBeLessThan(baselineIdx);
     expect(ctx.workspace).toBe(WORKSPACE);
     // M9.4: archival_memory is prepended to the user message (intent).
     expect(ctx.intent).toBe(
