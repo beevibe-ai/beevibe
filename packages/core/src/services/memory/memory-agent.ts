@@ -91,32 +91,33 @@ export interface MemoryAgentDeps {
 export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
   const factsPerBriefing = deps.factsPerBriefing ?? DEFAULT_FACTS_PER_BRIEFING;
 
+  // Shared embed → vector-search pipeline used by both prepareBriefing
+  // (full session-start bundle) and searchArchival (mid-session re-query).
+  // Same recall floor + facts-per-briefing limit applies to both — the
+  // agent should see the same retrieval shape whether the query is
+  // session-start intent or a mid-session search_context call.
+  const searchFacts = async (query: string): Promise<readonly MemoryFact[]> => {
+    const queryVec = await deps.embed.embed(query);
+    return deps.factStore.search({
+      agent_id: deps.agentId,
+      scope: ["ic", "team", "org"],
+      embedding: queryVec,
+      limit: factsPerBriefing,
+      min_similarity: BRIEFING_RECALL_FLOOR,
+    });
+  };
+
   return {
     async prepareBriefing(intent: string): Promise<BriefingResult> {
-      const [blocks, queryVec] = await Promise.all([
+      const [blocks, facts] = await Promise.all([
         deps.coreMemory.read(deps.agentId),
-        deps.embed.embed(intent),
+        searchFacts(intent),
       ]);
-      const facts = await deps.factStore.search({
-        agent_id: deps.agentId,
-        scope: ["ic", "team", "org"],
-        embedding: queryVec,
-        limit: factsPerBriefing,
-        min_similarity: BRIEFING_RECALL_FLOOR,
-      });
       return composeBriefing(blocks, facts);
     },
 
     async searchArchival(query: string): Promise<string> {
-      const queryVec = await deps.embed.embed(query);
-      const facts = await deps.factStore.search({
-        agent_id: deps.agentId,
-        scope: ["ic", "team", "org"],
-        embedding: queryVec,
-        limit: factsPerBriefing,
-        min_similarity: BRIEFING_RECALL_FLOOR,
-      });
-      return renderArchivalEnvelope(facts);
+      return renderArchivalEnvelope(await searchFacts(query));
     },
 
     async onTaskComplete(sessionId: string): Promise<void> {
