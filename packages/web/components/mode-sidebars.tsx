@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import type { LucideIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
@@ -11,6 +12,8 @@ import {
   Sparkles,
   TrendingUp,
 } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
+import { Skeleton } from "@/components/skeleton";
 import {
   api,
   type ActivityEntry,
@@ -43,31 +46,22 @@ function ListSkeleton() {
   return (
     <ul className="px-1 py-0.5 space-y-1">
       {[0, 1, 2, 3].map((i) => (
-        <li key={i} className="px-2 py-2 mx-1 my-0.5 rounded">
-          <div className="h-3 w-3/4 rounded bg-muted animate-pulse" />
-          <div className="mt-1.5 h-2.5 w-full rounded bg-muted/70 animate-pulse" />
+        <li key={i} className="px-2 py-2 mx-1 my-0.5 space-y-1.5">
+          <Skeleton className="h-3 w-3/4" />
+          <Skeleton className="h-2.5 w-full" />
         </li>
       ))}
     </ul>
   );
 }
 
-function ListEmpty({ icon: Icon, title }: { icon: React.ComponentType<{ className?: string }>; title: string }) {
-  return (
-    <div className="px-4 py-6 text-center text-xs text-muted-foreground">
-      <Icon className="h-5 w-5 mx-auto mb-2 text-muted-foreground/50" />
-      <div>{title}</div>
-    </div>
-  );
+function ListEmpty({ icon, title }: { icon: LucideIcon; title: string }) {
+  return <EmptyState icon={icon} title={title} className="py-6 px-4 text-xs" />;
 }
 
 // ── Home — recent activity feed ──────────────────────────────────────
 
 export function HomeSidebar() {
-  // Home is the launchpad — main page shows dashboard widgets, sidebar
-  // shows what's happening across the team right now. Agents have
-  // moved to the Team tab (see TeamSidebar) so Home stays focused on
-  // "what just changed" instead of "who is on the team".
   const { data, isLoading } = useQuery<ActivityEntry[]>({
     queryKey: queryKeys.activity.feed(),
     queryFn: ({ signal }) => api.activity.list({ signal, limit: 15 }),
@@ -107,9 +101,6 @@ export function TeamSidebar({
   pathname: string;
   activeAgentId?: string;
 }) {
-  // The Team tab consolidates agents + the observability views that
-  // emerge from their work (memory, mesh, promotions). One tab, two
-  // sections: the team itself, and the views into how it operates.
   const agents = useAgents();
 
   return (

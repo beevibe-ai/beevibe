@@ -33,58 +33,25 @@ type NavItem = {
   isActive: (pathname: string) => boolean;
 };
 
-// Notion-style mode strip: a horizontal row of small icons at the top
-// of the sidebar. The active mode expands to a pill with its label;
-// inactive modes are icon-only with a tooltip.
-//
-// Five modes: Home / Chat / Rooms / Tasks / Team. The Team tab is the
-// agent-organization view — agents + the things that emerge from
-// their work (memory, mesh, promotions). Routing all four under one
-// mode keeps the strip short and groups conceptually-related views.
+// Routes consolidated under the Team tab — agents + the observability
+// views that emerge from their work. Used both for `isActive` matching
+// in the mode strip and for picking the per-mode sidebar component.
+const TEAM_ROUTES = ["/agents", "/memory", "/mesh", "/promotions"] as const;
+const matchesTeam = (p: string): boolean => TEAM_ROUTES.some((r) => p.startsWith(r));
+const matchesChat = (p: string): boolean => p === "/" || p.startsWith("/chat");
+
 const PRIMARY_MODES: NavItem[] = [
-  {
-    href: "/dashboard",
-    label: "Home",
-    icon: Home,
-    isActive: (p) => p.startsWith("/dashboard"),
-  },
-  {
-    href: "/",
-    label: "Chat",
-    icon: MessageSquare,
-    isActive: (p) => p === "/" || p.startsWith("/chat"),
-  },
-  {
-    href: "/rooms",
-    label: "Rooms",
-    icon: Users,
-    isActive: (p) => p.startsWith("/rooms"),
-  },
-  {
-    href: "/tasks",
-    label: "Tasks",
-    icon: ListChecks,
-    isActive: (p) => p.startsWith("/tasks"),
-  },
-  {
-    href: "/agents",
-    label: "Team",
-    icon: Bot,
-    // /agents, /memory, /mesh, /promotions all route under Team —
-    // they're observability views of the agent organization.
-    isActive: (p) =>
-      p.startsWith("/agents") ||
-      p.startsWith("/memory") ||
-      p.startsWith("/mesh") ||
-      p.startsWith("/promotions"),
-  },
+  { href: "/dashboard", label: "Home", icon: Home, isActive: (p) => p.startsWith("/dashboard") },
+  { href: "/", label: "Chat", icon: MessageSquare, isActive: matchesChat },
+  { href: "/rooms", label: "Rooms", icon: Users, isActive: (p) => p.startsWith("/rooms") },
+  { href: "/tasks", label: "Tasks", icon: ListChecks, isActive: (p) => p.startsWith("/tasks") },
+  { href: "/agents", label: "Team", icon: Bot, isActive: matchesTeam },
 ];
 
 export function Sidebar() {
   const pathname = usePathname() ?? "";
   const router = useRouter();
   const searchParams = useSearchParams();
-  const isChatRoute = pathname === "/" || pathname.startsWith("/chat");
   const [collapsed, toggleCollapsed] = useCollapsible("bv-sidebar-collapsed");
 
   const conversationId = searchParams?.get("c") ?? undefined;
@@ -130,31 +97,12 @@ export function Sidebar() {
 
       <div className="mx-2 mt-2 border-t border-border/60" />
 
-      {/* Per-mode sidebar content. Each mode has its own list below the
-          icon strip — Notion never shows an empty rail. */}
-      {isChatRoute ? (
-        <ConversationSidebar
-          activeConversationId={conversationId}
-          isFresh={isFresh}
-          onNew={startNewConversation}
-        />
-      ) : pathname.startsWith("/dashboard") ? (
-        <HomeSidebar />
-      ) : pathname.startsWith("/agents") ||
-        pathname.startsWith("/memory") ||
-        pathname.startsWith("/mesh") ||
-        pathname.startsWith("/promotions") ? (
-        <TeamSidebar
-          pathname={pathname}
-          activeAgentId={extractIdFromPath(pathname, "/agents/")}
-        />
-      ) : pathname.startsWith("/rooms") ? (
-        <RoomsSidebar activeRoomId={extractIdFromPath(pathname, "/rooms/")} />
-      ) : pathname.startsWith("/tasks") ? (
-        <TasksSidebar activeTaskId={extractIdFromPath(pathname, "/tasks/")} />
-      ) : (
-        <div className="flex-1" />
-      )}
+      {renderModePanel({
+        pathname,
+        conversationId,
+        isFresh,
+        startNewConversation,
+      })}
 
       <div className="p-2 border-t border-border/60 flex items-center gap-1">
         <UserWidget />
@@ -203,6 +151,47 @@ function extractIdFromPath(pathname: string, prefix: string): string | undefined
   if (!rest) return undefined;
   const id = rest.split("/")[0];
   return id || undefined;
+}
+
+interface ModePanelArgs {
+  pathname: string;
+  conversationId: string | undefined;
+  isFresh: boolean;
+  startNewConversation: () => void;
+}
+
+/**
+ * Pick the right per-mode sidebar component for the current route.
+ * First match wins; falls back to filler space so the chrome height
+ * stays consistent across modes that don't have a context list yet.
+ */
+function renderModePanel(args: ModePanelArgs): React.ReactNode {
+  const { pathname, conversationId, isFresh, startNewConversation } = args;
+  if (matchesChat(pathname)) {
+    return (
+      <ConversationSidebar
+        activeConversationId={conversationId}
+        isFresh={isFresh}
+        onNew={startNewConversation}
+      />
+    );
+  }
+  if (pathname.startsWith("/dashboard")) return <HomeSidebar />;
+  if (matchesTeam(pathname)) {
+    return (
+      <TeamSidebar
+        pathname={pathname}
+        activeAgentId={extractIdFromPath(pathname, "/agents/")}
+      />
+    );
+  }
+  if (pathname.startsWith("/rooms")) {
+    return <RoomsSidebar activeRoomId={extractIdFromPath(pathname, "/rooms/")} />;
+  }
+  if (pathname.startsWith("/tasks")) {
+    return <TasksSidebar activeTaskId={extractIdFromPath(pathname, "/tasks/")} />;
+  }
+  return <div className="flex-1" />;
 }
 
 /**
