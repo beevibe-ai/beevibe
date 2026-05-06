@@ -23,6 +23,15 @@ export interface AgentRuntime {
 
   /** Graceful shutdown — no-op for stateless runtimes. */
   shutdown(): Promise<void>;
+
+  /**
+   * Where this runtime's CLI auto-discovers skill files within the workspace
+   * (M9.3). For Claude Code: `<workspace>/.claude/skills`. For future
+   * runtimes (codex, cursor-agent), each implements its own scan path.
+   * `LocalWorkspaceManager.ensureWorkspace` calls this to know where to
+   * sync the tier-filtered SKILL.md files.
+   */
+  skillsDir(workspace: Workspace): string;
 }
 
 /**

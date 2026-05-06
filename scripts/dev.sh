@@ -62,6 +62,10 @@ done
 export BEEVIBE_API_PORT="${BEEVIBE_API_PORT:-3000}"
 export BEEVIBE_MCP_SERVER_URL="${BEEVIBE_MCP_SERVER_URL:-http://localhost:${BEEVIBE_API_PORT}/mcp}"
 export BEEVIBE_EXECUTOR_HEALTH_PORT="${BEEVIBE_EXECUTOR_HEALTH_PORT:-3001}"
+# M9.3: api + executor sync tier-filtered skills into <workspace>/.claude/skills/
+# at every dispatch. Default points at this repo's /skills/ dir; pnpm --filter
+# changes the cwd to each package, so we can't rely on process.cwd()/skills.
+export BEEVIBE_SKILLS_DIR="${BEEVIBE_SKILLS_DIR:-${REPO_ROOT}/skills}"
 
 # ─────────────────── flags ───────────────────
 TUNNEL_ENABLED=1

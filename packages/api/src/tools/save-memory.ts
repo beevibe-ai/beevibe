@@ -46,10 +46,18 @@ export function createSaveMemoryTool(
   return {
     name: "save_memory",
     description:
-      "Save a fact, learning, or insight to your archival memory. Persists " +
-      "across sessions; retrievable via the briefing's vector recall and via " +
-      "search_context. Use one sentence per call — for multiple facts, call " +
-      "the tool multiple times.",
+      "Save a fact, learning, or insight to long-term archival memory for " +
+      "retrieval across all future sessions. Best practices: store " +
+      "self-contained facts or summaries that stand alone when retrieved " +
+      "later (no 'we', 'the user', 'recently' — name specific entities and " +
+      "use definite language). One sentence per call; for multiple facts, " +
+      "call the tool multiple times. Pick fact_type to match provenance: " +
+      "decision rationale → 'decision', non-obvious thing-that-bites → " +
+      "'gotcha', recurring observation → 'pattern', stated preference → " +
+      "'preference', position you hold → 'belief'. The save date is auto-" +
+      "stamped — future retrievals show saved=YYYY-MM-DD so old facts can " +
+      "be judged for staleness. Persists across sessions; retrievable via " +
+      "the briefing's vector recall and via search_context.",
     schema: SAVE_MEMORY_SCHEMA as Record<string, unknown>,
     handler: async (input) => {
       const content = input.content;

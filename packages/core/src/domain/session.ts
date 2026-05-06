@@ -21,6 +21,23 @@ export interface SessionUsage {
   cost_usd?: number;
   input_tokens?: number;
   output_tokens?: number;
+  /**
+   * Tokens written to cache (cache miss + write). Charged at ~1.25× base
+   * input rate. Captured from Anthropic API's usage object via M9.8.
+   */
+  cache_creation_input_tokens?: number;
+  /**
+   * Tokens read from cache (cache hit). Charged at ~0.1× base input rate.
+   * Captured from Anthropic API's usage object via M9.8.
+   *
+   * The three input counters are DISJOINT slices of the same prompt:
+   *   total_input = input_tokens + cache_creation_input_tokens + cache_read_input_tokens
+   *
+   * Cache hit ratio = cache_read / total_input. Target >0.7 on the
+   * second-onward session of an agent within a 5min cache window
+   * (M9.4 briefing restructure).
+   */
+  cache_read_input_tokens?: number;
   model?: string;
 }
 

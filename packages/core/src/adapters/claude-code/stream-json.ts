@@ -129,6 +129,8 @@ export function parseClaudeMessages(
   let costUsd: number | undefined;
   let inputTokens = 0;
   let outputTokens = 0;
+  let cacheCreationTokens = 0;
+  let cacheReadTokens = 0;
   let model: string | undefined;
 
   for (const msg of messages) {
@@ -173,20 +175,29 @@ export function parseClaudeMessages(
       if (msg.usage) {
         inputTokens = msg.usage.input_tokens ?? 0;
         outputTokens = msg.usage.output_tokens ?? 0;
+        // M9.8: capture cache fields. Anthropic's API returns them in the
+        // same usage object Claude Code passes through. Hit ratio
+        // (cache_read / input_tokens) is the success metric for M9.4's
+        // briefing restructure.
+        cacheCreationTokens = msg.usage.cache_creation_input_tokens ?? 0;
+        cacheReadTokens = msg.usage.cache_read_input_tokens ?? 0;
       }
     }
   }
 
   const succeeded = exitCode === 0;
   const transcript = transcriptParts.join("");
-  const usage = inputTokens || outputTokens || costUsd !== undefined
-    ? {
-        input_tokens: inputTokens,
-        output_tokens: outputTokens,
-        cost_usd: costUsd ?? 0,
-        model: model ?? "unknown",
-      }
-    : undefined;
+  const usage =
+    inputTokens || outputTokens || costUsd !== undefined || cacheCreationTokens || cacheReadTokens
+      ? {
+          input_tokens: inputTokens,
+          output_tokens: outputTokens,
+          cache_creation_input_tokens: cacheCreationTokens,
+          cache_read_input_tokens: cacheReadTokens,
+          cost_usd: costUsd ?? 0,
+          model: model ?? "unknown",
+        }
+      : undefined;
 
   return {
     status: succeeded ? "completed" : "failed",
