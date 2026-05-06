@@ -20,7 +20,6 @@ import { queryKeys } from "@/lib/hooks/keys";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ToolStepList } from "@/components/chat/tool-step-list";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
-import { LivePanel } from "@/components/chat/live-panel";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { formatRelativeTime, idSuffix, sessionHref, shortId } from "@/lib/format";
@@ -208,7 +207,6 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
           members={data.members}
         />
       </div>
-      <LivePanel />
     </div>
   );
 }
