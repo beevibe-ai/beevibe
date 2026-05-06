@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { sessionId } from "@beevibe/core";
 import {
   api,
   type ChatHistoryMessage,
@@ -30,37 +31,10 @@ export interface ChatMessage {
 let nextLocalId = 0;
 const localId = (): string => `m_${++nextLocalId}`;
 
-const SID_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-// 62 (alphabet length) * 4 = 248 — the largest multiple of 62 below
-// 256. Bytes >= 248 are rejected so the surviving distribution over
-// the alphabet stays uniform (no `b % 62` modulo bias). Negligible at
-// 12 chars but cheap to fix.
-const SID_REJECTION_THRESHOLD = 248;
-
-/**
- * Mint a session id matching core's `sessionId()` format
- * (`sess_<12 chars from [0-9A-Za-z]>`). Generated client-side per turn so
- * the chat UI can subscribe to `session.step` SSE events for this id
- * BEFORE the server starts the run.
- *
- * Rejection-samples to avoid modulo bias on the 62-char alphabet.
- */
-function mintSessionId(): string {
-  let suffix = "";
-  while (suffix.length < 12) {
-    // Pull a fresh batch each iteration. Average rejection rate is
-    // ~3% (8/256) so 16 bytes covers the 12 we need on the first
-    // pass virtually always, with the loop guarding worst case.
-    const buf = new Uint8Array(16);
-    crypto.getRandomValues(buf);
-    for (const b of buf) {
-      if (b >= SID_REJECTION_THRESHOLD) continue;
-      suffix += SID_ALPHABET[b % SID_ALPHABET.length];
-      if (suffix.length === 12) break;
-    }
-  }
-  return `sess_${suffix}`;
-}
+// Client mints the session id so it can subscribe to `session.step` SSE
+// events for this turn BEFORE the server starts the run. Uses the same
+// nanoid-backed helper the server uses (uniform distribution by
+// construction, no modulo bias).
 
 function fromHistory(m: ChatHistoryMessage): ChatMessage {
   return {
@@ -185,9 +159,9 @@ export function useChat(opts: UseChatOptions = {}) {
     (rawMessage: string) => {
       const trimmed = rawMessage.trim();
       if (!trimmed || mutation.isPending) return;
-      const sessionId = mintSessionId();
+      const sid = sessionId();
       setLocalMessages((prev) => [...prev, { id: localId(), role: "user", content: trimmed }]);
-      mutation.mutate({ message: trimmed, sessionId });
+      mutation.mutate({ message: trimmed, sessionId: sid });
     },
     [mutation],
   );

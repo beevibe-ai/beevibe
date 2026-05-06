@@ -58,7 +58,8 @@ export class ChatRateLimiter {
   acquire(key: string): RateLimitOutcome {
     const now = this.now();
 
-    // Drop expired timestamps before counting.
+    // Drop expired timestamps before counting (also reclaims memory
+    // from one-time visitors via the windows.delete branch below).
     const window = this.windows.get(key) ?? [];
     const cutoff = now - this.windowMs;
     while (window.length > 0 && window[0]! < cutoff) window.shift();
@@ -74,13 +75,16 @@ export class ChatRateLimiter {
 
     const inFlight = this.inFlight.get(key) ?? 0;
     if (inFlight >= this.maxConcurrent) {
+      // Garbage-collect: window is non-empty (we just pruned), keep it.
+      // But if the prune emptied the window AND nothing's in flight,
+      // free the entry so long-tail visitors don't accumulate forever.
+      if (window.length === 0 && inFlight === 0) this.windows.delete(key);
+      else this.windows.set(key, window);
       // No clean retry-after for concurrency — depends on the LLM
-      // turn duration, which we don't know. Use a conservative 1s
-      // hint so the client doesn't hot-loop.
+      // turn duration, which we don't know. 1s hint stops hot-looping.
       return { ok: false, reason: "concurrent", retryAfterMs: 1_000 };
     }
 
-    // Reserve the slot.
     window.push(now);
     this.windows.set(key, window);
     this.inFlight.set(key, inFlight + 1);

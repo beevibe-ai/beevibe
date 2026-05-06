@@ -61,16 +61,11 @@ describe("groupIntoConversations", () => {
     expect(chains[0]?.head_id).toBe("sess_orphan");
   });
 
-  it("does NOT recurse infinitely on a cycle in prior_session_id", () => {
-    // Data corruption (bad migration, manual SQL fix) could create a
-    // cycle. Pre-fix: stack overflow. Post-fix: bail with one of the
-    // cycle members as head.
+  it("bails with a cycle member as head when prior_session_id forms a loop", () => {
+    // A cycle (data corruption only) used to recurse unbounded.
     const a = makeSession({ id: "sess_a", prior_session_id: "sess_b" });
     const b = makeSession({ id: "sess_b", prior_session_id: "sess_a" });
     const chains = groupIntoConversations([a, b]);
-    // The two cycle members collapse into one chain. Head is one of
-    // them — the exact one depends on iteration order; both are valid
-    // cycle anchors.
     expect(chains).toHaveLength(1);
     expect(["sess_a", "sess_b"]).toContain(chains[0]?.head_id);
     expect(chains[0]?.sessions).toHaveLength(2);

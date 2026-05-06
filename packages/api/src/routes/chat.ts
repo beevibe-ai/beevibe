@@ -18,6 +18,7 @@
  * client just lost its component-state copy of the conversation.
  */
 
+import { randomUUID } from "node:crypto";
 import { Router, type RequestHandler, type Response } from "express";
 import {
   AgentSession,
@@ -45,11 +46,7 @@ export interface ChatRoutesDeps {
   workspaceManager: WorkspaceManager;
   runtimeRegistry: RuntimeRegistry;
   makeMemoryAgent: (agentId: string) => MemoryAgent;
-  /**
-   * Per-person rate limiter for `POST /chat`. Optional: when not
-   * provided we mint a default. Tests inject their own with a
-   * deterministic `now()` so they can exercise window expiry.
-   */
+  /** Optional override; tests inject one with a deterministic clock. */
   rateLimiter?: ChatRateLimiter;
 }
 
@@ -158,15 +155,10 @@ interface HistoryMessage {
   suggested_actions?: SuggestedAction[];
 }
 
-/**
- * 500 response with a generic message. The original error is logged
- * server-side with a request id the client can paste into a bug report
- * if they want to look it up. Internal error text (stack traces,
- * upstream provider quirks, internal node ids) shouldn't ship to the
- * browser — leaks implementation detail and occasionally credentials.
- */
+// Generic 500 — internal error text stays in server logs, indexed by
+// request_id the client can paste into a bug report.
 function handleError(err: unknown, res: Response): void {
-  const requestId = `req_${Math.random().toString(36).slice(2, 14)}`;
+  const requestId = `req_${randomUUID()}`;
   const detail = err instanceof Error ? err.stack ?? err.message : String(err);
   console.error(`[chat route] ${requestId}`, detail);
   res.status(500).json({
@@ -212,7 +204,6 @@ export interface ConversationChain {
  * themselves — preferable to dropping data, even if technically a
  * fragment of an older conversation.
  */
-/** Exported for unit testing only — route uses it internally. */
 export function groupIntoConversations(
   sessions: readonly ChatSession[],
 ): ConversationChain[] {
@@ -315,29 +306,34 @@ function previewOf(s: ChatSession): string {
     : oneLine.slice(0, CONVERSATION_PREVIEW_CHARS - 1) + "…";
 }
 
-/**
- * Hard cap on a single chat turn. AgentSession.run honors abortSignal;
- * we wire a setTimeout to abort the run if it goes past this. Beyond
- * this point the user has likely given up and reloaded — we should free
- * the HTTP socket + DB connection rather than wait for the LLM tail.
- */
+// Hard cap on a single chat turn. AgentSession.run honors abortSignal;
+// past this we free the socket + DB connection rather than wait on the
+// LLM tail.
 const CHAT_TURN_TIMEOUT_MS = 90_000;
 
+interface ChatTurnSession {
+  id: string;
+  status: string;
+  result_summary?: string;
+  error?: string;
+}
+
+interface ChatTurnAgent {
+  id: string;
+  name: string;
+  hierarchy_level: string;
+}
+
 /**
- * Replay an existing chat session as if it were a freshly-completed
- * turn. Used by the idempotency check: if a client retries a POST with
- * the same `session_id` (network blip, double-click), we don't run the
- * agent again — we hand back the already-recorded result.
+ * Build the response body for a chat turn — used by both the live
+ * POST success path and the idempotent-replay path. `replayed: true`
+ * tells the client this body came from a prior turn's persisted state.
  */
-function replayChatSession(
-  session: {
-    id: string;
-    status: string;
-    result_summary?: string;
-    error?: string;
-  },
-  agent: { id: string; name: string; hierarchy_level: string },
-): unknown {
+function toChatTurnResponse(
+  session: ChatTurnSession,
+  agent: ChatTurnAgent,
+  opts: { replayed?: boolean } = {},
+): Record<string, unknown> {
   const { visible, view_refs, open_view, suggested_actions } = processResponse(
     session.result_summary ?? "",
   );
@@ -350,15 +346,74 @@ function replayChatSession(
     view_refs,
     ...(open_view ? { open_view } : {}),
     ...(suggested_actions ? { suggested_actions } : {}),
-    replayed: true,
+    ...(opts.replayed ? { replayed: true } : {}),
   };
+}
+
+type ReplayDecision =
+  | { kind: "respond"; status: number; body: Record<string, unknown> }
+  | { kind: "skip" };
+
+/**
+ * Look up an existing chat session for a retry POST and decide what
+ * to do. Returns `null` when the row doesn't exist or isn't a chat
+ * session — the caller should fall through to the run path.
+ *
+ * Validates ownership against the agent we already resolved for the
+ * caller; mismatch means a session id collision (or token misuse) and
+ * the caller gets a 403.
+ */
+async function tryReplay(
+  deps: Pick<ChatRoutesDeps, "sessionRepo">,
+  agent: { id: string; name: string; hierarchy_level: string },
+  callerSessionId: string,
+): Promise<ReplayDecision | null> {
+  const existing = await deps.sessionRepo.findById(callerSessionId);
+  if (!existing || existing.type !== "chat") return null;
+  if (existing.agent_id !== agent.id) {
+    return {
+      kind: "respond",
+      status: 403,
+      body: {
+        error: "session_belongs_to_other_caller",
+        message: "session id collides with a session owned by a different person",
+      },
+    };
+  }
+  if (existing.status === "running") {
+    return {
+      kind: "respond",
+      status: 409,
+      body: {
+        error: "session_in_flight",
+        message: "this session is currently running; wait for it to finish",
+      },
+    };
+  }
+  if (existing.status === "succeeded" || existing.status === "failed") {
+    return {
+      kind: "respond",
+      status: 200,
+      body: toChatTurnResponse(
+        {
+          id: existing.id,
+          status: existing.status,
+          result_summary: existing.result_summary ?? undefined,
+          error: existing.error ?? undefined,
+        },
+        agent,
+        { replayed: true },
+      ),
+    };
+  }
+  return { kind: "skip" };
 }
 
 export function createChatRouter(deps: ChatRoutesDeps): Router {
   const router = Router();
   router.use(deps.authMiddleware);
-  // Mint a default rate limiter if the caller didn't supply one.
-  // Tests inject their own with a deterministic clock.
+  // Tests inject their own ChatRateLimiter (deterministic clock); a
+  // default ships otherwise.
   const rateLimiter = deps.rateLimiter ?? new ChatRateLimiter();
 
   router.get("/conversations", async (req, res) => {
@@ -454,58 +509,40 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         ? body.session_id
         : undefined;
 
-    // ── Idempotency check ─────────────────────────────────────────
-    // If the client provided a session_id and we already have a row
-    // for it, treat this as a retry. Reasons it might happen:
-    //   - network blip mid-response → client auto-retried
-    //   - browser back/forward cache replays the POST
-    //   - double-submit from a UI bug
-    // Each chat turn is a real Claude Code subprocess (~$$); replaying
-    // the recorded result is much cheaper than re-running the turn.
+    // Resolve the caller's primary agent + their person row up front
+    // (parallel). The agent is needed everywhere downstream — replay
+    // path verifies ownership against it, run path uses it as the
+    // session's agent.
+    const [agent, person] = await Promise.all([
+      deps.agentRepo.findTopLevelForOwner(req.caller.personId),
+      deps.personRepo.findById(req.caller.personId),
+    ]);
+    if (!agent) {
+      res.status(404).json({
+        error: "no_primary_agent",
+        message:
+          "no team or org agent provisioned for the caller; create one via the CLI before chatting",
+      });
+      return;
+    }
+
+    // Idempotent retry: if the client passed a session_id we already
+    // have a row for, replay its persisted result instead of spawning
+    // another Claude Code subprocess. Each turn is real $$; this
+    // collapses double-submits, browser-cache POST replays, and
+    // network-blip retries to a single charge.
     if (callerSessionId) {
-      const existing = await deps.sessionRepo.findById(callerSessionId);
-      if (existing && existing.type === "chat") {
-        const owningAgent = await deps.agentRepo.findById(existing.agent_id);
-        if (owningAgent && owningAgent.owner_id !== req.caller.personId) {
-          res.status(403).json({
-            error: "session_belongs_to_other_caller",
-            message: "session id collides with a session owned by a different person",
-          });
-          return;
-        }
-        if (existing.status === "running") {
-          res.status(409).json({
-            error: "session_in_flight",
-            message: "this session is currently running; wait for it to finish",
-          });
-          return;
-        }
-        if (existing.status === "succeeded" || existing.status === "failed") {
-          // Replay the prior result — same shape the original turn returned.
-          res.json(
-            replayChatSession(
-              {
-                id: existing.id,
-                status: existing.status,
-                result_summary: existing.result_summary ?? undefined,
-                error: existing.error ?? undefined,
-              },
-              {
-                id: owningAgent!.id,
-                name: owningAgent!.name,
-                hierarchy_level: owningAgent!.hierarchy_level,
-              },
-            ),
-          );
+      const replay = await tryReplay(deps, agent, callerSessionId);
+      if (replay) {
+        if (replay.kind === "respond") {
+          res.status(replay.status).json(replay.body);
           return;
         }
       }
     }
 
-    // ── Rate limit ────────────────────────────────────────────────
-    // Per-person, both concurrent (1 turn at a time) and sliding
-    // window (default 30 turns/min). Compromised tokens or scripted
-    // abuse can't drain budget unbounded.
+    // Per-person rate limit (concurrent + sliding window). Compromised
+    // tokens / scripted abuse can't drain budget unbounded.
     const rateOutcome = rateLimiter.acquire(req.caller.personId);
     if (!rateOutcome.ok) {
       res
@@ -522,23 +559,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
       return;
     }
 
-    // Resolve caller + their primary agent (team preferred, org fallback)
-    // and the person row (for onboarding state) in parallel.
-    const [agent, person] = await Promise.all([
-      deps.agentRepo.findTopLevelForOwner(req.caller.personId),
-      deps.personRepo.findById(req.caller.personId),
-    ]);
-    if (!agent) {
-      rateOutcome.release();
-      res.status(404).json({
-        error: "no_primary_agent",
-        message:
-          "no team or org agent provisioned for the caller; create one via the CLI before chatting",
-      });
-      return;
-    }
     const isOnboarding = !person?.onboarding_completed_at;
-
     const runtime = deps.runtimeRegistry[agent.runtime_config.type];
     if (!runtime) {
       rateOutcome.release();
@@ -549,10 +570,6 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
       return;
     }
 
-    // ── Timeout ───────────────────────────────────────────────────
-    // 90s ceiling on a single turn. AgentSession.run honors abortSignal;
-    // when the timer fires the runtime tears down its CLI subprocess
-    // and the route returns 504 instead of holding the socket open.
     const abortController = new AbortController();
     let timedOut = false;
     const timeoutTimer = setTimeout(() => {
@@ -584,12 +601,8 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
           .join("\n\n"),
       });
 
-      const { visible, view_refs, open_view, suggested_actions } =
-        processResponse(session.result_summary ?? "");
-
-      // Mark onboarding complete after the first successful chat turn —
-      // fire-and-forget so a slow update can't block the response. The
-      // welcome wizard polls `/me` and routes onward when this flips.
+      // Onboarding state flip — fire-and-forget. Welcome wizard polls
+      // `/me` and routes onward when this lands.
       if (isOnboarding && session.status === "succeeded") {
         deps.personRepo
           .update(req.caller.personId, { onboarding_completed_at: new Date() })
@@ -601,16 +614,21 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
           );
       }
 
-      res.json({
-        ok: true,
-        agent: { id: agent.id, name: agent.name, hierarchy: agent.hierarchy_level },
-        session_id: session.id,
-        response: visible,
-        status: session.status,
-        view_refs,
-        ...(open_view ? { open_view } : {}),
-        ...(suggested_actions ? { suggested_actions } : {}),
-      });
+      res.json(
+        toChatTurnResponse(
+          {
+            id: session.id,
+            status: session.status,
+            result_summary: session.result_summary ?? undefined,
+            error: session.error ?? undefined,
+          },
+          {
+            id: agent.id,
+            name: agent.name,
+            hierarchy_level: agent.hierarchy_level,
+          },
+        ),
+      );
     } catch (err) {
       if (timedOut) {
         res.status(504).json({
