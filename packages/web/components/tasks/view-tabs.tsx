@@ -1,25 +1,16 @@
 "use client";
 
 import { useRef } from "react";
-import {
-  ArrowUpDown,
-  Filter,
-  Maximize2,
-  MoreHorizontal,
-  Search,
-  Zap,
-} from "lucide-react";
+import { Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSlashFocus } from "@/lib/hooks/use-slash-focus";
 
-export type TaskView = "all" | "mine" | "sprint" | "timeline";
-
-// Note: this toolbar previously had a "+ New" button that opened a
-// create-task dialog. Removed in #48 — tasks are minted by team agents
-// through human-agent conversation, not by the human clicking "+".
-// A bare "+" remained as an "add view" placeholder; removed too — it
-// wasn't wired and the mindless-click test failed (users couldn't tell
-// what it did).
+// Two real views — kept narrow on purpose. The earlier strip had
+// "Active sprint" and "Timeline" tabs that didn't map to any
+// concept in the agent-driven task model and "Automate / Sort /
+// Filter / Expand / More" toolbar buttons that did nothing. Both
+// gone — fake chrome erodes trust faster than it adds polish.
+export type TaskView = "all" | "mine";
 
 interface Props {
   current: TaskView;
@@ -32,8 +23,6 @@ interface Props {
 const VIEWS: { key: TaskView; label: string }[] = [
   { key: "all", label: "All tasks" },
   { key: "mine", label: "My tasks" },
-  { key: "sprint", label: "Active sprint" },
-  { key: "timeline", label: "Timeline" },
 ];
 
 export function ViewTabs({ current, onChange, onSearch, query, onQueryChange }: Props) {
@@ -60,28 +49,10 @@ export function ViewTabs({ current, onChange, onSearch, query, onQueryChange }: 
         })}
       </div>
 
-      <div className="flex items-center gap-1 mb-1.5 shrink-0">
-        <ToolbarIcon label="Sort" icon={ArrowUpDown} />
-        <ToolbarIcon label="Filter" icon={Filter} />
-        <ToolbarIcon label="Automate" icon={Zap} />
+      <div className="mb-1.5 shrink-0">
         <SearchBox query={query} onChange={onQueryChange} onFocus={onSearch} />
-        <ToolbarIcon label="Expand" icon={Maximize2} />
-        <ToolbarIcon label="More" icon={MoreHorizontal} />
       </div>
     </div>
-  );
-}
-
-function ToolbarIcon({ label, icon: Icon }: { label: string; icon: typeof ArrowUpDown }) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      className="h-7 w-7 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
-    >
-      <Icon className="h-3.5 w-3.5" />
-    </button>
   );
 }
 
@@ -112,4 +83,3 @@ function SearchBox({
     </div>
   );
 }
-

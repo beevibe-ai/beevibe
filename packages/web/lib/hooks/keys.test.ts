@@ -21,8 +21,8 @@ describe("queryKeys", () => {
   });
 
   it("filter args are part of the key (so different filters cache separately)", () => {
-    const a = queryKeys.tasks.list({ view: "mine" });
-    const b = queryKeys.tasks.list({ view: "sprint" });
+    const a = queryKeys.tasks.list({ view: "all" });
+    const b = queryKeys.tasks.list({ view: "mine" });
     expect(a).not.toEqual(b);
   });
 

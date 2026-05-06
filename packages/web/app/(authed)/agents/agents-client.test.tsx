@@ -57,27 +57,21 @@ describe("AgentsClient", () => {
     expect(listMock).not.toHaveBeenCalled();
   });
 
-  it("falls back to OrgChart + SpecializationTable when api returns []", async () => {
+  it("renders the no-agents empty state when api returns []", async () => {
     listMock.mockResolvedValue([]);
     renderAgents();
-    expect(
-      await screen.findByRole("heading", { name: /Specialization depth/i }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("No agents yet").length).toBeGreaterThan(0);
+    expect(await screen.findByText("No agents yet")).toBeInTheDocument();
   });
 
-  it("renders agent rows with hierarchy chip + session count when populated", async () => {
+  it("renders the team orbit with team center + IC ring when populated", async () => {
     listMock.mockResolvedValue([
-      { ...baseAgent, id: "a1", display_name: "Alice", sessions_count: 5 },
-      { ...baseAgent, id: "a2", display_name: "Bob", hierarchy: "team", sessions_count: 12 },
+      { ...baseAgent, id: "team_1", display_name: "Alice's team", hierarchy: "team" },
+      { ...baseAgent, id: "ic_1", display_name: "Backend", parent_agent_id: "team_1", sessions_count: 5 },
+      { ...baseAgent, id: "ic_2", display_name: "Frontend", parent_agent_id: "team_1", sessions_count: 12 },
     ]);
     renderAgents();
-    expect(await screen.findByText("Alice")).toBeInTheDocument();
-    expect(screen.getByText("Bob")).toBeInTheDocument();
-    expect(screen.getByText("5 sessions")).toBeInTheDocument();
-    expect(screen.getByText("12 sessions")).toBeInTheDocument();
-    expect(
-      screen.getAllByText((_, el) => el?.textContent === "2 agents in your org.").length,
-    ).toBeGreaterThan(0);
+    expect(await screen.findByText("Alice's team")).toBeInTheDocument();
+    expect(screen.getByText("Backend")).toBeInTheDocument();
+    expect(screen.getByText("Frontend")).toBeInTheDocument();
   });
 });

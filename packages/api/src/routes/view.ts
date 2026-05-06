@@ -46,7 +46,7 @@ export interface ViewRoutesDeps {
 const LIFECYCLES = new Set<Lifecycle>(
   Object.keys(TASK_STATUSES_BY_LIFECYCLE) as Lifecycle[],
 );
-const VIEWS = new Set<TaskListFilter["view"]>(["all", "mine", "sprint", "timeline"]);
+const VIEWS = new Set<TaskListFilter["view"]>(["all", "mine"]);
 const SCOPES = new Set<MemoryScope>(MEMORY_SCOPES);
 
 export function createViewRouter(deps: ViewRoutesDeps): Router {

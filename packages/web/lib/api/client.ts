@@ -21,7 +21,7 @@ import type {
 } from "@beevibe/core";
 import type { Lifecycle } from "@/lib/tasks-grouping";
 
-export type TaskView = "all" | "mine" | "sprint" | "timeline";
+export type TaskView = "all" | "mine";
 
 export interface TaskListFilter {
   lifecycle?: Lifecycle;

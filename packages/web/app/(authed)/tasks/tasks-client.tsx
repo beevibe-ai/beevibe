@@ -13,8 +13,6 @@ import type { TaskListFilter } from "@/lib/api/client";
 const VIEW_TO_FILTER: Record<TaskView, TaskListFilter> = {
   all: {},
   mine: { view: "mine" },
-  sprint: { view: "sprint" },
-  timeline: { view: "timeline" },
 };
 
 interface EmptyMessage {

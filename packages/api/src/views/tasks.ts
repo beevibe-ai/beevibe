@@ -35,10 +35,9 @@ export interface TaskListFilter {
   /**
    * Saved-view shortcut. "mine" needs the caller's personId — the route
    * resolves that to the caller's primary agent's task assignments and
-   * passes it as `assignee_id` instead. "sprint" maps to a status set; see
-   * tasks-grouping.ts.
+   * passes it as `assignee_id` instead.
    */
-  view?: "all" | "mine" | "sprint" | "timeline";
+  view?: "all" | "mine";
 }
 
 interface TaskListRow {
