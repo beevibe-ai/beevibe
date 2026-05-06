@@ -4,7 +4,6 @@ import { useCallback, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  Bot,
   Home,
   ListChecks,
   type LucideIcon,
@@ -18,12 +17,7 @@ import { useCollapsible } from "@/lib/hooks/use-collapsible";
 import { useInbox } from "@/lib/hooks/use-inbox";
 import { ConversationSidebar } from "./chat/conversation-sidebar";
 import { LiveStatusDot } from "./chat/live-panel";
-import {
-  HomeSidebar,
-  RoomsSidebar,
-  TasksSidebar,
-  TeamSidebar,
-} from "./mode-sidebars";
+import { HomeSidebar, RoomsSidebar, TasksSidebar } from "./mode-sidebars";
 import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
 
@@ -34,19 +28,19 @@ type NavItem = {
   isActive: (pathname: string) => boolean;
 };
 
-// Routes consolidated under the Team tab — agents + the observability
-// views that emerge from their work. Used both for `isActive` matching
-// in the mode strip and for picking the per-mode sidebar component.
-const TEAM_ROUTES = ["/agents", "/memory", "/mesh", "/promotions"] as const;
-const matchesTeam = (p: string): boolean => TEAM_ROUTES.some((r) => p.startsWith(r));
+// Home is the launchpad: inbox + your team + observability views all
+// live there. Routes that map under it: /dashboard, /agents, /memory,
+// /mesh, /promotions. Chat / Rooms / Tasks remain their own modes
+// because they're full surfaces, not launchpad widgets.
+const HOME_ROUTES = ["/dashboard", "/agents", "/memory", "/mesh", "/promotions"] as const;
+const matchesHome = (p: string): boolean => HOME_ROUTES.some((r) => p.startsWith(r));
 const matchesChat = (p: string): boolean => p === "/" || p.startsWith("/chat");
 
 const PRIMARY_MODES: NavItem[] = [
-  { href: "/dashboard", label: "Home", icon: Home, isActive: (p) => p.startsWith("/dashboard") },
+  { href: "/dashboard", label: "Home", icon: Home, isActive: matchesHome },
   { href: "/", label: "Chat", icon: MessageSquare, isActive: matchesChat },
   { href: "/rooms", label: "Rooms", icon: Users, isActive: (p) => p.startsWith("/rooms") },
   { href: "/tasks", label: "Tasks", icon: ListChecks, isActive: (p) => p.startsWith("/tasks") },
-  { href: "/agents", label: "Team", icon: Bot, isActive: matchesTeam },
 ];
 
 export function Sidebar() {
@@ -177,12 +171,12 @@ function renderModePanel(args: ModePanelArgs): React.ReactNode {
       />
     );
   }
-  if (pathname.startsWith("/dashboard")) return <HomeSidebar />;
-  if (matchesTeam(pathname)) {
+  if (matchesHome(pathname)) {
     return (
-      <TeamSidebar
+      <HomeSidebar
         pathname={pathname}
         activeAgentId={extractIdFromPath(pathname, "/agents/")}
+        onNewChat={startNewConversation}
       />
     );
   }
