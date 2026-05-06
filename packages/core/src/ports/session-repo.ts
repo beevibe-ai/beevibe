@@ -39,6 +39,20 @@ export interface SessionRepository {
   listForAgent(agentId: string): Promise<Session[]>;
 
   /**
+   * Most-recent chat sessions for an agent, hard-bounded server-side.
+   *
+   * The chat history endpoints used to load every session for the
+   * agent into memory and filter by type there, which scaled linearly
+   * with usage. This method does the filter + limit at the SQL layer
+   * so a heavy user with thousands of chat turns doesn't drag the
+   * route every page load.
+   *
+   * Returns newest-first (matches `listForAgent`'s order), so callers
+   * can grab the head with `rows[0]`.
+   */
+  listChatForAgent(agentId: string, limit: number): Promise<Session[]>;
+
+  /**
    * Count currently-running sessions for an agent.
    * Used by capacity checks (max_task_sessions / max_mesh_sessions).
    * `types` groups session kinds: pass `['task']` for task cap, pass the mesh types

@@ -33,6 +33,7 @@ import type {
 } from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 import { requireHuman } from "../auth/middleware.js";
+import { ChatRateLimiter } from "./chat-rate-limit.js";
 import { processResponse, type SuggestedAction } from "./directives.js";
 
 export interface ChatRoutesDeps {
@@ -44,6 +45,12 @@ export interface ChatRoutesDeps {
   workspaceManager: WorkspaceManager;
   runtimeRegistry: RuntimeRegistry;
   makeMemoryAgent: (agentId: string) => MemoryAgent;
+  /**
+   * Per-person rate limiter for `POST /chat`. Optional: when not
+   * provided we mint a default. Tests inject their own with a
+   * deterministic `now()` so they can exercise window expiry.
+   */
+  rateLimiter?: ChatRateLimiter;
 }
 
 const CHAT_DIRECTIVES = `
@@ -151,19 +158,34 @@ interface HistoryMessage {
   suggested_actions?: SuggestedAction[];
 }
 
+/**
+ * 500 response with a generic message. The original error is logged
+ * server-side with a request id the client can paste into a bug report
+ * if they want to look it up. Internal error text (stack traces,
+ * upstream provider quirks, internal node ids) shouldn't ship to the
+ * browser — leaks implementation detail and occasionally credentials.
+ */
 function handleError(err: unknown, res: Response): void {
-  console.error("[chat route]", err);
+  const requestId = `req_${Math.random().toString(36).slice(2, 14)}`;
+  const detail = err instanceof Error ? err.stack ?? err.message : String(err);
+  console.error(`[chat route] ${requestId}`, detail);
   res.status(500).json({
     error: "internal_error",
-    message: err instanceof Error ? err.message : String(err),
+    message: "Something went wrong. Try again in a moment.",
+    request_id: requestId,
   });
 }
 
 const HISTORY_LIMIT = 50;
 const CONVERSATIONS_LIMIT = 50;
 const CONVERSATION_PREVIEW_CHARS = 140;
+// Hard ceiling pulled from the DB so a heavy user with thousands of
+// chat turns doesn't drag the route every page load. Generous (4×
+// CONVERSATIONS_LIMIT × 2 turns/conversation gives plenty of headroom)
+// while still bounded. Pagination is a follow-up.
+const CHAT_FETCH_LIMIT = 400;
 
-interface ChatSession {
+export interface ChatSession {
   id: string;
   prior_session_id?: string;
   intent: string;
@@ -173,7 +195,7 @@ interface ChatSession {
   created_at: Date;
 }
 
-interface ConversationChain {
+export interface ConversationChain {
   /** Head session id — first turn in the chain (no prior_session_id). */
   head_id: string;
   /** Sessions in chronological order (oldest first). */
@@ -190,15 +212,46 @@ interface ConversationChain {
  * themselves — preferable to dropping data, even if technically a
  * fragment of an older conversation.
  */
-function groupIntoConversations(sessions: readonly ChatSession[]): ConversationChain[] {
+/** Exported for unit testing only — route uses it internally. */
+export function groupIntoConversations(
+  sessions: readonly ChatSession[],
+): ConversationChain[] {
   const byId = new Map(sessions.map((s) => [s.id, s]));
   const headOf = new Map<string, string>();
-  const findHead = (s: ChatSession): string => {
-    const cached = headOf.get(s.id);
+  // Iterative walk with a visited set so a cycle in `prior_session_id`
+  // (which can only happen via data corruption — bad migration, manual
+  // SQL fix) doesn't blow the stack. When we detect a cycle, treat the
+  // first session in the cycle as the head; the chain still surfaces,
+  // just at an arbitrary anchor point. Crashing here would take down
+  // the entire chat history endpoint.
+  const findHead = (start: ChatSession): string => {
+    const cached = headOf.get(start.id);
     if (cached) return cached;
-    const parent = s.prior_session_id ? byId.get(s.prior_session_id) : undefined;
-    const head = parent ? findHead(parent) : s.id;
-    headOf.set(s.id, head);
+    const visited = new Set<string>();
+    let cur: ChatSession = start;
+    while (cur.prior_session_id) {
+      if (visited.has(cur.id)) {
+        // Cycle: bail with `cur` as the head. Cache for every node we
+        // walked through so we don't re-walk on the next call.
+        for (const id of visited) headOf.set(id, cur.id);
+        return cur.id;
+      }
+      visited.add(cur.id);
+      const parent = byId.get(cur.prior_session_id);
+      if (!parent) break; // pointer outside input window — `cur` is head
+      // Short-circuit: if we've already resolved an ancestor's head,
+      // reuse it.
+      const ancestorHead = headOf.get(parent.id);
+      if (ancestorHead) {
+        for (const id of visited) headOf.set(id, ancestorHead);
+        headOf.set(start.id, ancestorHead);
+        return ancestorHead;
+      }
+      cur = parent;
+    }
+    const head = cur.id;
+    for (const id of visited) headOf.set(id, head);
+    headOf.set(start.id, head);
     return head;
   };
 
@@ -262,9 +315,51 @@ function previewOf(s: ChatSession): string {
     : oneLine.slice(0, CONVERSATION_PREVIEW_CHARS - 1) + "…";
 }
 
+/**
+ * Hard cap on a single chat turn. AgentSession.run honors abortSignal;
+ * we wire a setTimeout to abort the run if it goes past this. Beyond
+ * this point the user has likely given up and reloaded — we should free
+ * the HTTP socket + DB connection rather than wait for the LLM tail.
+ */
+const CHAT_TURN_TIMEOUT_MS = 90_000;
+
+/**
+ * Replay an existing chat session as if it were a freshly-completed
+ * turn. Used by the idempotency check: if a client retries a POST with
+ * the same `session_id` (network blip, double-click), we don't run the
+ * agent again — we hand back the already-recorded result.
+ */
+function replayChatSession(
+  session: {
+    id: string;
+    status: string;
+    result_summary?: string;
+    error?: string;
+  },
+  agent: { id: string; name: string; hierarchy_level: string },
+): unknown {
+  const { visible, view_refs, open_view, suggested_actions } = processResponse(
+    session.result_summary ?? "",
+  );
+  return {
+    ok: true,
+    agent: { id: agent.id, name: agent.name, hierarchy: agent.hierarchy_level },
+    session_id: session.id,
+    response: visible || session.error || "",
+    status: session.status,
+    view_refs,
+    ...(open_view ? { open_view } : {}),
+    ...(suggested_actions ? { suggested_actions } : {}),
+    replayed: true,
+  };
+}
+
 export function createChatRouter(deps: ChatRoutesDeps): Router {
   const router = Router();
   router.use(deps.authMiddleware);
+  // Mint a default rate limiter if the caller didn't supply one.
+  // Tests inject their own with a deterministic clock.
+  const rateLimiter = deps.rateLimiter ?? new ChatRateLimiter();
 
   router.get("/conversations", async (req, res) => {
     if (!requireHuman(req, res)) return;
@@ -273,8 +368,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
       res.json({ ok: true, conversations: [] });
       return;
     }
-    const all = await deps.sessionRepo.listForAgent(agent.id);
-    const chats = all.filter((s) => s.type === "chat");
+    const chats = await deps.sessionRepo.listChatForAgent(agent.id, CHAT_FETCH_LIMIT);
     const chains = groupIntoConversations(chats).slice(0, CONVERSATIONS_LIMIT);
 
     const conversations = chains.map((chain) => {
@@ -307,8 +401,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
     }
 
     const requestedHead = typeof req.query.c === "string" ? req.query.c : undefined;
-    const all = await deps.sessionRepo.listForAgent(agent.id);
-    const chats = all.filter((s) => s.type === "chat");
+    const chats = await deps.sessionRepo.listChatForAgent(agent.id, CHAT_FETCH_LIMIT);
     const chains = groupIntoConversations(chats);
 
     const chain = requestedHead
@@ -361,6 +454,74 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         ? body.session_id
         : undefined;
 
+    // ── Idempotency check ─────────────────────────────────────────
+    // If the client provided a session_id and we already have a row
+    // for it, treat this as a retry. Reasons it might happen:
+    //   - network blip mid-response → client auto-retried
+    //   - browser back/forward cache replays the POST
+    //   - double-submit from a UI bug
+    // Each chat turn is a real Claude Code subprocess (~$$); replaying
+    // the recorded result is much cheaper than re-running the turn.
+    if (callerSessionId) {
+      const existing = await deps.sessionRepo.findById(callerSessionId);
+      if (existing && existing.type === "chat") {
+        const owningAgent = await deps.agentRepo.findById(existing.agent_id);
+        if (owningAgent && owningAgent.owner_id !== req.caller.personId) {
+          res.status(403).json({
+            error: "session_belongs_to_other_caller",
+            message: "session id collides with a session owned by a different person",
+          });
+          return;
+        }
+        if (existing.status === "running") {
+          res.status(409).json({
+            error: "session_in_flight",
+            message: "this session is currently running; wait for it to finish",
+          });
+          return;
+        }
+        if (existing.status === "succeeded" || existing.status === "failed") {
+          // Replay the prior result — same shape the original turn returned.
+          res.json(
+            replayChatSession(
+              {
+                id: existing.id,
+                status: existing.status,
+                result_summary: existing.result_summary ?? undefined,
+                error: existing.error ?? undefined,
+              },
+              {
+                id: owningAgent!.id,
+                name: owningAgent!.name,
+                hierarchy_level: owningAgent!.hierarchy_level,
+              },
+            ),
+          );
+          return;
+        }
+      }
+    }
+
+    // ── Rate limit ────────────────────────────────────────────────
+    // Per-person, both concurrent (1 turn at a time) and sliding
+    // window (default 30 turns/min). Compromised tokens or scripted
+    // abuse can't drain budget unbounded.
+    const rateOutcome = rateLimiter.acquire(req.caller.personId);
+    if (!rateOutcome.ok) {
+      res
+        .status(429)
+        .set("Retry-After", String(Math.ceil(rateOutcome.retryAfterMs / 1000)))
+        .json({
+          error: rateOutcome.reason === "concurrent" ? "turn_in_flight" : "rate_limited",
+          message:
+            rateOutcome.reason === "concurrent"
+              ? "Wait for your previous chat turn to finish before sending another."
+              : "Too many chat turns recently. Try again in a moment.",
+          retry_after_ms: rateOutcome.retryAfterMs,
+        });
+      return;
+    }
+
     // Resolve caller + their primary agent (team preferred, org fallback)
     // and the person row (for onboarding state) in parallel.
     const [agent, person] = await Promise.all([
@@ -368,6 +529,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
       deps.personRepo.findById(req.caller.personId),
     ]);
     if (!agent) {
+      rateOutcome.release();
       res.status(404).json({
         error: "no_primary_agent",
         message:
@@ -379,12 +541,24 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
 
     const runtime = deps.runtimeRegistry[agent.runtime_config.type];
     if (!runtime) {
+      rateOutcome.release();
       res.status(500).json({
         error: "unsupported_runtime",
         message: `runtime type '${agent.runtime_config.type}' has no registered adapter`,
       });
       return;
     }
+
+    // ── Timeout ───────────────────────────────────────────────────
+    // 90s ceiling on a single turn. AgentSession.run honors abortSignal;
+    // when the timer fires the runtime tears down its CLI subprocess
+    // and the route returns 504 instead of holding the socket open.
+    const abortController = new AbortController();
+    let timedOut = false;
+    const timeoutTimer = setTimeout(() => {
+      timedOut = true;
+      abortController.abort();
+    }, CHAT_TURN_TIMEOUT_MS);
 
     try {
       const workspace = await deps.workspaceManager.ensureWorkspace({ agent });
@@ -404,6 +578,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         type: "chat",
         sessionId: callerSessionId,
         priorSessionId,
+        abortSignal: abortController.signal,
         extraSystemPromptAppend: [CHAT_DIRECTIVES, isOnboarding ? ONBOARDING_DIRECTIVES : ""]
           .filter((s) => s.length > 0)
           .join("\n\n"),
@@ -437,7 +612,18 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         ...(suggested_actions ? { suggested_actions } : {}),
       });
     } catch (err) {
+      if (timedOut) {
+        res.status(504).json({
+          error: "chat_turn_timeout",
+          message: `Chat turn exceeded ${CHAT_TURN_TIMEOUT_MS / 1000}s and was aborted.`,
+          timeout_ms: CHAT_TURN_TIMEOUT_MS,
+        });
+        return;
+      }
       handleError(err, res);
+    } finally {
+      clearTimeout(timeoutTimer);
+      rateOutcome.release();
     }
   });
 

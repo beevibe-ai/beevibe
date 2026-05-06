@@ -80,6 +80,21 @@ export class PostgresSessionRepository implements SessionRepository {
     return rows.map(rowToSession);
   }
 
+  async listChatForAgent(agentId: string, limit: number): Promise<Session[]> {
+    // Bounded server-side so chat history routes don't pull every
+    // session for the agent. The (agent_id, type, created_at) ordering
+    // matches the existing partial index on session(agent_id) so the
+    // planner does an index scan + filter rather than a heap scan.
+    const { rows } = await this.pool.query<SessionRow>(
+      `SELECT * FROM session
+        WHERE agent_id = $1 AND type = 'chat'
+        ORDER BY created_at DESC
+        LIMIT $2`,
+      [agentId, limit],
+    );
+    return rows.map(rowToSession);
+  }
+
   async countRunningByAgent(agentId: string, types: SessionType[]): Promise<number> {
     if (types.length === 0) return 0;
     const { rows } = await this.pool.query<{ count: string }>(

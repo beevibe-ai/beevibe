@@ -18,6 +18,34 @@
 const ENTITY_ID_RE = /\b((?:task|agent|sess)_[A-Za-z0-9]{12})\b/g;
 const OPEN_VIEW_RE =
   /<open_view\s+path="([^"]+)"(?:\s+label="([^"]+)")?\s*\/?>(?:\s*<\/open_view>)?/i;
+
+/**
+ * Paths the chat UI knows how to navigate to. The system prompt names
+ * these explicitly, but the prompt is best-effort guidance, not
+ * enforcement. A misbehaving model could emit `path="/admin/..."` or
+ * `path="https://attacker.example/..."` — we drop the directive when
+ * the path doesn't start with one of these prefixes so the UI never
+ * renders an off-spec CTA.
+ */
+const ALLOWED_OPEN_VIEW_PREFIXES = [
+  "/tasks",
+  "/agents",
+  "/mesh",
+  "/memory",
+  "/promotions",
+  "/dashboard",
+  "/sessions",
+] as const;
+
+function isAllowedOpenViewPath(path: string): boolean {
+  // Must be an absolute in-app path, no scheme, no protocol-relative,
+  // no traversal. The prefix check then narrows to known surfaces.
+  if (!path.startsWith("/") || path.startsWith("//")) return false;
+  if (path.includes("..")) return false;
+  return ALLOWED_OPEN_VIEW_PREFIXES.some(
+    (prefix) => path === prefix || path.startsWith(`${prefix}/`),
+  );
+}
 // Tolerates: any attribute order, self-closing or paired, inline-text form.
 // Group 1 = attributes; group 2 = inline text (when paired).
 const SUGGEST_ACTION_RE =
@@ -48,9 +76,10 @@ export interface ProcessedResponse {
 
 export function processResponse(raw: string): ProcessedResponse {
   const openMatch = raw.match(OPEN_VIEW_RE);
-  const open_view: OpenView | undefined = openMatch?.[1]
-    ? { path: openMatch[1], ...(openMatch[2] ? { label: openMatch[2] } : {}) }
-    : undefined;
+  const open_view: OpenView | undefined =
+    openMatch?.[1] && isAllowedOpenViewPath(openMatch[1])
+      ? { path: openMatch[1], ...(openMatch[2] ? { label: openMatch[2] } : {}) }
+      : undefined;
 
   const suggestedActions: SuggestedAction[] = [];
   const seenLabels = new Set<string>();
