@@ -72,6 +72,10 @@ export BEEVIBE_API_PORT="${BEEVIBE_API_PORT:-3000}"
 export BEEVIBE_MCP_SERVER_URL="${BEEVIBE_MCP_SERVER_URL:-http://localhost:${BEEVIBE_API_PORT}/mcp}"
 export BEEVIBE_EXECUTOR_HEALTH_PORT="${BEEVIBE_EXECUTOR_HEALTH_PORT:-3001}"
 export BEEVIBE_WEB_PORT="${BEEVIBE_WEB_PORT:-3002}"
+# M9.3: api + executor sync tier-filtered skills into <workspace>/.claude/skills/
+# at every dispatch. Default points at this repo's /skills/ dir; pnpm --filter
+# changes the cwd to each package, so we can't rely on process.cwd()/skills.
+export BEEVIBE_SKILLS_DIR="${BEEVIBE_SKILLS_DIR:-${REPO_ROOT}/skills}"
 
 # ─────────────────── flags ───────────────────
 TUNNEL_ENABLED=1
@@ -241,8 +245,6 @@ if [ "$TUNNEL_ENABLED" = "1" ]; then
   trap 'cleanup_tunnel_files; kill 0' EXIT
 
   (
-    # --protocol http2: disable QUIC. Recent cloudflared versions hit
-    # "context canceled" on the datagram handler when behind some
     # --protocol http2: force TCP-based HTTP/2 instead of QUIC's UDP
     # datagrams. QUIC fails on networks that drop UDP traffic
     # (corporate firewalls, some hotel/conference WiFi) — manifests
@@ -256,7 +258,12 @@ if [ "$TUNNEL_ENABLED" = "1" ]; then
     cloudflared tunnel --protocol http2 --url "http://localhost:${BEEVIBE_API_PORT}" 2>&1 | while IFS= read -r line; do
       echo "[tunnel-api] $line"
       if [[ "$line" =~ (https://[^[:space:]]+\.trycloudflare\.com) ]] && [ ! -s "$api_url_file" ]; then
-        echo "${BASH_REMATCH[1]}" > "$api_url_file"
+        url="${BASH_REMATCH[1]}"
+        echo "$url" > "$api_url_file"
+        # Persist the api URL so `scripts/provision-demo.ts` can auto-pick it up
+        # in the manual-smoke flow (it reads the captain+ICs config from here).
+        mkdir -p "$HOME/.beevibe"
+        printf '%s\n' "$url" > "$HOME/.beevibe/last-tunnel-url"
       fi
     done
   ) &
@@ -326,6 +333,9 @@ Remote Claude CLI? Paste into ~/.config/claude/mcp.json:
       }
     }
   }
+
+For a manual Claude CLI smoke (captain + ICs pre-pointed at this tunnel):
+  pnpm tsx scripts/provision-demo.ts
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 EOF

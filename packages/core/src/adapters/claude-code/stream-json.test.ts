@@ -135,14 +135,49 @@ describe("parseClaudeStreamJson", () => {
     expect(result.cli_session_id).toBe("cli_sess_abc");
   });
 
-  it("extracts usage with cost, tokens, and model", () => {
+  it("extracts usage with cost, tokens, and model (M9.8: cache fields default to 0 when absent)", () => {
     const result = parseClaudeStreamJson(sampleStream, 0);
     expect(result.usage).toEqual({
       input_tokens: 1500,
       output_tokens: 200,
+      cache_creation_input_tokens: 0,
+      cache_read_input_tokens: 0,
       cost_usd: 0.0123,
       model: "claude-opus-4-7",
     });
+  });
+
+  it("M9.8: extracts cache_creation_input_tokens and cache_read_input_tokens when present", () => {
+    // Realistic cached-prompt shape: small new input + small cache write +
+    // big cache read. The three counters are DISJOINT slices of the same
+    // prompt; total = input + cache_creation + cache_read.
+    const stream = JSON.stringify({
+      type: "result",
+      session_id: "cli_sess_xyz",
+      total_cost_usd: 0.05,
+      model: "claude-opus-4-7",
+      usage: {
+        input_tokens: 100,
+        output_tokens: 412,
+        cache_creation_input_tokens: 200,
+        cache_read_input_tokens: 9700,
+      },
+    });
+    const result = parseClaudeStreamJson(stream, 0);
+    expect(result.usage).toEqual({
+      input_tokens: 100,
+      output_tokens: 412,
+      cache_creation_input_tokens: 200,
+      cache_read_input_tokens: 9700,
+      cost_usd: 0.05,
+      model: "claude-opus-4-7",
+    });
+    // Cache hit ratio = cache_read / (input + cache_creation + cache_read).
+    // 9700 / (100 + 200 + 9700) = 9700 / 10000 = 97% — high cache utilization.
+    const u = result.usage!;
+    const total = u.input_tokens! + u.cache_creation_input_tokens! + u.cache_read_input_tokens!;
+    const ratio = u.cache_read_input_tokens! / total;
+    expect(ratio).toBeGreaterThan(0.9);
   });
 
   it("correlates tool_result with its tool_use via tool_use_id", () => {

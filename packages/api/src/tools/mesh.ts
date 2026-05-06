@@ -23,6 +23,7 @@ import type { ResolvedCaller } from "@beevibe/core/auth";
 import type { AgentTool, AgentToolResult } from "./types.js";
 import type { MeshServer } from "../mesh/server.js";
 import {
+  CannotNegotiateWithIcError,
   MeshCapacityError,
   MeshMaxRoundsError,
   type AskResponse,
@@ -58,6 +59,12 @@ function asError(err: unknown, extra: Record<string, unknown> = {}): AgentToolRe
     };
   }
   if (err instanceof MeshMaxRoundsError) {
+    return {
+      content: { error: err.code, ...err.meta, message: err.message },
+      isError: true,
+    };
+  }
+  if (err instanceof CannotNegotiateWithIcError) {
     return {
       content: { error: err.code, ...err.meta, message: err.message },
       isError: true,
@@ -106,9 +113,14 @@ function askTool(ctx: MeshToolContext, services: MeshToolServices): AgentTool {
   return {
     name: "ask",
     description:
-      "Ask a peer agent a one-shot question. Spawns the target's CLI session, " +
-      "blocks until they call respond_ask. Use for status checks or focused " +
-      "queries — for back-and-forth proposals, use negotiate instead.",
+      "Ask another agent a one-shot question that requires their reasoning, " +
+      "judgment, or context only they have. Use cases include lateral peer " +
+      "queries ('do you think X is feasible?') and downward queries to " +
+      "subordinates for context before deciding ('what context do you have " +
+      "on project Y before I assign Z?'). Spawns the target's CLI session, " +
+      "blocks until they call respond_ask. For STATUS of delegated work, " +
+      "use check_work_status — it's a DB read with no session spawn. For " +
+      "back-and-forth proposals with stake, use negotiate.",
     schema: {
       type: "object",
       properties: {
@@ -149,7 +161,9 @@ function respondAskTool(ctx: MeshToolContext, services: MeshToolServices): Agent
     name: "respond_ask",
     description:
       "Respond to an ask request. Terminal — your session typically exits " +
-      "after this call. The asker is unblocked and gets your answer.",
+      "after this call. The asker is unblocked and gets your answer. The " +
+      "asker only sees the `answer` arg. Replying via chat alone does NOT " +
+      "reach them — you must call this tool.",
     schema: {
       type: "object",
       properties: {
@@ -188,7 +202,9 @@ function negotiateTool(ctx: MeshToolContext, services: MeshToolServices): AgentT
       "and blocks until they respond. After round 1, both sides use " +
       "respond_negotiate to alternate. Server enforces a hard max-rounds cap " +
       "(default 5, per-agent configurable); on max_rounds_exceeded, call " +
-      "escalate_to_humans instead.",
+      "escalate_to_humans instead. Target must be team or org tier — " +
+      "calling against an IC returns cannot_negotiate_with_ic. ICs are " +
+      "workers; for downward delegation use create_task.",
     schema: {
       type: "object",
       properties: {
@@ -307,29 +323,41 @@ function reportBlockerTool(ctx: MeshToolContext, services: MeshToolServices): Ag
   return {
     name: "report_blocker",
     description:
-      "Report a blocker to a parent agent (typically your direct parent). " +
-      "Marks the task as blocked with you as the blocker_agent_id, and " +
-      "spawns the parent's session asynchronously to investigate. " +
-      "Fire-and-forget — your session continues immediately. The parent " +
-      "may call revise_task with guidance; you'll be re-dispatched with " +
-      "a post-blocker revision context (M9 skill: post-blocker-revision).",
+      "Report a blocker to your direct parent agent. Marks the task as " +
+      "blocked with you as the blocker_agent_id and spawns the parent's " +
+      "session asynchronously to investigate. After this call, exit your " +
+      "session — the executor will re-dispatch you with the parent's " +
+      "guidance via revise_task. Top-level agents (no parent) should not " +
+      "call this — use escalate_to_humans or update_progress('failed') " +
+      "instead.",
     schema: {
       type: "object",
       properties: {
-        parent_agent_id: { type: "string", description: "Agent to report to (typically your parent)." },
         task_id: { type: "string", description: "The task you're blocked on." },
         description: { type: "string", description: "What's blocking you and what you've tried." },
       },
-      required: ["parent_agent_id", "task_id", "description"],
+      required: ["task_id", "description"],
     },
     handler: async (input) => {
       try {
-        const parentId = String(input.parent_agent_id ?? "");
         const taskId = String(input.task_id ?? "");
         const description = String(input.description ?? "");
-        if (!parentId || !taskId || !description) {
+        if (!taskId || !description) {
           return {
-            content: { error: "parent_agent_id, task_id, description all required" },
+            content: { error: "task_id and description required" },
+            isError: true,
+          };
+        }
+
+        // Server derives parent from caller's hierarchy. Direct parent only.
+        const parent = await services.agentRepo.findParent(ctx.caller.agentId);
+        if (!parent) {
+          return {
+            content: {
+              error: "no_parent_to_block",
+              message:
+                "Top-level agents have no parent to report blockers to. Use escalate_to_humans or update_progress('failed') instead.",
+            },
             isError: true,
           };
         }
@@ -338,12 +366,12 @@ function reportBlockerTool(ctx: MeshToolContext, services: MeshToolServices): Ag
         await services.taskService.markBlocked(taskId, ctx.caller.agentId, description);
 
         // Fire-and-forget spawn parent's session.
-        services.mesh.reportBlocker(parentId, ctx.caller.agentId, taskId, description);
+        services.mesh.reportBlocker(parent.id, ctx.caller.agentId, taskId, description);
 
         return {
           content: {
             reported: true,
-            parent_agent_id: parentId,
+            parent_agent_id: parent.id,
             task_id: taskId,
           },
         };
@@ -370,7 +398,9 @@ function escalateToHumansTool(
       "add_to_escalation with their perspective. Submit your proposals + " +
       "open questions for the human reviewer. Call this when negotiations " +
       "stall or hit max_rounds_exceeded — humans pick from your proposals " +
-      "(or invent their own) via POST /escalation/:id/resolve.",
+      "(or invent their own) via POST /escalation/:id/resolve. After this " +
+      "call, exit your session — the human will resolve and the executor " +
+      "will re-dispatch you with the resolution as post-escalation context.",
     schema: {
       type: "object",
       properties: {
@@ -449,17 +479,28 @@ function escalateToHumansTool(
 // ── Assemble mesh tool sets ──────────────────────────────────────────────
 
 /**
- * IC tier mesh tools. ICs only get `report_blocker` — the canonical
- * escalate-to-parent path. They don't initiate ask/negotiate (lateral
- * coordination is team-tier work) and don't terminate mesh calls
- * (respond_ask / respond_negotiate are only meaningful when the session was
- * spawned as a mesh peer, which doesn't happen at IC tier).
+ * IC tier mesh tools (M9.1). ICs are workers, not deciders — they don't
+ * INITIATE coordination and they don't participate in multi-round
+ * negotiations as peers. They DO answer one-shot questions (team-tier
+ * agents can target ICs with `ask`) and they CAN escalate upward via
+ * `report_blocker`.
+ *
+ * Excluded from IC tier:
+ *   - `ask` / `negotiate` — initiation is team/org only
+ *   - `respond_negotiate` — M9.1 server guardrail rejects negotiate
+ *     against IC targets, so the IC is never spawned as a negotiation
+ *     peer; the tool would be unreachable
+ *   - `escalate_to_humans` — escalation is for stuck negotiations
+ *     (initiator-only) and ICs don't initiate
  */
 export function buildIcMeshTools(
   ctx: MeshToolContext,
   services: MeshToolServices,
 ): AgentTool[] {
-  return [reportBlockerTool(ctx, services)];
+  return [
+    respondAskTool(ctx, services),
+    reportBlockerTool(ctx, services),
+  ];
 }
 
 /**

@@ -29,6 +29,7 @@ async function main(): Promise<void> {
     openaiApiKey: process.env.OPENAI_API_KEY,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY,
     workspaceRoot: process.env.WORKSPACE_ROOT,
+    skillsSourceDir: process.env.BEEVIBE_SKILLS_DIR,
     port,
   });
 

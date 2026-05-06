@@ -95,6 +95,7 @@ beforeEach(() => {
   };
   memoryAgent = {
     prepareBriefing: vi.fn(),
+    searchArchival: vi.fn<MemoryAgent["searchArchival"]>().mockResolvedValue(""),
     // Default to a resolved promise so the fire-and-forget .catch() has something to chain.
     onTaskComplete: vi.fn<MemoryAgent["onTaskComplete"]>().mockResolvedValue(),
   };
@@ -132,7 +133,8 @@ describe("AgentSession.run", () => {
       makeSession(input.id),
     );
     vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({
-      systemPromptAppend: "<core_memory></core_memory><archival_memory></archival_memory>",
+      systemPromptAppend: "<core_memory></core_memory>",
+      userMessagePrefix: "<archival_memory><fact>relevant fact</fact></archival_memory>",
       snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] },
     });
     vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
@@ -149,11 +151,30 @@ describe("AgentSession.run", () => {
 
     expect(memoryAgent.prepareBriefing).toHaveBeenCalledWith("Reply with 'ok'.");
     const ctx = vi.mocked(runtime.execute).mock.calls[0]![0];
-    expect(ctx.system_prompt_append).toBe(
-      "Follow the house style.\n\n<core_memory></core_memory><archival_memory></archival_memory>",
-    );
+    // System prompt has FOUR pieces, in cache-stable order:
+    //   1. BEEVIBE_LIFECYCLE_REMINDER (always-on; M9.5+ empirical fix)
+    //   2. BEEVIBE_MEMORY_REMINDER (always-on; Letta pattern for active
+    //      mid-session memory management)
+    //   3. agent.runtime_config.system_prompt_addition (per-agent baseline)
+    //   4. briefing.systemPromptAppend (= core_memory; M9.4)
+    expect(ctx.system_prompt_append).toContain("<beevibe_lifecycle>");
+    expect(ctx.system_prompt_append).toContain("mcp__beevibe__update_progress");
+    expect(ctx.system_prompt_append).toContain("<beevibe_memory>");
+    expect(ctx.system_prompt_append).toContain("mcp__beevibe__save_memory");
+    expect(ctx.system_prompt_append).toContain("mcp__beevibe__update_core_memory");
+    expect(ctx.system_prompt_append).toContain("Follow the house style.");
+    expect(ctx.system_prompt_append).toContain("<core_memory></core_memory>");
+    // Reminders must come BEFORE the persona baseline (cache order).
+    const lifecycleIdx = ctx.system_prompt_append.indexOf("<beevibe_lifecycle>");
+    const memoryIdx = ctx.system_prompt_append.indexOf("<beevibe_memory>");
+    const baselineIdx = ctx.system_prompt_append.indexOf("Follow the house style.");
+    expect(lifecycleIdx).toBeLessThan(memoryIdx);
+    expect(memoryIdx).toBeLessThan(baselineIdx);
     expect(ctx.workspace).toBe(WORKSPACE);
-    expect(ctx.intent).toBe("Reply with 'ok'.");
+    // M9.4: archival_memory is prepended to the user message (intent).
+    expect(ctx.intent).toBe(
+      "<archival_memory><fact>relevant fact</fact></archival_memory>\n\nReply with 'ok'.",
+    );
 
     // Terminal state written
     const updatePatch = vi
@@ -174,7 +195,7 @@ describe("AgentSession.run", () => {
       createdIds.push(input.id);
       return makeSession(input.id);
     });
-    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", userMessagePrefix: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
     vi.mocked(runtime.execute).mockImplementation(async (ctx) => {
       // session should already exist by now — prove it by asserting the onSpawn update lands
       ctx.onSpawn?.({ process_pid: 99, process_group_id: 99 });
@@ -200,7 +221,7 @@ describe("AgentSession.run", () => {
   it("maps runtime status 'cancelled' → session.status 'cancelled'", async () => {
     vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
     vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
-    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", userMessagePrefix: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
     vi.mocked(runtime.execute).mockResolvedValue(
       makeRuntimeResult({ status: "cancelled", output: "Session cancelled." }),
     );
@@ -219,7 +240,7 @@ describe("AgentSession.run", () => {
   it("sets session to 'failed' and rethrows when runtime throws", async () => {
     vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
     vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
-    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", userMessagePrefix: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
     vi.mocked(runtime.execute).mockRejectedValue(new Error("spawn ENOENT"));
     vi.mocked(sessionRepo.update).mockImplementation(async (id, patch) =>
       makeSession(id, patch as Partial<Session>),
@@ -251,7 +272,7 @@ describe("AgentSession.run", () => {
       }),
     );
     vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
-    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", userMessagePrefix: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
     vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
     vi.mocked(sessionRepo.update).mockImplementation(async (id) => makeSession(id));
 
@@ -272,7 +293,7 @@ describe("AgentSession.run", () => {
       capturedSessionId = input.id;
       return makeSession(input.id);
     });
-    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", userMessagePrefix: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
     vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
     vi.mocked(sessionRepo.update).mockImplementation(async (id) => makeSession(id));
 
@@ -292,7 +313,7 @@ describe("AgentSession.run", () => {
       makeSession("sess_prev", { cli_session_id: "cli_prev_abc" }),
     );
     vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
-    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", userMessagePrefix: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
     vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
     vi.mocked(sessionRepo.update).mockImplementation(async (id) => makeSession(id));
 
@@ -314,7 +335,7 @@ describe("AgentSession.run", () => {
       createdId = i.id;
       return makeSession(i.id);
     });
-    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", userMessagePrefix: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
     vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
     vi.mocked(sessionRepo.update).mockImplementation(async (id) => makeSession(id));
     vi.mocked(memoryAgent.onTaskComplete).mockResolvedValue();
@@ -343,7 +364,7 @@ describe("AgentSession.run", () => {
   it("defaults type to 'chat' when no taskId and 'task' when taskId is set", async () => {
     vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
     vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
-    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", userMessagePrefix: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
     vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
     vi.mocked(sessionRepo.update).mockImplementation(async (id) => makeSession(id));
 
@@ -376,7 +397,7 @@ describe("AgentSession.run", () => {
     });
     vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
     vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
-    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", userMessagePrefix: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
     vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
     vi.mocked(sessionRepo.update).mockImplementation(async (id, patch) =>
       makeSession(id, patch as Partial<Session>),
@@ -401,7 +422,7 @@ describe("AgentSession.run", () => {
     });
     vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
     vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
-    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", userMessagePrefix: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
     vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
     vi.mocked(sessionRepo.update).mockImplementation(async (id) => makeSession(id));
 
@@ -430,7 +451,7 @@ describe("AgentSession.run", () => {
     });
     vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
     vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
-    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({ systemPromptAppend: "", userMessagePrefix: "", snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] } });
     vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
     vi.mocked(sessionRepo.update).mockImplementation(async (id) => makeSession(id));
     const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});

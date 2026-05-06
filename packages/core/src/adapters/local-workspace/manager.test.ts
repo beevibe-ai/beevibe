@@ -1,5 +1,6 @@
 import {
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readdirSync,
   readFileSync,
@@ -12,6 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Agent } from "../../domain/agent.js";
+import type { AgentRuntime, RuntimeRegistry, Workspace } from "../../ports/runtime.js";
 import { LocalWorkspaceManager } from "./manager.js";
 
 const MCP_URL = "http://mcp.example/";
@@ -30,17 +32,33 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
   };
 }
 
+// Fake claude-code runtime — only `skillsDir` and `type` are exercised here.
+const fakeClaudeRuntime = {
+  type: "claude-code",
+  skillsDir: (workspace: Workspace) => join(workspace.path, ".claude", "skills"),
+} as unknown as AgentRuntime;
+const fakeRuntimeRegistry: RuntimeRegistry = { "claude-code": fakeClaudeRuntime };
+
 describe("LocalWorkspaceManager", () => {
   let workspaceRoot: string;
+  let skillsSourceDir: string;
   let manager: LocalWorkspaceManager;
 
   beforeEach(() => {
     workspaceRoot = mkdtempSync(join(tmpdir(), "beevibe-ws-test-"));
-    manager = new LocalWorkspaceManager({ workspaceRoot, mcpServerUrl: MCP_URL });
+    // Empty skills source dir by default; specific tests populate it.
+    skillsSourceDir = mkdtempSync(join(tmpdir(), "beevibe-skills-src-"));
+    manager = new LocalWorkspaceManager({
+      workspaceRoot,
+      mcpServerUrl: MCP_URL,
+      runtimeRegistry: fakeRuntimeRegistry,
+      skillsSourceDir,
+    });
   });
 
   afterEach(() => {
     rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(skillsSourceDir, { recursive: true, force: true });
   });
 
   it("ensureWorkspace creates the agent dir under workspaceRoot", async () => {
@@ -73,8 +91,9 @@ describe("LocalWorkspaceManager", () => {
     await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_persist" }) });
 
     const files = readdirSync(ws.path).sort();
-    // mcp-config.json was written on first ensure; preserved along with the user-created files.
-    expect(files).toEqual(["cloned-repo.txt", "mcp-config.json", "notes.md"]);
+    // mcp-config.json was written on first ensure; preserved along with the user-created
+    // files. .claude/ is created by M9.3 skill sync (empty when sourceDir has no skills).
+    expect(files).toEqual([".claude", "cloned-repo.txt", "mcp-config.json", "notes.md"]);
   });
 
   it("recursive mkdir creates missing parent dirs", async () => {
@@ -82,6 +101,8 @@ describe("LocalWorkspaceManager", () => {
     const deepManager = new LocalWorkspaceManager({
       workspaceRoot: deepRoot,
       mcpServerUrl: MCP_URL,
+      runtimeRegistry: fakeRuntimeRegistry,
+      skillsSourceDir,
     });
     const ws = await deepManager.ensureWorkspace({ agent: makeAgent({ id: "agent_deep" }) });
     expect(existsSync(ws.path)).toBe(true);
@@ -89,7 +110,11 @@ describe("LocalWorkspaceManager", () => {
   });
 
   it("defaults workspaceRoot to ~/.beevibe/workspaces when not provided", () => {
-    const m = new LocalWorkspaceManager({ mcpServerUrl: MCP_URL });
+    const m = new LocalWorkspaceManager({
+      mcpServerUrl: MCP_URL,
+      runtimeRegistry: fakeRuntimeRegistry,
+      skillsSourceDir,
+    });
     const root = (m as unknown as { root: string }).root;
     expect(root).toMatch(/\/\.beevibe\/workspaces$/);
   });
@@ -174,6 +199,8 @@ describe("LocalWorkspaceManager", () => {
       const different = new LocalWorkspaceManager({
         workspaceRoot,
         mcpServerUrl: "http://different.example/",
+        runtimeRegistry: fakeRuntimeRegistry,
+        skillsSourceDir,
       });
       await different.ensureWorkspace({ agent: makeAgent({ id: "agent_stale" }) });
 
@@ -190,6 +217,95 @@ describe("LocalWorkspaceManager", () => {
           agent: makeAgent({ id: "agent_nokey", api_key: undefined }),
         }),
       ).rejects.toThrow(/api_key is missing/);
+    });
+  });
+
+  describe("skill sync (M9.3)", () => {
+    function writeSourceSkill(name: string, content = `# ${name}\n`): void {
+      const dir = join(skillsSourceDir, name);
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(join(dir, "SKILL.md"), content);
+    }
+
+    it("IC agent gets only universal skills synced into .claude/skills/", async () => {
+      writeSourceSkill("beevibe-pre-task-setup");
+      writeSourceSkill("beevibe-team-mesh-negotiation");
+
+      const ws = await manager.ensureWorkspace({
+        agent: makeAgent({ id: "agent_ic1", hierarchy_level: "ic" }),
+      });
+
+      const skillsDir = join(ws.path, ".claude", "skills");
+      const dirs = readdirSync(skillsDir).sort();
+      expect(dirs).toContain("beevibe-pre-task-setup");
+      expect(dirs).not.toContain("beevibe-team-mesh-negotiation");
+    });
+
+    it("team agent gets universal + team-only skills", async () => {
+      writeSourceSkill("beevibe-pre-task-setup");
+      writeSourceSkill("beevibe-team-mesh-negotiation");
+
+      const ws = await manager.ensureWorkspace({
+        agent: makeAgent({ id: "agent_team1", hierarchy_level: "team" }),
+      });
+
+      const skillsDir = join(ws.path, ".claude", "skills");
+      const dirs = readdirSync(skillsDir).sort();
+      expect(dirs).toContain("beevibe-pre-task-setup");
+      expect(dirs).toContain("beevibe-team-mesh-negotiation");
+    });
+
+    it("re-sync after source SKILL.md edit propagates to existing workspace", async () => {
+      writeSourceSkill("beevibe-pre-task-setup", "# v1\n");
+
+      const ws = await manager.ensureWorkspace({
+        agent: makeAgent({ id: "agent_resync", hierarchy_level: "ic" }),
+      });
+      const targetSkillFile = join(ws.path, ".claude", "skills", "beevibe-pre-task-setup", "SKILL.md");
+      expect(readFileSync(targetSkillFile, "utf-8")).toContain("# v1");
+
+      // Bump source content + mtime.
+      await new Promise((r) => setTimeout(r, 20));
+      writeFileSync(join(skillsSourceDir, "beevibe-pre-task-setup", "SKILL.md"), "# v2 with more bytes\n");
+
+      await manager.ensureWorkspace({
+        agent: makeAgent({ id: "agent_resync", hierarchy_level: "ic" }),
+      });
+      expect(readFileSync(targetSkillFile, "utf-8")).toContain("# v2");
+    });
+
+    it("throws when agent's runtime_config.type isn't in the registry", async () => {
+      await expect(
+        manager.ensureWorkspace({
+          agent: makeAgent({
+            id: "agent_unknown_runtime",
+            runtime_config: { type: "totally-fictional-runtime" as "claude-code" },
+          }),
+        }),
+      ).rejects.toThrow(/No runtime registered/);
+    });
+
+    it("does NOT touch user's other personal skills (different prefix)", async () => {
+      writeSourceSkill("beevibe-pre-task-setup");
+
+      // Pre-create a non-beevibe skill in the workspace's skills dir.
+      // Simulates the user-global ~/.claude/skills case where personal
+      // skills coexist with beevibe ones.
+      const ws = await manager.ensureWorkspace({
+        agent: makeAgent({ id: "agent_iso", hierarchy_level: "ic" }),
+      });
+      const skillsDir = join(ws.path, ".claude", "skills");
+      mkdirSync(join(skillsDir, "frontend-design"), { recursive: true });
+      writeFileSync(join(skillsDir, "frontend-design", "SKILL.md"), "user own skill");
+
+      // Re-sync — should leave frontend-design alone.
+      await manager.ensureWorkspace({
+        agent: makeAgent({ id: "agent_iso", hierarchy_level: "ic" }),
+      });
+
+      expect(readFileSync(join(skillsDir, "frontend-design", "SKILL.md"), "utf-8")).toBe(
+        "user own skill",
+      );
     });
   });
 });
