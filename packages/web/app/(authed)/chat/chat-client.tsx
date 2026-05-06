@@ -2,15 +2,25 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ArrowRight, MessageSquare, Send } from "lucide-react";
+import {
+  AlertTriangle,
+  ArrowRight,
+  ArrowUp,
+  MessageSquare,
+  Send,
+} from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
-import type { SuggestedAction } from "@/lib/api/client";
+import { api, type ChatConversationsResponse, type SuggestedAction } from "@/lib/api/client";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
 import { useMe } from "@/lib/hooks/use-me";
-import { sessionHref, shortId } from "@/lib/format";
+import { useAgents } from "@/lib/hooks/use-agents";
+import { queryKeys } from "@/lib/hooks/keys";
+import { sessionHref, shortId, formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
+import { Avatar } from "@/components/avatar";
 import { ReferenceCards } from "@/components/chat/reference-cards";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ToolStepList } from "@/components/chat/tool-step-list";
@@ -113,68 +123,202 @@ export function ChatClient() {
           here would stack three rails, which is what the design audit
           flagged as the chat page's biggest cognitive-load source. */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Header is intentionally minimal: page title alone, no instruction
-            paragraph (happy talk), no "New conversation" button (the
-            conversation sidebar already owns that affordance). The chat
-            surface itself communicates what this page is — words don't help. */}
-        <header className="px-6 pt-5 pb-3 border-b border-border/60">
-          <h1 className="text-sm font-medium text-muted-foreground">Chat</h1>
-        </header>
+        {/* Two layouts: hero empty state when no messages, conversation
+            transcript otherwise. The hero centers the input vertically
+            with the agent avatar above and recent/suggested below — same
+            shape as Notion's "How can I help you today?" surface. */}
+        {messages.length === 0 && !isPending ? (
+          <HeroEmptyChat
+            onSubmit={submit}
+            draft={draft}
+            setDraft={setDraft}
+            onboarding={isOnboardingChat}
+          />
+        ) : (
+          <>
+            <header className="px-6 pt-5 pb-3 border-b border-border/60">
+              <h1 className="text-sm font-medium text-muted-foreground">Chat</h1>
+            </header>
 
-        <div ref={transcriptRef} className="flex-1 overflow-y-auto px-6 py-6">
-          <div className="max-w-3xl mx-auto space-y-4">
-            {messages.length === 0 ? (
-              <EmptyHint
-                onPick={(s) => submit(s)}
-                disabled={isPending}
-                onboarding={isOnboardingChat}
-              />
-            ) : (
-              messages.map((m, i) => (
-                <Bubble
-                  key={m.id}
-                  message={m}
-                  showSuggestions={!isPending && i === messages.length - 1}
-                  onSuggest={submit}
-                />
-              ))
-            )}
-            {isPending ? <Thinking steps={liveSteps} /> : null}
-            {error ? (
-              <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
-                <div className="flex items-center gap-1.5 text-status-failed font-medium mb-1">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  Couldn&apos;t reach the agent
-                </div>
-                <div className="text-muted-foreground">{error.message}</div>
+            <div ref={transcriptRef} className="flex-1 overflow-y-auto px-6 py-6">
+              <div className="max-w-3xl mx-auto space-y-4">
+                {messages.map((m, i) => (
+                  <Bubble
+                    key={m.id}
+                    message={m}
+                    showSuggestions={!isPending && i === messages.length - 1}
+                    onSuggest={submit}
+                  />
+                ))}
+                {isPending ? <Thinking steps={liveSteps} /> : null}
+                {error ? (
+                  <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
+                    <div className="flex items-center gap-1.5 text-status-failed font-medium mb-1">
+                      <AlertTriangle className="h-3.5 w-3.5" />
+                      Couldn&apos;t reach the agent
+                    </div>
+                    <div className="text-muted-foreground">{error.message}</div>
+                  </div>
+                ) : null}
               </div>
-            ) : null}
-          </div>
+            </div>
+
+            <div className="border-t border-border/60 px-6 py-4">
+              <div className="max-w-3xl mx-auto flex items-end gap-2">
+                <textarea
+                  value={draft}
+                  onChange={(e) => setDraft(e.target.value)}
+                  onKeyDown={onKeyDown}
+                  placeholder="Ask your team agent…  (Enter to send, Shift+Enter for newline)"
+                  rows={2}
+                  disabled={isPending}
+                  className="flex-1 rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none disabled:opacity-60"
+                />
+                <button
+                  type="button"
+                  onClick={() => submit()}
+                  disabled={isPending || draft.trim().length === 0}
+                  aria-label="Send"
+                  className="h-9 w-9 inline-flex items-center justify-center rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function HeroEmptyChat({
+  onSubmit,
+  draft,
+  setDraft,
+  onboarding,
+}: {
+  onSubmit: (text?: string) => void;
+  draft: string;
+  setDraft: (s: string) => void;
+  onboarding: boolean;
+}) {
+  const agents = useAgents();
+  const teamAgent = agents.data?.find((a) => a.hierarchy !== "ic");
+  const initial = (teamAgent?.display_name ?? teamAgent?.name ?? "?").charAt(0).toUpperCase();
+
+  const conversations = useQuery<ChatConversationsResponse>({
+    queryKey: queryKeys.chat.conversations(),
+    queryFn: ({ signal }) => api.chat.conversations({ signal }),
+    enabled: isApiConfigured,
+    staleTime: 30_000,
+  });
+  const recentChats = (conversations.data?.conversations ?? []).slice(0, 4);
+  const suggestions = onboarding ? ONBOARDING_PROMPT_SUGGESTIONS : PROMPT_SUGGESTIONS;
+
+  const onKey = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      onSubmit();
+    }
+  };
+
+  return (
+    <div className="flex-1 overflow-y-auto">
+      <div className="max-w-2xl mx-auto px-6 pt-24 pb-12">
+        {/* Hero: avatar + heading. Centered, generous whitespace. */}
+        <div className="flex flex-col items-center text-center mb-8">
+          {teamAgent ? (
+            <Avatar initial={initial} kind={teamAgent.hierarchy} size={56} />
+          ) : (
+            <Avatar initial="?" kind="team" size={56} />
+          )}
+          <h1 className="mt-5 text-2xl font-semibold tracking-tight">
+            How can your team help you today?
+          </h1>
         </div>
 
-        <div className="border-t border-border/60 px-6 py-4">
-          <div className="max-w-3xl mx-auto flex items-end gap-2">
-            <textarea
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={onKeyDown}
-              placeholder="Ask your team agent…  (Enter to send, Shift+Enter for newline)"
-              rows={2}
-              disabled={isPending}
-              className="flex-1 rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none disabled:opacity-60"
-            />
+        {/* Centered input. The composer sits in the middle of the page
+            instead of the bottom-stuck position used during a real
+            conversation — same shape as Notion's "Do anything with AI..." */}
+        <div className="rounded-xl border border-border bg-card focus-within:ring-2 focus-within:ring-ring transition-shadow">
+          <textarea
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={onKey}
+            placeholder="Ask your team agent…"
+            rows={3}
+            autoFocus
+            className="w-full bg-transparent px-4 pt-3 pb-2 text-sm focus:outline-none resize-none placeholder:text-muted-foreground/60"
+          />
+          <div className="flex items-center justify-end px-3 pb-2">
             <button
               type="button"
-              onClick={() => submit()}
-              disabled={isPending || draft.trim().length === 0}
+              onClick={() => onSubmit()}
+              disabled={draft.trim().length === 0}
               aria-label="Send"
-              className="h-9 w-9 inline-flex items-center justify-center rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+              className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
             >
-              <Send className="h-4 w-4" />
+              <ArrowUp className="h-3.5 w-3.5" />
             </button>
           </div>
         </div>
+
+        {/* Two columns: recent chats on the left, suggested prompts on
+            the right. Same Notion shape — ground the surface in what
+            you've been doing AND what you could do next. */}
+        <div className="mt-10 grid grid-cols-1 sm:grid-cols-2 gap-x-12 gap-y-2">
+          <HeroSection title="Recent chats">
+            {recentChats.length === 0 ? (
+              <p className="text-xs text-muted-foreground/60 italic">No conversations yet.</p>
+            ) : (
+              <ul className="space-y-1">
+                {recentChats.map((c) => (
+                  <li key={c.head_id}>
+                    <Link
+                      href={`/chat?c=${encodeURIComponent(c.head_id)}`}
+                      className="flex items-baseline gap-2 px-1 py-1 rounded hover:bg-secondary/40 transition-colors"
+                    >
+                      <MessageSquare className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 self-center" />
+                      <span className="text-sm font-medium text-foreground/90 truncate flex-1 min-w-0">
+                        {c.title}
+                      </span>
+                      <span className="text-[10px] tabular-nums text-muted-foreground/60 shrink-0">
+                        {formatRelativeTime(c.last_at)}
+                      </span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </HeroSection>
+
+          <HeroSection title="Suggested">
+            <ul className="space-y-1">
+              {suggestions.map((s) => (
+                <li key={s}>
+                  <button
+                    type="button"
+                    onClick={() => onSubmit(s)}
+                    className="w-full text-left px-1 py-1 rounded hover:bg-secondary/40 transition-colors text-sm font-medium text-foreground/90"
+                  >
+                    {s}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </HeroSection>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function HeroSection({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <div>
+      <h2 className="text-xs text-muted-foreground/70 mb-2 px-1">{title}</h2>
+      {children}
     </div>
   );
 }
@@ -307,49 +451,3 @@ function Thinking({ steps }: { steps: ChatStreamStep[] }) {
   );
 }
 
-function EmptyHint({
-  onPick,
-  disabled,
-  onboarding,
-}: {
-  onPick: (text: string) => void;
-  disabled: boolean;
-  onboarding?: boolean;
-}) {
-  const suggestions = onboarding ? ONBOARDING_PROMPT_SUGGESTIONS : PROMPT_SUGGESTIONS;
-  // Onboarding keeps a brief prompt — that moment genuinely needs a
-  // little hand-holding. Returning users get bare suggestion cards;
-  // the cards self-explain, the textarea is right below.
-  return (
-    <div className="pt-16">
-      {onboarding ? (
-        <div className="text-center mb-6">
-          <div className="mb-1 text-foreground font-medium text-base">
-            Start the conversation
-          </div>
-          <div className="text-xs text-muted-foreground/80 max-w-md mx-auto">
-            Your team agent has questions for you. Pick a starter or just say hi — it&apos;ll save what it learns to its memory live.
-          </div>
-        </div>
-      ) : null}
-      <div
-        className={cn(
-          "grid gap-2 max-w-2xl mx-auto text-left",
-          onboarding ? "sm:grid-cols-1" : "sm:grid-cols-2",
-        )}
-      >
-        {suggestions.map((s) => (
-          <button
-            key={s}
-            type="button"
-            onClick={() => onPick(s)}
-            disabled={disabled}
-            className="rounded-md border border-border bg-card hover:bg-secondary hover:border-foreground/30 px-3 py-2.5 text-sm text-foreground text-left transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            {s}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
