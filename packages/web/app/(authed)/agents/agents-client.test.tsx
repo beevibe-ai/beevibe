@@ -17,6 +17,14 @@ vi.mock("@/lib/api/client", () => ({
   api: { agents: { list: vi.fn(), get: vi.fn(), network: vi.fn() } },
 }));
 
+// AgentsClient reads router/search params for the side-panel ?p= state.
+// These mocks just keep the hooks happy under happy-dom.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/agents",
+}));
+
 import { AgentsClient } from "./agents-client";
 import { api } from "@/lib/api/client";
 
@@ -103,8 +111,10 @@ describe("AgentsClient", () => {
       ],
     });
     renderAgents();
-    expect(await screen.findByText("People you collaborate with")).toBeInTheDocument();
-    expect(screen.getByText("Daniel's team")).toBeInTheDocument(); // section header
+    // Peer label sits above each satellite orbit on the canvas.
+    expect(await screen.findByText("Daniel's team")).toBeInTheDocument();
     expect(screen.getByText("Roadmap pod")).toBeInTheDocument(); // agent card
+    // The page caption mentions collaborators when peers are present.
+    expect(screen.getByText(/People you collaborate with/)).toBeInTheDocument();
   });
 });

@@ -4,13 +4,11 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  AlertCircle,
   Bot,
-  CheckCircle2,
+  GaugeCircle,
   Inbox,
   ListChecks,
   Network,
-  ShieldAlert,
   Sparkles,
   TrendingUp,
 } from "lucide-react";
@@ -21,26 +19,22 @@ import {
   type Room,
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
-import { useAgents } from "@/lib/hooks/use-agents";
-import { useInbox } from "@/lib/hooks/use-inbox";
 import { useTasks } from "@/lib/hooks/use-tasks";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
-import type { AgentDisplay } from "@/lib/types/agents";
-import type { InboxItem, InboxItemKind } from "@/lib/types/inbox";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { TaskStatus } from "@beevibe/core";
 import { cn } from "@/lib/utils";
 
 /**
  * Per-mode sidebar lists. Each mode in the icon strip shows its own
- * relevant drilldown below the strip — no empty rails. Same role
- * Notion's "Past week" / "Private" lists serve under the active mode.
+ * relevant drilldown below the strip — no empty rails.
  *
- * - Home → recent activity feed (last 10)
+ * - Agents → links to the canvas + sibling observability surfaces
+ *   (Metrics / Memory / Mesh / Promotions). The canvas IS the page;
+ *   the rail just gives quick navigation between sibling views.
  * - Rooms → rooms list
  * - Tasks → grouped by status with counts
- * - Agents → flat list with hierarchy badges (replaces the old AgentList)
  */
 
 // ── Empty/loading states (shared) ────────────────────────────────────
@@ -64,79 +58,28 @@ function ListEmpty({ icon, title }: { icon: LucideIcon; title: string }) {
 
 // ── Home — inbox + team + observability + new-chat CTA ──────────────
 
-const HOME_SUBNAV = [
+// Sibling observability surfaces that share the Agents tab. /agents
+// is the canvas itself; the rest are deeper drill-downs (metrics,
+// memory facts, mesh activity, promotion events).
+const AGENTS_SUBNAV = [
+  { href: "/agents", label: "Agents", icon: Bot },
+  { href: "/dashboard", label: "Metrics", icon: GaugeCircle },
   { href: "/memory", label: "Memory", icon: Sparkles },
   { href: "/mesh", label: "Mesh", icon: Network },
   { href: "/promotions", label: "Promotions", icon: TrendingUp },
 ] as const;
 
-const INBOX_KIND_META: Record<
-  InboxItemKind,
-  { icon: LucideIcon; label: string; iconClass: string }
-> = {
-  task_review: {
-    icon: CheckCircle2,
-    label: "Awaiting your review",
-    iconClass: "text-status-review",
-  },
-  task_blocked: {
-    icon: AlertCircle,
-    label: "Blocked",
-    iconClass: "text-status-blocked",
-  },
-  escalation_pending: {
-    icon: ShieldAlert,
-    label: "Escalated",
-    iconClass: "text-status-failed",
-  },
-};
-
-export function HomeSidebar({
-  pathname,
-  activeAgentId,
-}: {
-  pathname: string;
-  activeAgentId?: string;
-}) {
-  const inbox = useInbox();
-  const agents = useAgents();
-
+export function AgentsSidebar({ pathname }: { pathname: string }) {
   return (
     <div className="flex-1 overflow-y-auto min-h-0">
-      <SectionLabel>Inbox</SectionLabel>
-      {inbox.isLoading ? (
-        <ListSkeleton />
-      ) : !inbox.data || inbox.data.length === 0 ? (
-        <ListEmpty icon={Inbox} title="Inbox zero." />
-      ) : (
-        <ul>
-          {inbox.data.map((item) => (
-            <InboxRow key={item.id} item={item} />
-          ))}
-        </ul>
-      )}
-
-      <SectionLabel>Your team</SectionLabel>
-      {agents.isLoading ? (
-        <ListSkeleton />
-      ) : !agents.data || agents.data.length === 0 ? (
-        <ListEmpty icon={Bot} title="No agents yet." />
-      ) : (
-        <ul>
-          {agents.data.map((agent) => (
-            <AgentSidebarRow
-              key={agent.id}
-              agent={agent}
-              active={activeAgentId === agent.id}
-            />
-          ))}
-        </ul>
-      )}
-
-      <SectionLabel>Observability</SectionLabel>
-      <ul className="px-1 pb-2">
-        {HOME_SUBNAV.map((item) => {
-          const active = pathname.startsWith(item.href);
+      <ul className="px-1 pt-2 pb-2">
+        {AGENTS_SUBNAV.map((item) => {
+          // /agents matches exactly so it stays highlighted only on
+          // the canvas itself, not on any deeper /agents/:id route.
+          const active =
+            item.href === "/agents"
+              ? pathname === "/agents"
+              : pathname.startsWith(item.href);
           return (
             <li key={item.href}>
               <Link
@@ -157,35 +100,6 @@ export function HomeSidebar({
         })}
       </ul>
     </div>
-  );
-}
-
-function InboxRow({ item }: { item: InboxItem }) {
-  const meta = INBOX_KIND_META[item.kind];
-  const Icon = meta.icon;
-  return (
-    <li>
-      <Link
-        href={item.href}
-        className="block px-3 py-1.5 mx-1 my-0.5 rounded hover:bg-secondary/60 transition-colors"
-      >
-        <div className="flex items-baseline gap-1.5">
-          <Icon
-            className={cn("h-3 w-3 shrink-0 self-center", meta.iconClass)}
-            aria-label={meta.label}
-          />
-          <div className="text-xs text-foreground/85 font-medium truncate flex-1 min-w-0">
-            {item.title}
-          </div>
-          <span className="text-[10px] tabular-nums text-muted-foreground/70 shrink-0">
-            {formatRelativeTime(item.age_at)}
-          </span>
-        </div>
-        <div className="mt-0.5 ml-[18px] text-[11px] text-muted-foreground line-clamp-1">
-          {item.detail}
-        </div>
-      </Link>
-    </li>
   );
 }
 
@@ -335,53 +249,6 @@ function TaskRow({ task, active }: { task: TaskListItem; active: boolean }) {
             {task.assignee_label}
           </div>
         ) : null}
-      </Link>
-    </li>
-  );
-}
-
-// ── Agent row (used by Home sidebar) ─────────────────────────────────
-
-function AgentSidebarRow({ agent, active }: { agent: AgentDisplay; active: boolean }) {
-  // ICs indent under their team — same visual ladder as Notion's
-  // nested page tree. No drag-to-reorder; the hierarchy comes from
-  // parent_agent_id on the server.
-  const indent = agent.hierarchy === "ic" ? "pl-6" : "pl-3";
-  return (
-    <li>
-      <Link
-        href={`/agents/${agent.id}`}
-        aria-current={active ? "page" : undefined}
-        className={cn(
-          "flex items-center gap-2 h-7 pr-2 mx-1 my-0.5 rounded transition-colors",
-          indent,
-          active ? "bg-secondary" : "hover:bg-secondary/60",
-        )}
-      >
-        <Bot
-          className={cn(
-            "h-3.5 w-3.5 shrink-0",
-            active ? "text-foreground" : "text-muted-foreground",
-          )}
-        />
-        <span
-          className={cn(
-            "flex-1 truncate text-xs",
-            active ? "text-foreground font-semibold" : "text-foreground/85",
-          )}
-        >
-          {agent.display_name}
-        </span>
-        <span
-          className={cn(
-            "shrink-0 px-1 py-px rounded text-[9px] font-mono uppercase tracking-wide",
-            agent.hierarchy === "team" && "bg-hier-team/15 text-hier-team",
-            agent.hierarchy === "org" && "bg-hier-org/15 text-hier-org",
-            agent.hierarchy === "ic" && "bg-muted text-muted-foreground",
-          )}
-        >
-          {agent.hierarchy}
-        </span>
       </Link>
     </li>
   );
