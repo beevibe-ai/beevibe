@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { Activity, Bot, Inbox, ListChecks, Users } from "lucide-react";
+import {
+  Activity,
+  Bot,
+  Inbox,
+  ListChecks,
+  Network,
+  Sparkles,
+  TrendingUp,
+} from "lucide-react";
 import {
   api,
   type ActivityEntry,
@@ -53,21 +61,56 @@ function ListEmpty({ icon: Icon, title }: { icon: React.ComponentType<{ classNam
   );
 }
 
-// ── Home — your team + recent activity ───────────────────────────────
+// ── Home — recent activity feed ──────────────────────────────────────
 
-export function HomeSidebar({ activeAgentId }: { activeAgentId?: string } = {}) {
-  // Notion's Home shows two stacked sections under the icon strip:
-  // an Agents section and a Private docs section. Mirrored here as
-  // "Your team" (agents with hierarchy) + "Recent activity" (last 10
-  // sessions). Click an agent to open its detail page; click an
-  // activity row to jump to that session.
-  const agents = useAgents();
-  const activity = useQuery<ActivityEntry[]>({
+export function HomeSidebar() {
+  // Home is the launchpad — main page shows dashboard widgets, sidebar
+  // shows what's happening across the team right now. Agents have
+  // moved to the Team tab (see TeamSidebar) so Home stays focused on
+  // "what just changed" instead of "who is on the team".
+  const { data, isLoading } = useQuery<ActivityEntry[]>({
     queryKey: queryKeys.activity.feed(),
-    queryFn: ({ signal }) => api.activity.list({ signal, limit: 10 }),
+    queryFn: ({ signal }) => api.activity.list({ signal, limit: 15 }),
     enabled: isApiConfigured,
     staleTime: 10_000,
   });
+
+  return (
+    <SectionFrame label="Recent activity">
+      {isLoading ? (
+        <ListSkeleton />
+      ) : !data || data.length === 0 ? (
+        <ListEmpty icon={Activity} title="Nothing yet — start a conversation or assign a task." />
+      ) : (
+        <ul>
+          {data.map((entry) => (
+            <ActivityRow key={entry.id} entry={entry} />
+          ))}
+        </ul>
+      )}
+    </SectionFrame>
+  );
+}
+
+// ── Team — agents + observability sub-nav ────────────────────────────
+
+const TEAM_SUBNAV = [
+  { href: "/memory", label: "Memory", icon: Sparkles },
+  { href: "/mesh", label: "Mesh", icon: Network },
+  { href: "/promotions", label: "Promotions", icon: TrendingUp },
+] as const;
+
+export function TeamSidebar({
+  pathname,
+  activeAgentId,
+}: {
+  pathname: string;
+  activeAgentId?: string;
+}) {
+  // The Team tab consolidates agents + the observability views that
+  // emerge from their work (memory, mesh, promotions). One tab, two
+  // sections: the team itself, and the views into how it operates.
+  const agents = useAgents();
 
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
@@ -79,23 +122,38 @@ export function HomeSidebar({ activeAgentId }: { activeAgentId?: string } = {}) 
       ) : (
         <ul>
           {agents.data.map((agent) => (
-            <AgentSidebarRow key={agent.id} agent={agent} active={activeAgentId === agent.id} />
+            <AgentSidebarRow
+              key={agent.id}
+              agent={agent}
+              active={activeAgentId === agent.id}
+            />
           ))}
         </ul>
       )}
 
-      <SectionLabel>Recent activity</SectionLabel>
-      {activity.isLoading ? (
-        <ListSkeleton />
-      ) : !activity.data || activity.data.length === 0 ? (
-        <ListEmpty icon={Activity} title="Nothing yet." />
-      ) : (
-        <ul>
-          {activity.data.map((entry) => (
-            <ActivityRow key={entry.id} entry={entry} />
-          ))}
-        </ul>
-      )}
+      <SectionLabel>Observability</SectionLabel>
+      <ul className="px-1">
+        {TEAM_SUBNAV.map((item) => {
+          const active = pathname.startsWith(item.href);
+          return (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex items-center gap-2 h-7 px-2 mx-1 my-0.5 rounded text-xs transition-colors",
+                  active
+                    ? "bg-secondary text-foreground font-semibold"
+                    : "text-muted-foreground/85 hover:text-foreground hover:bg-secondary/60",
+                )}
+              >
+                <item.icon className="h-3.5 w-3.5 shrink-0" />
+                <span>{item.label}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

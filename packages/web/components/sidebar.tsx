@@ -4,22 +4,25 @@ import { useCallback, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
+  Bot,
   Home,
   ListChecks,
   type LucideIcon,
   MessageSquare,
-  Network,
   PanelLeftClose,
   PanelLeftOpen,
-  Sparkles,
-  TrendingUp,
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCollapsible } from "@/lib/hooks/use-collapsible";
 import { ConversationSidebar } from "./chat/conversation-sidebar";
 import { LiveStatusDot } from "./chat/live-panel";
-import { HomeSidebar, RoomsSidebar, TasksSidebar } from "./mode-sidebars";
+import {
+  HomeSidebar,
+  RoomsSidebar,
+  TasksSidebar,
+  TeamSidebar,
+} from "./mode-sidebars";
 import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
 
@@ -32,21 +35,18 @@ type NavItem = {
 
 // Notion-style mode strip: a horizontal row of small icons at the top
 // of the sidebar. The active mode expands to a pill with its label;
-// inactive modes are icon-only with a tooltip. Saves vertical real
-// estate, makes mode-switching feel like a single visual gesture
-// instead of scanning a long list.
+// inactive modes are icon-only with a tooltip.
 //
-// Agents is intentionally NOT a primary mode. Agents are part of the
-// Home view (same place Notion lists "Agents" + "Private" docs under
-// Home). The /agents URL still works — it just routes into Home, and
-// the sidebar's "Your team" section is the canonical agent list.
+// Five modes: Home / Chat / Rooms / Tasks / Team. The Team tab is the
+// agent-organization view — agents + the things that emerge from
+// their work (memory, mesh, promotions). Routing all four under one
+// mode keeps the strip short and groups conceptually-related views.
 const PRIMARY_MODES: NavItem[] = [
   {
     href: "/dashboard",
     label: "Home",
     icon: Home,
-    // /agents and /agents/[id] live under Home — no separate tab.
-    isActive: (p) => p.startsWith("/dashboard") || p.startsWith("/agents"),
+    isActive: (p) => p.startsWith("/dashboard"),
   },
   {
     href: "/",
@@ -66,29 +66,17 @@ const PRIMARY_MODES: NavItem[] = [
     icon: ListChecks,
     isActive: (p) => p.startsWith("/tasks"),
   },
-];
-
-// Secondary surfaces — observability/audit views power users navigate
-// to occasionally, not the main daily modes. Same place as Notion's
-// Library / Help / Trash bottom-pinned utility links.
-const UTILITY: NavItem[] = [
   {
-    href: "/memory",
-    label: "Memory",
-    icon: Sparkles,
-    isActive: (p) => p.startsWith("/memory"),
-  },
-  {
-    href: "/mesh",
-    label: "Mesh",
-    icon: Network,
-    isActive: (p) => p.startsWith("/mesh"),
-  },
-  {
-    href: "/promotions",
-    label: "Promotions",
-    icon: TrendingUp,
-    isActive: (p) => p.startsWith("/promotions"),
+    href: "/agents",
+    label: "Team",
+    icon: Bot,
+    // /agents, /memory, /mesh, /promotions all route under Team —
+    // they're observability views of the agent organization.
+    isActive: (p) =>
+      p.startsWith("/agents") ||
+      p.startsWith("/memory") ||
+      p.startsWith("/mesh") ||
+      p.startsWith("/promotions"),
   },
 ];
 
@@ -150,8 +138,16 @@ export function Sidebar() {
           isFresh={isFresh}
           onNew={startNewConversation}
         />
-      ) : pathname.startsWith("/dashboard") || pathname.startsWith("/agents") ? (
-        <HomeSidebar activeAgentId={extractIdFromPath(pathname, "/agents/")} />
+      ) : pathname.startsWith("/dashboard") ? (
+        <HomeSidebar />
+      ) : pathname.startsWith("/agents") ||
+        pathname.startsWith("/memory") ||
+        pathname.startsWith("/mesh") ||
+        pathname.startsWith("/promotions") ? (
+        <TeamSidebar
+          pathname={pathname}
+          activeAgentId={extractIdFromPath(pathname, "/agents/")}
+        />
       ) : pathname.startsWith("/rooms") ? (
         <RoomsSidebar activeRoomId={extractIdFromPath(pathname, "/rooms/")} />
       ) : pathname.startsWith("/tasks") ? (
@@ -159,8 +155,6 @@ export function Sidebar() {
       ) : (
         <div className="flex-1" />
       )}
-
-      <UtilityNav pathname={pathname} />
 
       <div className="p-2 border-t border-border/60 flex items-center gap-1">
         <UserWidget />
@@ -254,37 +248,3 @@ function ModeStrip({ pathname }: { pathname: string }) {
   );
 }
 
-/**
- * Bottom-pinned utility links — secondary surfaces (Memory / Mesh /
- * Promotions) that don't rate the primary mode strip. Small text,
- * dim by default, active row gets the same pill emphasis pattern as
- * the rest of the app for consistency.
- */
-function UtilityNav({ pathname }: { pathname: string }) {
-  return (
-    <nav
-      aria-label="Utility"
-      className="px-2 py-1.5 border-t border-border/60 space-y-px"
-    >
-      {UTILITY.map((item) => {
-        const active = item.isActive(pathname);
-        return (
-          <Link
-            key={item.href}
-            href={item.href}
-            aria-current={active ? "page" : undefined}
-            className={cn(
-              "flex items-center gap-2 h-6 px-2 rounded-md text-[12px] transition-colors",
-              active
-                ? "bg-secondary text-foreground font-medium"
-                : "text-muted-foreground/80 hover:text-foreground hover:bg-secondary/60",
-            )}
-          >
-            <item.icon className="h-3.5 w-3.5 shrink-0" />
-            <span className="flex-1 truncate">{item.label}</span>
-          </Link>
-        );
-      })}
-    </nav>
-  );
-}
