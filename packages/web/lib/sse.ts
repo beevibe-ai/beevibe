@@ -31,7 +31,11 @@ const eventInvalidations: Record<string, InvalidationKey[]> = {
     queryKeys.activity.all,
     queryKeys.inbox.all,
   ],
-  "agent.updated": [queryKeys.agents.all, queryKeys.activity.all],
+  "agent.updated": [
+    queryKeys.agents.all,
+    queryKeys.activity.all,
+    queryKeys.agentNetwork.all,
+  ],
   "session.updated": [queryKeys.sessions.all, queryKeys.tasks.all, queryKeys.activity.all],
   "memory.fact.created": [queryKeys.memory.all],
   "promotion.created": [queryKeys.promotions.all, queryKeys.memory.all],

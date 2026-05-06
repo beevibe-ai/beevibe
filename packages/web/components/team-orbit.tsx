@@ -48,17 +48,30 @@ function orbitPositions(count: number, radius: number): Position[] {
   });
 }
 
-export function TeamOrbit({ size = "large" }: { size?: TeamOrbitSize }) {
-  const { data, isLoading } = useAgents();
+/**
+ * Render a single team's orbit. Pass an explicit `agents` array (typed
+ * as one team + its IC subordinates); the component picks the
+ * top-level agent as the center and arranges the ICs around it. For a
+ * self-rendering convenience that fetches the caller's own agents,
+ * use <SelfTeamOrbit /> below.
+ */
+export function TeamOrbit({
+  agents,
+  size = "large",
+  loading = false,
+}: {
+  agents: AgentDisplay[] | undefined;
+  size?: TeamOrbitSize;
+  loading?: boolean;
+}) {
+  if (loading) return <OrbitSkeleton size={size} />;
+  if (!agents || agents.length === 0) return <OrbitEmpty />;
 
-  if (isLoading) return <OrbitSkeleton size={size} />;
-  if (!data || data.length === 0) return <OrbitEmpty />;
-
-  const teams = data.filter((a) => a.hierarchy !== "ic");
+  const teams = agents.filter((a) => a.hierarchy !== "ic");
   const primary = teams[0];
   if (!primary) return <OrbitEmpty />;
 
-  const ics = data.filter(
+  const ics = agents.filter(
     (a) => a.hierarchy === "ic" && a.parent_agent_id === primary.id,
   );
 
@@ -81,6 +94,15 @@ export function TeamOrbit({ size = "large" }: { size?: TeamOrbitSize }) {
       ) : null}
     </div>
   );
+}
+
+/**
+ * Self-rendering convenience — fetches the caller's own agents and
+ * passes them to TeamOrbit. Used on the dashboard's compact summary.
+ */
+export function SelfTeamOrbit({ size = "large" }: { size?: TeamOrbitSize }) {
+  const { data, isLoading } = useAgents();
+  return <TeamOrbit agents={data} size={size} loading={isLoading} />;
 }
 
 function Orbit({

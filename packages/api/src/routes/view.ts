@@ -28,6 +28,7 @@ import {
   type Lifecycle,
 } from "../views/tasks-grouping.js";
 import { listAgents, getAgent } from "../views/agents.js";
+import { getAgentNetwork } from "../views/agent-network.js";
 import { getSessionByShortId, AmbiguousShortIdError } from "../views/sessions.js";
 import { listMemoryFacts } from "../views/memory.js";
 import { getDashboardSummary } from "../views/dashboard.js";
@@ -119,6 +120,20 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(agents);
     } catch (err) {
       handleError(err, res, "agent list");
+    }
+  });
+
+  router.get("/agent/network", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      // Cross-owner read: caller's tree plus peer teams from rooms
+      // they share. Peer set is derived from room_member co-attendance,
+      // which is the explicit consent surface (you're in a room with
+      // them, so seeing their team agents isn't a leak).
+      const network = await getAgentNetwork(deps.pool, req.caller.personId);
+      res.json(network);
+    } catch (err) {
+      handleError(err, res, "agent network");
     }
   });
 

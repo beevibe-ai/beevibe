@@ -12,7 +12,7 @@ import { KpiTile } from "@/components/home/kpi-tile";
 import { FleetBars } from "@/components/home/fleet-bars";
 import { StatusBreakdownBar } from "@/components/home/status-breakdown";
 import { TrendChart } from "@/components/home/trend-chart";
-import { TeamOrbit } from "@/components/team-orbit";
+import { SelfTeamOrbit } from "@/components/team-orbit";
 import type { AttentionItem, DashboardDisplay } from "@/lib/types/dashboard";
 
 const ATTENTION_DOT: Record<AttentionItem["status"], string> = {
@@ -96,7 +96,7 @@ function Body({
             Open team →
           </Link>
         </header>
-        <TeamOrbit size="compact" />
+        <SelfTeamOrbit size="compact" />
       </section>
 
       <div className="grid grid-cols-4 gap-6">

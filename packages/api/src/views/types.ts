@@ -419,6 +419,24 @@ export interface InboxItem {
   age_at: Date;
 }
 
+// ── Agent network — caller's team + peer teams from shared rooms ────
+
+export interface AgentPeerOwner {
+  /** Person id that owns the peer team. */
+  owner_id: string;
+  /** Person's display name — surfaced as "Daniel's team" etc. in the UI. */
+  owner_label: string;
+  /** Full agent tree for that owner — team agent + ICs. */
+  agents: AgentDisplay[];
+}
+
+export interface AgentNetwork {
+  /** The caller's own agents (their orbit). */
+  self: AgentDisplay[];
+  /** Other people's agents the caller co-exists with via shared rooms. */
+  peers: AgentPeerOwner[];
+}
+
 // ── Re-exports of ambient types that web imports alongside the DTOs ─────────
 
 export type { TaskStatus };

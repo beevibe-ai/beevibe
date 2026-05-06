@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { AgentDisplay } from "@/lib/types/agents";
+import type { AgentNetwork } from "@/lib/types/agent-network";
 
 const apiState = { isApiConfigured: true };
 
@@ -13,13 +14,13 @@ vi.mock("@/lib/api/config", () => ({
 }));
 
 vi.mock("@/lib/api/client", () => ({
-  api: { agents: { list: vi.fn(), get: vi.fn() } },
+  api: { agents: { list: vi.fn(), get: vi.fn(), network: vi.fn() } },
 }));
 
 import { AgentsClient } from "./agents-client";
 import { api } from "@/lib/api/client";
 
-const listMock = vi.mocked(api.agents.list);
+const networkMock = vi.mocked(api.agents.network);
 
 function renderAgents() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -30,19 +31,29 @@ function renderAgents() {
 }
 
 const baseAgent: AgentDisplay = {
-  id: "agt_1",
-  name: "alice",
-  display_name: "Alice",
-  hierarchy: "ic",
-  hierarchy_level: "ic",
-  owner_id: "u_1",
+  id: "agt_team",
+  name: "alice's team",
+  display_name: "Alice's team",
+  hierarchy: "team",
+  hierarchy_level: "team",
+  owner_id: "u_alice",
   created_at: new Date(),
   updated_at: new Date(),
 };
 
+const baseIc: AgentDisplay = {
+  ...baseAgent,
+  id: "agt_ic",
+  name: "backend",
+  display_name: "Backend",
+  hierarchy: "ic",
+  hierarchy_level: "ic",
+  parent_agent_id: "agt_team",
+};
+
 beforeEach(() => {
   apiState.isApiConfigured = true;
-  listMock.mockReset();
+  networkMock.mockReset();
 });
 
 afterEach(() => {
@@ -54,24 +65,46 @@ describe("AgentsClient", () => {
     apiState.isApiConfigured = false;
     renderAgents();
     expect(screen.getByText("API not configured")).toBeInTheDocument();
-    expect(listMock).not.toHaveBeenCalled();
+    expect(networkMock).not.toHaveBeenCalled();
   });
 
-  it("renders the no-agents empty state when api returns []", async () => {
-    listMock.mockResolvedValue([]);
+  it("renders the no-agents empty state when self is empty", async () => {
+    networkMock.mockResolvedValue({ self: [], peers: [] } satisfies AgentNetwork);
     renderAgents();
     expect(await screen.findByText("No agents yet")).toBeInTheDocument();
   });
 
   it("renders the team orbit with team center + IC ring when populated", async () => {
-    listMock.mockResolvedValue([
-      { ...baseAgent, id: "team_1", display_name: "Alice's team", hierarchy: "team" },
-      { ...baseAgent, id: "ic_1", display_name: "Backend", parent_agent_id: "team_1", sessions_count: 5 },
-      { ...baseAgent, id: "ic_2", display_name: "Frontend", parent_agent_id: "team_1", sessions_count: 12 },
-    ]);
+    networkMock.mockResolvedValue({
+      self: [baseAgent, baseIc],
+      peers: [],
+    });
     renderAgents();
     expect(await screen.findByText("Alice's team")).toBeInTheDocument();
     expect(screen.getByText("Backend")).toBeInTheDocument();
-    expect(screen.getByText("Frontend")).toBeInTheDocument();
+  });
+
+  it("renders peer orbits when the network includes other owners", async () => {
+    networkMock.mockResolvedValue({
+      self: [baseAgent],
+      peers: [
+        {
+          owner_id: "u_dan",
+          owner_label: "Daniel",
+          agents: [
+            {
+              ...baseAgent,
+              id: "agt_d_team",
+              display_name: "Roadmap pod",
+              owner_id: "u_dan",
+            },
+          ],
+        },
+      ],
+    });
+    renderAgents();
+    expect(await screen.findByText("People you collaborate with")).toBeInTheDocument();
+    expect(screen.getByText("Daniel's team")).toBeInTheDocument(); // section header
+    expect(screen.getByText("Roadmap pod")).toBeInTheDocument(); // agent card
   });
 });

@@ -7,6 +7,7 @@ import type {
 } from "./types";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { AgentDisplay } from "@/lib/types/agents";
+import type { AgentNetwork } from "@/lib/types/agent-network";
 import type { SessionDisplay } from "@/lib/types/sessions";
 import type { MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
@@ -330,6 +331,8 @@ export const api = {
       fetchJson<AgentDisplay[]>("/agent", { signal: opts.signal }),
     get: (id: string, opts: ReadOptions = {}) =>
       fetchJson<AgentDetail>(`/agent/${encodeURIComponent(id)}`, { signal: opts.signal }),
+    network: (opts: ReadOptions = {}) =>
+      fetchJson<AgentNetwork>("/agent/network", { signal: opts.signal }),
   },
   sessions: {
     /** Path param is the 6-char short_id (no '#'). */
