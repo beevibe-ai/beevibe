@@ -53,30 +53,50 @@ function ListEmpty({ icon: Icon, title }: { icon: React.ComponentType<{ classNam
   );
 }
 
-// ── Home — recent activity ───────────────────────────────────────────
+// ── Home — your team + recent activity ───────────────────────────────
 
-export function HomeSidebar() {
-  const { data, isLoading } = useQuery<ActivityEntry[]>({
+export function HomeSidebar({ activeAgentId }: { activeAgentId?: string } = {}) {
+  // Notion's Home shows two stacked sections under the icon strip:
+  // an Agents section and a Private docs section. Mirrored here as
+  // "Your team" (agents with hierarchy) + "Recent activity" (last 10
+  // sessions). Click an agent to open its detail page; click an
+  // activity row to jump to that session.
+  const agents = useAgents();
+  const activity = useQuery<ActivityEntry[]>({
     queryKey: queryKeys.activity.feed(),
-    queryFn: ({ signal }) => api.activity.list({ signal, limit: 15 }),
+    queryFn: ({ signal }) => api.activity.list({ signal, limit: 10 }),
     enabled: isApiConfigured,
     staleTime: 10_000,
   });
 
   return (
-    <SectionFrame label="Recent activity">
-      {isLoading ? (
+    <div className="flex flex-col flex-1 min-h-0 overflow-y-auto">
+      <SectionLabel>Your team</SectionLabel>
+      {agents.isLoading ? (
         <ListSkeleton />
-      ) : !data || data.length === 0 ? (
-        <ListEmpty icon={Activity} title="Nothing yet — start a conversation or assign a task." />
+      ) : !agents.data || agents.data.length === 0 ? (
+        <ListEmpty icon={Bot} title="No agents yet." />
       ) : (
         <ul>
-          {data.map((entry) => (
+          {agents.data.map((agent) => (
+            <AgentSidebarRow key={agent.id} agent={agent} active={activeAgentId === agent.id} />
+          ))}
+        </ul>
+      )}
+
+      <SectionLabel>Recent activity</SectionLabel>
+      {activity.isLoading ? (
+        <ListSkeleton />
+      ) : !activity.data || activity.data.length === 0 ? (
+        <ListEmpty icon={Activity} title="Nothing yet." />
+      ) : (
+        <ul>
+          {activity.data.map((entry) => (
             <ActivityRow key={entry.id} entry={entry} />
           ))}
         </ul>
       )}
-    </SectionFrame>
+    </div>
   );
 }
 
@@ -259,28 +279,7 @@ function TaskRow({ task, active }: { task: TaskListItem; active: boolean }) {
   );
 }
 
-// ── Agents — flat list with hierarchy badges ─────────────────────────
-
-export function AgentsSidebar({ activeAgentId }: { activeAgentId?: string }) {
-  const { data, isLoading } = useAgents();
-  const agents = data ?? [];
-
-  return (
-    <SectionFrame label="Your team">
-      {isLoading ? (
-        <ListSkeleton />
-      ) : agents.length === 0 ? (
-        <ListEmpty icon={Bot} title="No agents yet." />
-      ) : (
-        <ul>
-          {agents.map((agent) => (
-            <AgentSidebarRow key={agent.id} agent={agent} active={activeAgentId === agent.id} />
-          ))}
-        </ul>
-      )}
-    </SectionFrame>
-  );
-}
+// ── Agent row (used by Home sidebar) ─────────────────────────────────
 
 function AgentSidebarRow({ agent, active }: { agent: AgentDisplay; active: boolean }) {
   // ICs indent under their team — same visual ladder as Notion's
@@ -338,10 +337,16 @@ function SectionFrame({
 }) {
   return (
     <div className="flex flex-col flex-1 min-h-0">
-      <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/60">
-        {label}
-      </div>
+      <SectionLabel>{label}</SectionLabel>
       <div className="flex-1 overflow-y-auto pb-1">{children}</div>
+    </div>
+  );
+}
+
+function SectionLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="px-3 pt-3 pb-1 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/60">
+      {children}
     </div>
   );
 }

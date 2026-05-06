@@ -4,9 +4,7 @@ import { useCallback, useEffect } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  Bot,
   Home,
-  LayoutDashboard,
   ListChecks,
   type LucideIcon,
   MessageSquare,
@@ -21,12 +19,7 @@ import { cn } from "@/lib/utils";
 import { useCollapsible } from "@/lib/hooks/use-collapsible";
 import { ConversationSidebar } from "./chat/conversation-sidebar";
 import { LiveStatusDot } from "./chat/live-panel";
-import {
-  AgentsSidebar,
-  HomeSidebar,
-  RoomsSidebar,
-  TasksSidebar,
-} from "./mode-sidebars";
+import { HomeSidebar, RoomsSidebar, TasksSidebar } from "./mode-sidebars";
 import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
 
@@ -42,12 +35,18 @@ type NavItem = {
 // inactive modes are icon-only with a tooltip. Saves vertical real
 // estate, makes mode-switching feel like a single visual gesture
 // instead of scanning a long list.
+//
+// Agents is intentionally NOT a primary mode. Agents are part of the
+// Home view (same place Notion lists "Agents" + "Private" docs under
+// Home). The /agents URL still works — it just routes into Home, and
+// the sidebar's "Your team" section is the canonical agent list.
 const PRIMARY_MODES: NavItem[] = [
   {
     href: "/dashboard",
     label: "Home",
     icon: Home,
-    isActive: (p) => p.startsWith("/dashboard"),
+    // /agents and /agents/[id] live under Home — no separate tab.
+    isActive: (p) => p.startsWith("/dashboard") || p.startsWith("/agents"),
   },
   {
     href: "/",
@@ -66,12 +65,6 @@ const PRIMARY_MODES: NavItem[] = [
     label: "Tasks",
     icon: ListChecks,
     isActive: (p) => p.startsWith("/tasks"),
-  },
-  {
-    href: "/agents",
-    label: "Agents",
-    icon: Bot,
-    isActive: (p) => p.startsWith("/agents"),
   },
 ];
 
@@ -157,14 +150,12 @@ export function Sidebar() {
           isFresh={isFresh}
           onNew={startNewConversation}
         />
-      ) : pathname.startsWith("/dashboard") ? (
-        <HomeSidebar />
+      ) : pathname.startsWith("/dashboard") || pathname.startsWith("/agents") ? (
+        <HomeSidebar activeAgentId={extractIdFromPath(pathname, "/agents/")} />
       ) : pathname.startsWith("/rooms") ? (
         <RoomsSidebar activeRoomId={extractIdFromPath(pathname, "/rooms/")} />
       ) : pathname.startsWith("/tasks") ? (
         <TasksSidebar activeTaskId={extractIdFromPath(pathname, "/tasks/")} />
-      ) : pathname.startsWith("/agents") ? (
-        <AgentsSidebar activeAgentId={extractIdFromPath(pathname, "/agents/")} />
       ) : (
         <div className="flex-1" />
       )}
