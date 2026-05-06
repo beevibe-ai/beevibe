@@ -10,6 +10,7 @@ import type { AgentDisplay } from "@/lib/types/agents";
 import type { SessionDisplay } from "@/lib/types/sessions";
 import type { MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
+import type { InboxItem } from "@/lib/types/inbox";
 import type {
   HierarchyLevel,
   MemoryScope,
@@ -351,6 +352,13 @@ export const api = {
   promotions: {
     list: (opts: ReadOptions = {}) =>
       fetchJson<PromotionEvent[]>("/promotion", { signal: opts.signal }),
+  },
+  inbox: {
+    list: (opts: ReadOptions & { limit?: number } = {}) =>
+      fetchJson<InboxItem[]>("/inbox", {
+        signal: opts.signal,
+        ...(opts.limit ? { query: { limit: opts.limit } } : {}),
+      }),
   },
   mesh: {
     overview: (filter: { since?: string } = {}, opts: ReadOptions = {}) =>

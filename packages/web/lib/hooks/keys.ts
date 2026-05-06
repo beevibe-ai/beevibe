@@ -41,6 +41,10 @@ export const queryKeys = {
     all: ["activity"] as const,
     feed: () => ["activity", "feed"] as const,
   },
+  inbox: {
+    all: ["inbox"] as const,
+    list: () => ["inbox", "list"] as const,
+  },
   workProducts: {
     all: ["work-products"] as const,
     detail: (id: string) => ["work-products", "detail", id] as const,

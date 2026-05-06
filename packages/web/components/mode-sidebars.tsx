@@ -4,11 +4,13 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  Activity,
+  AlertCircle,
   Bot,
+  CheckCircle2,
   Inbox,
   ListChecks,
   Network,
+  ShieldAlert,
   Sparkles,
   TrendingUp,
 } from "lucide-react";
@@ -16,15 +18,16 @@ import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import {
   api,
-  type ActivityEntry,
   type Room,
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { useAgents } from "@/lib/hooks/use-agents";
+import { useInbox } from "@/lib/hooks/use-inbox";
 import { useTasks } from "@/lib/hooks/use-tasks";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
 import type { AgentDisplay } from "@/lib/types/agents";
+import type { InboxItem, InboxItemKind } from "@/lib/types/inbox";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { TaskStatus } from "@beevibe/core";
 import { cn } from "@/lib/utils";
@@ -59,30 +62,74 @@ function ListEmpty({ icon, title }: { icon: LucideIcon; title: string }) {
   return <EmptyState icon={icon} title={title} className="py-6 px-4 text-xs" />;
 }
 
-// ── Home — recent activity feed ──────────────────────────────────────
+// ── Home — inbox (decisions you owe) ─────────────────────────────────
 
 export function HomeSidebar() {
-  const { data, isLoading } = useQuery<ActivityEntry[]>({
-    queryKey: queryKeys.activity.feed(),
-    queryFn: ({ signal }) => api.activity.list({ signal, limit: 15 }),
-    enabled: isApiConfigured,
-    staleTime: 10_000,
-  });
-
+  const { data, isLoading } = useInbox();
   return (
-    <SectionFrame label="Recent activity">
+    <SectionFrame label="Inbox">
       {isLoading ? (
         <ListSkeleton />
       ) : !data || data.length === 0 ? (
-        <ListEmpty icon={Activity} title="Nothing yet — start a conversation or assign a task." />
+        <ListEmpty icon={Inbox} title="Inbox zero — nothing to decide right now." />
       ) : (
         <ul>
-          {data.map((entry) => (
-            <ActivityRow key={entry.id} entry={entry} />
+          {data.map((item) => (
+            <InboxRow key={item.id} item={item} />
           ))}
         </ul>
       )}
     </SectionFrame>
+  );
+}
+
+const INBOX_KIND_META: Record<
+  InboxItemKind,
+  { icon: LucideIcon; label: string; iconClass: string }
+> = {
+  task_review: {
+    icon: CheckCircle2,
+    label: "Awaiting your review",
+    iconClass: "text-status-review",
+  },
+  task_blocked: {
+    icon: AlertCircle,
+    label: "Blocked",
+    iconClass: "text-status-blocked",
+  },
+  escalation_pending: {
+    icon: ShieldAlert,
+    label: "Escalated",
+    iconClass: "text-status-failed",
+  },
+};
+
+function InboxRow({ item }: { item: InboxItem }) {
+  const meta = INBOX_KIND_META[item.kind];
+  const Icon = meta.icon;
+  return (
+    <li>
+      <Link
+        href={item.href}
+        className="block px-3 py-1.5 mx-1 my-0.5 rounded hover:bg-secondary/60 transition-colors"
+      >
+        <div className="flex items-baseline gap-1.5">
+          <Icon
+            className={cn("h-3 w-3 shrink-0 self-center", meta.iconClass)}
+            aria-label={meta.label}
+          />
+          <div className="text-xs text-foreground/85 font-medium truncate flex-1 min-w-0">
+            {item.title}
+          </div>
+          <span className="text-[10px] tabular-nums text-muted-foreground/70 shrink-0">
+            {formatRelativeTime(item.age_at)}
+          </span>
+        </div>
+        <div className="mt-0.5 ml-[18px] text-[11px] text-muted-foreground line-clamp-1">
+          {item.detail}
+        </div>
+      </Link>
+    </li>
   );
 }
 
@@ -146,34 +193,6 @@ export function TeamSidebar({
         })}
       </ul>
     </div>
-  );
-}
-
-function ActivityRow({ entry }: { entry: ActivityEntry }) {
-  // Activity entries are session rows. Link to the session detail
-  // page when a short_id is available; fall back to the agent
-  // otherwise. Title prioritizes the task it ran on, then the intent.
-  const title = entry.task_title ?? entry.intent;
-  const href = entry.short_id ? `/sessions/${entry.short_id}` : `/agents/${entry.agent_id}`;
-  return (
-    <li>
-      <Link
-        href={href}
-        className="block px-3 py-1.5 mx-1 my-0.5 rounded hover:bg-secondary/60 transition-colors"
-      >
-        <div className="flex items-baseline gap-1.5">
-          <div className="text-xs text-foreground/85 font-medium truncate flex-1 min-w-0">
-            {title}
-          </div>
-          <span className="text-[10px] tabular-nums text-muted-foreground/70 shrink-0">
-            {entry.duration_label}
-          </span>
-        </div>
-        <div className="mt-0.5 text-[11px] text-muted-foreground truncate">
-          {entry.agent_label}
-        </div>
-      </Link>
-    </li>
   );
 }
 

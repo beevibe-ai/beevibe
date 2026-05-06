@@ -19,13 +19,23 @@ export interface BvEvent {
 type InvalidationKey = readonly unknown[];
 
 const eventInvalidations: Record<string, InvalidationKey[]> = {
-  "task.updated": [queryKeys.tasks.all, queryKeys.dashboard.all, queryKeys.activity.all],
-  "task.created": [queryKeys.tasks.all, queryKeys.dashboard.all, queryKeys.activity.all],
+  "task.updated": [
+    queryKeys.tasks.all,
+    queryKeys.dashboard.all,
+    queryKeys.activity.all,
+    queryKeys.inbox.all,
+  ],
+  "task.created": [
+    queryKeys.tasks.all,
+    queryKeys.dashboard.all,
+    queryKeys.activity.all,
+    queryKeys.inbox.all,
+  ],
   "agent.updated": [queryKeys.agents.all, queryKeys.activity.all],
   "session.updated": [queryKeys.sessions.all, queryKeys.tasks.all, queryKeys.activity.all],
   "memory.fact.created": [queryKeys.memory.all],
   "promotion.created": [queryKeys.promotions.all, queryKeys.memory.all],
-  "mesh.activity": [queryKeys.mesh.all, queryKeys.activity.all],
+  "mesh.activity": [queryKeys.mesh.all, queryKeys.activity.all, queryKeys.inbox.all],
   "room.message": [queryKeys.rooms.all, queryKeys.activity.all],
 };
 

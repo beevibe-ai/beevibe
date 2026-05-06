@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useCollapsible } from "@/lib/hooks/use-collapsible";
+import { useInbox } from "@/lib/hooks/use-inbox";
 import { ConversationSidebar } from "./chat/conversation-sidebar";
 import { LiveStatusDot } from "./chat/live-panel";
 import {
@@ -201,6 +202,13 @@ function renderModePanel(args: ModePanelArgs): React.ReactNode {
  * strip — visual gesture for mode-switching, no vertical bloat.
  */
 function ModeStrip({ pathname }: { pathname: string }) {
+  // Home gets a count badge for inbox items so the human knows at a
+  // glance whether they owe a decision somewhere — same affordance
+  // as "5 unread" on a mail icon. Only shown when there's actually
+  // something pending so an empty inbox stays visually quiet.
+  const inbox = useInbox();
+  const inboxCount = inbox.data?.length ?? 0;
+
   return (
     <nav
       aria-label="Primary modes"
@@ -208,6 +216,7 @@ function ModeStrip({ pathname }: { pathname: string }) {
     >
       {PRIMARY_MODES.map((item) => {
         const active = item.isActive(pathname);
+        const badge = item.href === "/dashboard" && inboxCount > 0 ? inboxCount : undefined;
         if (active) {
           return (
             <Link
@@ -218,6 +227,7 @@ function ModeStrip({ pathname }: { pathname: string }) {
             >
               <item.icon className="h-4 w-4 shrink-0" />
               <span className="leading-none">{item.label}</span>
+              {badge !== undefined ? <ModeBadge count={badge} /> : null}
             </Link>
           );
         }
@@ -225,15 +235,26 @@ function ModeStrip({ pathname }: { pathname: string }) {
           <Link
             key={item.href}
             href={item.href}
-            aria-label={item.label}
+            aria-label={badge !== undefined ? `${item.label} (${badge})` : item.label}
             title={item.label}
-            className="h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+            className="relative h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
           >
             <item.icon className="h-4 w-4" />
+            {badge !== undefined ? (
+              <span className="absolute top-0.5 right-0.5 h-1.5 w-1.5 rounded-full bg-status-review" />
+            ) : null}
           </Link>
         );
       })}
     </nav>
+  );
+}
+
+function ModeBadge({ count }: { count: number }) {
+  return (
+    <span className="ml-0.5 inline-flex items-center justify-center h-4 min-w-[1rem] px-1 rounded text-[10px] font-medium bg-status-review/15 text-status-review tabular-nums">
+      {count}
+    </span>
   );
 }
 

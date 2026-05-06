@@ -33,6 +33,7 @@ import { listMemoryFacts } from "../views/memory.js";
 import { getDashboardSummary } from "../views/dashboard.js";
 import { getMeshOverview } from "../views/mesh.js";
 import { listPromotions } from "../views/promotions.js";
+import { listInbox } from "../views/inbox.js";
 import { listActivity } from "../views/activity.js";
 import { getWorkProduct } from "../views/work-product.js";
 
@@ -214,6 +215,18 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(overview);
     } catch (err) {
       handleError(err, res, "mesh overview");
+    }
+  });
+
+  router.get("/inbox", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : NaN;
+    const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+    try {
+      const items = await listInbox(deps.pool, req.caller.personId, { limit });
+      res.json(items);
+    } catch (err) {
+      handleError(err, res, "inbox list");
     }
   });
 
