@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   Inbox,
   ListChecks,
-  MessageSquare,
   Network,
   ShieldAlert,
   Sparkles,
@@ -95,91 +94,68 @@ const INBOX_KIND_META: Record<
 export function HomeSidebar({
   pathname,
   activeAgentId,
-  onNewChat,
 }: {
   pathname: string;
   activeAgentId?: string;
-  onNewChat: () => void;
 }) {
   const inbox = useInbox();
   const agents = useAgents();
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      <div className="flex-1 overflow-y-auto">
-        <SectionLabel>Inbox</SectionLabel>
-        {inbox.isLoading ? (
-          <ListSkeleton />
-        ) : !inbox.data || inbox.data.length === 0 ? (
-          <ListEmpty icon={Inbox} title="Inbox zero." />
-        ) : (
-          <ul>
-            {inbox.data.map((item) => (
-              <InboxRow key={item.id} item={item} />
-            ))}
-          </ul>
-        )}
-
-        <SectionLabel>Your team</SectionLabel>
-        {agents.isLoading ? (
-          <ListSkeleton />
-        ) : !agents.data || agents.data.length === 0 ? (
-          <ListEmpty icon={Bot} title="No agents yet." />
-        ) : (
-          <ul>
-            {agents.data.map((agent) => (
-              <AgentSidebarRow
-                key={agent.id}
-                agent={agent}
-                active={activeAgentId === agent.id}
-              />
-            ))}
-          </ul>
-        )}
-
-        <SectionLabel>Observability</SectionLabel>
-        <ul className="px-1 pb-2">
-          {HOME_SUBNAV.map((item) => {
-            const active = pathname.startsWith(item.href);
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "flex items-center gap-2 h-7 px-2 mx-1 my-0.5 rounded text-xs transition-colors",
-                    active
-                      ? "bg-secondary text-foreground font-semibold"
-                      : "text-muted-foreground/85 hover:text-foreground hover:bg-secondary/60",
-                  )}
-                >
-                  <item.icon className="h-3.5 w-3.5 shrink-0" />
-                  <span>{item.label}</span>
-                </Link>
-              </li>
-            );
-          })}
+    <div className="flex-1 overflow-y-auto min-h-0">
+      <SectionLabel>Inbox</SectionLabel>
+      {inbox.isLoading ? (
+        <ListSkeleton />
+      ) : !inbox.data || inbox.data.length === 0 ? (
+        <ListEmpty icon={Inbox} title="Inbox zero." />
+      ) : (
+        <ul>
+          {inbox.data.map((item) => (
+            <InboxRow key={item.id} item={item} />
+          ))}
         </ul>
-      </div>
+      )}
 
-      <NewChatCTA onClick={onNewChat} />
-    </div>
-  );
-}
+      <SectionLabel>Your team</SectionLabel>
+      {agents.isLoading ? (
+        <ListSkeleton />
+      ) : !agents.data || agents.data.length === 0 ? (
+        <ListEmpty icon={Bot} title="No agents yet." />
+      ) : (
+        <ul>
+          {agents.data.map((agent) => (
+            <AgentSidebarRow
+              key={agent.id}
+              agent={agent}
+              active={activeAgentId === agent.id}
+            />
+          ))}
+        </ul>
+      )}
 
-function NewChatCTA({ onClick }: { onClick: () => void }) {
-  // Pinned-bottom primary action — same role as Notion's "+ New chat".
-  // Always one click away regardless of which mode the user is on.
-  return (
-    <div className="px-2 py-2 border-t border-border/60">
-      <button
-        type="button"
-        onClick={onClick}
-        className="w-full inline-flex items-center justify-center gap-1.5 h-8 rounded-full bg-secondary text-foreground hover:bg-secondary/80 text-xs font-medium transition-colors cursor-pointer"
-      >
-        <MessageSquare className="h-3.5 w-3.5" />
-        <span>New chat</span>
-      </button>
+      <SectionLabel>Observability</SectionLabel>
+      <ul className="px-1 pb-2">
+        {HOME_SUBNAV.map((item) => {
+          const active = pathname.startsWith(item.href);
+          return (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                aria-current={active ? "page" : undefined}
+                className={cn(
+                  "flex items-center gap-2 h-7 px-2 mx-1 my-0.5 rounded text-xs transition-colors",
+                  active
+                    ? "bg-secondary text-foreground font-semibold"
+                    : "text-muted-foreground/85 hover:text-foreground hover:bg-secondary/60",
+                )}
+              >
+                <item.icon className="h-3.5 w-3.5 shrink-0" />
+                <span>{item.label}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }

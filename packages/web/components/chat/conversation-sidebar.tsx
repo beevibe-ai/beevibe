@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import { MessageSquare, Plus } from "lucide-react";
+import { MessageSquare } from "lucide-react";
 import {
   api,
   type ChatConversationsResponse,
@@ -64,11 +64,9 @@ function bucketize(list: readonly ChatConversationSummary[]): Record<Bucket, Cha
 export function ConversationSidebar({
   activeConversationId,
   isFresh,
-  onNew,
 }: {
   activeConversationId: string | undefined;
   isFresh: boolean;
-  onNew: () => void;
 }) {
   const conversations = useQuery<ChatConversationsResponse>({
     queryKey: queryKeys.chat.conversations(),
@@ -84,27 +82,14 @@ export function ConversationSidebar({
   const effectiveActive = activeConversationId ?? (isFresh ? undefined : latestId);
 
   return (
-    <div className="flex flex-col flex-1 min-h-0">
-      <div className="px-2 pt-1 pb-2">
-        <button
-          type="button"
-          onClick={onNew}
-          disabled={isFresh}
-          className="w-full inline-flex items-center justify-center gap-1.5 h-8 rounded text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          New conversation
-        </button>
-      </div>
-      <div className="flex-1 overflow-y-auto py-1">
-        {conversations.isLoading ? (
-          <SidebarSkeleton />
-        ) : list.length === 0 ? (
-          <SidebarEmpty />
-        ) : (
-          <BucketedList list={list} effectiveActive={effectiveActive} />
-        )}
-      </div>
+    <div className="flex-1 overflow-y-auto py-1 min-h-0">
+      {conversations.isLoading ? (
+        <SidebarSkeleton />
+      ) : list.length === 0 ? (
+        <SidebarEmpty />
+      ) : (
+        <BucketedList list={list} effectiveActive={effectiveActive} />
+      )}
     </div>
   );
 }

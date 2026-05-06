@@ -13,8 +13,10 @@ import {
   Users,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useAgents } from "@/lib/hooks/use-agents";
 import { useCollapsible } from "@/lib/hooks/use-collapsible";
 import { useInbox } from "@/lib/hooks/use-inbox";
+import { Avatar } from "./avatar";
 import { ConversationSidebar } from "./chat/conversation-sidebar";
 import { LiveStatusDot } from "./chat/live-panel";
 import { HomeSidebar, RoomsSidebar, TasksSidebar } from "./mode-sidebars";
@@ -55,18 +57,31 @@ export function Sidebar() {
     router.push("/chat?new=1");
   }, [router]);
 
-  // ⌘\ (Mac) / Ctrl-\ (others) toggles from anywhere — unbound
-  // globally, doesn't collide with browser/editor defaults.
+  // Global keyboard shortcuts:
+  //   ⌘\  toggles sidebar (unbound elsewhere; doesn't collide)
+  //   ⌘O  starts a new chat (matches Notion's "+ New chat ⌘O")
+  // Both bypass when the user is already typing — text fields and
+  // contenteditable surfaces own those keystrokes.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const t = e.target as HTMLElement | null;
+      const inEditable =
+        t &&
+        (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+      if (e.key === "\\") {
         e.preventDefault();
         toggleCollapsed();
+        return;
+      }
+      if ((e.key === "o" || e.key === "O") && !inEditable) {
+        e.preventDefault();
+        startNewConversation();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggleCollapsed]);
+  }, [toggleCollapsed, startNewConversation]);
 
   if (collapsed) {
     return (
@@ -96,8 +111,9 @@ export function Sidebar() {
         pathname,
         conversationId,
         isFresh,
-        startNewConversation,
       })}
+
+      <NewChatButton onClick={startNewConversation} />
 
       <div className="p-2 border-t border-border/60 flex items-center gap-1">
         <UserWidget />
@@ -108,6 +124,37 @@ export function Sidebar() {
         <ThemeToggle />
       </div>
     </aside>
+  );
+}
+
+function NewChatButton({ onClick }: { onClick: () => void }) {
+  // Pinned-bottom global affordance — always one click (or ⌘O) away
+  // regardless of mode. Same role as Notion's "+ New chat ⌘O" pill.
+  // Uses the team-agent avatar leading icon so the button reads as
+  // "talk to your team", not a generic "create".
+  const agents = useAgents();
+  const teamAgent = agents.data?.find((a) => a.hierarchy !== "ic");
+  const initial = (teamAgent?.display_name ?? teamAgent?.name ?? "?").charAt(0).toUpperCase();
+  return (
+    <div className="px-2 py-2 border-t border-border/60">
+      <button
+        type="button"
+        onClick={onClick}
+        title="New chat (⌘O)"
+        aria-label="New chat (⌘O)"
+        className="w-full inline-flex items-center gap-2 h-9 pl-1.5 pr-3 rounded-full bg-secondary/70 hover:bg-secondary text-foreground text-sm font-medium transition-colors cursor-pointer"
+      >
+        <Avatar
+          initial={initial}
+          kind={teamAgent?.hierarchy ?? "team"}
+          size={24}
+        />
+        <span className="flex-1 text-left">New chat</span>
+        <kbd className="text-[10px] font-mono text-muted-foreground/80 tabular-nums">
+          ⌘O
+        </kbd>
+      </button>
+    </div>
   );
 }
 
@@ -152,7 +199,6 @@ interface ModePanelArgs {
   pathname: string;
   conversationId: string | undefined;
   isFresh: boolean;
-  startNewConversation: () => void;
 }
 
 /**
@@ -161,13 +207,12 @@ interface ModePanelArgs {
  * stays consistent across modes that don't have a context list yet.
  */
 function renderModePanel(args: ModePanelArgs): React.ReactNode {
-  const { pathname, conversationId, isFresh, startNewConversation } = args;
+  const { pathname, conversationId, isFresh } = args;
   if (matchesChat(pathname)) {
     return (
       <ConversationSidebar
         activeConversationId={conversationId}
         isFresh={isFresh}
-        onNew={startNewConversation}
       />
     );
   }
@@ -176,7 +221,6 @@ function renderModePanel(args: ModePanelArgs): React.ReactNode {
       <HomeSidebar
         pathname={pathname}
         activeAgentId={extractIdFromPath(pathname, "/agents/")}
-        onNewChat={startNewConversation}
       />
     );
   }
