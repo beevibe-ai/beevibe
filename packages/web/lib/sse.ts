@@ -22,7 +22,15 @@ const eventInvalidations: Record<string, InvalidationKey[]> = {
   "task.updated": [queryKeys.tasks.all, queryKeys.dashboard.all, queryKeys.activity.all],
   "task.created": [queryKeys.tasks.all, queryKeys.dashboard.all, queryKeys.activity.all],
   "agent.updated": [queryKeys.agents.all, queryKeys.activity.all],
-  "session.updated": [queryKeys.sessions.all, queryKeys.tasks.all, queryKeys.activity.all],
+  // session.updated fires on row create + status change (not on every
+  // step), so adding chat.all here is bounded — multi-tab + multi-device
+  // users see new chat turns appear without manual reload.
+  "session.updated": [
+    queryKeys.sessions.all,
+    queryKeys.tasks.all,
+    queryKeys.activity.all,
+    queryKeys.chat.all,
+  ],
   "memory.fact.created": [queryKeys.memory.all],
   "promotion.created": [queryKeys.promotions.all, queryKeys.memory.all],
   "mesh.activity": [queryKeys.mesh.all, queryKeys.activity.all],
