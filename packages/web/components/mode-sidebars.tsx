@@ -4,11 +4,15 @@ import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  AlertCircle,
   Bot,
+  Check,
+  CheckCircle2,
   GaugeCircle,
   Inbox,
-  ListChecks,
+  Loader2,
   Network,
+  ShieldAlert,
   Sparkles,
   TrendingUp,
 } from "lucide-react";
@@ -19,12 +23,12 @@ import {
   type Room,
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
-import { useTasks } from "@/lib/hooks/use-tasks";
+import { useInbox } from "@/lib/hooks/use-inbox";
+import { useApproveTask } from "@/lib/hooks/use-task-mutations";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
-import type { TaskListItem } from "@/lib/types/tasks";
-import type { TaskStatus } from "@beevibe/core";
 import { cn } from "@/lib/utils";
+import type { InboxItem, InboxItemKind } from "@/lib/types/inbox";
 
 /**
  * Per-mode sidebar lists. Each mode in the icon strip shows its own
@@ -34,7 +38,8 @@ import { cn } from "@/lib/utils";
  *   (Metrics / Memory / Mesh / Promotions). The canvas IS the page;
  *   the rail just gives quick navigation between sibling views.
  * - Rooms → rooms list
- * - Tasks → grouped by status with counts
+ * - Tasks → "Needs you" inbox: tasks waiting on the human (review,
+ *   blocked, escalations) with inline quick actions.
  */
 
 // ── Empty/loading states (shared) ────────────────────────────────────
@@ -160,97 +165,155 @@ export function RoomsSidebar({ activeRoomId }: { activeRoomId?: string }) {
   );
 }
 
-// ── Tasks grouped by status ──────────────────────────────────────────
+// ── Tasks: "Needs you" attention inbox ───────────────────────────────
 
-const TASK_STATUS_ORDER: TaskStatus[] = [
-  "blocked",
-  "review",
-  "in_progress",
-  "pending",
-  "assigned",
-  "done",
-];
-
-const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
-  pending: "Pending",
-  assigned: "Assigned",
-  in_progress: "In progress",
-  review: "In review",
-  revision: "Needs revision",
-  needs_revision: "Needs revision",
-  blocked: "Blocked",
-  done: "Done",
-  failed: "Failed",
-  cancelled: "Cancelled",
+const INBOX_KIND_META: Record<
+  InboxItemKind,
+  { icon: LucideIcon; label: string; iconClass: string }
+> = {
+  task_review: {
+    icon: CheckCircle2,
+    label: "Awaiting your review",
+    iconClass: "text-status-review",
+  },
+  task_blocked: {
+    icon: AlertCircle,
+    label: "Blocked",
+    iconClass: "text-status-blocked",
+  },
+  escalation_pending: {
+    icon: ShieldAlert,
+    label: "Escalated",
+    iconClass: "text-status-failed",
+  },
 };
 
-export function TasksSidebar({ activeTaskId }: { activeTaskId?: string }) {
-  const { data, isLoading } = useTasks({});
-  const tasks = data ?? [];
+/**
+ * Extract the entity id from an InboxItem id of shape `<kind>:<id>`.
+ * Returns null when the kind isn't task-shaped (so we never try to
+ * peek-open a non-task surface like an escalation).
+ */
+function inboxTaskId(item: InboxItem): string | null {
+  if (item.kind !== "task_review" && item.kind !== "task_blocked") return null;
+  const sep = item.id.indexOf(":");
+  return sep > 0 ? item.id.slice(sep + 1) : null;
+}
 
-  const grouped = TASK_STATUS_ORDER.map((status) => ({
-    status,
-    items: tasks.filter((t) => t.status === status),
-  })).filter((g) => g.items.length > 0);
+function inboxRowHref(item: InboxItem): string {
+  // Tasks open inline as the right peek panel; escalations still
+  // navigate to whatever surface the backend pointed at.
+  const taskId = inboxTaskId(item);
+  if (taskId) return `/tasks?p=${encodeURIComponent(taskId)}`;
+  return item.href;
+}
 
+export function TasksAttentionSidebar({
+  activeTaskId,
+}: {
+  activeTaskId?: string;
+}) {
+  const inbox = useInbox();
+  const items = inbox.data ?? [];
   return (
-    <SectionFrame label="Tasks">
-      {isLoading ? (
+    <div className="flex-1 overflow-y-auto min-h-0">
+      <div className="px-3 pt-3 pb-1 flex items-baseline gap-1.5">
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/60">
+          Needs you
+        </span>
+        {items.length > 0 ? (
+          <span className="text-[10px] text-muted-foreground/50 tabular-nums">
+            {items.length}
+          </span>
+        ) : null}
+      </div>
+      {inbox.isLoading ? (
         <ListSkeleton />
-      ) : tasks.length === 0 ? (
-        <ListEmpty icon={ListChecks} title="No tasks yet." />
+      ) : items.length === 0 ? (
+        <ListEmpty icon={Inbox} title="Inbox zero." />
       ) : (
-        <div>
-          {grouped.map(({ status, items }) => (
-            <div key={status} className="mb-1.5 last:mb-0">
-              <div className="px-3 pt-2 pb-1 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/60 flex items-baseline gap-1.5">
-                <span>{TASK_STATUS_LABELS[status]}</span>
-                <span className="text-muted-foreground/50 tabular-nums">{items.length}</span>
-              </div>
-              <ul>
-                {items.slice(0, 8).map((t) => (
-                  <TaskRow key={t.id} task={t} active={activeTaskId === t.id} />
-                ))}
-                {items.length > 8 ? (
-                  <li className="px-3 py-1 text-[10px] text-muted-foreground/60">
-                    +{items.length - 8} more
-                  </li>
-                ) : null}
-              </ul>
-            </div>
-          ))}
-        </div>
+        <ul>
+          {items.map((item) => {
+            const taskId = inboxTaskId(item);
+            return (
+              <AttentionRow
+                key={item.id}
+                item={item}
+                active={taskId !== null && taskId === activeTaskId}
+              />
+            );
+          })}
+        </ul>
       )}
-    </SectionFrame>
+    </div>
   );
 }
 
-function TaskRow({ task, active }: { task: TaskListItem; active: boolean }) {
+function AttentionRow({ item, active }: { item: InboxItem; active: boolean }) {
+  const meta = INBOX_KIND_META[item.kind];
+  const Icon = meta.icon;
+  const taskId = inboxTaskId(item);
   return (
-    <li>
-      <Link
-        href={`/tasks/${task.id}`}
-        aria-current={active ? "page" : undefined}
-        className={cn(
-          "block px-3 py-1.5 mx-1 my-0.5 rounded transition-colors",
-          active ? "bg-secondary" : "hover:bg-secondary/60",
-        )}
-      >
-        <div
-          className={cn(
-            "text-xs truncate",
-            active ? "text-foreground font-semibold" : "text-foreground/85",
-          )}
-        >
-          {task.title}
-        </div>
-        {task.assignee_label ? (
-          <div className="mt-0.5 text-[11px] text-muted-foreground truncate">
-            {task.assignee_label}
+    <li
+      className={cn(
+        "group/row mx-1 my-0.5 rounded flex items-stretch transition-colors",
+        active ? "bg-secondary" : "hover:bg-secondary/60",
+      )}
+    >
+      <Link href={inboxRowHref(item)} className="flex-1 min-w-0 px-3 py-1.5">
+        <div className="flex items-baseline gap-1.5">
+          <Icon
+            className={cn("h-3 w-3 shrink-0 self-center", meta.iconClass)}
+            aria-label={meta.label}
+          />
+          <div
+            className={cn(
+              "text-xs truncate flex-1 min-w-0",
+              active ? "text-foreground font-semibold" : "text-foreground/85 font-medium",
+            )}
+          >
+            {item.title}
           </div>
-        ) : null}
+          <span className="text-[10px] tabular-nums text-muted-foreground/70 shrink-0">
+            {formatRelativeTime(item.age_at)}
+          </span>
+        </div>
+        <div className="mt-0.5 ml-[18px] text-[11px] text-muted-foreground line-clamp-1">
+          {item.detail}
+        </div>
       </Link>
+      {item.kind === "task_review" && taskId ? (
+        <ApproveButton taskId={taskId} />
+      ) : null}
     </li>
+  );
+}
+
+function ApproveButton({ taskId }: { taskId: string }) {
+  const approve = useApproveTask(taskId);
+  return (
+    <button
+      type="button"
+      title="Approve"
+      aria-label="Approve task"
+      disabled={approve.isPending}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        approve.mutate({});
+      }}
+      className={cn(
+        "shrink-0 mr-1 my-0.5 px-1.5 inline-flex items-center justify-center rounded text-status-done/80 hover:bg-status-done/15 hover:text-status-done transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
+        // Reveal on row hover so the rail stays calm when nothing's
+        // hovered. Keyboard focus (focus-within on the li) also reveals.
+        "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100",
+      )}
+    >
+      {approve.isPending ? (
+        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+      ) : (
+        <Check className="h-3.5 w-3.5" />
+      )}
+    </button>
   );
 }
 

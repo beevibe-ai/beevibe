@@ -6,11 +6,11 @@ import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { TaskListItem } from "@/lib/types/tasks";
 
-const PRIORITY_DOT: Record<string, string> = {
-  high: "bg-status-failed",
-  medium: "bg-status-review",
-  low: "bg-muted-foreground/40",
-};
+// We only mark `high` priority on the card. Medium is the default
+// (95% of tasks); painting a dot on every card just adds visual noise.
+// Low is intentionally invisible — the absence of a dot reads as "not
+// urgent" cleanly. The exception is the signal.
+const HIGH_PRIORITY_DOT = "bg-status-failed";
 
 interface DivergentTag {
   label: string;
@@ -20,8 +20,9 @@ interface DivergentTag {
 
 function divergentTag(status: TaskStatus): DivergentTag | null {
   switch (status) {
-    case "blocked":
-      return { label: "blocked", tone: "blocked", icon: Ban };
+    // `blocked` no longer needs a tag — the Blocked column itself
+    // carries that signal. The blocker_reason still surfaces under
+    // the title for context.
     case "failed":
       return { label: "failed", tone: "failed", icon: XCircle };
     case "cancelled":
@@ -33,18 +34,47 @@ function divergentTag(status: TaskStatus): DivergentTag | null {
   }
 }
 
-export function TaskCard({ task, flash }: { task: TaskListItem; flash?: boolean }) {
+export type TaskSelectHandler = (taskId: string) => void;
+
+export function TaskCard({
+  task,
+  flash,
+  onSelect,
+  active,
+}: {
+  task: TaskListItem;
+  flash?: boolean;
+  /**
+   * If provided, click opens the side-peek panel instead of navigating
+   * to /tasks/[id]. Cmd/ctrl/middle-clicks fall through to the Link so
+   * "open in new tab" still works for power users.
+   */
+  onSelect?: TaskSelectHandler;
+  /** Card is the currently-open panel target — outline + bg shift. */
+  active?: boolean;
+}) {
   const tag = divergentTag(task.status);
   const TagIcon = tag?.icon;
   const time = formatRelativeTime(task.updated_at);
   const actor = task.assignee_label ?? task.creator_label ?? "—";
 
+  const onClick = onSelect
+    ? (e: React.MouseEvent) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+        e.preventDefault();
+        onSelect(task.id);
+      }
+    : undefined;
+
   return (
     <Link
       href={`/tasks/${task.id}`}
+      onClick={onClick}
       className={cn(
-        "group block rounded-md bg-background border border-border/80 p-3",
-        "hover:border-border hover:bg-secondary/30 transition-colors",
+        "group block rounded-md bg-background border p-3 transition-colors",
+        active
+          ? "border-foreground/40 bg-secondary/40"
+          : "border-border/80 hover:border-border hover:bg-secondary/30",
         "shadow-[0_1px_0_rgba(0,0,0,0.02)]",
         flash && "animate-row-flash",
       )}
@@ -54,21 +84,29 @@ export function TaskCard({ task, flash }: { task: TaskListItem; flash?: boolean 
           <div className="text-[13px] font-medium leading-snug text-foreground line-clamp-2">
             {task.title}
           </div>
-          {tag && task.status === "blocked" && task.blocker_reason ? (
+          {task.status === "blocked" && task.blocker_reason ? (
             <div className="mt-1 text-[11px] text-status-blocked/90 line-clamp-1">
               {task.blocker_reason}
             </div>
           ) : null}
         </div>
-        <span
-          className={cn("h-1.5 w-1.5 rounded-full mt-1.5 shrink-0", PRIORITY_DOT[task.priority])}
-          aria-label={`priority ${task.priority}`}
-        />
+        {task.priority === "high" ? (
+          <span
+            className={cn("h-1.5 w-1.5 rounded-full mt-1.5 shrink-0", HIGH_PRIORITY_DOT)}
+            aria-label="high priority"
+            title="High priority"
+          />
+        ) : null}
       </div>
 
       <div className="mt-2.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
         <span className="font-mono text-foreground/80 truncate">{actor}</span>
-        {task.assignee_hierarchy ? <HierChip hier={task.assignee_hierarchy} /> : null}
+        {/* `ic` is the default hierarchy on ~every card; showing it
+            makes the chip noise. Surface only the exceptions (team / org)
+            so the chip earns its visual weight. */}
+        {task.assignee_hierarchy && task.assignee_hierarchy !== "ic" ? (
+          <HierChip hier={task.assignee_hierarchy} />
+        ) : null}
         <span className="ml-auto shrink-0 tabular-nums">{time}</span>
       </div>
 

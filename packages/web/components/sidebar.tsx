@@ -18,7 +18,7 @@ import { useCollapsible } from "@/lib/hooks/use-collapsible";
 import { Avatar } from "./avatar";
 import { ConversationSidebar } from "./chat/conversation-sidebar";
 import { LiveStatusDot } from "./chat/live-panel";
-import { AgentsSidebar, RoomsSidebar, TasksSidebar } from "./mode-sidebars";
+import { AgentsSidebar, RoomsSidebar, TasksAttentionSidebar } from "./mode-sidebars";
 import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
 
@@ -110,6 +110,7 @@ export function Sidebar() {
         pathname,
         conversationId,
         isFresh,
+        selectedTaskId: searchParams?.get("p") ?? undefined,
       })}
 
       <NewChatButton onClick={startNewConversation} />
@@ -130,7 +131,9 @@ function NewChatButton({ onClick }: { onClick: () => void }) {
   // Pinned-bottom global affordance — always one click (or ⌘O) away
   // regardless of mode. Same role as Notion's "+ New chat ⌘O" pill.
   // Uses the team-agent avatar leading icon so the button reads as
-  // "talk to your team", not a generic "create".
+  // "talk to your team", not a generic "create" — but at a size that
+  // doesn't dominate non-chat modes (tasks/agents/rooms) where the
+  // CTA is contextually secondary.
   const agents = useAgents();
   const teamAgent = agents.data?.find((a) => a.hierarchy !== "ic");
   const initial = (teamAgent?.display_name ?? teamAgent?.name ?? "?").charAt(0).toUpperCase();
@@ -141,15 +144,15 @@ function NewChatButton({ onClick }: { onClick: () => void }) {
         onClick={onClick}
         title="New chat (⌘O)"
         aria-label="New chat (⌘O)"
-        className="w-full inline-flex items-center gap-2 h-9 pl-1.5 pr-3 rounded-full bg-secondary/70 hover:bg-secondary text-foreground text-sm font-medium transition-colors cursor-pointer"
+        className="w-full inline-flex items-center gap-2 h-8 pl-1.5 pr-2.5 rounded-full bg-secondary/40 hover:bg-secondary text-foreground text-[13px] font-medium transition-colors cursor-pointer"
       >
         <Avatar
           initial={initial}
           kind={teamAgent?.hierarchy ?? "team"}
-          size={24}
+          size={18}
         />
         <span className="flex-1 text-left">New chat</span>
-        <kbd className="text-[10px] font-mono text-muted-foreground/80 tabular-nums">
+        <kbd className="text-[10px] font-mono text-muted-foreground/70 tabular-nums">
           ⌘O
         </kbd>
       </button>
@@ -198,6 +201,8 @@ interface ModePanelArgs {
   pathname: string;
   conversationId: string | undefined;
   isFresh: boolean;
+  /** Currently-peeked task id from `?p=`, when on /tasks. */
+  selectedTaskId: string | undefined;
 }
 
 /**
@@ -206,7 +211,7 @@ interface ModePanelArgs {
  * stays consistent across modes that don't have a context list yet.
  */
 function renderModePanel(args: ModePanelArgs): React.ReactNode {
-  const { pathname, conversationId, isFresh } = args;
+  const { pathname, conversationId, isFresh, selectedTaskId } = args;
   if (matchesChat(pathname)) {
     return (
       <ConversationSidebar
@@ -221,8 +226,17 @@ function renderModePanel(args: ModePanelArgs): React.ReactNode {
   if (pathname.startsWith("/rooms")) {
     return <RoomsSidebar activeRoomId={extractIdFromPath(pathname, "/rooms/")} />;
   }
+  // /tasks rail surfaces the human-attention inbox: review +
+  // blocked + escalation rows with inline approve. It's NOT a
+  // duplicate of the kanban (the old TasksSidebar was). Different
+  // axis: kanban = "all work in flight," inbox = "things waiting
+  // on you specifically."
   if (pathname.startsWith("/tasks")) {
-    return <TasksSidebar activeTaskId={extractIdFromPath(pathname, "/tasks/")} />;
+    return (
+      <TasksAttentionSidebar
+        activeTaskId={selectedTaskId ?? extractIdFromPath(pathname, "/tasks/")}
+      />
+    );
   }
   return <div className="flex-1" />;
 }

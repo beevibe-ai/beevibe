@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { AlertTriangle, Bot, ExternalLink, X } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
@@ -34,6 +34,8 @@ export function AgentDetailPanel({
   agentId: string;
   onClose: () => void;
 }) {
+  const panelRef = useRef<HTMLElement>(null);
+
   // Esc closes the panel — same pattern as Notion peek and most
   // dialog/drawer components. Bound at window level so focus inside
   // the panel doesn't have to be on a focusable element.
@@ -45,12 +47,27 @@ export function AgentDetailPanel({
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
 
+  // Click-outside closes. Listener attaches on mount, so the click
+  // that *opened* the panel (which fired before the panel rendered)
+  // doesn't race-trigger close.
+  useEffect(() => {
+    const onMouseDown = (e: MouseEvent) => {
+      const panel = panelRef.current;
+      if (!panel) return;
+      if (e.target instanceof Node && panel.contains(e.target)) return;
+      onClose();
+    };
+    document.addEventListener("mousedown", onMouseDown);
+    return () => document.removeEventListener("mousedown", onMouseDown);
+  }, [onClose]);
+
   return (
     <aside
+      ref={panelRef}
       role="dialog"
       aria-label="Agent details"
       data-pan="ignore"
-      className="absolute right-0 top-0 bottom-0 w-[440px] max-w-full bg-card border-l border-border shadow-xl flex flex-col"
+      className="absolute right-0 top-0 bottom-0 w-[520px] max-w-full bg-card border-l border-border shadow-xl flex flex-col"
     >
       <PanelHeader agentId={agentId} onClose={onClose} />
       <div className="flex-1 min-h-0 overflow-y-auto">

@@ -17,13 +17,14 @@ import {
 } from "@/lib/hooks/use-task-mutations";
 import { isApiConfigured } from "@/lib/api/config";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
+import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { DetailShell } from "@/components/detail/detail-shell";
 import { FooterField } from "@/components/detail/footer-field";
 import { HierChip } from "@/components/hier-chip";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
-import { RichTextRender } from "@/components/rich-text";
+import { richTextToMarkdown } from "@/components/rich-text";
 import { formatRelativeTime, shortId } from "@/lib/format";
 import type { TaskDetail, TaskDetailSessionRow } from "@/lib/api/types";
 import type { WorkProduct } from "@beevibe/core";
@@ -211,10 +212,10 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
               Description
             </h2>
             {task.description?.length ? (
-              <div className="prose prose-sm max-w-none text-foreground whitespace-pre-wrap">
-                {task.description.map((part, i) => (
-                  <RichTextRender key={i} value={part} />
-                ))}
+              <div className="text-foreground/90">
+                <ChatMarkdown
+                  content={task.description.map(richTextToMarkdown).join("\n\n")}
+                />
               </div>
             ) : (
               <p className="text-sm text-muted-foreground italic">No description.</p>
@@ -226,8 +227,8 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
               <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
                 Result summary
               </h2>
-              <div className="text-sm text-foreground whitespace-pre-wrap">
-                <RichTextRender value={task.result_summary} />
+              <div className="text-foreground/90">
+                <ChatMarkdown content={richTextToMarkdown(task.result_summary)} />
               </div>
             </section>
           ) : null}

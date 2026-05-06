@@ -4,24 +4,30 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    /* Paper tint: pure white reads as untouched template; the warm
+       cream gives cards somewhere to sit and harmonizes with the
+       yellow primary (which dominates dark mode brand chrome). Hue
+       40 = warm cream, ~5% saturation, ~98% lightness = #fbf9f5-ish.
+       Cards lift slightly above the page (97% L). Borders pick up a
+       trace of warmth too so they don't read cool against the page. */
+    --background: 40 30% 98%;
     --foreground: 240 10% 4%;
-    --card: 240 5% 98%;
+    --card: 40 25% 97%;
     --card-foreground: 240 10% 4%;
-    --popover: 0 0% 100%;
+    --popover: 40 30% 99%;
     --popover-foreground: 240 10% 4%;
     --primary: 48 96% 53%;
     --primary-foreground: 240 10% 4%;
-    --secondary: 240 5% 96%;
+    --secondary: 40 12% 94%;
     --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 96%;
+    --muted: 40 12% 94%;
     --muted-foreground: 240 4% 46%;
-    --accent: 240 5% 96%;
+    --accent: 40 12% 94%;
     --accent-foreground: 240 6% 10%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
+    --border: 40 10% 88%;
+    --input: 40 10% 88%;
     --ring: 47 96% 47%;
     --radius: 0.375rem;
 
