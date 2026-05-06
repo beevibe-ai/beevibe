@@ -21,6 +21,12 @@ import { cn } from "@/lib/utils";
 import { useCollapsible } from "@/lib/hooks/use-collapsible";
 import { ConversationSidebar } from "./chat/conversation-sidebar";
 import { LiveStatusDot } from "./chat/live-panel";
+import {
+  AgentsSidebar,
+  HomeSidebar,
+  RoomsSidebar,
+  TasksSidebar,
+} from "./mode-sidebars";
 import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
 
@@ -141,19 +147,25 @@ export function Sidebar() {
 
       <ModeStrip pathname={pathname} />
 
+      <div className="mx-2 mt-2 border-t border-border/60" />
+
+      {/* Per-mode sidebar content. Each mode has its own list below the
+          icon strip — Notion never shows an empty rail. */}
       {isChatRoute ? (
-        <>
-          <div className="mx-2 mt-2 border-t border-border/60" />
-          <ConversationSidebar
-            activeConversationId={conversationId}
-            isFresh={isFresh}
-            onNew={startNewConversation}
-          />
-        </>
+        <ConversationSidebar
+          activeConversationId={conversationId}
+          isFresh={isFresh}
+          onNew={startNewConversation}
+        />
+      ) : pathname.startsWith("/dashboard") ? (
+        <HomeSidebar />
+      ) : pathname.startsWith("/rooms") ? (
+        <RoomsSidebar activeRoomId={extractIdFromPath(pathname, "/rooms/")} />
+      ) : pathname.startsWith("/tasks") ? (
+        <TasksSidebar activeTaskId={extractIdFromPath(pathname, "/tasks/")} />
+      ) : pathname.startsWith("/agents") ? (
+        <AgentsSidebar activeAgentId={extractIdFromPath(pathname, "/agents/")} />
       ) : (
-        // Other routes are themselves list-of-X views; the page IS the
-        // list. Empty space sits between the mode strip and the
-        // utility footer — same pattern Notion uses on non-chat modes.
         <div className="flex-1" />
       )}
 
@@ -193,6 +205,19 @@ function WorkspaceHeader({ onCollapse }: { onCollapse: () => void }) {
       </button>
     </div>
   );
+}
+
+/**
+ * Extract the `:id` segment after a known prefix so the per-mode
+ * sidebar can highlight the active item. Returns `undefined` when the
+ * path is just the index (e.g. `/agents`, no id) or doesn't match.
+ */
+function extractIdFromPath(pathname: string, prefix: string): string | undefined {
+  if (!pathname.startsWith(prefix)) return undefined;
+  const rest = pathname.slice(prefix.length);
+  if (!rest) return undefined;
+  const id = rest.split("/")[0];
+  return id || undefined;
 }
 
 /**
