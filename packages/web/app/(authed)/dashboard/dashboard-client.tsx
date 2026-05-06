@@ -11,8 +11,8 @@ import { cn } from "@/lib/utils";
 import { KpiTile } from "@/components/home/kpi-tile";
 import { FleetBars } from "@/components/home/fleet-bars";
 import { StatusBreakdownBar } from "@/components/home/status-breakdown";
-import { TeamShowcase } from "@/components/home/team-showcase";
 import { TrendChart } from "@/components/home/trend-chart";
+import { TeamOrbit } from "@/components/team-orbit";
 import type { AttentionItem, DashboardDisplay } from "@/lib/types/dashboard";
 
 const ATTENTION_DOT: Record<AttentionItem["status"], string> = {
@@ -81,11 +81,23 @@ function Body({
   }
 
   return (
-    <div className="space-y-8">
-      {/* Team showcase first — Beevibe's pitch is "team of specialists",
-          so the team itself is the primary thing a returning user
-          should see, before any KPI counters. */}
-      <TeamShowcase />
+    <div className="space-y-10">
+      {/* Team orbit first — Beevibe's pitch is "team of specialists",
+          so the team is the primary thing a returning user should see,
+          before any KPI counters. Compact orbit on the dashboard so it
+          shares /agents's visual language without dominating the page. */}
+      <section>
+        <header className="mb-4 flex items-baseline justify-between">
+          <h2 className="text-base font-semibold tracking-tight">Your team</h2>
+          <Link
+            href="/agents"
+            className="text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            Open team →
+          </Link>
+        </header>
+        <TeamOrbit size="compact" />
+      </section>
 
       <div className="grid grid-cols-4 gap-6">
         {data.kpis.map((stat, i) => (
