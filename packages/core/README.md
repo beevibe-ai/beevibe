@@ -90,13 +90,9 @@ The domain layer is pure types — no I/O, no dependencies beyond `nanoid` for I
 
 Every external dependency lives behind a port. New runtimes (e.g., a different CLI), new vector stores, or new LLM providers slot in by implementing the relevant interface — the rest of the codebase doesn't move.
 
-```
-AgentRepository, TaskRepository, SessionRepository, PersonRepository,
-CoreMemoryRepository, WorkProductRepository, MemoryFactRepository,
-NegotiationRepository, EscalationRepository, MemoryPromotionEventRepository
-LlmProvider, EmbeddingService
-AgentRuntime, WorkspaceManager
-```
+- **Repositories** (10) — `AgentRepository`, `TaskRepository`, `SessionRepository`, `PersonRepository`, `CoreMemoryRepository`, `WorkProductRepository`, `MemoryFactRepository`, `NegotiationRepository`, `EscalationRepository`, `MemoryPromotionEventRepository`
+- **LLM + embeddings** — `LlmProvider`, `EmbeddingService`
+- **Execution** — `AgentRuntime`, `WorkspaceManager`
 
 ## Services
 

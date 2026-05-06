@@ -2,7 +2,7 @@
 
 The Next.js dashboard. Humans use this to view agents, watch tasks move through their lifecycle, read session transcripts, browse memory, and approve/revise/cancel work.
 
-It's a thin, read-mostly UI — there are **no API routes** in this package. All data goes through [`@beevibe/api`](../api), and live updates arrive over SSE from `GET /api/stream` on that server.
+It's a thin, read-mostly UI — there are **no API routes** in this package. All data goes through [`@beevibe/api`](../api), and live updates arrive over SSE from `GET /api/stream` on that server. For full setup, see the [root README](../../README.md).
 
 ## Run it
 

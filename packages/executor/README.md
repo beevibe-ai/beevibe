@@ -4,7 +4,7 @@ The long-running worker. Polls Postgres for assigned tasks, provisions agent wor
 
 It only depends on `@beevibe/core`. It never talks to [`@beevibe/api`](../api) over HTTP — both processes use the database as the integration point.
 
-If you're running beevibe locally, `pnpm dev` at the repo root brings this up alongside the api server.
+If you're running beevibe locally, `pnpm dev` at the repo root brings this up alongside the api server. For full setup, see the [root README](../../README.md).
 
 ## What it does, per cycle
 
@@ -32,7 +32,7 @@ After every session, an `onSessionComplete` hook runs:
 - If the agent forgot to call `update_progress`, retry the task once with a `<context type="nudge_completion">` nudge intent. Fail it on the second silent exit.
 - If all of a parent task's children have settled, roll the parent up via `TaskService.checkAndCompleteParent`.
 
-This is where M6.5's "two sessions per leaf task" footgun used to live; M9 closed most of it via the `BEEVIBE_LIFECYCLE_REMINDER` system-prompt instruction (see issue #9), but the hook stays as the safety net.
+It's a safety net for agents that exit without setting their task's terminal status. The system-prompt lifecycle reminder injected by `AgentSession` covers most cases proactively; this hook is the catch-all when the LLM still slips.
 
 ## Run it
 
