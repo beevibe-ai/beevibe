@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Bot,
+  Home,
   LayoutDashboard,
   ListChecks,
   type LucideIcon,
@@ -28,15 +29,20 @@ type NavItem = {
   label: string;
   icon: LucideIcon;
   isActive: (pathname: string) => boolean;
-  badge?: number;
 };
 
-// Single flat nav list — every top-level surface in one place. The
-// previous Quick Actions / Workspace / Knowledge split was redundant
-// chrome (3 collapsible sections for 7 items, each section's heading
-// taking real estate the items themselves needed). Notion does the
-// same: one list of mode-switches at the top, content below.
-const NAV_ITEMS: NavItem[] = [
+// Notion-style mode strip: a horizontal row of small icons at the top
+// of the sidebar. The active mode expands to a pill with its label;
+// inactive modes are icon-only with a tooltip. Saves vertical real
+// estate, makes mode-switching feel like a single visual gesture
+// instead of scanning a long list.
+const PRIMARY_MODES: NavItem[] = [
+  {
+    href: "/dashboard",
+    label: "Home",
+    icon: Home,
+    isActive: (p) => p.startsWith("/dashboard"),
+  },
   {
     href: "/",
     label: "Chat",
@@ -61,6 +67,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: Bot,
     isActive: (p) => p.startsWith("/agents"),
   },
+];
+
+// Secondary surfaces — observability/audit views power users navigate
+// to occasionally, not the main daily modes. Same place as Notion's
+// Library / Help / Trash bottom-pinned utility links.
+const UTILITY: NavItem[] = [
   {
     href: "/memory",
     label: "Memory",
@@ -79,21 +91,12 @@ const NAV_ITEMS: NavItem[] = [
     icon: TrendingUp,
     isActive: (p) => p.startsWith("/promotions"),
   },
-  {
-    href: "/dashboard",
-    label: "Dashboard",
-    icon: LayoutDashboard,
-    isActive: (p) => p.startsWith("/dashboard"),
-  },
 ];
 
 export function Sidebar() {
   const pathname = usePathname() ?? "";
   const router = useRouter();
   const searchParams = useSearchParams();
-  // /chat (and /, which renders ChatClient too) is a chat surface;
-  // when there, the sidebar swaps its sections for the conversation
-  // list — Notion-style one-rail morphing instead of stacking three.
   const isChatRoute = pathname === "/" || pathname.startsWith("/chat");
   const [collapsed, toggleCollapsed] = useCollapsible("bv-sidebar-collapsed");
 
@@ -103,9 +106,8 @@ export function Sidebar() {
     router.push("/chat?new=1");
   }, [router]);
 
-  // Keyboard shortcut: ⌘\ (Mac) / Ctrl-\ (others) toggles the sidebar
-  // from anywhere. Backslash is unbound globally and doesn't collide
-  // with browser/editor defaults the way Cmd-B or Cmd-/ would.
+  // ⌘\ (Mac) / Ctrl-\ (others) toggles from anywhere — unbound
+  // globally, doesn't collide with browser/editor defaults.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "\\") {
@@ -118,8 +120,6 @@ export function Sidebar() {
   }, [toggleCollapsed]);
 
   if (collapsed) {
-    // The whole rail is the click target — no need to aim at the
-    // icon. Tooltip carries the shortcut so power users learn it.
     return (
       <aside aria-label="Sidebar (collapsed)" className="w-9 shrink-0">
         <button
@@ -139,15 +139,11 @@ export function Sidebar() {
     <aside className="w-[248px] shrink-0 bg-card border-r border-border/60 flex flex-col">
       <WorkspaceHeader onCollapse={toggleCollapsed} />
 
-      <nav className="px-2 pt-1 pb-2 space-y-px" aria-label="Main">
-        {NAV_ITEMS.map((item) => (
-          <NavRow key={item.href} item={item} pathname={pathname} />
-        ))}
-      </nav>
+      <ModeStrip pathname={pathname} />
 
       {isChatRoute ? (
         <>
-          <div className="mx-2 my-1 border-t border-border/60" />
+          <div className="mx-2 mt-2 border-t border-border/60" />
           <ConversationSidebar
             activeConversationId={conversationId}
             isFresh={isFresh}
@@ -155,18 +151,19 @@ export function Sidebar() {
           />
         </>
       ) : (
-        // Other routes are themselves the list-of-X view (page IS the
-        // list); the sidebar's job is just navigation, not a second
-        // copy of the data. Empty space is fine here.
+        // Other routes are themselves list-of-X views; the page IS the
+        // list. Empty space sits between the mode strip and the
+        // utility footer — same pattern Notion uses on non-chat modes.
         <div className="flex-1" />
       )}
+
+      <UtilityNav pathname={pathname} />
 
       <div className="p-2 border-t border-border/60 flex items-center gap-1">
         <UserWidget />
         {/* Always-visible live/polling indicator — LivePanel defaults
             collapsed, so without this the user couldn't tell whether
-            updates were streaming or polling unless they expanded it.
-            Tooltip carries the verbose label. */}
+            updates were streaming or polling unless they expanded it. */}
         <LiveStatusDot className="mx-1" />
         <ThemeToggle />
       </div>
@@ -198,30 +195,80 @@ function WorkspaceHeader({ onCollapse }: { onCollapse: () => void }) {
   );
 }
 
-function NavRow({ item, pathname }: { item: NavItem; pathname: string }) {
-  const active = item.isActive(pathname);
+/**
+ * Horizontal icon strip for primary modes. Active mode expands to a
+ * pill with its label inline; inactive modes stay icon-only with a
+ * hover tooltip. Models Notion's Home / Chat / Mic / Inbox / Search
+ * strip — visual gesture for mode-switching, no vertical bloat.
+ */
+function ModeStrip({ pathname }: { pathname: string }) {
   return (
-    <Link
-      href={item.href}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "flex items-center gap-2.5 h-7 px-2 rounded-md text-sm transition-colors",
-        active
-          ? "bg-secondary text-foreground font-medium"
-          : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
-      )}
+    <nav
+      aria-label="Primary modes"
+      className="flex items-center gap-0.5 px-2 pt-1 pb-1.5"
     >
-      <item.icon className="h-3.5 w-3.5 shrink-0" />
-      <span className="flex-1 truncate">{item.label}</span>
-      {item.badge ? <Badge value={item.badge} /> : null}
-    </Link>
+      {PRIMARY_MODES.map((item) => {
+        const active = item.isActive(pathname);
+        if (active) {
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current="page"
+              className="inline-flex items-center gap-1.5 h-8 pl-2 pr-3 rounded-full bg-secondary text-foreground text-sm font-medium transition-colors"
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              <span className="leading-none">{item.label}</span>
+            </Link>
+          );
+        }
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-label={item.label}
+            title={item.label}
+            className="h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+          >
+            <item.icon className="h-4 w-4" />
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 
-function Badge({ value }: { value: number }) {
+/**
+ * Bottom-pinned utility links — secondary surfaces (Memory / Mesh /
+ * Promotions) that don't rate the primary mode strip. Small text,
+ * dim by default, active row gets the same pill emphasis pattern as
+ * the rest of the app for consistency.
+ */
+function UtilityNav({ pathname }: { pathname: string }) {
   return (
-    <span className="inline-flex items-center justify-center h-4 min-w-[1rem] px-1 rounded text-[10px] font-medium bg-status-review/15 text-status-review tabular-nums">
-      {value}
-    </span>
+    <nav
+      aria-label="Utility"
+      className="px-2 py-1.5 border-t border-border/60 space-y-px"
+    >
+      {UTILITY.map((item) => {
+        const active = item.isActive(pathname);
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-current={active ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-2 h-6 px-2 rounded-md text-[12px] transition-colors",
+              active
+                ? "bg-secondary text-foreground font-medium"
+                : "text-muted-foreground/80 hover:text-foreground hover:bg-secondary/60",
+            )}
+          >
+            <item.icon className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1 truncate">{item.label}</span>
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
