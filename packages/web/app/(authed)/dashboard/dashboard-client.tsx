@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 import { KpiTile } from "@/components/home/kpi-tile";
 import { FleetBars } from "@/components/home/fleet-bars";
 import { StatusBreakdownBar } from "@/components/home/status-breakdown";
+import { TeamShowcase } from "@/components/home/team-showcase";
 import { TrendChart } from "@/components/home/trend-chart";
 import type { AttentionItem, DashboardDisplay } from "@/lib/types/dashboard";
 
@@ -80,7 +81,12 @@ function Body({
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
+      {/* Team showcase first — Beevibe's pitch is "team of specialists",
+          so the team itself is the primary thing a returning user
+          should see, before any KPI counters. */}
+      <TeamShowcase />
+
       <div className="grid grid-cols-4 gap-6">
         {data.kpis.map((stat, i) => (
           <KpiTile key={i} stat={stat} />
