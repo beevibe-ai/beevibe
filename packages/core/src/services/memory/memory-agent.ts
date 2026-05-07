@@ -17,19 +17,51 @@ const BRIEFING_RECALL_FLOOR = 0.35;
 const DEFAULT_FACTS_PER_BRIEFING = 10;
 
 export interface BriefingResult {
-  /** XML block appended to the agent's system prompt. */
+  /**
+   * XML block appended to the agent's system prompt. Contains
+   * `<core_memory>` only — the stable per-agent slice. Cache-friendly
+   * across sessions of the same agent (M9.4).
+   */
   systemPromptAppend: string;
+  /**
+   * XML block prepended to the user's first message (the `intent`).
+   * Contains `<archival_memory>` — the per-session top-k vector recall.
+   * Lives in the user prompt rather than system prompt because vector
+   * hits change every session and would otherwise bust the system-prompt
+   * cache for everything that follows (M9.4 — per Claude Code's own
+   * engineering guidance: "use messages instead of system prompt for
+   * varying content").
+   *
+   * Empty string when there are no archival facts to surface.
+   */
+  userMessagePrefix: string;
   /** Structured snapshot persisted on the session row for the UI to render. */
   snapshot: SessionBriefingSnapshot;
 }
 
 export interface MemoryAgent {
   /**
-   * Pre-session: compose the `<core_memory>` + `<archival_memory>` XML block.
-   * Returns both the assembled prompt string AND a structured snapshot
-   * for persistence on the session row.
+   * Pre-session: compose the `<core_memory>` (system) + `<archival_memory>`
+   * (user-message) XML blocks. Splits along the stability axis so the
+   * stable system-prompt portion can be cached across sessions; the
+   * per-session retrieval lives in the user message instead.
+   *
+   * Returns both prompt strings AND a structured snapshot for persistence
+   * on the session row.
    */
   prepareBriefing(intent: string): Promise<BriefingResult>;
+  /**
+   * Mid-session: vector-search the agent's archival facts by `query` and
+   * return ONLY the `<archival_memory>...</archival_memory>` XML envelope.
+   * Used by the `search_context` MCP tool — the agent already has its
+   * core_memory blocks in its system prompt, so re-rendering them on every
+   * search would be redundant DB work plus noise in the tool result.
+   *
+   * Always returns a non-empty XML envelope; on no hits, returns an empty
+   * `<archival_memory></archival_memory>` so the tool consumer has a
+   * predictable shape.
+   */
+  searchArchival(query: string): Promise<string>;
   /** Post-session: promote facts written during this session if warranted. */
   onTaskComplete(sessionId: string): Promise<void>;
 }
@@ -66,40 +98,47 @@ export interface MemoryAgentDeps {
 export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
   const factsPerBriefing = deps.factsPerBriefing ?? DEFAULT_FACTS_PER_BRIEFING;
 
+  // Shared embed → vector-search pipeline used by both prepareBriefing
+  // (full session-start bundle) and searchArchival (mid-session re-query).
+  // Same recall floor + facts-per-briefing limit applies to both — the
+  // agent should see the same retrieval shape whether the query is
+  // session-start intent or a mid-session search_context call.
+  //
+  // Resilience: returns [] both when no embed provider is configured
+  // (operator hasn't set OPENAI_API_KEY yet) AND when the provider
+  // throws at runtime (invalid key, rate limit, network blip). Memory
+  // recall is best-effort; a flaky embedding probe must NEVER crash
+  // the chat turn — caller falls back to a blocks-only briefing.
+  const searchFacts = async (query: string): Promise<readonly MemoryFact[]> => {
+    if (!deps.embed) return [];
+    try {
+      const queryVec = await deps.embed.embed(query);
+      return await deps.factStore.search({
+        agent_id: deps.agentId,
+        scope: ["ic", "team", "org"],
+        embedding: queryVec,
+        limit: factsPerBriefing,
+        min_similarity: BRIEFING_RECALL_FLOOR,
+      });
+    } catch (err) {
+      console.warn(
+        `[MemoryAgent] embed/search failed (returning empty fact list): ${(err as Error).message}`,
+      );
+      return [];
+    }
+  };
+
   return {
     async prepareBriefing(intent: string): Promise<BriefingResult> {
-      // Core memory blocks always work — they're a plain DB read, no
-      // external provider needed. Pull them first.
-      const blocks = await deps.coreMemory.read(deps.agentId);
+      const [blocks, facts] = await Promise.all([
+        deps.coreMemory.read(deps.agentId),
+        searchFacts(intent),
+      ]);
+      return composeBriefing(blocks, facts);
+    },
 
-      // Without an embedding service we can't do vector recall — return
-      // a blocks-only briefing. Core memory still works, archival memory
-      // is empty for this session. The agent operates without recall
-      // until the operator provides an OPENAI_API_KEY and writes start
-      // landing in memory_fact again.
-      if (!deps.embed) return composeBriefing(blocks, []);
-
-      // Tolerate runtime failures of the embed provider (invalid key,
-      // network blip, rate limit, etc.). Memory recall is best-effort;
-      // a flaky embedding probe must NEVER crash the chat turn. Log
-      // and degrade to blocks-only so the caller sees a usable
-      // briefing either way.
-      try {
-        const queryVec = await deps.embed.embed(intent);
-        const facts = await deps.factStore.search({
-          agent_id: deps.agentId,
-          scope: ["ic", "team", "org"],
-          embedding: queryVec,
-          limit: factsPerBriefing,
-          min_similarity: BRIEFING_RECALL_FLOOR,
-        });
-        return composeBriefing(blocks, facts);
-      } catch (err) {
-        console.warn(
-          `[MemoryAgent] embed/search failed (degrading to blocks-only briefing): ${(err as Error).message}`,
-        );
-        return composeBriefing(blocks, []);
-      }
+    async searchArchival(query: string): Promise<string> {
+      return renderArchivalEnvelope(await searchFacts(query));
     },
 
     async onTaskComplete(sessionId: string): Promise<void> {
@@ -183,12 +222,8 @@ function composeBriefing(
     charTotal += b.content.length;
   }
 
-  const factLines: string[] = [];
   const factSnapshots: SessionBriefingSnapshot["facts"] = [];
   for (const f of facts) {
-    factLines.push(
-      `  <fact type="${escapeAttr(f.fact_type)}" scope="${f.scope}">${escapeText(f.content)}</fact>`,
-    );
     factSnapshots.push({
       scope: f.scope,
       content: f.content,
@@ -199,24 +234,22 @@ function composeBriefing(
     charTotal += f.content.length;
   }
 
-  const lines = ["<core_memory>"];
-  if (blockLines.length > 0) lines.push(...blockLines);
-  lines.push("</core_memory>");
-  lines.push("<archival_memory>");
-  if (factLines.length > 0) lines.push(...factLines);
-  lines.push("</archival_memory>");
-  lines.push("<memory_tools>");
-  lines.push("When you learn a durable fact, call save_memory(content, fact_type).");
-  lines.push(
-    "When your identity/focus shifts, call update_core_memory(block_name, operation, content[, old_content]).",
-  );
-  lines.push(
-    "(These MCP tools are wired in M6. Before M6 lands, describe intended memory updates at the end of your response.)",
-  );
-  lines.push("</memory_tools>");
+  // M9.4: split along stability axis. core_memory (mostly stable per
+  // agent) → system prompt; archival_memory (per-session vector hits) →
+  // user message prefix.
+  const systemLines = ["<core_memory>"];
+  if (blockLines.length > 0) systemLines.push(...blockLines);
+  systemLines.push("</core_memory>");
+
+  // For prepareBriefing the archival half is empty when there are no
+  // facts (don't pollute the user message with an empty wrapper).
+  // searchArchival has the opposite contract — there it always emits
+  // the wrapper for shape predictability.
+  const userMessagePrefix = facts.length === 0 ? "" : renderArchivalEnvelope(facts);
 
   return {
-    systemPromptAppend: lines.join("\n"),
+    systemPromptAppend: systemLines.join("\n"),
+    userMessagePrefix,
     snapshot: {
       block_count: blocks.length,
       fact_count: facts.length,
@@ -225,6 +258,30 @@ function composeBriefing(
       facts: factSnapshots,
     },
   };
+}
+
+/**
+ * Format a single archival fact line with the date stamp from the row's
+ * `created_at`. Surfacing the date lets the agent judge staleness when
+ * reading retrieval results — a fact saved months ago may no longer hold
+ * and should be verified against current state before acting.
+ */
+function renderFact(f: MemoryFact): string {
+  const saved = f.created_at.toISOString().slice(0, 10);
+  return `  <fact type="${escapeAttr(f.fact_type)}" scope="${f.scope}" saved="${saved}">${escapeText(f.content)}</fact>`;
+}
+
+/**
+ * Wrap fact lines in the `<archival_memory>...</archival_memory>` envelope.
+ * Always emits the envelope (empty body when no facts) so callers like
+ * `searchArchival` get a predictable shape regardless of hit count.
+ */
+function renderArchivalEnvelope(facts: readonly MemoryFact[]): string {
+  if (facts.length === 0) return "<archival_memory></archival_memory>";
+  const lines = ["<archival_memory>"];
+  for (const f of facts) lines.push(renderFact(f));
+  lines.push("</archival_memory>");
+  return lines.join("\n");
 }
 
 function escapeAttr(s: string): string {

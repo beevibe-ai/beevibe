@@ -51,6 +51,10 @@
       "types": "./dist/services/escalation-service.d.ts",
       "default": "./dist/services/escalation-service.js"
     },
+    "./services/skills": {
+      "types": "./dist/services/skills/index.d.ts",
+      "default": "./dist/services/skills/index.js"
+    },
     "./auth": {
       "types": "./dist/auth/index.d.ts",
       "default": "./dist/auth/index.js"

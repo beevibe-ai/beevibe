@@ -7,7 +7,7 @@ import {
   PostgresTaskRepository,
 } from "@beevibe/core/adapters/postgres";
 import { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
-import type { Agent, Task, Workspace } from "@beevibe/core";
+import type { Agent, AgentRuntime, RuntimeRegistry, Task, Workspace } from "@beevibe/core";
 import {
   DEFAULT_RUNTIME_CONFIG,
   agentId,
@@ -45,6 +45,16 @@ describe("isProcessAlive", () => {
   });
 });
 
+// Fake runtime registry — `skillsDir` is the only method the workspace
+// manager touches during these tests; everything else is mocked at the
+// runtime-execute layer.
+const fakeRuntimeRegistry: RuntimeRegistry = {
+  "claude-code": {
+    type: "claude-code",
+    skillsDir: (workspace: Workspace) => join(workspace.path, ".claude", "skills"),
+  } as unknown as AgentRuntime,
+};
+
 describe("TaskExecutionWorker", () => {
   let pool: Pool;
   let agents: PostgresAgentRepository;
@@ -52,6 +62,7 @@ describe("TaskExecutionWorker", () => {
   let sessions: PostgresSessionRepository;
   let persons: PostgresPersonRepository;
   let workspaceRoot: string;
+  let skillsSourceDir: string;
   let workspaceManager: LocalWorkspaceManager;
   let ownerPersonId: string;
 
@@ -72,14 +83,18 @@ describe("TaskExecutionWorker", () => {
     const owner = await persons.create({ id: personId(), name: "Worker Owner" });
     ownerPersonId = owner.id;
     workspaceRoot = mkdtempSync(join(tmpdir(), "beevibe-worker-test-"));
+    skillsSourceDir = mkdtempSync(join(tmpdir(), "beevibe-skills-src-"));
     workspaceManager = new LocalWorkspaceManager({
       workspaceRoot,
       mcpServerUrl: "http://mcp.test.invalid/",
+      runtimeRegistry: fakeRuntimeRegistry,
+      skillsSourceDir,
     });
   });
 
   afterEach(() => {
     rmSync(workspaceRoot, { recursive: true, force: true });
+    rmSync(skillsSourceDir, { recursive: true, force: true });
   });
 
   async function seedAgent(overrides: Partial<Agent> = {}): Promise<Agent> {

@@ -165,14 +165,23 @@ async function main(): Promise<void> {
     const briefing = await memoryAgent.prepareBriefing(
       "Which node package manager should I use for this project?",
     );
-    const append = briefing.systemPromptAppend;
-    assert(append.includes("<core_memory>"), "briefing missing <core_memory>");
-    assert(append.includes("pgvector"), "briefing missing persona content");
-    assert(append.includes("<archival_memory>"), "briefing missing <archival_memory>");
-    assert(append.includes("<fact"), "briefing missing <fact> element (vector recall failed)");
-    assert(append.includes("pnpm"), "briefing missing the pnpm preference fact");
-    assert(append.includes("save_memory"), "briefing missing memory_tools hint");
-    console.log(`   briefing length: ${append.length} chars`);
+    // M9.4: briefing split along stability axis. core_memory (stable per
+    // agent) → systemPromptAppend; archival_memory (per-query vector hits)
+    // → userMessagePrefix. The <memory_tools> section was dropped — that
+    // guidance moved to BEEVIBE_MEMORY_REMINDER, which agent-session.ts
+    // injects separately at session-start (NOT via prepareBriefing).
+    const sys = briefing.systemPromptAppend;
+    const user = briefing.userMessagePrefix;
+    assert(sys.includes("<core_memory>"), "briefing.systemPromptAppend missing <core_memory>");
+    assert(sys.includes("pgvector"), "briefing.systemPromptAppend missing persona content");
+    assert(!sys.includes("<archival_memory>"), "<archival_memory> leaked into systemPromptAppend (post-M9.4 should be in userMessagePrefix)");
+    assert(user.includes("<archival_memory>"), "briefing.userMessagePrefix missing <archival_memory>");
+    assert(user.includes("<fact"), "briefing.userMessagePrefix missing <fact> element (vector recall failed)");
+    assert(user.includes("pnpm"), "briefing.userMessagePrefix missing the pnpm preference fact");
+    // M9-memory: archival facts now carry saved="YYYY-MM-DD" date attribute
+    // for staleness judgment. Verify the format roundtrips.
+    assert(/saved="\d{4}-\d{2}-\d{2}"/.test(user), "fact missing saved=YYYY-MM-DD date attribute");
+    console.log(`   briefing systemPromptAppend: ${sys.length} chars; userMessagePrefix: ${user.length} chars`);
 
     step(6, "Provision a workspace with an empty mcp-config.json");
     workspacePath = mkdtempSync(join(tmpdir(), "beevibe-m3-e2e-"));

@@ -106,6 +106,7 @@ function buildServices(overrides: {
   const memoryAgent = {
     prepareBriefing: vi.fn(async () => ({
       systemPromptAppend: "<core_memory></core_memory>",
+      userMessagePrefix: "",
       snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] },
     })),
     onTaskComplete: vi.fn(async () => {}),
@@ -278,21 +279,19 @@ describe("get_agent_profile + get_task", () => {
 });
 
 describe("search_context", () => {
-  it("delegates query to memoryAgent.prepareBriefing", async () => {
-    const briefing = "<core_memory><block>x</block></core_memory>";
+  it("delegates query to memoryAgent.searchArchival and returns the archival envelope", async () => {
+    const archival =
+      '<archival_memory>\n  <fact type="decision" scope="ic" saved="2026-01-15">Auth uses JWT.</fact>\n</archival_memory>';
     const services = buildServices({
       memoryAgent: {
-        prepareBriefing: vi.fn(async () => ({
-          systemPromptAppend: briefing,
-          snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] },
-        })),
+        searchArchival: vi.fn(async () => archival),
       } as Partial<MemoryAgent>,
     });
     const tools = buildHierarchyTools({ agentId: "a", hierarchyLevel: "ic" }, services);
 
     const result = await callTool(tools, "search_context", { query: "auth flow" });
-    expect(services.memoryAgent.prepareBriefing).toHaveBeenCalledWith("auth flow");
-    expect((result.content as { briefing: string }).briefing).toBe(briefing);
+    expect(services.memoryAgent.searchArchival).toHaveBeenCalledWith("auth flow");
+    expect((result.content as { archival: string }).archival).toBe(archival);
   });
 
   it("rejects empty query", async () => {

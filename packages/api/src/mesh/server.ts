@@ -55,6 +55,7 @@ import {
   type AskResponse,
   type EscalatedSentinel,
   type NegotiateResponse,
+  CannotNegotiateWithIcError,
   MeshCapacityError,
   MeshMaxRoundsError,
 } from "./types.js";
@@ -111,7 +112,13 @@ export class MeshServer {
   ): Promise<AskResponse> {
     await this.checkMeshCapacity(toAgentId);
 
-    const intent = `<mesh-ask request_id="${escapeAttr(requestId)}" from="${escapeAttr(fromAgentId)}">${question}</mesh-ask>`;
+    const intent =
+      `<mesh-ask request_id="${escapeAttr(requestId)}" from="${escapeAttr(fromAgentId)}">\n` +
+      `${question}\n` +
+      `</mesh-ask>\n` +
+      `<context type="ask_response">\n` +
+      `Read the question, search relevant context if needed, and respond by calling respond_ask(request_id="${requestId}", answer="..."). The answer is delivered to the asker via that tool — replying in chat alone does NOT reach them. After respond_ask returns, exit.\n` +
+      `</context>`;
 
     void this.spawnTargetSession({
       targetAgentId: toAgentId,
@@ -157,6 +164,15 @@ export class MeshServer {
     proposal: string,
     options: { taskId?: string; initiatorSessionId: string },
   ): Promise<NegotiateResponse | EscalatedSentinel> {
+    // M9.1: ICs are workers, not deciders. They don't have respond_negotiate
+    // (M9.1 dropped it from buildIcMeshTools), so a negotiation against them
+    // would hang forever. Reject fast with a clear error instead.
+    const target = await this.deps.agentRepo.findById(toAgentId);
+    if (!target) throw new Error(`target agent not found: ${toAgentId}`);
+    if (target.hierarchy_level === "ic") {
+      throw new CannotNegotiateWithIcError({ agentId: toAgentId });
+    }
+
     await this.checkMeshCapacity(toAgentId);
 
     const initiator = await this.deps.agentRepo.findById(fromAgentId);

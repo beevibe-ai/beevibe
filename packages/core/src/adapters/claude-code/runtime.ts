@@ -5,6 +5,7 @@ import type {
   RuntimeContext,
   RuntimeHealth,
   RuntimeResult,
+  Workspace,
 } from "../../ports/runtime.js";
 import { runCliProcess } from "./spawn.js";
 import {
@@ -179,5 +180,15 @@ export class ClaudeCodeRuntime implements AgentRuntime {
 
   async shutdown(): Promise<void> {
     /* stateless — each session is a separate process */
+  }
+
+  /**
+   * Claude Code auto-discovers skills from `<cwd>/.claude/skills/` (and
+   * `~/.claude/skills/` for user-global). For agent-spawned sessions our
+   * cwd IS the workspace, so the workspace-local discovery path is
+   * `<workspace>/.claude/skills`.
+   */
+  skillsDir(workspace: Workspace): string {
+    return join(workspace.path, ".claude", "skills");
   }
 }

@@ -42,15 +42,15 @@ export interface AssembleToolsContext {
  * fresh closure over `(ctx, services)` so handlers see the right caller +
  * sid without async-storage threading.
  *
- * Tier breakdown (M6.4 final):
+ * Tier breakdown (M9.1 final):
  *
- *   IC (10 tools):
+ *   IC (12 tools):
  *     2 memory: save_memory, update_core_memory
  *     8 hierarchy (shared): search_context, update_progress, find_up,
  *       get_agent_profile, get_task, create_work_product,
  *       list_work_products, update_work_product
- *     0 mesh — except report_blocker (parent escalation path).
- *     Effectively IC = 11 (memory + 8 shared + report_blocker).
+ *     2 mesh: respond_ask (when targeted by team-tier `ask`),
+ *             report_blocker (escalate up to direct parent)
  *
  *   Team / org (22 tools):
  *     2 memory + 14 hierarchy (8 shared + 6 team-only) +
@@ -59,6 +59,10 @@ export interface AssembleToolsContext {
  *
  * Team-only hierarchy adds: find_subordinates, find_peers, create_task,
  *   check_work_status, revise_task, add_to_escalation.
+ *
+ * M9.1: dropped `respond_negotiate` from IC tier; ICs are workers, not
+ * deciders. Server-side `MeshServer.sendNegotiate` rejects IC targets with
+ * CannotNegotiateWithIcError to enforce this structurally.
  */
 export function assembleTools(
   ctx: AssembleToolsContext,
