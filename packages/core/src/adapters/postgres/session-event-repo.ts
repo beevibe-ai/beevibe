@@ -29,10 +29,21 @@ export class PostgresSessionEventRepository implements SessionEventRepository {
   constructor(private pool: Pool) {}
 
   async append(input: NewSessionEvent): Promise<SessionEvent> {
+    // Single round-trip: INSERT the event and bump session.last_event_at
+    // in the same statement via a CTE. The orphan reaper (Phase 6+)
+    // depends on last_event_at being maintained — without this, every
+    // running session looks orphaned forever.
     const { rows } = await this.pool.query<EventRow>(
-      `INSERT INTO session_event (id, session_id, kind, content, tool_name)
-       VALUES ($1, $2, $3, $4, $5)
-       RETURNING *`,
+      `WITH ev AS (
+         INSERT INTO session_event (id, session_id, kind, content, tool_name)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING *
+       ),
+       _ AS (
+         UPDATE session SET last_event_at = now()
+           WHERE id = $2
+       )
+       SELECT * FROM ev`,
       [input.id, input.session_id, input.kind, input.content, input.tool_name ?? null],
     );
     if (!rows[0]) throw new Error("session_event INSERT returned no row");

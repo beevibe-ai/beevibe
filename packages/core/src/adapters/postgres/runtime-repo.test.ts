@@ -100,7 +100,7 @@ describe("PostgresRuntimeRepository", () => {
     expect(updated.capabilities).toEqual({ models: ["opus", "sonnet"] });
   });
 
-  it("daemon revoke cascades runtime deletion", async () => {
+  it("runtime survives daemon soft-delete; hard-delete cascades", async () => {
     const id = runtimeId();
     await runtimes.create({ id, daemon_id: dId, cli: "claude" });
     expect(await runtimes.findById(id)).toBeDefined();

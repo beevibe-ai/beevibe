@@ -97,11 +97,10 @@ export interface Session {
   error?: string;
   usage?: SessionUsage;
   briefing?: SessionBriefingSnapshot;
-  /** Bound at INSERT time. NULL means server-fallback-mesh path. */
+  /** NULL routes to the server-fallback-mesh path. */
   runtime_id?: string;
-  /** Discriminates daemon-claimed sessions from server-fallback-mesh ones. */
   spawn_mode?: SessionSpawnMode;
-  /** Updated by SessionEventRepository.append for orphan-reaper queries. */
+  /** Maintained by SessionEventRepository.append; consumed by the orphan reaper. */
   last_event_at?: Date;
   started_at?: Date;
   completed_at?: Date;

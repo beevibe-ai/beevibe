@@ -1,5 +1,5 @@
 import type { RuntimeConfig } from "../../domain/agent.js";
-import type { SessionUsage } from "../../domain/session.js";
+import type { SessionSpawnMode, SessionUsage } from "../../domain/session.js";
 
 export interface PersonRow {
   id: string;
@@ -64,7 +64,7 @@ export interface SessionRow {
   usage: SessionUsage | null;
   briefing: Record<string, unknown> | null;
   runtime_id: string | null;
-  spawn_mode: string;
+  spawn_mode: SessionSpawnMode;
   last_event_at: Date | null;
   started_at: Date | null;
   completed_at: Date | null;
@@ -131,6 +131,27 @@ export interface NegotiationRoundRow {
   decision: string;
   message: string;
   sent_at: Date;
+}
+
+export interface DaemonRow {
+  id: string;
+  owner_person_id: string;
+  external_id: string;
+  device_name: string;
+  token_hash: string;
+  last_seen_at: Date | null;
+  created_at: Date;
+  revoked_at: Date | null;
+}
+
+export interface RuntimeRow {
+  id: string;
+  daemon_id: string;
+  cli: string;
+  cli_version: string | null;
+  last_heartbeat: Date | null;
+  capabilities: Record<string, unknown>;
+  created_at: Date;
 }
 
 export interface EscalationRow {

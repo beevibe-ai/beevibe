@@ -4,16 +4,8 @@ import type {
   RuntimeRepository,
 } from "../../ports/runtime-repo.js";
 import type { Pool } from "./client.js";
-
-interface RuntimeRow {
-  id: string;
-  daemon_id: string;
-  cli: string;
-  cli_version: string | null;
-  last_heartbeat: Date | null;
-  capabilities: Record<string, unknown>;
-  created_at: Date;
-}
+import { buildPatchClause } from "./pg-helpers.js";
+import type { RuntimeRow } from "./row-types.js";
 
 function rowToRuntime(row: RuntimeRow): Runtime {
   return {
@@ -96,30 +88,24 @@ export class PostgresRuntimeRepository implements RuntimeRepository {
   }
 
   async update(id: string, patch: RuntimePatch): Promise<Runtime> {
-    const sets: string[] = [];
-    const params: unknown[] = [];
-    let i = 1;
-    if (patch.cli_version !== undefined) {
-      sets.push(`cli_version = $${i++}`);
-      params.push(patch.cli_version);
-    }
-    if (patch.last_heartbeat !== undefined) {
-      sets.push(`last_heartbeat = $${i++}`);
-      params.push(patch.last_heartbeat);
-    }
-    if (patch.capabilities !== undefined) {
-      sets.push(`capabilities = $${i++}::jsonb`);
-      params.push(JSON.stringify(patch.capabilities));
-    }
-    if (sets.length === 0) {
+    // capabilities is JSONB and needs JSON.stringify before binding;
+    // buildPatchClause handles the rest.
+    const normalized: RuntimePatch = patch.capabilities
+      ? { ...patch, capabilities: JSON.stringify(patch.capabilities) as unknown as Record<string, unknown> }
+      : patch;
+    const clause = buildPatchClause<RuntimePatch>(normalized, {
+      cli_version: "cli_version",
+      last_heartbeat: "last_heartbeat",
+      capabilities: "capabilities",
+    });
+    if (clause.fields.length === 0) {
       const found = await this.findById(id);
       if (!found) throw new Error(`runtime ${id} not found`);
       return found;
     }
-    params.push(id);
     const { rows } = await this.pool.query<RuntimeRow>(
-      `UPDATE runtime SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`,
-      params,
+      `UPDATE runtime SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
+      [...clause.values, id],
     );
     if (!rows[0]) throw new Error(`runtime ${id} not found`);
     return rowToRuntime(rows[0]);

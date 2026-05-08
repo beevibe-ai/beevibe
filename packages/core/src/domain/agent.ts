@@ -40,11 +40,7 @@ export interface Agent {
    * creation (initiator's value wins). Default 5 if undefined.
    */
   max_negotiation_rounds?: number;
-  /**
-   * Daemon-runtime binding. Set by agent creation when the user has a
-   * registered daemon with a matching CLI; null until then. ON DELETE
-   * SET NULL: revoking the runtime unbinds but doesn't delete the agent.
-   */
+  /** Preferred runtime binding; null when no daemon registered for the agent's CLI. */
   preferred_runtime_id?: string;
   created_at: Date;
   updated_at: Date;

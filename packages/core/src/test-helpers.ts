@@ -12,12 +12,13 @@ const here = dirname(fileURLToPath(import.meta.url));
 const repoRootEnv = resolve(here, "../../../.env");
 loadEnv({ path: repoRootEnv });
 
+// Children before parents — saves CASCADE work on every TRUNCATE.
 const ALL_TABLES = [
   "escalation",
   "negotiation_round",
   "negotiation",
-  "memory_fact",
   "memory_promotion_event",
+  "memory_fact",
   "work_product",
   "session_event",
   "core_memory_block",

@@ -177,7 +177,7 @@ function rowToSession(row: SessionRow): Session {
     usage: (row.usage ?? undefined) as SessionUsage | undefined,
     briefing: (row.briefing ?? undefined) as SessionBriefingSnapshot | undefined,
     runtime_id: row.runtime_id ?? undefined,
-    spawn_mode: row.spawn_mode as SessionSpawnMode,
+    spawn_mode: row.spawn_mode,
     last_event_at: row.last_event_at ?? undefined,
     started_at: row.started_at ?? undefined,
     completed_at: row.completed_at ?? undefined,

@@ -4,17 +4,8 @@ import type {
   DaemonRepository,
 } from "../../ports/daemon-repo.js";
 import type { Pool } from "./client.js";
-
-interface DaemonRow {
-  id: string;
-  owner_person_id: string;
-  external_id: string;
-  device_name: string;
-  token_hash: string;
-  last_seen_at: Date | null;
-  created_at: Date;
-  revoked_at: Date | null;
-}
+import { buildPatchClause } from "./pg-helpers.js";
+import type { DaemonRow } from "./row-types.js";
 
 function rowToDaemon(row: DaemonRow): Daemon {
   return {
@@ -95,36 +86,20 @@ export class PostgresDaemonRepository implements DaemonRepository {
   }
 
   async update(id: string, patch: DaemonPatch): Promise<Daemon> {
-    // Build the SET clause dynamically so partial patches don't overwrite
-    // unset columns. Mirrors the approach in the agent repo.
-    const sets: string[] = [];
-    const params: unknown[] = [];
-    let i = 1;
-    if (patch.device_name !== undefined) {
-      sets.push(`device_name = $${i++}`);
-      params.push(patch.device_name);
-    }
-    if (patch.token_hash !== undefined) {
-      sets.push(`token_hash = $${i++}`);
-      params.push(patch.token_hash);
-    }
-    if (patch.last_seen_at !== undefined) {
-      sets.push(`last_seen_at = $${i++}`);
-      params.push(patch.last_seen_at);
-    }
-    if (patch.revoked_at !== undefined) {
-      sets.push(`revoked_at = $${i++}`);
-      params.push(patch.revoked_at);
-    }
-    if (sets.length === 0) {
+    const clause = buildPatchClause<DaemonPatch>(patch, {
+      device_name: "device_name",
+      token_hash: "token_hash",
+      last_seen_at: "last_seen_at",
+      revoked_at: "revoked_at",
+    });
+    if (clause.fields.length === 0) {
       const found = await this.findById(id);
       if (!found) throw new Error(`daemon ${id} not found`);
       return found;
     }
-    params.push(id);
     const { rows } = await this.pool.query<DaemonRow>(
-      `UPDATE daemon SET ${sets.join(", ")} WHERE id = $${i} RETURNING *`,
-      params,
+      `UPDATE daemon SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
+      [...clause.values, id],
     );
     if (!rows[0]) throw new Error(`daemon ${id} not found`);
     return rowToDaemon(rows[0]);

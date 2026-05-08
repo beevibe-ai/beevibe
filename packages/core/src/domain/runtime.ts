@@ -1,13 +1,8 @@
 /**
- * A runtime represents one (daemon, CLI) pair — a single daemon
- * detects N CLIs on PATH (claude, codex, opencode, …) and registers
- * one runtime per detected CLI. Agents bind to a runtime by matching
- * their `runtime_config.type` against `runtime.cli`. Multiple agents
- * using the same CLI on the same machine share one runtime row.
- *
- * `last_heartbeat` is updated by the daemon every tick per registered
- * runtime; queries derive online/offline by comparing against now() -
- * a threshold (defaults to 90s on the server side).
+ * A runtime is one (daemon, CLI) pair. A daemon registers one runtime
+ * per detected CLI; agents bind by matching `runtime_config.type` to
+ * `runtime.cli`, so multiple agents share a runtime when their CLIs
+ * collide on the same machine.
  */
 
 export interface Runtime {

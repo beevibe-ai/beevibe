@@ -110,8 +110,6 @@ describe("DispatchService.dispatchTask", () => {
   });
 
   it("crash_recovery reason falls back to agent.preferred_runtime_id (no prior pin)", async () => {
-    // crash_recovery is inferred from session-row state, not next_dispatch_context;
-    // ResumeReason for crash_recovery doesn't carry a prior_session_id.
     vi.mocked(agentRepo.findById).mockResolvedValue(
       makeAgent({ preferred_runtime_id: "rt_default" }),
     );
@@ -125,7 +123,8 @@ describe("DispatchService.dispatchTask", () => {
     });
 
     expect(result.runtime_id).toBe("rt_default");
-    expect(sessionRepo.findById).not.toHaveBeenCalled();
+    const insert = vi.mocked(sessionRepo.create).mock.calls[0]![0];
+    expect(insert.prior_session_id).toBeUndefined();
   });
 
   it("revision reason PINS runtime_id to prior_session.runtime_id", async () => {
