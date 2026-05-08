@@ -133,15 +133,27 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     sessionRepo,
   });
 
+  // Phase 4 — daemon-facing surface. Hub tracks live WS clients indexed
+  // by runtime_id. Built early so dispatchService can wire its
+  // onSessionInserted hook through it.
+  const daemonHub = new DaemonHub();
+  const chatResolver = new ChatResolver();
+
   // Phase 4 — DispatchService is the single creation point for pending
   // session rows. Call sites (create_task / revise_task / mesh /
   // escalation / post-dispatch retry) call it instead of inserting
-  // sessions inline. Daemon hub notify is wired below after the hub
-  // is constructed.
+  // sessions inline. The onSessionInserted hook fires a best-effort WS
+  // push to the bound runtime's daemon — daemons also poll every 30s,
+  // so a missed push is at most a 30-second wakeup delay.
   const dispatchService = new DispatchService({
     agentRepo,
     sessionRepo,
     taskRepo,
+    onSessionInserted: (session) => {
+      if (session.runtime_id) {
+        daemonHub.notify(session.runtime_id, session.id);
+      }
+    },
   });
 
   // M6.4 escalation service: DB-only writes for the resolution + dispatch
@@ -264,13 +276,9 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   server.getApp().use(viewRouter);
 
 
-  // Phase 4 — daemon-facing surface. The hub is in-memory; tracks live WS
-  // clients indexed by runtime_id. HTTP endpoints work without a live
-  // socket — daemons can claim via HTTP poll alone if WS push fails.
-  // The chat resolver is keyed by session_id; /runtime/done fires it so
-  // the awaiting POST /chat returns the agent's response.
-  const daemonHub = new DaemonHub();
-  const chatResolver = new ChatResolver();
+  // Daemon HTTP surface — register / claim / events / done. The chat
+  // resolver fires on `session.type === 'chat'` so the awaiting POST
+  // /chat returns the agent's response.
   const runtimeRouter = createRuntimeRouter({
     authMiddleware: server.getAuthMiddleware(),
     agentRepo,
