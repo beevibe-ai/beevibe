@@ -12,9 +12,8 @@
  * if a future feature reassigns agents across owners, that change is
  * masked from SSE for up to TTL_MS. Tests cover this assumption.
  *
- * Room-scoped fan-out is intentionally absent here: rooms come back in
- * Phase 9 of the daemon-first restructure plan; this module re-grows
- * the room.message and session.room_id branches at that point.
+ * Single-owner only here. Multi-owner room fan-out belongs in a
+ * separate handler when rooms ship.
  */
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
@@ -22,10 +21,13 @@ import type { BvEvent } from "./manager.js";
 
 const DEFAULT_CACHE_TTL_MS = 30_000;
 const DEFAULT_CACHE_MAX_ENTRIES = 5_000;
+/** Cap any single owner-resolution query at 2s — beyond that the SSE
+ *  pipeline back-pressures and we'd rather drop than block. */
+const QUERY_TIMEOUT_MS = 2_000;
 
 interface CacheEntry {
   owners: ReadonlySet<string>;
-  expires_at: number;
+  expiresAt: number;
 }
 
 export interface OwnerLookupConfig {
@@ -34,6 +36,53 @@ export interface OwnerLookupConfig {
   /** Override default cap. Reads `BEEVIBE_OWNER_CACHE_MAX_ENTRIES` if unset. */
   cacheMaxEntries?: number;
 }
+
+/**
+ * One row per resolution shape. Most events resolve to exactly one
+ * owner via a single-row JOIN; mesh.activity is the lone two-owner
+ * shape. Lookup matches by prefix (with optional dot) or by exact name.
+ */
+interface ResolverRule {
+  match: (eventName: string) => boolean;
+  resolve: (lookup: OwnerLookup, id: string) => Promise<ReadonlySet<string>>;
+}
+
+const SINGLE_OWNER_SQL = {
+  task: `SELECT a.owner_id AS owner
+         FROM task t LEFT JOIN agent a ON a.id = t.assignee_id
+         WHERE t.id = $1`,
+  agent: `SELECT owner_id AS owner FROM agent WHERE id = $1`,
+  session: `SELECT a.owner_id AS owner
+            FROM session s JOIN agent a ON a.id = s.agent_id
+            WHERE s.id = $1`,
+  memoryFact: `SELECT a.owner_id AS owner
+               FROM memory_fact f JOIN agent a ON a.id = f.agent_id
+               WHERE f.id = $1`,
+  promotion: `SELECT a.owner_id AS owner
+              FROM memory_promotion_event mpe JOIN agent a ON a.id = mpe.origin_agent_id
+              WHERE mpe.id = $1`,
+  runtime: `SELECT d.owner_person_id AS owner
+            FROM runtime r JOIN daemon d ON d.id = r.daemon_id
+            WHERE r.id = $1`,
+} as const;
+
+const MESH_ACTIVITY_SQL = `SELECT
+    ai.owner_id AS initiator,
+    ac.owner_id AS counterparty
+  FROM negotiation n
+  LEFT JOIN agent ai ON ai.id = n.initiator_agent_id
+  LEFT JOIN agent ac ON ac.id = n.counterparty_agent_id
+  WHERE n.id = $1`;
+
+const RESOLVERS: ResolverRule[] = [
+  { match: (e) => e.startsWith("task."),        resolve: (l, id) => l.singleOwnerSet(SINGLE_OWNER_SQL.task, id) },
+  { match: (e) => e.startsWith("agent."),       resolve: (l, id) => l.singleOwnerSet(SINGLE_OWNER_SQL.agent, id) },
+  { match: (e) => e.startsWith("session."),     resolve: (l, id) => l.singleOwnerSet(SINGLE_OWNER_SQL.session, id) },
+  { match: (e) => e.startsWith("memory.fact."), resolve: (l, id) => l.singleOwnerSet(SINGLE_OWNER_SQL.memoryFact, id) },
+  { match: (e) => e === "promotion.created",    resolve: (l, id) => l.singleOwnerSet(SINGLE_OWNER_SQL.promotion, id) },
+  { match: (e) => e === "runtime.updated",      resolve: (l, id) => l.singleOwnerSet(SINGLE_OWNER_SQL.runtime, id) },
+  { match: (e) => e === "mesh.activity",        resolve: (l, id) => l.meshOwners(id) },
+];
 
 export class OwnerLookup {
   private cache = new Map<string, CacheEntry>();
@@ -59,14 +108,15 @@ export class OwnerLookup {
   /**
    * Returns the set of person ids that should receive `event`. Empty set
    * means the entity is gone (deleted between trigger and lookup), the
-   * event type isn't owner-scoped, or the lookup query failed — in any
-   * of those cases the manager drops the event rather than fan out.
+   * event type isn't owner-scoped, or the lookup query failed/timed
+   * out — in any of those cases the manager drops the event rather
+   * than fan out.
    */
   async ownersOf(event: BvEvent): Promise<ReadonlySet<string>> {
     const cacheKey = `${event.event}|${event.id}`;
     const now = Date.now();
     const cached = this.cache.get(cacheKey);
-    if (cached && cached.expires_at > now) return cached.owners;
+    if (cached && cached.expiresAt > now) return cached.owners;
 
     // N+1 guard: if a concurrent caller is already resolving this same
     // key, share its in-flight promise rather than firing a duplicate
@@ -105,97 +155,47 @@ export class OwnerLookup {
       const firstKey = this.cache.keys().next().value;
       if (firstKey !== undefined) this.cache.delete(firstKey);
     }
-    this.cache.set(cacheKey, { owners, expires_at: now + this.cacheTtlMs });
+    // Reinsert at tail so a stale-then-refreshed entry behaves as
+    // "recently used" under FIFO eviction.
+    this.cache.delete(cacheKey);
+    this.cache.set(cacheKey, { owners, expiresAt: now + this.cacheTtlMs });
     return owners;
   }
 
   private async lookup(event: BvEvent): Promise<ReadonlySet<string>> {
-    if (event.event.startsWith("task.")) {
-      const { rows } = await this.pool.query<{ owner: string | null }>(
-        `SELECT a.owner_id AS owner
-         FROM task t
-         LEFT JOIN agent a ON a.id = t.assignee_id
-         WHERE t.id = $1`,
-        [event.id],
-      );
-      return rows[0]?.owner ? new Set([rows[0].owner]) : new Set();
-    }
+    const rule = RESOLVERS.find((r) => r.match(event.event));
+    return rule ? rule.resolve(this, event.id) : new Set();
+  }
 
-    if (event.event.startsWith("agent.")) {
-      const { rows } = await this.pool.query<{ owner: string | null }>(
-        `SELECT owner_id AS owner FROM agent WHERE id = $1`,
-        [event.id],
-      );
-      return rows[0]?.owner ? new Set([rows[0].owner]) : new Set();
-    }
+  /** @internal — used by the resolver table. */
+  async singleOwnerSet(sql: string, id: string): Promise<ReadonlySet<string>> {
+    const { rows } = await this.queryWithTimeout<{ owner: string | null }>(sql, [id]);
+    return rows[0]?.owner ? new Set([rows[0].owner]) : new Set();
+  }
 
-    if (event.event.startsWith("session.")) {
-      // Single-tenant: just the agent's owner. Room fan-out re-grows
-      // here in Phase 9 when rooms come back.
-      const { rows } = await this.pool.query<{ owner: string | null }>(
-        `SELECT a.owner_id AS owner
-         FROM session s
-         JOIN agent a ON a.id = s.agent_id
-         WHERE s.id = $1`,
-        [event.id],
-      );
-      return rows[0]?.owner ? new Set([rows[0].owner]) : new Set();
-    }
+  /** @internal — used by the resolver table. */
+  async meshOwners(id: string): Promise<ReadonlySet<string>> {
+    const { rows } = await this.queryWithTimeout<{
+      initiator: string | null;
+      counterparty: string | null;
+    }>(MESH_ACTIVITY_SQL, [id]);
+    const set = new Set<string>();
+    if (rows[0]?.initiator) set.add(rows[0].initiator);
+    if (rows[0]?.counterparty) set.add(rows[0].counterparty);
+    return set;
+  }
 
-    if (event.event.startsWith("memory.fact.")) {
-      const { rows } = await this.pool.query<{ owner: string | null }>(
-        `SELECT a.owner_id AS owner
-         FROM memory_fact f
-         JOIN agent a ON a.id = f.agent_id
-         WHERE f.id = $1`,
-        [event.id],
-      );
-      return rows[0]?.owner ? new Set([rows[0].owner]) : new Set();
-    }
-
-    if (event.event === "promotion.created") {
-      const { rows } = await this.pool.query<{ owner: string | null }>(
-        `SELECT a.owner_id AS owner
-         FROM memory_promotion_event mpe
-         JOIN agent a ON a.id = mpe.origin_agent_id
-         WHERE mpe.id = $1`,
-        [event.id],
-      );
-      return rows[0]?.owner ? new Set([rows[0].owner]) : new Set();
-    }
-
-    if (event.event === "mesh.activity") {
-      const { rows } = await this.pool.query<{
-        initiator: string | null;
-        counterparty: string | null;
-      }>(
-        `SELECT
-           ai.owner_id AS initiator,
-           ac.owner_id AS counterparty
-         FROM negotiation n
-         LEFT JOIN agent ai ON ai.id = n.initiator_agent_id
-         LEFT JOIN agent ac ON ac.id = n.counterparty_agent_id
-         WHERE n.id = $1`,
-        [event.id],
-      );
-      const set = new Set<string>();
-      if (rows[0]?.initiator) set.add(rows[0].initiator);
-      if (rows[0]?.counterparty) set.add(rows[0].counterparty);
-      return set;
-    }
-
-    if (event.event === "runtime.updated") {
-      const { rows } = await this.pool.query<{ owner: string | null }>(
-        `SELECT d.owner_person_id AS owner
-         FROM runtime r
-         JOIN daemon d ON d.id = r.daemon_id
-         WHERE r.id = $1`,
-        [event.id],
-      );
-      return rows[0]?.owner ? new Set([rows[0].owner]) : new Set();
-    }
-
-    return new Set();
+  private async queryWithTimeout<R extends Record<string, unknown>>(
+    sql: string,
+    params: unknown[],
+  ): Promise<{ rows: R[] }> {
+    const timeout = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`owner-lookup timeout (${QUERY_TIMEOUT_MS}ms)`)), QUERY_TIMEOUT_MS);
+    });
+    return Promise.race([
+      this.pool.query<R>(sql, params) as Promise<{ rows: R[] }>,
+      timeout,
+    ]);
   }
 
   /** @internal Tests only. */

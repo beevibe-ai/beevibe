@@ -249,6 +249,7 @@ async function ensureAdminAndTeamAgent(): Promise<string> {
     await import("../packages/core/src/adapters/postgres/index.js");
   const { provisionAgent, provisionUser } = await import("../packages/core/src/auth/provision.js");
   const { personId, agentId } = await import("../packages/core/src/domain/ids.js");
+  const { DEFAULT_RUNTIME_CONFIG } = await import("../packages/core/src/domain/agent.js");
 
   const pool = createPool({ connectionString: process.env.DATABASE_URL! });
   const personRepo = new PostgresPersonRepository(pool);
@@ -258,7 +259,7 @@ async function ensureAdminAndTeamAgent(): Promise<string> {
   const teamAgentInput = {
     name: TEAM_AGENT_NAME_DEFAULT,
     hierarchy_level: "team" as const,
-    runtime_config: { type: "claude-code" as const, model: "claude-opus-4-7" },
+    runtime_config: DEFAULT_RUNTIME_CONFIG,
   };
 
   try {

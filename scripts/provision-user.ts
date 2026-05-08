@@ -73,6 +73,9 @@ async function main(): Promise<void> {
     "../packages/core/src/auth/provision.js"
   );
   const { personId, agentId } = await import("../packages/core/src/domain/ids.js");
+  const { DEFAULT_RUNTIME_CONFIG } = await import(
+    "../packages/core/src/domain/agent.js"
+  );
 
   const pool = createPool({ connectionString: databaseUrl });
   const personRepo = new PostgresPersonRepository(pool);
@@ -82,7 +85,7 @@ async function main(): Promise<void> {
   const teamAgentInput = {
     name: agentName ?? `${name}'s team`,
     hierarchy_level: "team" as const,
-    runtime_config: { type: "claude-code" as const, model: "claude-opus-4-7" },
+    runtime_config: DEFAULT_RUNTIME_CONFIG,
   };
 
   try {
