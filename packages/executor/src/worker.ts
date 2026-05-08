@@ -1,8 +1,8 @@
 import type {
   Agent,
   AgentRepository,
+  Session,
   SessionRepository,
-  Task,
   TaskRepository,
   TaskStatus,
   Workspace,
@@ -22,13 +22,14 @@ export const DEFAULT_TASK_CAP = 1;
 export const DEFAULT_POLL_MS = 30_000;
 
 /**
- * Fire-and-forget dispatch callback the worker hands claimed tasks to.
- * Implementations build the per-task `AgentSession` + `MemoryAgent` and call
- * `agentSession.run(...)`. The resolved value is ignored; rejections are
- * caught by the worker and surfaced via `onError`.
+ * Fire-and-forget dispatch callback the worker hands claimed sessions to.
+ * Implementations call AgentSession.run with the already-claimed session
+ * (the row is already at status='running'); the dispatcher just spawns
+ * the CLI and updates the terminal state on exit. Rejections are caught
+ * by the worker and surfaced via `onError`.
  */
 export type DispatchFn = (
-  task: Task,
+  session: Session,
   agent: Agent,
   workspace: Workspace,
   abortSignal: AbortSignal,
@@ -135,17 +136,18 @@ export class TaskExecutionWorker {
   }
 
   /**
-   * Cancel an in-flight task by aborting its controller. Returns true if the
-   * task was in-flight and got aborted, false otherwise. Does NOT update the
-   * task or session row — the dispatched `AgentSession.run` sees the abort
-   * signal and writes a `cancelled` session status; task status transitions
-   * are M6's concern (via `update_progress` or post-dispatch check).
+   * Cancel an in-flight task by aborting the controller for any session
+   * currently running for it. Returns true on hit. Does NOT update the
+   * task / session row — `AgentSession.run` sees the abort signal and
+   * writes a `cancelled` status; task transitions are managed elsewhere.
    */
   async cancelTask(taskId: string): Promise<boolean> {
-    const controller = this.inFlight.get(taskId);
+    const sessionRow = await this.config.sessionRepo.findLatestForTask(taskId);
+    if (!sessionRow) return false;
+    const controller = this.inFlight.get(sessionRow.id);
     if (!controller) return false;
     controller.abort();
-    this.inFlight.delete(taskId);
+    this.inFlight.delete(sessionRow.id);
     return true;
   }
 
@@ -185,54 +187,56 @@ export class TaskExecutionWorker {
   }
 
   private async dispatchReady(): Promise<void> {
-    const candidates = await this.config.taskRepo.listAssignable();
-    // Poll-scoped: seeded lazily from DB on first access per agent, incremented
-    // on dispatch. Single map avoids the double-count race a separate "pending"
-    // map would have when a DB INSERT commits between iterations.
-    const runningByAgent = new Map<string, number>();
+    // Phase 4: claim already-pending sessions whose runtime_id is null
+    // (legacy / agent without preferred_runtime_id). Daemon-bound
+    // sessions (runtime_id set) are claimed by the matching daemon via
+    // /runtime/claim — never reach this loop.
+    while (this.running) {
+      const session = await this.config.sessionRepo.claimNextForServerFallback();
+      if (!session) break;
+      if (this.inFlight.has(session.id)) continue;
 
-    for (const task of candidates) {
-      if (!this.running) break;
-      if (this.inFlight.has(task.id)) continue;
+      const agent = await this.config.agentRepo.findById(session.agent_id);
+      if (!agent) {
+        await this.config.sessionRepo.update(session.id, {
+          status: "failed",
+          error: "agent_missing_at_claim",
+          completed_at: new Date(),
+        });
+        continue;
+      }
 
-      const agentId = task.assignee_id;
-      if (!agentId) continue;
-      const agent = await this.config.agentRepo.findById(agentId);
-      if (!agent) continue;
-
-      if (!(await this.hasTaskCapacity(agent, runningByAgent))) continue;
-
-      const claimed = await this.config.taskRepo.claimById(task.id);
-      if (!claimed) continue; // race loser — another executor won the claim
+      if (!(await this.hasTaskCapacityForClaim(agent, session))) {
+        // Over cap — release back to pending; another worker tick will
+        // re-claim once capacity frees.
+        await this.config.sessionRepo.update(session.id, { status: "pending" });
+        break;
+      }
 
       const workspace = await this.config.workspaceManager.ensureWorkspace({ agent });
       const ac = new AbortController();
-      this.inFlight.set(task.id, ac);
-      runningByAgent.set(agent.id, (runningByAgent.get(agent.id) ?? 0) + 1);
+      this.inFlight.set(session.id, ac);
 
-      // Fire-and-forget. `.finally` always clears inFlight.
       void Promise.resolve()
-        .then(() => this.config.dispatchTask(claimed, agent, workspace, ac.signal))
+        .then(() => this.config.dispatchTask(session, agent, workspace, ac.signal))
         .catch((err: unknown) =>
           this.onError(err instanceof Error ? err : new Error(String(err))),
         )
         .finally(() => {
-          this.inFlight.delete(task.id);
+          this.inFlight.delete(session.id);
         });
     }
   }
 
-  private async hasTaskCapacity(
+  private async hasTaskCapacityForClaim(
     agent: Agent,
-    runningByAgent: Map<string, number>,
+    claimed: Session,
   ): Promise<boolean> {
-    let current = runningByAgent.get(agent.id);
-    if (current === undefined) {
-      current = await this.config.sessionRepo.countRunningByAgent(agent.id, ["task"]);
-      runningByAgent.set(agent.id, current);
-    }
+    if (claimed.type !== "task") return true; // chat / mesh have separate caps elsewhere
+    const running = await this.config.sessionRepo.countRunningByAgent(agent.id, ["task"]);
     const cap = agent.max_task_sessions ?? DEFAULT_TASK_CAP;
-    return current < cap;
+    // We just promoted this session to running; it's already counted.
+    return running <= cap;
   }
 }
 

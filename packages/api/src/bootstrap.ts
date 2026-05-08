@@ -29,6 +29,7 @@ import {
 } from "@beevibe/core/services/memory";
 import { TaskService } from "@beevibe/core/services/task-service";
 import { EscalationService } from "@beevibe/core/services/escalation-service";
+import { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { MeshServer } from "./mesh/server.js";
 import { BeevibeApiServer } from "./server.js";
 import { SessionCache } from "./session-cache.js";
@@ -130,14 +131,25 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     sessionRepo,
   });
 
-  // M6.4 escalation service: DB-only writes (no spawning). Re-queues
-  // initiator's task + creates synthetic task for counterparty on resolve;
-  // executor picks both up.
+  // Phase 4 — DispatchService is the single creation point for pending
+  // session rows. Call sites (create_task / revise_task / mesh /
+  // escalation / post-dispatch retry) call it instead of inserting
+  // sessions inline. Daemon hub notify is wired below after the hub
+  // is constructed.
+  const dispatchService = new DispatchService({
+    agentRepo,
+    sessionRepo,
+    taskRepo,
+  });
+
+  // M6.4 escalation service: DB-only writes for the resolution + dispatch
+  // for both initiator and counterparty post-resolution sessions.
   const escalationService = new EscalationService({
     escalationRepo,
     negotiationRepo,
     taskRepo,
     agentRepo,
+    dispatchService,
   });
 
   // M6.4 mesh server: in-process A2A broker. Reuses LocalWorkspaceManager
@@ -216,6 +228,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     workProductRepo,
     taskService,
     escalationService,
+    dispatchService,
     mesh,
     pool,
     makeMemoryAgent,

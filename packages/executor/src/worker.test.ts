@@ -1,17 +1,35 @@
+/**
+ * Phase 4 worker tests. The worker now claims pending sessions whose
+ * `runtime_id IS NULL` (legacy / unbound agents) instead of polling
+ * tasks. Daemon-bound sessions (runtime_id set) are claimed by the
+ * matching daemon and never reach this loop.
+ */
+
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   PostgresAgentRepository,
+  PostgresDaemonRepository,
   PostgresPersonRepository,
+  PostgresRuntimeRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
 } from "@beevibe/core/adapters/postgres";
 import { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
-import type { Agent, AgentRuntime, RuntimeRegistry, Task, Workspace } from "@beevibe/core";
+import type {
+  Agent,
+  AgentRuntime,
+  RuntimeRegistry,
+  Session,
+  Task,
+  Workspace,
+} from "@beevibe/core";
 import {
   DEFAULT_RUNTIME_CONFIG,
   agentId,
+  daemonId as makeDaemonId,
   personId,
+  runtimeId as makeRuntimeId,
   sessionId,
   taskId,
 } from "@beevibe/core";
@@ -40,14 +58,10 @@ describe("isProcessAlive", () => {
   });
 
   it("returns false for a non-existent pid", () => {
-    // 99_999_999 is well above typical pid_max; effectively guaranteed to not exist.
     expect(isProcessAlive(99_999_999)).toBe(false);
   });
 });
 
-// Fake runtime registry — `skillsDir` is the only method the workspace
-// manager touches during these tests; everything else is mocked at the
-// runtime-execute layer.
 const fakeRuntimeRegistry: RuntimeRegistry = {
   "claude": {
     type: "claude",
@@ -55,12 +69,14 @@ const fakeRuntimeRegistry: RuntimeRegistry = {
   } as unknown as AgentRuntime,
 };
 
-describe("TaskExecutionWorker", () => {
+describe("TaskExecutionWorker (Phase 4 — session-based claim)", () => {
   let pool: Pool;
   let agents: PostgresAgentRepository;
   let tasks: PostgresTaskRepository;
   let sessions: PostgresSessionRepository;
   let persons: PostgresPersonRepository;
+  let daemons: PostgresDaemonRepository;
+  let runtimes: PostgresRuntimeRepository;
   let workspaceRoot: string;
   let skillsSourceDir: string;
   let workspaceManager: LocalWorkspaceManager;
@@ -72,6 +88,8 @@ describe("TaskExecutionWorker", () => {
     tasks = new PostgresTaskRepository(pool);
     sessions = new PostgresSessionRepository(pool);
     persons = new PostgresPersonRepository(pool);
+    daemons = new PostgresDaemonRepository(pool);
+    runtimes = new PostgresRuntimeRepository(pool);
   });
 
   afterAll(async () => {
@@ -109,6 +127,20 @@ describe("TaskExecutionWorker", () => {
     });
   }
 
+  async function seedRuntime(): Promise<string> {
+    const dId = makeDaemonId();
+    await daemons.create({
+      id: dId,
+      owner_person_id: ownerPersonId,
+      external_id: "host",
+      device_name: "Host",
+      token_hash: "t",
+    });
+    const rId = makeRuntimeId();
+    await runtimes.create({ id: rId, daemon_id: dId, cli: "claude" });
+    return rId;
+  }
+
   async function seedTask(
     assigneeAgentId: string,
     overrides: Partial<Task> = {},
@@ -119,9 +151,24 @@ describe("TaskExecutionWorker", () => {
       priority: "medium",
       creator_id: ownerPersonId,
       creator_type: "person",
-      status: "assigned",
+      status: "in_progress",
       assignee_id: assigneeAgentId,
       ...overrides,
+    });
+  }
+
+  async function seedPendingSession(
+    agentId: string,
+    overrides: Partial<{ task_id: string; runtime_id: string; type: Session["type"] }> = {},
+  ): Promise<Session> {
+    return sessions.create({
+      id: sessionId(),
+      agent_id: agentId,
+      type: overrides.type ?? "task",
+      status: "pending",
+      intent: "do the thing",
+      task_id: overrides.task_id,
+      runtime_id: overrides.runtime_id,
     });
   }
 
@@ -135,7 +182,7 @@ describe("TaskExecutionWorker", () => {
       sessionRepo: sessions,
       workspaceManager,
       dispatchTask,
-      pollIntervalMs: 60_000, // disable auto-polling in tests; we call poll() manually
+      pollIntervalMs: 60_000,
     });
     return { worker, dispatchTask };
   }
@@ -147,73 +194,99 @@ describe("TaskExecutionWorker", () => {
     expect(dispatchTask).not.toHaveBeenCalled();
   });
 
-  it("one assigned task: gets claimed and dispatched; task transitions to in_progress", async () => {
+  it("one null-runtime pending session: claimed, promoted to running, dispatched", async () => {
     const agent = await seedAgent();
     const task = await seedTask(agent.id);
+    const session = await seedPendingSession(agent.id, { task_id: task.id });
+
     const { worker, dispatchTask } = makeWorker();
     await worker.start();
     await worker.stop();
 
     expect(dispatchTask).toHaveBeenCalledTimes(1);
-    const [dispatchedTask, dispatchedAgent, dispatchedWorkspace] = dispatchTask.mock.calls[0]!;
-    expect((dispatchedTask as Task).id).toBe(task.id);
+    const [dispatchedSession, dispatchedAgent, dispatchedWorkspace] =
+      dispatchTask.mock.calls[0]!;
+    expect((dispatchedSession as Session).id).toBe(session.id);
+    expect((dispatchedSession as Session).status).toBe("running");
     expect((dispatchedAgent as Agent).id).toBe(agent.id);
     expect((dispatchedWorkspace as Workspace).path).toBe(join(workspaceRoot, agent.id));
 
-    const reread = await tasks.findById(task.id);
-    expect(reread?.status).toBe("in_progress");
+    const reread = await sessions.findById(session.id);
+    expect(reread?.status).toBe("running");
+    expect(reread?.started_at).toBeInstanceOf(Date);
   });
 
-  it("picks higher-priority tasks first within a single poll", async () => {
+  it("daemon-bound sessions (runtime_id set) are NOT claimed by the executor", async () => {
+    const agent = await seedAgent();
+    const rId = await seedRuntime();
+    await seedPendingSession(agent.id, { runtime_id: rId });
+
+    const { worker, dispatchTask } = makeWorker();
+    await worker.start();
+    await worker.stop();
+    expect(dispatchTask).not.toHaveBeenCalled();
+  });
+
+  it("multiple null-runtime sessions: claimed in created_at order", async () => {
     const a1 = await seedAgent();
     const a2 = await seedAgent();
     const a3 = await seedAgent();
-    const low = await seedTask(a1.id, { priority: "low" });
-    const critical = await seedTask(a2.id, { priority: "critical" });
-    const high = await seedTask(a3.id, { priority: "high" });
+    const s1 = await seedPendingSession(a1.id);
+    await new Promise((r) => setTimeout(r, 5));
+    const s2 = await seedPendingSession(a2.id);
+    await new Promise((r) => setTimeout(r, 5));
+    const s3 = await seedPendingSession(a3.id);
 
     const { worker, dispatchTask } = makeWorker();
     await worker.start();
     await worker.stop();
 
     expect(dispatchTask).toHaveBeenCalledTimes(3);
-    const dispatchedIds = dispatchTask.mock.calls.map((c) => (c[0] as Task).id);
-    expect(dispatchedIds).toEqual([critical.id, high.id, low.id]);
+    const ids = dispatchTask.mock.calls.map((c) => (c[0] as Session).id);
+    expect(ids).toEqual([s1.id, s2.id, s3.id]);
   });
 
-  it("respects per-agent capacity (default 1): two tasks for same agent → only one dispatched", async () => {
-    const agent = await seedAgent();
-    const first = await seedTask(agent.id);
-    await seedTask(agent.id);
+  it("respects per-agent task cap: second session for same agent released back to pending", async () => {
+    const agent = await seedAgent({ max_task_sessions: 1 });
+    // First session claims and stays running (mock dispatch never resolves).
+    let block: () => void = () => undefined;
+    const dispatchTask = vi
+      .fn()
+      .mockImplementationOnce(() => new Promise<void>((resolve) => { block = resolve; }))
+      .mockResolvedValue(undefined);
 
-    const { worker, dispatchTask } = makeWorker();
+    const s1 = await seedPendingSession(agent.id);
+    const s2 = await seedPendingSession(agent.id);
+
+    const worker = new TaskExecutionWorker({
+      agentRepo: agents,
+      taskRepo: tasks,
+      sessionRepo: sessions,
+      workspaceManager,
+      dispatchTask,
+      pollIntervalMs: 60_000,
+    });
     await worker.start();
-    await worker.stop();
+    // Give s1 a moment to be in-flight.
+    await new Promise((r) => setTimeout(r, 30));
 
+    // s1 dispatched; s2 should be back in pending.
     expect(dispatchTask).toHaveBeenCalledTimes(1);
-    const dispatchedId = (dispatchTask.mock.calls[0]![0] as Task).id;
-    expect(dispatchedId).toBe(first.id);
-  });
+    const reread = await sessions.findById(s2.id);
+    expect(reread?.status).toBe("pending");
+    const r1 = await sessions.findById(s1.id);
+    expect(r1?.status).toBe("running");
 
-  it("agent.max_task_sessions=2: two tasks for same agent → both dispatched in one poll", async () => {
-    const agent = await seedAgent({ max_task_sessions: 2 });
-    await seedTask(agent.id);
-    await seedTask(agent.id);
-
-    const { worker, dispatchTask } = makeWorker();
-    await worker.start();
+    block();
     await worker.stop();
-
-    expect(dispatchTask).toHaveBeenCalledTimes(2);
   });
 
-  it("two concurrent workers: each claim is disjoint (no double-claim)", async () => {
+  it("two concurrent workers: each claim is disjoint (no double-dispatch)", async () => {
     const a1 = await seedAgent();
     const a2 = await seedAgent();
-    await seedTask(a1.id);
-    await seedTask(a2.id);
+    await seedPendingSession(a1.id);
+    await seedPendingSession(a2.id);
 
-    // Dispatch stubs that just record and return — don't hold anything open.
     const dispatchA = vi.fn().mockResolvedValue(undefined);
     const dispatchB = vi.fn().mockResolvedValue(undefined);
     const workerA = new TaskExecutionWorker({
@@ -238,16 +311,13 @@ describe("TaskExecutionWorker", () => {
     const total = dispatchA.mock.calls.length + dispatchB.mock.calls.length;
     expect(total).toBe(2);
     const allIds = [...dispatchA.mock.calls, ...dispatchB.mock.calls].map(
-      (c) => (c[0] as Task).id,
+      (c) => (c[0] as Session).id,
     );
-    expect(new Set(allIds).size).toBe(2); // no duplicates
+    expect(new Set(allIds).size).toBe(2);
   });
 
   it("reaps orphaned sessions: dead pid → session=failed + task re-queued", async () => {
     const agent = await seedAgent();
-    // Task has no assignee so the SAME poll's dispatch phase doesn't re-claim
-    // it after reap re-queues it (listAssignable filters assignee_id IS NOT NULL).
-    // This isolates the reap assertion.
     const task = await tasks.create({
       id: taskId(),
       title: "orphaned",
@@ -283,7 +353,6 @@ describe("TaskExecutionWorker", () => {
   it("reap skips live sessions", async () => {
     const agent = await seedAgent();
     const task = await seedTask(agent.id, { status: "in_progress" });
-    // Use the current process pid — guaranteed alive.
     const sess = await sessions.create({
       id: sessionId(),
       agent_id: agent.id,
@@ -304,19 +373,18 @@ describe("TaskExecutionWorker", () => {
     expect(reread?.status).toBe("running");
   });
 
-  it("cancelTask aborts an in-flight controller and returns true", async () => {
+  it("cancelTask aborts the in-flight controller for a task's latest session", async () => {
     const agent = await seedAgent();
     const task = await seedTask(agent.id);
+    await seedPendingSession(agent.id, { task_id: task.id });
 
-    // Dispatch that never resolves until aborted, so the inFlight entry is live
-    // when we call cancelTask().
     let abortedFromSignal = false;
     const dispatchTask = vi
       .fn<
-        (task: Task, agent: Agent, ws: Workspace, signal: AbortSignal) => Promise<void>
+        (s: Session, a: Agent, ws: Workspace, signal: AbortSignal) => Promise<void>
       >()
       .mockImplementation(
-        (_task, _agent, _ws, signal) =>
+        (_s, _a, _ws, signal) =>
           new Promise((resolve) => {
             signal.addEventListener("abort", () => {
               abortedFromSignal = true;
@@ -334,10 +402,10 @@ describe("TaskExecutionWorker", () => {
       pollIntervalMs: 60_000,
     });
     await worker.start();
-    // dispatched; cancel it
+    // Let the dispatch loop register the in-flight controller.
+    await new Promise((r) => setTimeout(r, 20));
     const aborted = await worker.cancelTask(task.id);
     expect(aborted).toBe(true);
-    // Let the signal-handled promise settle before stopping.
     await new Promise((r) => setTimeout(r, 10));
     expect(abortedFromSignal).toBe(true);
     await worker.stop();
@@ -353,14 +421,14 @@ describe("TaskExecutionWorker", () => {
 
   it("stop() aborts in-flight controllers", async () => {
     const agent = await seedAgent();
-    await seedTask(agent.id);
+    await seedPendingSession(agent.id);
     let abortedFromSignal = false;
     const dispatchTask = vi
       .fn<
-        (task: Task, agent: Agent, ws: Workspace, signal: AbortSignal) => Promise<void>
+        (s: Session, a: Agent, ws: Workspace, signal: AbortSignal) => Promise<void>
       >()
       .mockImplementation(
-        (_task, _agent, _ws, signal) =>
+        (_s, _a, _ws, signal) =>
           new Promise((resolve) => {
             signal.addEventListener("abort", () => {
               abortedFromSignal = true;
@@ -382,59 +450,10 @@ describe("TaskExecutionWorker", () => {
     expect(abortedFromSignal).toBe(true);
   });
 
-  it("needs_revision tasks are picked up and claimed into revision state", async () => {
-    const agent = await seedAgent();
-    const task = await seedTask(agent.id, { status: "needs_revision" });
-    const { worker, dispatchTask } = makeWorker();
-    await worker.start();
-    await worker.stop();
-    expect(dispatchTask).toHaveBeenCalledTimes(1);
-    const dispatched = dispatchTask.mock.calls[0]![0] as Task;
-    expect(dispatched.id).toBe(task.id);
-    // Post-claim status signals dispatch to set priorSessionId for --resume.
-    expect(dispatched.status).toBe("revision");
-  });
-
-  it("reap of a dead session whose task is in `revision` resets task to `needs_revision` (not `assigned`)", async () => {
-    const agent = await seedAgent();
-    // Task in running re-work state, no assignee so dispatch doesn't reclaim
-    // in the same poll (mirrors the trick used by the assigned-reap test).
-    const task = await tasks.create({
-      id: taskId(),
-      title: "orphaned revision",
-      priority: "medium",
-      creator_id: ownerPersonId,
-      creator_type: "person",
-      status: "revision",
-    });
-    const deadPid = 99_999_999;
-    const sess = await sessions.create({
-      id: sessionId(),
-      agent_id: agent.id,
-      task_id: task.id,
-      type: "task",
-      intent: "x",
-      process_pid: deadPid,
-      process_group_id: deadPid,
-      status: "running",
-      started_at: new Date(),
-    });
-
-    const { worker } = makeWorker();
-    await worker.start();
-    await worker.stop();
-
-    const rereadSession = await sessions.findById(sess.id);
-    expect(rereadSession?.status).toBe("failed");
-    const rereadTask = await tasks.findById(task.id);
-    expect(rereadTask?.status).toBe("needs_revision");
-  });
-
   it("default poll interval is 30_000ms when not configured", async () => {
     vi.useFakeTimers();
     try {
       const pollSpy = vi.fn<() => Promise<void>>();
-      // Reach into private via subclass to count timer firings explicitly.
       class SpyWorker extends TaskExecutionWorker {
         override async poll(): Promise<void> {
           pollSpy();
@@ -448,10 +467,8 @@ describe("TaskExecutionWorker", () => {
         workspaceManager,
         dispatchTask: vi.fn().mockResolvedValue(undefined),
       });
-      // start() runs one immediate poll (awaited) then schedules the interval.
       await worker.start();
       expect(pollSpy).toHaveBeenCalledTimes(1);
-      // Advance one full default interval → one more poll.
       await vi.advanceTimersByTimeAsync(DEFAULT_POLL_MS);
       expect(pollSpy).toHaveBeenCalledTimes(2);
       await worker.stop();
@@ -460,7 +477,7 @@ describe("TaskExecutionWorker", () => {
     }
   });
 
-  it("capacity defaults to DEFAULT_TASK_CAP when agent.max_task_sessions is undefined", () => {
+  it("DEFAULT_TASK_CAP is 1", () => {
     expect(DEFAULT_TASK_CAP).toBe(1);
   });
 });

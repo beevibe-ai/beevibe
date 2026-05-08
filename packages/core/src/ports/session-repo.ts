@@ -44,6 +44,15 @@ export interface SessionRepository {
   claimNextForRuntime(runtimeId: string): Promise<Session | undefined>;
 
   /**
+   * Atomically claim the oldest pending session that has NO runtime_id
+   * bound. Used by the legacy in-process executor as the fallback
+   * claimant for agents without a `preferred_runtime_id`. Daemon-bound
+   * sessions are never returned — those go to the matching daemon via
+   * `claimNextForRuntime`.
+   */
+  claimNextForServerFallback(): Promise<Session | undefined>;
+
+  /**
    * How many of `sessionIds` are bound to a runtime owned by `daemonId`?
    * Single JOIN round-trip; the /runtime/* surface uses this to gate
    * /events and /done writes against cross-tenant tampering.

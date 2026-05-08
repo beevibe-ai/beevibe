@@ -40,6 +40,11 @@ import {
 } from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
+import type { DispatchService } from "@beevibe/core/services/dispatch-service";
+import {
+  buildIntent,
+  type ResumeReason,
+} from "@beevibe/core/services/agent-session";
 import type { AgentTool, AgentToolResult } from "./types.js";
 
 // ── Agent-callable status subsets ─────────────────────────────────────────
@@ -72,6 +77,13 @@ export interface HierarchyToolServices {
 
   /** M6.4: backs `add_to_escalation` (peer adds their slot to existing row). */
   escalationService: EscalationService;
+  /**
+   * Phase 4: create_task / revise_task call DispatchService to insert the
+   * pending session row directly. The legacy executor poll path is on its
+   * way out; the daemon (or executor as null-runtime fallback) claims via
+   * `claimNext*ForRuntime` / `claimNextForServerFallback`.
+   */
+  dispatchService: DispatchService;
   /** M6.4: pg_notify on add_to_escalation for future M8 web subscribers. */
   pool: Pool;
 }
@@ -622,12 +634,32 @@ function createTaskTool(
           repo_url:
             typeof input.repo_url === "string" && input.repo_url ? input.repo_url : undefined,
         });
+
+        // Dispatch creates the pending session row + advances task →
+        // in_progress. Either the bound daemon (preferred_runtime_id set)
+        // or the legacy executor (null runtime_id) claims it next.
+        const reason: ResumeReason = { kind: "fresh" };
+        const dispatchIntent = buildIntent(
+          { id: created.id, title: created.title, description: created.description },
+          reason,
+        );
+        await services.dispatchService.dispatchTask({
+          task: created,
+          agentId: targetId,
+          intent: dispatchIntent,
+          reason,
+          type: "task",
+        });
+
         return {
           content: {
             created: {
               id: created.id,
               title: created.title,
-              status: created.status,
+              // Reflect the post-dispatch active state so callers don't
+              // see a stale 'assigned' that the next /api/stream tick
+              // overwrites anyway.
+              status: "in_progress",
               assignee_id: created.assignee_id,
             },
           },
@@ -768,11 +800,32 @@ function reviseTaskTool(
           source: "parent_agent",
           reviserAgentId: ctx.agentId,
         });
+
+        // Dispatch the revision session. reviseTask stamped the
+        // next_dispatch_context with feedback + from_status; reuse it
+        // verbatim as the ResumeReason (structurally compatible).
+        if (updated.next_dispatch_context?.kind === "revision") {
+          const reason: ResumeReason = updated.next_dispatch_context;
+          const intent = buildIntent(
+            { id: updated.id, title: updated.title, description: updated.description },
+            reason,
+          );
+          await services.dispatchService.dispatchTask({
+            task: updated,
+            agentId: updated.assignee_id!,
+            intent,
+            reason,
+            type: "task",
+          });
+        }
+
         return {
           content: {
             revised: true,
             task_id: updated.id,
-            status: updated.status,
+            // Reflect the post-dispatch active state (revision); the
+            // pending session is already in flight.
+            status: "revision",
             from_status: task.status,
           },
         };

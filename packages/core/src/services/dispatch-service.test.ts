@@ -155,6 +155,32 @@ describe("DispatchService.dispatchTask", () => {
     expect(insert.prior_session_id).toBe("sess_prior");
   });
 
+  it("chat_continuation reason PINS runtime_id to prior_session.runtime_id", async () => {
+    vi.mocked(agentRepo.findById).mockResolvedValue(
+      makeAgent({ preferred_runtime_id: "rt_new_default" }),
+    );
+    vi.mocked(sessionRepo.findById).mockResolvedValue(
+      makeSession({ id: "sess_chat_prior", runtime_id: "rt_chat_pinned" }),
+    );
+    const reason: ResumeReason = {
+      kind: "chat_continuation",
+      prior_session_id: "sess_chat_prior",
+    };
+
+    const result = await svc.dispatchTask({
+      agentId: "agent_default",
+      intent: "next user message",
+      reason,
+      type: "chat",
+    });
+
+    expect(result.runtime_id).toBe("rt_chat_pinned");
+    const insert = vi.mocked(sessionRepo.create).mock.calls[0]![0];
+    expect(insert.runtime_id).toBe("rt_chat_pinned");
+    expect(insert.prior_session_id).toBe("sess_chat_prior");
+    expect(insert.type).toBe("chat");
+  });
+
   it("post_escalation reason PINS runtime_id to prior_session.runtime_id", async () => {
     vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
     vi.mocked(sessionRepo.findById).mockResolvedValue(

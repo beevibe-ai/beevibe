@@ -96,20 +96,39 @@ export class AgentSession {
     const agent = await this.deps.agentRepo.findById(input.agentId);
     if (!agent) throw new Error(`AgentSession: agent not found: ${input.agentId}`);
 
-    // 2. Session row — caller may pre-supply an id (M6.4 mesh path needs to
-    // know B's sid before spawn so it can stamp counterparty_session_id on
-    // the negotiation row).
+    // 2. Session row. Three call patterns:
+    //   - sessionId unset            → mint new id, INSERT (legacy mesh / chat path)
+    //   - sessionId set, no row yet  → use that id, INSERT (mesh round-1 pre-id)
+    //   - sessionId set, row exists  → reuse the row (post-Phase-4 executor
+    //     claim path: dispatchService already inserted at status='pending'
+    //     and the worker just promoted it to 'running' via claimNext*)
     const sid = input.sessionId ?? newSessionId();
-    const session = await this.deps.sessionRepo.create({
-      id: sid,
-      agent_id: input.agentId,
-      task_id: input.taskId,
-      prior_session_id: input.priorSessionId,
-      type: input.type ?? (input.taskId ? "task" : "chat"),
-      intent: input.intent,
-      workspace_path: input.workspace.path,
-      started_at: new Date(),
-    });
+    const existing = input.sessionId
+      ? await this.deps.sessionRepo.findById(input.sessionId)
+      : undefined;
+    let session: Session;
+    if (existing) {
+      // Stamp workspace_path now that the worker has provisioned a local
+      // sandbox; the rest of the row was set by dispatchService.
+      session = await this.deps.sessionRepo.update(sid, {
+        workspace_path: input.workspace.path,
+      });
+    } else {
+      session = await this.deps.sessionRepo.create({
+        id: sid,
+        agent_id: input.agentId,
+        task_id: input.taskId,
+        prior_session_id: input.priorSessionId,
+        type: input.type ?? (input.taskId ? "task" : "chat"),
+        intent: input.intent,
+        // Inline mesh / chat paths spawn the CLI immediately, so this row
+        // skips the 'pending' state entirely. Required now that the DB
+        // default is 'pending' (every insert is explicit per Phase 4).
+        status: "running",
+        workspace_path: input.workspace.path,
+        started_at: new Date(),
+      });
+    }
 
     // 3. Resume lookup + briefing
     const priorCliSessionId = input.priorSessionId
@@ -261,6 +280,18 @@ export type ResumeReason =
   | { kind: "fresh" }
   | { kind: "crash_recovery" }
   | {
+      /**
+       * Multi-turn chat continuation. Carries the prior session so
+       * dispatchService pins runtime_id (resume reads `.jsonl` from the
+       * pinned daemon's local disk) and the daemon's spawn passes
+       * `--resume <prior.cli_session_id>`. Unlike revision/post_escalation,
+       * no narrative `<context>` block is added — the chat user message
+       * IS the next turn's intent.
+       */
+      kind: "chat_continuation";
+      prior_session_id: string;
+    }
+  | {
       kind: "revision";
       feedback: string;
       source: "human" | "parent_agent";
@@ -314,6 +345,11 @@ export function buildIntent(
 
     case "crash_recovery":
       return `<context type="crash_recovery">Your previous session ended unexpectedly. Pick up where you left off.</context>\n${taskAnchor}`;
+
+    case "chat_continuation":
+      // Chat doesn't use buildIntent — the user's message is the intent
+      // verbatim. Included here to keep the switch exhaustive.
+      return taskAnchor;
 
     case "revision": {
       const fb = reason.feedback || "(no specific feedback provided)";

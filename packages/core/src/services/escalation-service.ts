@@ -9,6 +9,8 @@ import type { AgentRepository } from "../ports/agent-repo.js";
 import type { EscalationRepository } from "../ports/escalation-repo.js";
 import type { NegotiationRepository } from "../ports/negotiation-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
+import { buildIntent, type ResumeReason } from "./agent-session.js";
+import type { DispatchService } from "./dispatch-service.js";
 
 export class EscalationNotFoundError extends Error {
   readonly code = "ESCALATION_NOT_FOUND";
@@ -47,6 +49,14 @@ export interface EscalationServiceDeps {
   negotiationRepo: NegotiationRepository;
   taskRepo: TaskRepository;
   agentRepo: AgentRepository;
+  /**
+   * Required to spawn the post-resolution sessions for both initiator and
+   * counterparty. Optional for dependency-injection in tests that exercise
+   * resolve() without verifying dispatch (the create-only paths still
+   * require it for state-transition correctness — leaving this undefined
+   * means no pending session lands and the post-escalation flow stalls).
+   */
+  dispatchService?: DispatchService;
 }
 
 export interface CreateEscalationInput {
@@ -288,15 +298,14 @@ export class EscalationService {
 
     // Initiator side — re-queue existing task or synth task (rare, when
     // negotiation wasn't task-bound).
-    let initiatorTaskId: string;
+    let initiatorTask;
     if (neg.task_id) {
-      await this.deps.taskRepo.update(neg.task_id, {
+      initiatorTask = await this.deps.taskRepo.update(neg.task_id, {
         status: "assigned",
         next_dispatch_context: initiatorCtx,
       });
-      initiatorTaskId = neg.task_id;
     } else {
-      const t = await this.deps.taskRepo.create({
+      initiatorTask = await this.deps.taskRepo.create({
         id: makeTaskId(),
         title: `Process escalation ${esc.id.slice(0, 8)} resolution`,
         description: "(see post-escalation context)",
@@ -307,7 +316,6 @@ export class EscalationService {
         creator_type: "person",
         next_dispatch_context: initiatorCtx,
       });
-      initiatorTaskId = t.id;
     }
 
     // Counterparty side — always synthetic.
@@ -324,10 +332,42 @@ export class EscalationService {
       next_dispatch_context: counterpartyCtx,
     });
 
+    // Dispatch both sides. ResumeReason is structurally compatible with
+    // NextDispatchContext for the post_escalation kind. Without dispatch,
+    // the legacy executor used to claim the 'assigned' tasks via poll —
+    // post-Phase-4 nobody polls tasks, so we must explicitly create the
+    // pending session rows here.
+    if (this.deps.dispatchService) {
+      const initiatorReason: ResumeReason = initiatorCtx;
+      const counterpartyReason: ResumeReason = counterpartyCtx;
+      await Promise.all([
+        this.deps.dispatchService.dispatchTask({
+          task: initiatorTask,
+          agentId: neg.initiator_agent_id,
+          intent: buildIntent(
+            { id: initiatorTask.id, title: initiatorTask.title, description: initiatorTask.description },
+            initiatorReason,
+          ),
+          reason: initiatorReason,
+          type: "task",
+        }),
+        this.deps.dispatchService.dispatchTask({
+          task: counterpartyTask,
+          agentId: neg.counterparty_agent_id,
+          intent: buildIntent(
+            { id: counterpartyTask.id, title: counterpartyTask.title, description: counterpartyTask.description },
+            counterpartyReason,
+          ),
+          reason: counterpartyReason,
+          type: "task",
+        }),
+      ]);
+    }
+
     const finalEsc = await this.deps.escalationRepo.findById(esc.id);
     return {
       escalation: finalEsc!,
-      initiatorTaskId,
+      initiatorTaskId: initiatorTask.id,
       counterpartyTaskId: counterpartyTask.id,
     };
   }

@@ -99,6 +99,26 @@ export class PostgresSessionRepository implements SessionRepository {
     return rows[0] ? rowToSession(rows[0]) : undefined;
   }
 
+  async claimNextForServerFallback(): Promise<Session | undefined> {
+    const { rows } = await this.pool.query<SessionRow>(
+      `WITH candidate AS (
+         SELECT id FROM session
+           WHERE runtime_id IS NULL
+             AND status = 'pending'
+           ORDER BY created_at ASC
+           FOR UPDATE SKIP LOCKED
+           LIMIT 1
+       )
+       UPDATE session
+          SET status = 'running',
+              started_at = COALESCE(started_at, now())
+         FROM candidate
+        WHERE session.id = candidate.id
+        RETURNING session.*`,
+    );
+    return rows[0] ? rowToSession(rows[0]) : undefined;
+  }
+
   async countOwnedByDaemon(
     daemonId: string,
     sessionIds: string[],

@@ -21,6 +21,7 @@ import type { Pool } from "@beevibe/core/adapters/postgres";
 import { sessionId as makeBeevibeSid } from "@beevibe/core";
 import type { TaskService } from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
+import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { MeshServer } from "../mesh/server.js";
 import { assembleTools } from "../tools/assemble.js";
 import { buildInstructions } from "../tools/instructions.js";
@@ -38,6 +39,7 @@ export interface McpRouterDeps {
   workProductRepo: WorkProductRepository;
   taskService: TaskService;
   escalationService: EscalationService;
+  dispatchService: DispatchService;
   mesh: MeshServer;
   pool: Pool;
   makeMemoryAgent: (agentId: string) => MemoryAgent;
@@ -215,6 +217,7 @@ async function handleMcpRequest(
       workProductRepo: deps.workProductRepo,
       taskService: deps.taskService,
       escalationService: deps.escalationService,
+      dispatchService: deps.dispatchService,
       mesh: deps.mesh,
       pool: deps.pool,
       memoryAgent,
