@@ -7,6 +7,7 @@ import {
   PostgresNegotiationRepository,
   PostgresNegotiationRoundRepository,
   PostgresPersonRepository,
+  PostgresSessionEventRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
   PostgresWorkProductRepository,
@@ -93,6 +94,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const agentRepo = new PostgresAgentRepository(pool);
   const personRepo = new PostgresPersonRepository(pool);
   const sessionRepo = new PostgresSessionRepository(pool);
+  const sessionEventRepo = new PostgresSessionEventRepository(pool);
   const taskRepo = new PostgresTaskRepository(pool);
   const workProductRepo = new PostgresWorkProductRepository(pool);
   const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
@@ -157,6 +159,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const mesh = new MeshServer({
     agentRepo,
     sessionRepo,
+    sessionEventRepo,
     negotiationRepo,
     negotiationRoundRepo,
     workspaceManager,

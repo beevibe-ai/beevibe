@@ -46,7 +46,7 @@ describe("PostgresAgentRepository", () => {
     expect(created.parent_agent_id).toBeUndefined();
     expect(created.api_key).toBeUndefined();
     expect(created.review_policy).toBeUndefined();
-    expect(created.runtime_config.type).toBe("claude-code");
+    expect(created.runtime_config.type).toBe("claude");
 
     const found = await agents.findById(id);
     expect(found).toEqual(created);
@@ -152,7 +152,7 @@ describe("PostgresAgentRepository", () => {
 
   it("update runtime_config JSONB round-trips the object", async () => {
     const a = await agents.create(newAgent());
-    const newConfig = { type: "claude-code" as const, model: "claude-sonnet-4-6", max_turns: 12 };
+    const newConfig = { type: "claude" as const, model: "claude-sonnet-4-6", max_turns: 12 };
     const updated = await agents.update(a.id, { runtime_config: newConfig });
     expect(updated.runtime_config.model).toBe("claude-sonnet-4-6");
     expect(updated.runtime_config.max_turns).toBe(12);

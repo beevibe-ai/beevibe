@@ -20,7 +20,7 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
     owner_id: "person_owner",
     hierarchy_level: "ic",
     api_key: "bv_a_k",
-    runtime_config: { type: "claude-code" },
+    runtime_config: { type: "claude" },
     created_at: new Date(),
     updated_at: new Date(),
     ...overrides,
@@ -74,7 +74,7 @@ beforeEach(() => {
     update: vi.fn(),
   };
   fakeRuntime = {
-    type: "claude-code",
+    type: "claude",
     execute: vi.fn(),
     healthCheck: vi.fn(),
     shutdown: vi.fn(),
@@ -105,7 +105,7 @@ describe("createTaskDispatcher (M6.5 ResumeReason)", () => {
   it("resolves runtime via registry keyed by agent.runtime_config.type", async () => {
     const codexRuntime = { ...fakeRuntime, type: "codex" } as AgentRuntime;
     const registry: RuntimeRegistry = {
-      "claude-code": fakeRuntime,
+      "claude": fakeRuntime,
       codex: codexRuntime,
     };
 
@@ -127,7 +127,7 @@ describe("createTaskDispatcher (M6.5 ResumeReason)", () => {
   });
 
   it("throws 'Unsupported runtime: X' when agent's runtime type is not registered", async () => {
-    const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
+    const registry: RuntimeRegistry = { "claude": fakeRuntime };
     const dispatch = createTaskDispatcher({
       agentRepo,
       sessionRepo,
@@ -141,7 +141,7 @@ describe("createTaskDispatcher (M6.5 ResumeReason)", () => {
   });
 
   it("builds MemoryAgent with agent.id", async () => {
-    const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
+    const registry: RuntimeRegistry = { "claude": fakeRuntime };
     const makeMemoryAgent = memAgentFactory();
     const dispatch = createTaskDispatcher({
       agentRepo,
@@ -155,7 +155,7 @@ describe("createTaskDispatcher (M6.5 ResumeReason)", () => {
 
   it("propagates onSessionComplete dep into AgentSession", async () => {
     const onSessionComplete = vi.fn().mockResolvedValue(undefined);
-    const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
+    const registry: RuntimeRegistry = { "claude": fakeRuntime };
     const dispatch = createTaskDispatcher({
       agentRepo,
       sessionRepo,
@@ -174,7 +174,7 @@ describe("createTaskDispatcher (M6.5 ResumeReason)", () => {
   });
 
   it("fresh task (no prior session, no next_dispatch_context): reason=fresh, no priorSessionId, full body in envelope", async () => {
-    const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
+    const registry: RuntimeRegistry = { "claude": fakeRuntime };
     const dispatch = createTaskDispatcher({
       agentRepo,
       sessionRepo,
@@ -199,7 +199,7 @@ describe("createTaskDispatcher (M6.5 ResumeReason)", () => {
   });
 
   it("fresh task with no description: just title in envelope", async () => {
-    const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
+    const registry: RuntimeRegistry = { "claude": fakeRuntime };
     const dispatch = createTaskDispatcher({
       agentRepo,
       sessionRepo,
@@ -227,7 +227,7 @@ describe("createTaskDispatcher (M6.5 ResumeReason)", () => {
       created_at: new Date(),
     } as unknown as Session);
 
-    const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
+    const registry: RuntimeRegistry = { "claude": fakeRuntime };
     const dispatch = createTaskDispatcher({
       agentRepo,
       sessionRepo,
@@ -256,7 +256,7 @@ describe("createTaskDispatcher (M6.5 ResumeReason)", () => {
       created_at: new Date(),
     } as unknown as Session);
 
-    const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
+    const registry: RuntimeRegistry = { "claude": fakeRuntime };
     const dispatch = createTaskDispatcher({
       agentRepo,
       sessionRepo,
@@ -284,7 +284,7 @@ describe("createTaskDispatcher (M6.5 ResumeReason)", () => {
       created_at: new Date(),
     } as unknown as Session);
 
-    const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
+    const registry: RuntimeRegistry = { "claude": fakeRuntime };
     const dispatch = createTaskDispatcher({
       agentRepo,
       sessionRepo,
@@ -316,7 +316,7 @@ describe("createTaskDispatcher (M6.5 ResumeReason)", () => {
   });
 
   it("revision (parent_agent + blocked): post-blocker preamble + reviser_agent_id in context", async () => {
-    const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
+    const registry: RuntimeRegistry = { "claude": fakeRuntime };
     const dispatch = createTaskDispatcher({
       agentRepo,
       sessionRepo,
@@ -348,7 +348,7 @@ describe("createTaskDispatcher (M6.5 ResumeReason)", () => {
   });
 
   it("post_escalation initiator: explicit prior_session_id + post-escalation context", async () => {
-    const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
+    const registry: RuntimeRegistry = { "claude": fakeRuntime };
     const dispatch = createTaskDispatcher({
       agentRepo,
       sessionRepo,
@@ -388,7 +388,7 @@ describe("createTaskDispatcher (M6.5 ResumeReason)", () => {
     // is what enables --resume to S_B.
     vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue(undefined);
 
-    const registry: RuntimeRegistry = { "claude-code": fakeRuntime };
+    const registry: RuntimeRegistry = { "claude": fakeRuntime };
     const dispatch = createTaskDispatcher({
       agentRepo,
       sessionRepo,

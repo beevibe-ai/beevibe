@@ -10,7 +10,7 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
     name: "Test",
     owner_id: "person_1",
     hierarchy_level: "team",
-    runtime_config: { type: "claude-code", model: "claude-opus-4-7" },
+    runtime_config: { type: "claude", model: "claude-opus-4-7" },
     created_at: new Date(),
     updated_at: new Date(),
     ...overrides,

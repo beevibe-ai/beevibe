@@ -8,6 +8,7 @@ import type {
   Workspace,
 } from "../ports/runtime.js";
 import type { SessionRepository } from "../ports/session-repo.js";
+import type { SessionEventRepository } from "../ports/session-event-repo.js";
 import {
   AgentSession,
   type AgentSessionDeps,
@@ -25,7 +26,7 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
     name: "A",
     owner_id: "person_1",
     hierarchy_level: "ic",
-    runtime_config: { type: "claude-code", model: "claude-opus-4-7" },
+    runtime_config: { type: "claude", model: "claude-opus-4-7" },
     created_at: new Date(),
     updated_at: new Date(),
     ...overrides,
@@ -58,6 +59,7 @@ function makeRuntimeResult(overrides: Partial<RuntimeResult> = {}): RuntimeResul
 
 let agentRepo: AgentRepository;
 let sessionRepo: SessionRepository;
+let sessionEventRepo: SessionEventRepository;
 let runtime: AgentRuntime;
 let memoryAgent: MemoryAgent;
 let service: AgentSession;
@@ -85,6 +87,16 @@ beforeEach(() => {
     create: vi.fn(),
     update: vi.fn(),
   };
+  sessionEventRepo = {
+    append: vi.fn<SessionEventRepository["append"]>().mockResolvedValue({
+      id: "evt_test",
+      session_id: "sess_test",
+      kind: "tool_call",
+      content: "",
+      created_at: new Date(),
+    }),
+    listBySession: vi.fn<SessionEventRepository["listBySession"]>().mockResolvedValue([]),
+  };
   runtime = {
     type: "fake",
     execute: vi.fn(),
@@ -97,7 +109,7 @@ beforeEach(() => {
     // Default to a resolved promise so the fire-and-forget .catch() has something to chain.
     onTaskComplete: vi.fn<MemoryAgent["onTaskComplete"]>().mockResolvedValue(),
   };
-  service = new AgentSession({ agentRepo, sessionRepo, runtime, memoryAgent });
+  service = new AgentSession({ agentRepo, sessionRepo, sessionEventRepo, runtime, memoryAgent });
 });
 
 describe("AgentSession.run", () => {
@@ -105,7 +117,7 @@ describe("AgentSession.run", () => {
     vi.mocked(agentRepo.findById).mockResolvedValue(
       makeAgent({
         runtime_config: {
-          type: "claude-code",
+          type: "claude",
           model: "claude-opus-4-7",
           system_prompt_addition: "Follow the house style.",
         },
@@ -247,7 +259,7 @@ describe("AgentSession.run", () => {
     vi.mocked(agentRepo.findById).mockResolvedValue(
       makeAgent({
         runtime_config: {
-          type: "claude-code",
+          type: "claude",
           model: "claude-haiku-4-5",
           max_turns: 7,
         },
@@ -372,6 +384,7 @@ describe("AgentSession.run", () => {
     const svc = new AgentSession({
       agentRepo,
       sessionRepo,
+      sessionEventRepo,
       runtime,
       memoryAgent,
       onSessionComplete,
@@ -396,6 +409,7 @@ describe("AgentSession.run", () => {
     const svc = new AgentSession({
       agentRepo,
       sessionRepo,
+      sessionEventRepo,
       runtime,
       memoryAgent,
       onSessionComplete,
@@ -424,6 +438,7 @@ describe("AgentSession.run", () => {
     const svc = new AgentSession({
       agentRepo,
       sessionRepo,
+      sessionEventRepo,
       runtime,
       memoryAgent,
       onSessionComplete,

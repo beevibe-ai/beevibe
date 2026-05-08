@@ -3,6 +3,7 @@ import type {
   AgentRepository,
   RuntimeRegistry,
   Session,
+  SessionEventRepository,
   SessionRepository,
   Task,
   Workspace,
@@ -20,6 +21,7 @@ export type MakeMemoryAgent = (agentId: string) => MemoryAgent;
 export interface DispatchDeps {
   agentRepo: AgentRepository;
   sessionRepo: SessionRepository;
+  sessionEventRepo: SessionEventRepository;
   /**
    * Keyed by `agent.runtime_config.type`. Built via
    * `createDefaultRuntimeRegistry` in bootstrap; tests inject a fake map.
@@ -79,6 +81,7 @@ export function createTaskDispatcher(deps: DispatchDeps): TaskDispatcher {
     const agentSession = new AgentSession({
       agentRepo: deps.agentRepo,
       sessionRepo: deps.sessionRepo,
+      sessionEventRepo: deps.sessionEventRepo,
       runtime,
       memoryAgent,
       onSessionComplete: deps.onSessionComplete,

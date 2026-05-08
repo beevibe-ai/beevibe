@@ -54,7 +54,7 @@ ORDER BY
 `;
 
 function rowToAgentDisplay(row: AgentRow): AgentDisplay {
-  const runtime = (row.runtime_config?.model as string | undefined) ?? "claude-code";
+  const runtime = (row.runtime_config?.model as string | undefined) ?? "claude";
   return {
     id: row.id,
     name: row.name,

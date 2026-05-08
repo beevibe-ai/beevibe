@@ -4,8 +4,8 @@ import { createDefaultRuntimeRegistry } from "./runtime-registry.js";
 describe("createDefaultRuntimeRegistry", () => {
   it("registers claude-code", () => {
     const registry = createDefaultRuntimeRegistry();
-    expect(registry["claude-code"]).toBeDefined();
-    expect(registry["claude-code"]!.type).toBe("claude-code");
+    expect(registry["claude"]).toBeDefined();
+    expect(registry["claude"]!.type).toBe("claude");
   });
 
   it("every registry value's .type matches its registry key (sanity check against typos)", () => {

@@ -20,6 +20,7 @@ export { PostgresSessionRepository } from "./session-repo.js";
 export { PostgresWorkProductRepository } from "./work-product-repo.js";
 export { PostgresMemoryFactRepository } from "./memory-fact-repo.js";
 export { PostgresMemoryPromotionEventRepository } from "./promotion-event-repo.js";
+export { PostgresSessionEventRepository } from "./session-event-repo.js";
 export {
   PostgresNegotiationRepository,
   PostgresNegotiationRoundRepository,

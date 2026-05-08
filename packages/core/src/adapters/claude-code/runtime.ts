@@ -9,7 +9,7 @@ import type {
 } from "../../ports/runtime.js";
 import { runCliProcess } from "./spawn.js";
 import {
-  extractStepEvent,
+  extractStepEvents,
   parseClaudeMessages,
   parseStreamJsonLine,
   type StreamJsonMessage,
@@ -64,7 +64,7 @@ const ANTHROPIC_AUTH_VARS = [
 ] as const;
 
 export class ClaudeCodeRuntime implements AgentRuntime {
-  readonly type = "claude-code";
+  readonly type = "claude";
 
   constructor(private config: ClaudeCodeRuntimeConfig = {}) {}
 
@@ -107,8 +107,9 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       if (!msg) return;
       messages.push(msg);
       if (context.onStep) {
-        const step = extractStepEvent(msg);
-        if (step) context.onStep(step);
+        for (const step of extractStepEvents(msg)) {
+          context.onStep(step);
+        }
       }
     };
 

@@ -55,7 +55,7 @@ describe("provisionAgent", () => {
         name: "Provisioned",
         owner_id: "person_1",
         hierarchy_level: "ic",
-        runtime_config: { type: "claude-code", model: "claude-opus-4-7" },
+        runtime_config: { type: "claude", model: "claude-opus-4-7" },
       },
     );
 
@@ -76,7 +76,7 @@ describe("provisionAgent", () => {
       name: "X",
       owner_id: "person_1",
       hierarchy_level: "ic",
-      runtime_config: { type: "claude-code", model: "claude-opus-4-7" },
+      runtime_config: { type: "claude", model: "claude-opus-4-7" },
       api_key: "bv_a_abc",
       created_at: new Date(),
       updated_at: new Date(),
@@ -91,7 +91,7 @@ describe("provisionAgent", () => {
           name: "X",
           owner_id: "person_1",
           hierarchy_level: "ic",
-          runtime_config: { type: "claude-code", model: "claude-opus-4-7" },
+          runtime_config: { type: "claude", model: "claude-opus-4-7" },
         },
       ),
     ).rejects.toThrow(/block init failed/);

@@ -159,6 +159,19 @@ The api and executor are independent processes. They never talk to each other ov
 
 That decoupling means you can scale the executor horizontally (run as many replicas as you want — task claims are atomic) and restart either side independently.
 
+### v1 single-instance API constraint
+
+The mesh resolver (`packages/api/src/mesh/server.ts:90`) and the
+forthcoming chat / room resolvers are in-process `Map`s — when an agent's
+`ask` fires, the API holds the HTTP request open and resolves it from
+that map when the target's `respond_ask` lands. **Both halves of the
+round-trip must hit the same API process** for v1; a multi-instance API
+fronted by a load balancer can drop responses on the floor when the two
+HTTP requests land on different replicas. Documented in code; tracked
+for cross-instance federation via `pg_notify` as a follow-up. **Self-hosters
+should run a single API replica until that ships.** The executor (and
+the local-runtime daemon when it lands) can scale horizontally either way.
+
 ## Common commands
 
 ```bash

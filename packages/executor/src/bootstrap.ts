@@ -4,6 +4,7 @@ import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
   PostgresMemoryFactRepository,
+  PostgresSessionEventRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
   PostgresWorkProductRepository,
@@ -76,6 +77,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const agentRepo = new PostgresAgentRepository(pool);
   const taskRepo = new PostgresTaskRepository(pool);
   const sessionRepo = new PostgresSessionRepository(pool);
+  const sessionEventRepo = new PostgresSessionEventRepository(pool);
   const workProductRepo = new PostgresWorkProductRepository(pool);
   const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
   const memoryFactRepo = new PostgresMemoryFactRepository(pool);
@@ -117,6 +119,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const onSessionComplete = buildPostDispatchHook({
     agentRepo,
     sessionRepo,
+    sessionEventRepo,
     taskRepo,
     taskService,
     runtimeRegistry,
@@ -128,6 +131,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const dispatchTask = createTaskDispatcher({
     agentRepo,
     sessionRepo,
+    sessionEventRepo,
     runtimeRegistry,
     makeMemoryAgent,
     onSessionComplete,

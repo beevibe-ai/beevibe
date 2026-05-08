@@ -32,7 +32,10 @@
 
 import type {
   AgentRepository,
+  NegotiationRepository,
+  NegotiationRoundRepository,
   RuntimeRegistry,
+  SessionEventRepository,
   SessionRepository,
   WorkspaceManager,
 } from "@beevibe/core";
@@ -40,10 +43,6 @@ import {
   negotiationId as makeNegId,
   negotiationRoundId as makeRoundId,
   sessionId as makeSessionId,
-} from "@beevibe/core";
-import type {
-  NegotiationRepository,
-  NegotiationRoundRepository,
 } from "@beevibe/core";
 import {
   AgentSession,
@@ -70,6 +69,7 @@ const MESH_SESSION_TYPES = ["mesh_ask", "mesh_negotiate", "blocker"] as const;
 export interface MeshServerDeps {
   agentRepo: AgentRepository;
   sessionRepo: SessionRepository;
+  sessionEventRepo: SessionEventRepository;
   negotiationRepo: NegotiationRepository;
   negotiationRoundRepo: NegotiationRoundRepository;
   workspaceManager: WorkspaceManager;
@@ -454,6 +454,7 @@ export class MeshServer {
     const agentSessionDeps: AgentSessionDeps = {
       agentRepo: this.deps.agentRepo,
       sessionRepo: this.deps.sessionRepo,
+      sessionEventRepo: this.deps.sessionEventRepo,
       runtime,
       memoryAgent,
     };

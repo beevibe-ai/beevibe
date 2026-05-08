@@ -49,8 +49,8 @@ describe("isProcessAlive", () => {
 // manager touches during these tests; everything else is mocked at the
 // runtime-execute layer.
 const fakeRuntimeRegistry: RuntimeRegistry = {
-  "claude-code": {
-    type: "claude-code",
+  "claude": {
+    type: "claude",
     skillsDir: (workspace: Workspace) => join(workspace.path, ".claude", "skills"),
   } as unknown as AgentRuntime,
 };

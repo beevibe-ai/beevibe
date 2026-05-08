@@ -22,6 +22,7 @@ import type {
   WorkProduct,
   FactType,
   MemoryScope,
+  SessionEventKind,
   SessionStatus,
   SessionType,
 } from "@beevibe/core";
@@ -142,7 +143,7 @@ export interface AgentDetail extends AgentDisplay {
 // ── Sessions ────────────────────────────────────────────────────────────────
 
 export interface TranscriptEntry {
-  kind: "agent" | "tool_call" | "tool_result" | "summary";
+  kind: SessionEventKind;
   /** ISO timestamp string. */
   timestamp: string;
   content: string;
