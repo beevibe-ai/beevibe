@@ -6,6 +6,7 @@
  */
 
 import type {
+  HierarchyLevel,
   SessionEventKind,
   SessionStatus,
   SessionType,
@@ -55,6 +56,11 @@ export interface DispatchPayload {
   agent_id: string;
   /** bv_a_ token; goes into mcp-config.json's Authorization header. */
   agent_api_key: string;
+  /**
+   * Daemon-side: drives the tier filter for `<workspace>/.claude/skills/`
+   * sync. Pulled from agent.hierarchy_level at claim time.
+   */
+  agent_hierarchy_level: HierarchyLevel;
   workspace_subdir: string;
   intent: string;
   system_prompt_append: string;
@@ -67,6 +73,28 @@ export interface DispatchPayload {
   type: SessionType;
   /** /mcp endpoint daemon writes into mcp-config.json. */
   mcp_server_url: string;
+}
+
+/* ─── Skills sync ────────────────────────────────────────────────────── */
+
+export interface RuntimeSkillFile {
+  /** Path relative to the skill's directory, e.g. "SKILL.md" or "references/x.md". */
+  path: string;
+  content: string;
+}
+
+export interface RuntimeSkill {
+  name: string;
+  files: RuntimeSkillFile[];
+}
+
+export interface RuntimeSkillsResponse {
+  /**
+   * SHA-256 hex digest of all skill file contents. Daemons can short-
+   * circuit re-download when the version matches their local cache.
+   */
+  version: string;
+  skills: RuntimeSkill[];
 }
 
 /* ─── Events (live transcript) ───────────────────────────────────────── */

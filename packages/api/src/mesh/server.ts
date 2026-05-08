@@ -44,10 +44,7 @@ import {
   negotiationRoundId as makeRoundId,
   sessionId as makeSessionId,
 } from "@beevibe/core";
-import {
-  AgentSession,
-  type AgentSessionDeps,
-} from "@beevibe/core/services/agent-session";
+import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 import {
   type AskResponse,
@@ -74,7 +71,15 @@ export interface MeshServerDeps {
   negotiationRoundRepo: NegotiationRoundRepository;
   workspaceManager: WorkspaceManager;
   runtimeRegistry: RuntimeRegistry;
-  /** Per-agent MemoryAgent factory for spawned sessions. */
+  /**
+   * Phase 4: target sessions are dispatched via dispatchService —
+   * pending row inserted, daemon (or executor as null-runtime
+   * fallback) claims and spawns. The pre-mint pattern still works
+   * via `sessionIdOverride` so sendNegotiate can stamp
+   * counterparty_session_id on the negotiation row before the spawn.
+   */
+  dispatchService: DispatchService;
+  /** Per-agent MemoryAgent factory; retained for downstream consumers. */
   makeMemoryAgent: (agentId: string) => MemoryAgent;
 }
 
@@ -421,56 +426,33 @@ export class MeshServer {
   }
 
   /**
-   * Spawn the target agent's CLI session via AgentSession.run. Fire-and-
-   * forget — the calling tool awaits the resolver, not this promise. The
-   * spawn promise's rejection is logged; the session row reflects the
-   * crash via the runtime's session-update path.
+   * Dispatch the target agent's mesh session via dispatchService. The
+   * daemon (or executor as null-runtime fallback) claims the pending
+   * row and spawns. Fire-and-forget — the calling tool awaits the
+   * resolver, not this promise.
    *
-   * The optional `onSessionCreated` callback fires after AgentSession.run
-   * has inserted the session row (so we have the new session id) but
-   * before the CLI exits. Used by sendNegotiate to stamp counterparty_
-   * session_id on the negotiation row.
+   * `sessionId` (when provided) is stamped on the row via
+   * `sessionIdOverride` so sendNegotiate can persist
+   * `counterparty_session_id` on the negotiation row before the spawn
+   * actually starts.
    */
   private async spawnTargetSession(opts: {
     targetAgentId: string;
     type: "mesh_ask" | "mesh_negotiate" | "blocker";
     intent: string;
-    /** Optional pre-generated sid (used by sendNegotiate). */
     sessionId?: string;
   }): Promise<void> {
-    const agent = await this.deps.agentRepo.findById(opts.targetAgentId);
-    if (!agent) {
-      throw new Error(`target agent not found: ${opts.targetAgentId}`);
-    }
-
-    const runtime = this.deps.runtimeRegistry[agent.runtime_config.type];
-    if (!runtime) {
-      throw new Error(`unsupported runtime: ${agent.runtime_config.type}`);
-    }
-
-    const workspace = await this.deps.workspaceManager.ensureWorkspace({ agent });
-
-    const memoryAgent = this.deps.makeMemoryAgent(agent.id);
-    const agentSessionDeps: AgentSessionDeps = {
-      agentRepo: this.deps.agentRepo,
-      sessionRepo: this.deps.sessionRepo,
-      sessionEventRepo: this.deps.sessionEventRepo,
-      runtime,
-      memoryAgent,
-    };
-    const agentSession = new AgentSession(agentSessionDeps);
-
-    void agentSession
-      .run({
-        agentId: agent.id,
-        sessionId: opts.sessionId,
+    void this.deps.dispatchService
+      .dispatchTask({
+        agentId: opts.targetAgentId,
         intent: opts.intent,
-        workspace,
+        reason: { kind: "fresh" },
         type: opts.type,
+        sessionIdOverride: opts.sessionId,
       })
       .catch((err: unknown) => {
         console.error(
-          `[mesh] spawn for ${agent.id} (${opts.type}) failed:`,
+          `[mesh] dispatch for ${opts.targetAgentId} (${opts.type}) failed:`,
           err instanceof Error ? err.message : err,
         );
       });

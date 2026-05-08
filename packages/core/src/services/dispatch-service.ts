@@ -52,6 +52,12 @@ export interface DispatchInput {
    * binding.
    */
   runtimeIdOverride?: string;
+  /**
+   * Pre-generated session id. Used by `MeshServer.sendNegotiate` which
+   * needs B's session id BEFORE the spawn so it can stamp
+   * counterparty_session_id on the negotiation row.
+   */
+  sessionIdOverride?: string;
 }
 
 export interface DispatchResult {
@@ -80,7 +86,7 @@ export class DispatchService {
     const runtime_id = resolveRuntimeId(input, agent, prior?.runtime_id);
 
     const session = await this.deps.sessionRepo.create({
-      id: newSessionId(),
+      id: input.sessionIdOverride ?? newSessionId(),
       agent_id: input.agentId,
       task_id: input.task?.id,
       prior_session_id: priorSessionId,

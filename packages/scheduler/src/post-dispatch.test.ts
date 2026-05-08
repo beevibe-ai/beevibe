@@ -4,16 +4,13 @@ import type {
   SessionRepository,
   Task,
   TaskRepository,
-  Workspace,
 } from "@beevibe/core";
-import type { AgentSession } from "@beevibe/core/services/agent-session";
+import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { TaskService } from "@beevibe/core/services/task-service";
 import {
   NUDGE_COMPLETION_MARKER,
   postDispatchCheck,
 } from "./post-dispatch.js";
-
-const WORKSPACE: Workspace = { path: "/tmp/ws" };
 
 function makeTask(overrides: Partial<Task> = {}): Task {
   return {
@@ -44,7 +41,7 @@ function makeSession(overrides: Partial<Session> = {}): Session {
 
 let taskRepo: TaskRepository;
 let taskService: TaskService;
-let agentSession: AgentSession;
+let dispatchService: DispatchService;
 let sessionRepo: SessionRepository;
 
 beforeEach(() => {
@@ -68,9 +65,12 @@ beforeEach(() => {
   taskService = {
     checkAndCompleteParent: vi.fn(),
   } as unknown as TaskService;
-  agentSession = {
-    run: vi.fn(),
-  } as unknown as AgentSession;
+  dispatchService = {
+    dispatchTask: vi.fn().mockResolvedValue({
+      session: makeSession({ id: "sess_retry" }),
+      runtime_id: null,
+    }),
+  } as unknown as DispatchService;
   sessionRepo = {
     findById: vi.fn(),
     findLatestForTask: vi.fn(),
@@ -80,9 +80,7 @@ beforeEach(() => {
     listRunningWithPid: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
-  };
-  // Default: the session under check IS the latest. Override per-test for
-  // the stale-dispatch scenario.
+  } as unknown as SessionRepository;
   vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue({
     id: "sess_orig",
   } as unknown as Session);
@@ -92,78 +90,70 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-/**
- * Drive the 2_000ms grace timer + the awaited downstream chain.
- * `vi.advanceTimersByTimeAsync` runs queued microtasks between ticks so
- * `findById` etc. resolve before the next assertion.
- */
+const GRACE_MS = 2_000;
+const RETRY_WAIT_MS = GRACE_MS * 30;
+
 async function advanceGrace(): Promise<void> {
-  await vi.advanceTimersByTimeAsync(2_000);
+  await vi.advanceTimersByTimeAsync(GRACE_MS);
 }
 
-describe("postDispatchCheck", () => {
-  it("agent set terminal status → calls checkAndCompleteParent and returns", async () => {
-    vi.mocked(taskRepo.findById).mockResolvedValue(
-      makeTask({ status: "done" }),
-    );
+async function advanceRetryWait(): Promise<void> {
+  await vi.advanceTimersByTimeAsync(RETRY_WAIT_MS);
+}
 
-    const promise = postDispatchCheck(
-      { taskRepo, taskService, agentSession, sessionRepo },
+describe("postDispatchCheck (Phase 4 — dispatchService retry)", () => {
+  it("agent set terminal status → calls checkAndCompleteParent and returns", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "done" }));
+
+    const p = postDispatchCheck(
+      { taskRepo, taskService, dispatchService, sessionRepo },
       "task_t",
       "agent_a",
-      WORKSPACE,
       makeSession(),
     );
     await advanceGrace();
-    await promise;
+    await p;
 
     expect(taskService.checkAndCompleteParent).toHaveBeenCalledWith("task_t");
-    expect(taskRepo.countChildrenNotComplete).not.toHaveBeenCalled();
-    expect(agentSession.run).not.toHaveBeenCalled();
+    expect(dispatchService.dispatchTask).not.toHaveBeenCalled();
   });
 
-  it("task deleted between session-end and grace-window → no-op", async () => {
+  it("task deleted before grace → no-op", async () => {
     vi.mocked(taskRepo.findById).mockResolvedValue(undefined);
 
-    const promise = postDispatchCheck(
-      { taskRepo, taskService, agentSession, sessionRepo },
+    const p = postDispatchCheck(
+      { taskRepo, taskService, dispatchService, sessionRepo },
       "task_t",
       "agent_a",
-      WORKSPACE,
       makeSession(),
     );
     await advanceGrace();
-    await promise;
+    await p;
 
+    expect(dispatchService.dispatchTask).not.toHaveBeenCalled();
     expect(taskService.checkAndCompleteParent).not.toHaveBeenCalled();
-    expect(agentSession.run).not.toHaveBeenCalled();
   });
 
-  it("still in_progress with non-terminal children → no-op (parent waiting on children)", async () => {
+  it("still in_progress with non-terminal children → no-op", async () => {
     vi.mocked(taskRepo.findById).mockResolvedValue(
       makeTask({ status: "in_progress" }),
     );
     vi.mocked(taskRepo.countChildrenNotComplete).mockResolvedValue(2);
 
-    const promise = postDispatchCheck(
-      { taskRepo, taskService, agentSession, sessionRepo },
+    const p = postDispatchCheck(
+      { taskRepo, taskService, dispatchService, sessionRepo },
       "task_t",
       "agent_a",
-      WORKSPACE,
       makeSession(),
     );
     await advanceGrace();
-    await promise;
+    await p;
 
-    expect(taskRepo.countChildrenNotComplete).toHaveBeenCalledWith("task_t");
-    // childNotComplete > 0 → no retry / no rollup; both child counts fire
-    // in parallel so countChildren is also called (cheap), but neither
-    // downstream side-effect runs.
-    expect(agentSession.run).not.toHaveBeenCalled();
+    expect(dispatchService.dispatchTask).not.toHaveBeenCalled();
     expect(taskService.checkAndCompleteParent).not.toHaveBeenCalled();
   });
 
-  it("still in_progress with all-terminal children → log warning + checkAndCompleteParent (mixed-outcome rollup)", async () => {
+  it("still in_progress with all-terminal children → log warning + checkAndCompleteParent", async () => {
     vi.mocked(taskRepo.findById).mockResolvedValue(
       makeTask({ status: "in_progress" }),
     );
@@ -171,15 +161,14 @@ describe("postDispatchCheck", () => {
     vi.mocked(taskRepo.countChildren).mockResolvedValue(3);
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
-    const promise = postDispatchCheck(
-      { taskRepo, taskService, agentSession, sessionRepo },
+    const p = postDispatchCheck(
+      { taskRepo, taskService, dispatchService, sessionRepo },
       "task_t",
       "agent_a",
-      WORKSPACE,
       makeSession(),
     );
     await advanceGrace();
-    await promise;
+    await p;
 
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining(
@@ -187,71 +176,58 @@ describe("postDispatchCheck", () => {
       ),
     );
     expect(taskService.checkAndCompleteParent).toHaveBeenCalledWith("task_t");
-    expect(agentSession.run).not.toHaveBeenCalled();
+    expect(dispatchService.dispatchTask).not.toHaveBeenCalled();
     warnSpy.mockRestore();
   });
 
-  it("leaf, agent forgot update_progress → retry once with nudge intent and skipOnComplete=true", async () => {
+  it("leaf, agent forgot update_progress → dispatch crash_recovery retry pinned to prior session", async () => {
     vi.mocked(taskRepo.findById)
       .mockResolvedValueOnce(makeTask({ status: "in_progress" })) // initial check
-      .mockResolvedValueOnce(makeTask({ status: "done" })); // after retry
+      .mockResolvedValueOnce(makeTask({ status: "done" })); // after retry settles
     vi.mocked(taskRepo.countChildrenNotComplete).mockResolvedValue(0);
     vi.mocked(taskRepo.countChildren).mockResolvedValue(0);
-    vi.mocked(agentSession.run).mockResolvedValue({
-      id: "sess_retry",
-      agent_id: "agent_a",
-      type: "task",
-      status: "succeeded",
-      intent: "x",
-      created_at: new Date(),
-    } as unknown as Session);
 
-    const promise = postDispatchCheck(
-      { taskRepo, taskService, agentSession, sessionRepo },
+    const p = postDispatchCheck(
+      { taskRepo, taskService, dispatchService, sessionRepo },
       "task_t",
       "agent_a",
-      WORKSPACE,
       makeSession({ id: "sess_orig" }),
     );
     await advanceGrace();
-    await promise;
+    await advanceRetryWait();
+    await p;
 
-    expect(agentSession.run).toHaveBeenCalledTimes(1);
-    const runArg = vi.mocked(agentSession.run).mock.calls[0]![0];
-    expect(runArg.agentId).toBe("agent_a");
-    expect(runArg.taskId).toBe("task_t");
-    expect(runArg.priorSessionId).toBe("sess_orig");
-    expect(runArg.skipOnComplete).toBe(true);
-    expect(runArg.intent).toContain(NUDGE_COMPLETION_MARKER);
-    expect(runArg.intent).toContain('<task id="task_t"/>');
-    // Retry succeeded → status now terminal → no failed update.
+    expect(dispatchService.dispatchTask).toHaveBeenCalledTimes(1);
+    const arg = vi.mocked(dispatchService.dispatchTask).mock.calls[0]![0];
+    expect(arg.agentId).toBe("agent_a");
+    expect(arg.task?.id).toBe("task_t");
+    expect(arg.type).toBe("task");
+    expect(arg.intent).toContain(NUDGE_COMPLETION_MARKER);
+    expect(arg.intent).toContain('<task id="task_t"/>');
+    expect(arg.reason.kind).toBe("crash_recovery");
+    expect(
+      arg.reason.kind === "crash_recovery" ? arg.reason.prior_session_id : undefined,
+    ).toBe("sess_orig");
+    // Retry settled to terminal status → no failed update.
     expect(taskRepo.update).not.toHaveBeenCalled();
   });
 
-  it("retry also exits without setting terminal status → mark task failed", async () => {
+  it("retry also exits without terminal status → mark task failed", async () => {
     vi.mocked(taskRepo.findById)
       .mockResolvedValueOnce(makeTask({ status: "in_progress" })) // initial
       .mockResolvedValueOnce(makeTask({ status: "in_progress" })); // after retry
     vi.mocked(taskRepo.countChildrenNotComplete).mockResolvedValue(0);
     vi.mocked(taskRepo.countChildren).mockResolvedValue(0);
-    vi.mocked(agentSession.run).mockResolvedValue({
-      id: "sess_retry",
-      agent_id: "agent_a",
-      type: "task",
-      status: "succeeded",
-      intent: "x",
-      created_at: new Date(),
-    } as unknown as Session);
 
-    const promise = postDispatchCheck(
-      { taskRepo, taskService, agentSession, sessionRepo },
+    const p = postDispatchCheck(
+      { taskRepo, taskService, dispatchService, sessionRepo },
       "task_t",
       "agent_a",
-      WORKSPACE,
       makeSession(),
     );
     await advanceGrace();
-    await promise;
+    await advanceRetryWait();
+    await p;
 
     expect(taskRepo.update).toHaveBeenCalledWith("task_t", {
       status: "failed",
@@ -261,12 +237,7 @@ describe("postDispatchCheck", () => {
     });
   });
 
-  it("stale-dispatch guard: newer session for same task → skip retry (avoids racing the worker's re-dispatch)", async () => {
-    // Scenario: first session terminates, e2e (or a human) flips task to
-    // needs_revision, worker picks it up and dispatches a second session
-    // before this post-dispatch wakes from its grace sleep. By the time
-    // we check, findLatestForTask returns the SECOND session — this
-    // post-dispatch is stale and must not retry.
+  it("stale-dispatch guard: newer session for same task → skip retry", async () => {
     vi.mocked(taskRepo.findById).mockResolvedValue(
       makeTask({ status: "revision" }),
     );
@@ -274,46 +245,37 @@ describe("postDispatchCheck", () => {
       id: "sess_newer",
     } as unknown as Session);
 
-    const promise = postDispatchCheck(
-      { taskRepo, taskService, agentSession, sessionRepo },
+    const p = postDispatchCheck(
+      { taskRepo, taskService, dispatchService, sessionRepo },
       "task_t",
       "agent_a",
-      WORKSPACE,
       makeSession({ id: "sess_orig" }),
     );
     await advanceGrace();
-    await promise;
+    await p;
 
-    expect(agentSession.run).not.toHaveBeenCalled();
+    expect(dispatchService.dispatchTask).not.toHaveBeenCalled();
     expect(taskRepo.update).not.toHaveBeenCalled();
     expect(taskRepo.countChildrenNotComplete).not.toHaveBeenCalled();
   });
 
-  it("revision-status leaf gets retried just like in_progress (running statuses are equivalent for the gate)", async () => {
+  it("revision-status leaf gets retried just like in_progress", async () => {
     vi.mocked(taskRepo.findById)
       .mockResolvedValueOnce(makeTask({ status: "revision" }))
       .mockResolvedValueOnce(makeTask({ status: "done" }));
     vi.mocked(taskRepo.countChildrenNotComplete).mockResolvedValue(0);
     vi.mocked(taskRepo.countChildren).mockResolvedValue(0);
-    vi.mocked(agentSession.run).mockResolvedValue({
-      id: "sess_retry",
-      agent_id: "agent_a",
-      type: "task",
-      status: "succeeded",
-      intent: "x",
-      created_at: new Date(),
-    } as unknown as Session);
 
-    const promise = postDispatchCheck(
-      { taskRepo, taskService, agentSession, sessionRepo },
+    const p = postDispatchCheck(
+      { taskRepo, taskService, dispatchService, sessionRepo },
       "task_t",
       "agent_a",
-      WORKSPACE,
       makeSession(),
     );
     await advanceGrace();
-    await promise;
+    await advanceRetryWait();
+    await p;
 
-    expect(agentSession.run).toHaveBeenCalledTimes(1);
+    expect(dispatchService.dispatchTask).toHaveBeenCalledTimes(1);
   });
 });

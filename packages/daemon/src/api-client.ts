@@ -14,6 +14,15 @@ export interface ApiClientConfig {
 export class ApiClient {
   constructor(private readonly cfg: ApiClientConfig) {}
 
+  /** GET /runtime/* with Authorization: Bearer <bv_d_token>. */
+  async get<T = unknown>(path: string): Promise<T | undefined> {
+    const res = await fetch(this.url(path), {
+      headers: { authorization: `Bearer ${this.cfg.daemonToken}` },
+    });
+    if (res.status === 204 || res.status >= 400) return undefined;
+    return (await res.json()) as T;
+  }
+
   /** POST /runtime/* with Authorization: Bearer <bv_d_token>. */
   async post<T = unknown>(
     path: string,

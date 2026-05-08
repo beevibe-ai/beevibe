@@ -424,10 +424,13 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         ? body.session_id
         : undefined;
 
-    // Resolve the caller's primary agent. Phase 4 doesn't need the
-    // person row in this handler (onboarding flag was tied to it; that
-    // returns with #63).
-    const agent = await deps.agentRepo.findTopLevelForOwner(req.caller.personId);
+    // Resolve the caller's primary agent + person row in parallel. The
+    // person row carries `onboarding_completed_at` — flipped on the
+    // first successful chat turn so the welcome wizard exits.
+    const [agent, person] = await Promise.all([
+      deps.agentRepo.findTopLevelForOwner(req.caller.personId),
+      deps.personRepo.findById(req.caller.personId),
+    ]);
     if (!agent) {
       res.status(404).json({
         error: "no_primary_agent",
@@ -505,11 +508,26 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
       return;
     }
 
+    const wasOnboarding = !person?.onboarding_completed_at;
     try {
       const session = await deps.chatResolver.register(
         dispatchResult.session.id,
         CHAT_TURN_TIMEOUT_MS,
       );
+
+      // First successful onboarding turn — flip the wizard flag. Fire-
+      // and-forget so a flaky write doesn't fail the chat response.
+      if (wasOnboarding && session.status === "succeeded") {
+        deps.personRepo
+          .update(req.caller.personId, { onboarding_completed_at: new Date() })
+          .catch((err: unknown) =>
+            console.error(
+              "[chat route] onboarding_completed_at flip failed:",
+              err instanceof Error ? err.message : String(err),
+            ),
+          );
+      }
+
       res.json(
         toChatTurnResponse(
           {

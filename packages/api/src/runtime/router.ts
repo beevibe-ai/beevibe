@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { promises as fs } from "node:fs";
+import { join, relative } from "node:path";
 import { Router, type Request, type RequestHandler, type Response } from "express";
 import {
   daemonId as newDaemonId,
@@ -5,6 +8,7 @@ import {
   sessionEventId as newSessionEventId,
   isTerminalSessionStatus,
   type AgentRepository,
+  type PersonRepository,
   type Session,
   type SessionEventRepository,
   type SessionRepository,
@@ -32,12 +36,15 @@ import type {
   RuntimeHeartbeatRequest,
   RuntimeRegisterRequest,
   RuntimeRegisterResponse,
+  RuntimeSkill,
+  RuntimeSkillsResponse,
 } from "./types.js";
 
 export interface RuntimeRouterDeps {
   /** Required on every /runtime/* request. Resolves bv_u_ or bv_d_. */
   authMiddleware: RequestHandler;
   agentRepo: AgentRepository;
+  personRepo: PersonRepository;
   daemonRepo: DaemonRepository;
   runtimeRepo: RuntimeRepository;
   sessionRepo: SessionRepository;
@@ -47,6 +54,14 @@ export interface RuntimeRouterDeps {
   makeMemoryAgent: (agentId: string) => MemoryAgent;
   /** Embedded into mcp-config.json by the daemon when spawning the CLI. */
   mcpServerUrl: string;
+  /**
+   * Path to the canonical skills directory (typically `<repo>/skills`).
+   * Backs the GET /runtime/skills endpoint. The daemon mirrors this dir
+   * to `~/.beevibe/skills/` and feeds its LocalWorkspaceManager so per-
+   * agent tier-filtered sync produces identical workspaces server-side
+   * and daemon-side.
+   */
+  skillsSourceDir: string;
   /** Hook fired after /runtime/done writes terminal state. Wired in M4.6. */
   onSessionComplete?: (session: Session) => void | Promise<void>;
 }
@@ -248,6 +263,17 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
     }
   });
 
+  router.get("/skills", async (req, res) => {
+    if (!requireDaemon(req, res)) return;
+    try {
+      const response = await readSkills(deps.skillsSourceDir);
+      res.status(200).json(response);
+    } catch (err) {
+      console.error("[runtime/skills]", err);
+      res.status(500).json({ error: "skills_read_failed" });
+    }
+  });
+
   return router;
 }
 
@@ -344,13 +370,16 @@ async function composeDispatchPayload(
   if (!agent || !agent.api_key) return null;
 
   const memoryAgent = deps.makeMemoryAgent(agent.id);
-  // Briefing + prior-session lookup are independent — overlap them so the
-  // resume-chain hot path doesn't pay both round-trips serially.
-  const [briefing, priorSession] = await Promise.all([
+  const isChat = session.type === "chat";
+  // Briefing, prior-session, and (for chat) onboarding-state lookups are
+  // independent — overlap them so the resume-chain hot path doesn't pay
+  // all round-trips serially.
+  const [briefing, priorSession, owner] = await Promise.all([
     memoryAgent.prepareBriefing(session.intent),
     session.prior_session_id
       ? deps.sessionRepo.findById(session.prior_session_id)
       : Promise.resolve(undefined),
+    isChat ? deps.personRepo.findById(agent.owner_id) : Promise.resolve(undefined),
   ]);
 
   // Persist briefing snapshot for the session detail page; best-effort.
@@ -367,12 +396,16 @@ async function composeDispatchPayload(
     session_id: session.id,
     agent_id: agent.id,
     agent_api_key: agent.api_key,
+    agent_hierarchy_level: agent.hierarchy_level,
     workspace_subdir: agent.id,
     intent: composeIntent(session.intent, briefing.userMessagePrefix),
     system_prompt_append: composeSystemPromptAppend(
       agent.runtime_config.system_prompt_addition,
       briefing.systemPromptAppend,
-      { appendChatDirectives: session.type === "chat" },
+      {
+        appendChatDirectives: isChat,
+        appendOnboardingDirectives: isChat && !owner?.onboarding_completed_at,
+      },
     ),
     resume_session_id: priorSession?.cli_session_id,
     model: agent.runtime_config.model,
@@ -381,6 +414,71 @@ async function composeDispatchPayload(
     type: session.type,
     mcp_server_url: deps.mcpServerUrl,
   };
+}
+
+/**
+ * Read every skill directory under `sourceDir` and bundle each file's
+ * content into a `RuntimeSkillsResponse`. Daemons receive ALL skills
+ * (not tier-filtered) — the per-agent tier filter runs daemon-side
+ * inside `LocalWorkspaceManager.ensureWorkspace` so a single bundle
+ * serves agents at every tier on the same machine.
+ *
+ * `version` is a stable SHA-256 over (skill name, file path, content)
+ * tuples in lexicographic order; daemons short-circuit re-download
+ * when their cached version matches.
+ */
+async function readSkills(sourceDir: string): Promise<RuntimeSkillsResponse> {
+  const skills: RuntimeSkill[] = [];
+  let dirEntries: import("node:fs").Dirent[];
+  try {
+    dirEntries = await fs.readdir(sourceDir, { withFileTypes: true });
+  } catch (err) {
+    // Skills dir missing → return empty bundle. Daemons sync nothing
+    // and the agent runs without skills (degrades gracefully).
+    if ((err as NodeJS.ErrnoException).code === "ENOENT") {
+      return { version: "empty", skills: [] };
+    }
+    throw err;
+  }
+  for (const dirent of dirEntries.sort((a, b) => a.name.localeCompare(b.name))) {
+    if (!dirent.isDirectory()) continue;
+    const skillDir = join(sourceDir, dirent.name);
+    const files = await readSkillFiles(skillDir);
+    if (files.length === 0) continue;
+    skills.push({ name: dirent.name, files });
+  }
+  const hasher = createHash("sha256");
+  for (const skill of skills) {
+    for (const file of skill.files) {
+      hasher.update(skill.name);
+      hasher.update("\0");
+      hasher.update(file.path);
+      hasher.update("\0");
+      hasher.update(file.content);
+      hasher.update("\0");
+    }
+  }
+  return { version: hasher.digest("hex"), skills };
+}
+
+async function readSkillFiles(
+  skillDir: string,
+): Promise<RuntimeSkillsResponse["skills"][number]["files"]> {
+  const out: RuntimeSkillsResponse["skills"][number]["files"] = [];
+  async function walk(dir: string): Promise<void> {
+    const entries = await fs.readdir(dir, { withFileTypes: true });
+    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+      const abs = join(dir, entry.name);
+      if (entry.isDirectory()) {
+        await walk(abs);
+      } else if (entry.isFile() || entry.isSymbolicLink()) {
+        const content = await fs.readFile(abs, "utf8");
+        out.push({ path: relative(skillDir, abs), content });
+      }
+    }
+  }
+  await walk(skillDir);
+  return out;
 }
 
 /**

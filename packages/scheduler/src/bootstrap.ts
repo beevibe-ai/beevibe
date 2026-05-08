@@ -21,6 +21,7 @@ import {
   createMemoryAgent,
 } from "@beevibe/core/services/memory";
 import { TaskService } from "@beevibe/core/services/task-service";
+import { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { CancelListener } from "./cancel-listener.js";
 import { createTaskDispatcher } from "./dispatch.js";
 import { ExecutorHealthServer, DEFAULT_HEALTH_PORT } from "./health-server.js";
@@ -113,18 +114,24 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     sessionRepo,
   });
 
-  // M6.5: post-dispatch hook fires after every task session terminates. The
-  // hook is fire-and-forget from AgentSession's POV; it runs the parent
-  // rollup + leaf retry-once on missing update_progress.
+  // Phase 4: post-dispatch retry now goes through dispatchService —
+  // the daemon (or in-process executor for null-runtime agents) claims
+  // the retry session and spawns. Inline AgentSession.run is gone from
+  // this path. dispatchService here has no `onSessionInserted` hook
+  // because the scheduler isn't connected to the daemon hub; the
+  // server-side bootstrap wires the hub callback. Polling daemon
+  // wakeup is good enough for retries.
+  const dispatchService = new DispatchService({
+    agentRepo,
+    sessionRepo,
+    taskRepo,
+  });
   const onSessionComplete = buildPostDispatchHook({
     agentRepo,
     sessionRepo,
-    sessionEventRepo,
     taskRepo,
     taskService,
-    runtimeRegistry,
-    workspaceManager,
-    makeMemoryAgent,
+    dispatchService,
   });
 
   // Dispatcher + worker

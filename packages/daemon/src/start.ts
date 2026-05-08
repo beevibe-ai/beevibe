@@ -3,9 +3,12 @@
  * Holds the process until SIGINT/SIGTERM.
  */
 
+import { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
+import { createDefaultRuntimeRegistry } from "@beevibe/core/adapters/runtime-registry";
 import { ApiClient } from "./api-client.js";
 import { Claimer } from "./claimer.js";
 import { loadConfig } from "./config.js";
+import { syncSkillsCache } from "./skills-cache.js";
 import { Supervisor } from "./supervisor.js";
 
 export async function runStart(): Promise<void> {
@@ -20,10 +23,30 @@ export async function runStart(): Promise<void> {
     apiUrl: cfg.api_url,
     daemonToken: cfg.daemon_token,
   });
+
+  // Pull the latest skills bundle into ~/.beevibe/skills before any
+  // workspace sync runs. Per-agent tier filter happens in
+  // LocalWorkspaceManager.ensureWorkspace.
+  const skillsSourceDir = await syncSkillsCache(api).catch((err: unknown) => {
+    console.warn(
+      "[daemon] skills sync failed; continuing without skills:",
+      err instanceof Error ? err.message : String(err),
+    );
+    return undefined;
+  });
+
+  const runtimeRegistry = createDefaultRuntimeRegistry();
+  const workspaceManager = new LocalWorkspaceManager({
+    mcpServerUrl: `${cfg.api_url}/mcp`,
+    runtimeRegistry,
+    skillsSourceDir: skillsSourceDir ?? "/dev/null",
+  });
+
   const supervisor = new Supervisor();
   const claimer = new Claimer({
     api,
     supervisor,
+    workspaceManager,
     runtimeIds: cfg.runtimes.map((r) => r.id),
   });
   claimer.start();

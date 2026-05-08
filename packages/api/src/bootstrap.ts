@@ -189,7 +189,9 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const makeMemoryAgent = (agentId: string): MemoryAgent =>
     createMemoryAgent({ agentId, coreMemory, factStore, promoter, embed });
 
-  // M6.4 mesh server (depends on makeMemoryAgent for spawned target sessions).
+  // M6.4 mesh server. Phase 4: spawn path goes through dispatchService —
+  // daemon claims the pending session for daemon-bound targets, executor
+  // fallback claims for null-runtime targets.
   const mesh = new MeshServer({
     agentRepo,
     sessionRepo,
@@ -198,6 +200,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     negotiationRoundRepo,
     workspaceManager,
     runtimeRegistry,
+    dispatchService,
     makeMemoryAgent,
   });
 
@@ -282,6 +285,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const runtimeRouter = createRuntimeRouter({
     authMiddleware: server.getAuthMiddleware(),
     agentRepo,
+    personRepo,
     daemonRepo,
     runtimeRepo,
     sessionRepo,
@@ -289,6 +293,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     hub: daemonHub,
     makeMemoryAgent,
     mcpServerUrl: cfg.mcpServerUrl,
+    skillsSourceDir: cfg.skillsSourceDir ?? path.resolve(process.cwd(), "skills"),
     onSessionComplete: async (session) => {
       if (session.type === "chat") {
         chatResolver.resolve(session.id, session);

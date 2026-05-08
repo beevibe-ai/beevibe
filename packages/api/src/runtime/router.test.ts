@@ -94,6 +94,7 @@ describe("/runtime — integration", () => {
     const baseDeps: RuntimeRouterDeps = {
       authMiddleware: createAuthMiddleware({ agentRepo, personRepo, daemonRepo }),
       agentRepo,
+      personRepo,
       daemonRepo,
       runtimeRepo,
       sessionRepo,
@@ -101,6 +102,7 @@ describe("/runtime — integration", () => {
       hub,
       makeMemoryAgent: () => makeMemoryAgentStub(),
       mcpServerUrl: "http://api.test/mcp",
+      skillsSourceDir: "/tmp/m12-skills-stub",
       onSessionComplete,
       ...deps,
     };

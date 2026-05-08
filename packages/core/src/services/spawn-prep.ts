@@ -113,6 +113,71 @@ write.
 </beevibe_memory>`;
 
 /**
+ * One-time directives for the user's first chat turn. Drives the agent
+ * to set up a real working team + first task instead of small-talking
+ * about goals. Composed alongside CHAT_DIRECTIVES; flipped off after
+ * the first successful turn (chat handler stamps
+ * person.onboarding_completed_at).
+ */
+export const ONBOARDING_DIRECTIVES = `<onboarding_directives>
+This is the user's FIRST EVER chat with you. They have just finished
+the welcome wizard and you have no memory of them yet. Don't ask
+abstract questions about their role or working style — drive the
+conversation toward CONCRETE WORK ON A REAL CODEBASE.
+
+Your job over the next few turns:
+
+1. **Greet briefly (one short paragraph) and immediately propose a
+   collaboration model**: you build a small team of specialist
+   subordinate agents who each own part of the codebase, then each one
+   takes on real tasks. Make this concrete — the user shouldn't have to
+   guess what you can do.
+
+2. **Ask the user to point you at a codebase or repo.** A path on disk,
+   a GitHub repo, or "this monorepo we're already in". If they don't
+   have one yet, ask what they're trying to build and skip ahead — you
+   can still spawn specialists for greenfield work.
+
+3. **Explore the code yourself before proposing a team.** You have
+   \`Bash\`, \`Read\`, \`Glob\`, \`Grep\` available — use them. Read the
+   README / package.json / main entry points. Don't ask the user to
+   describe the stack; figure it out, then confirm.
+
+4. **Propose 2–3 specialists tailored to what you saw.** Examples:
+   "Backend specialist (covers \`packages/api\`, Postgres, MCP tools)",
+   "Frontend specialist (covers \`packages/web\`, Next.js, design
+   system)". Concrete > generic — name the actual files / dirs each
+   agent owns. Confirm with the user, then call
+   \`create_subordinate_agent\` once per specialist with a focused
+   \`persona\` and \`domain\` block.
+
+5. **Mint a real first task for at least one specialist.** Use
+   \`create_task\` with a tightly-scoped intent the user agreed on
+   ("audit packages/api for unused exports", "draft a README for
+   packages/web"). Reference the resulting \`task_*\` id in your reply —
+   the UI hydrates it as a clickable card.
+
+6. **Use \`update_core_memory\`** as you go to record what you learned
+   about the user, the codebase, and the team you assembled. The user
+   sees those writes happen in real time — that's how they know you're
+   actually listening, not just LLM-stalling.
+
+7. **End every turn with 2–4 \`<suggest_action>\` chips** that give the
+   user concrete next moves (especially during onboarding). Examples
+   for the team-proposal turn:
+
+   \`<suggest_action label="Approve as-is and spin up all three" />\`
+   \`<suggest_action label="Merge backend + services into one specialist" />\`
+   \`<suggest_action label="Add a docs/strategy specialist" />\`
+
+   Labels become the user's next message verbatim, so write them as
+   first-person actions the agent can act on directly.
+
+Skip the \`<open_view>\` directive on this onboarding turn — the user is
+already where they need to be.
+</onboarding_directives>`;
+
+/**
  * Display directives for chat-surface sessions. Static — same text for
  * every chat session. Tells the agent which inline tokens the chat UI
  * recognizes (id mentions, <open_view>, <suggest_action>) so the agent
@@ -164,12 +229,17 @@ directives the UI understands:
  *
  * For chat sessions, pass `appendChatDirectives: true` so the static
  * UI-format directives land at the tail (most-volatile slot — they
- * don't affect cache for non-chat sessions).
+ * don't affect cache for non-chat sessions). When also onboarding,
+ * `appendOnboardingDirectives: true` adds the one-time wizard directives
+ * after CHAT_DIRECTIVES.
  */
 export function composeSystemPromptAppend(
   agentSystemPromptAddition: string | undefined,
   briefingSystemPromptAppend: string,
-  options: { appendChatDirectives?: boolean } = {},
+  options: {
+    appendChatDirectives?: boolean;
+    appendOnboardingDirectives?: boolean;
+  } = {},
 ): string {
   return [
     BEEVIBE_LIFECYCLE_REMINDER,
@@ -177,6 +247,7 @@ export function composeSystemPromptAppend(
     agentSystemPromptAddition ?? "",
     briefingSystemPromptAppend,
     options.appendChatDirectives ? CHAT_DIRECTIVES : "",
+    options.appendOnboardingDirectives ? ONBOARDING_DIRECTIVES : "",
   ]
     .filter((s) => s.length > 0)
     .join("\n\n");

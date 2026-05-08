@@ -2,21 +2,23 @@
  * Spawn the CLI for a claimed session and stream events back to the
  * api server. The dispatch payload is the contract between
  * /runtime/claim and this module.
+ *
+ * Workspace + skills sync run through `LocalWorkspaceManager` from
+ * `@beevibe/core` so the daemon's filesystem layout matches the
+ * api-side path byte-for-byte (mcp-config.json + tier-filtered
+ * `<workspace>/.claude/skills/`).
  */
 
 import { ClaudeCodeRuntime } from "@beevibe/core/adapters/claude-code";
-import type {
-  RuntimeStep,
-  RuntimeResult,
-  TerminalSessionStatus,
-} from "@beevibe/core";
+import type { Agent, RuntimeStep, RuntimeResult, TerminalSessionStatus } from "@beevibe/core";
+import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
-import { provisionWorkspace } from "./workspace.js";
 
 export interface DispatchPayload {
   session_id: string;
   agent_id: string;
   agent_api_key: string;
+  agent_hierarchy_level: "ic" | "team" | "org";
   workspace_subdir: string;
   intent: string;
   system_prompt_append: string;
@@ -30,6 +32,7 @@ export interface DispatchPayload {
 
 export interface SpawnDeps {
   api: ApiClient;
+  workspaceManager: LocalWorkspaceManager;
   /** Default ClaudeCodeRuntime; tests inject a fake. */
   runtime?: ClaudeCodeRuntime;
 }
@@ -45,11 +48,16 @@ export async function runDispatch(
   payload: DispatchPayload,
   abortSignal?: AbortSignal,
 ): Promise<void> {
-  const ws = provisionWorkspace({
-    agentId: payload.agent_id,
-    agentApiKey: payload.agent_api_key,
-    mcpServerUrl: payload.mcp_server_url,
-  });
+  // LocalWorkspaceManager.ensureWorkspace takes an Agent shape. Build the
+  // minimal subset its read paths need (id, api_key, hierarchy_level,
+  // runtime_config.type) — the rest is unused server-side too.
+  const syntheticAgent = {
+    id: payload.agent_id,
+    api_key: payload.agent_api_key,
+    hierarchy_level: payload.agent_hierarchy_level,
+    runtime_config: { type: "claude" as const },
+  } as unknown as Agent;
+  const ws = await deps.workspaceManager.ensureWorkspace({ agent: syntheticAgent });
 
   const runtime = deps.runtime ?? new ClaudeCodeRuntime();
 

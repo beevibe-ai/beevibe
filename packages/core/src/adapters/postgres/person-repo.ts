@@ -55,6 +55,7 @@ export class PostgresPersonRepository implements PersonRepository {
       name: "name",
       email: "email",
       api_key: "api_key",
+      onboarding_completed_at: "onboarding_completed_at",
     });
 
     if (clause.fields.length === 0) {
@@ -84,6 +85,7 @@ function rowToPerson(row: PersonRow): Person {
     name: row.name,
     email: row.email ?? undefined,
     api_key: row.api_key ?? undefined,
+    onboarding_completed_at: row.onboarding_completed_at ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

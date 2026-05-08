@@ -17,6 +17,7 @@ export {
   BEEVIBE_LIFECYCLE_REMINDER,
   BEEVIBE_MEMORY_REMINDER,
   CHAT_DIRECTIVES,
+  ONBOARDING_DIRECTIVES,
   composeIntent,
   composeSystemPromptAppend,
 } from "./spawn-prep.js";
@@ -276,7 +277,16 @@ export class AgentSession {
  */
 export type ResumeReason =
   | { kind: "fresh" }
-  | { kind: "crash_recovery" }
+  | {
+      /**
+       * Re-dispatched after an unexpected exit (CLI subprocess died,
+       * agent forgot update_progress and was nudged). When set,
+       * `prior_session_id` pins runtime_id to the prior session's
+       * machine so resume reads `.jsonl` from the right disk.
+       */
+      kind: "crash_recovery";
+      prior_session_id?: string;
+    }
   | {
       /**
        * Multi-turn chat continuation. Carries the prior session so

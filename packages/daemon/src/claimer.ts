@@ -12,6 +12,7 @@
  */
 
 import WebSocket from "ws";
+import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
 import type { Supervisor } from "./supervisor.js";
 import { runDispatch, type DispatchPayload } from "./spawner.js";
@@ -19,6 +20,7 @@ import { runDispatch, type DispatchPayload } from "./spawner.js";
 export interface ClaimerConfig {
   api: ApiClient;
   supervisor: Supervisor;
+  workspaceManager: LocalWorkspaceManager;
   runtimeIds: string[];
   /** Default 30_000ms. */
   pollIntervalMs?: number;
@@ -176,7 +178,11 @@ export class Claimer {
       const payload = await this.cfg.api.claim<DispatchPayload>(runtimeId);
       if (!payload) return;
       const ctrl = this.cfg.supervisor.start(payload.session_id);
-      void runDispatch({ api: this.cfg.api }, payload, ctrl.signal)
+      void runDispatch(
+        { api: this.cfg.api, workspaceManager: this.cfg.workspaceManager },
+        payload,
+        ctrl.signal,
+      )
         .catch((err: unknown) =>
           console.error(
             `[daemon] dispatch ${payload.session_id} failed:`,

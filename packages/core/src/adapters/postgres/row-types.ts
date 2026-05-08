@@ -6,6 +6,7 @@ export interface PersonRow {
   name: string;
   email: string | null;
   api_key: string | null;
+  onboarding_completed_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
