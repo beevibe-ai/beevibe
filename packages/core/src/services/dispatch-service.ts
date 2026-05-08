@@ -4,20 +4,29 @@
  * Inserts a `status='pending'` session row, resolves the target
  * `runtime_id` (pinning resume reasons to the prior session's machine
  * so `claude --resume` finds its conversation `.jsonl` on local disk),
- * and notifies the daemon hub so it can claim the row immediately.
+ * advances the task state machine when dispatching a task, and
+ * notifies the daemon hub so it can claim the row immediately.
  */
 
 import type { Agent } from "../domain/agent.js";
 import type { Session, SessionType } from "../domain/session.js";
-import type { Task } from "../domain/task.js";
+import type { Task, TaskStatus } from "../domain/task.js";
 import { sessionId as newSessionId } from "../domain/ids.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type { SessionRepository } from "../ports/session-repo.js";
+import type { TaskRepository } from "../ports/task-repo.js";
 import type { ResumeReason } from "./agent-session.js";
 
 export interface DispatchServiceDeps {
   agentRepo: AgentRepository;
   sessionRepo: SessionRepository;
+  /**
+   * Required for type='task' dispatches (the call site advances the task
+   * from queue state to active state — assigned→in_progress,
+   * needs_revision→revision, blocker_resolved→in_progress). Optional
+   * because chat / mesh dispatches are task-less.
+   */
+  taskRepo?: TaskRepository;
   /**
    * Best-effort wakeup hook fired after a pending session lands. Errors
    * are caught and logged so dispatch never fails on hub flakiness.
@@ -43,6 +52,12 @@ export interface DispatchInput {
    * binding.
    */
   runtimeIdOverride?: string;
+  /**
+   * Pre-generated session id. Used by `MeshServer.sendNegotiate` which
+   * needs B's session id BEFORE the spawn so it can stamp
+   * counterparty_session_id on the negotiation row.
+   */
+  sessionIdOverride?: string;
 }
 
 export interface DispatchResult {
@@ -71,7 +86,7 @@ export class DispatchService {
     const runtime_id = resolveRuntimeId(input, agent, prior?.runtime_id);
 
     const session = await this.deps.sessionRepo.create({
-      id: newSessionId(),
+      id: input.sessionIdOverride ?? newSessionId(),
       agent_id: input.agentId,
       task_id: input.task?.id,
       prior_session_id: priorSessionId,
@@ -81,6 +96,13 @@ export class DispatchService {
       runtime_id: runtime_id ?? undefined,
       spawn_mode: "daemon",
     });
+
+    if (input.task && input.type === "task") {
+      const next = transitionForDispatch(input.task.status);
+      if (next && this.deps.taskRepo) {
+        await this.deps.taskRepo.update(input.task.id, { status: next });
+      }
+    }
 
     if (this.deps.onSessionInserted) {
       try {
@@ -97,6 +119,18 @@ export class DispatchService {
 
     return { session, runtime_id: runtime_id ?? null };
   }
+}
+
+/**
+ * Maps task queue states to active states. Returns undefined for
+ * statuses that don't transition on dispatch (in_progress / revision are
+ * already active; terminal states shouldn't be re-dispatched). Mirrors
+ * the legacy executor's claimById CASE logic.
+ */
+function transitionForDispatch(current: TaskStatus): TaskStatus | undefined {
+  if (current === "assigned") return "in_progress";
+  if (current === "needs_revision") return "revision";
+  return undefined;
 }
 
 function resolveRuntimeId(

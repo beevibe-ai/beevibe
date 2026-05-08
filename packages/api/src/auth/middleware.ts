@@ -102,3 +102,24 @@ export function requireHuman(req: Request, res: Response): req is HumanRequest {
   }
   return true;
 }
+
+/** Express request narrowed to a confirmed daemon (`bv_d_`) caller. */
+export type DaemonRequest = Request & {
+  caller: Extract<ResolvedCaller, { source: "daemon" }>;
+};
+
+/**
+ * Type guard for the /runtime/* surface. Sends 403 on non-daemon callers;
+ * returns true and narrows `req` to `DaemonRequest` on success. The auth
+ * middleware already attached `req.caller`; this just gates by source.
+ */
+export function requireDaemon(req: Request, res: Response): req is DaemonRequest {
+  if (req.caller?.source !== "daemon") {
+    res.status(403).json({
+      error: "daemon_required",
+      message: "this endpoint requires a bv_d_ token",
+    });
+    return false;
+  }
+  return true;
+}

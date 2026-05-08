@@ -2,7 +2,7 @@
   "name": "beevibe",
   "version": "0.0.1",
   "private": true,
-  "description": "Beevibe core — modular monolith for agent runtime (MCP server + executor + shared library)",
+  "description": "Beevibe core — modular monolith for agent runtime (MCP server + scheduler + daemon + shared library)",
   "packageManager": "pnpm@9.12.0",
   "engines": {
     "node": ">=20.0.0"

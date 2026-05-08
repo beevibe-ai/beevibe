@@ -1,17 +1,17 @@
 #!/usr/bin/env bash
 #
 # Dev orchestrator: brings up postgres, applies migrations, then spawns
-# api + executor as separate processes. Optionally exposes the api via
+# api + scheduler as separate processes. Optionally exposes the api via
 # cloudflared so a remote Claude CLI can connect with bv_u_ auth.
 #
 # Defaults:
 #   - tunnel ON when cloudflared is on PATH (skipped gracefully otherwise)
 #   - postgres via docker-compose
 #   - api on $BEEVIBE_API_PORT (default 3000)
-#   - executor health on $BEEVIBE_EXECUTOR_HEALTH_PORT (default 3001)
+#   - scheduler health on $BEEVIBE_SCHEDULER_HEALTH_PORT (default 3001)
 #
 # Usage:
-#   pnpm dev              # postgres + api + executor + tunnel (if available)
+#   pnpm dev              # postgres + api + scheduler + tunnel (if available)
 #   pnpm dev --no-tunnel  # local-only
 #
 # Ctrl+C → all children killed via `trap 'kill 0' EXIT`.
@@ -59,8 +59,8 @@ done
 # tunnel URL is only for remote human users (printed below if enabled).
 export BEEVIBE_API_PORT="${BEEVIBE_API_PORT:-3000}"
 export BEEVIBE_MCP_SERVER_URL="${BEEVIBE_MCP_SERVER_URL:-http://localhost:${BEEVIBE_API_PORT}/mcp}"
-export BEEVIBE_EXECUTOR_HEALTH_PORT="${BEEVIBE_EXECUTOR_HEALTH_PORT:-3001}"
-# M9.3: api + executor sync tier-filtered skills into <workspace>/.claude/skills/
+export BEEVIBE_SCHEDULER_HEALTH_PORT="${BEEVIBE_SCHEDULER_HEALTH_PORT:-3001}"
+# M9.3: api + scheduler sync tier-filtered skills into <workspace>/.claude/skills/
 # at every dispatch. Default points at this repo's /skills/ dir; pnpm --filter
 # changes the cwd to each package, so we can't rely on process.cwd()/skills.
 export BEEVIBE_SKILLS_DIR="${BEEVIBE_SKILLS_DIR:-${REPO_ROOT}/skills}"
@@ -108,7 +108,7 @@ pnpm migrate up >/dev/null
 echo ""
 echo "==> Starting services (watch the [api] / [exec] logs for ready signals)..."
 echo "  API:           http://localhost:${BEEVIBE_API_PORT}"
-echo "  Executor:      health on http://localhost:${BEEVIBE_EXECUTOR_HEALTH_PORT}/health"
+echo "  Scheduler:     health on http://localhost:${BEEVIBE_SCHEDULER_HEALTH_PORT}/health"
 [ "$TUNNEL_ENABLED" = "1" ] && echo "  Tunnel:        starting cloudflared..."
 echo "  Workspace:     ${WORKSPACE_ROOT:-~/.beevibe/workspaces}"
 echo ""
@@ -120,7 +120,7 @@ trap 'kill 0' EXIT
 pnpm --filter @beevibe/api dev 2>&1 \
   | sed -u 's/^/[api] /' &
 
-pnpm --filter @beevibe/executor dev 2>&1 \
+pnpm --filter @beevibe/scheduler dev 2>&1 \
   | sed -u 's/^/[exec] /' &
 
 if [ "$TUNNEL_ENABLED" = "1" ]; then

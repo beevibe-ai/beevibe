@@ -19,8 +19,8 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(here, "../.env") });
 
-import { bootstrap } from "../packages/executor/src/bootstrap.js";
-import { isProcessAlive } from "../packages/executor/src/worker.js";
+import { bootstrap } from "../packages/scheduler/src/bootstrap.js";
+import { isProcessAlive } from "../packages/scheduler/src/worker.js";
 import {
   agentId as makeAgentId,
   personId as makePersonId,

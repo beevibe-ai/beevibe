@@ -1,10 +1,19 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
-import { agentId, personId, sessionId, taskId } from "../../domain/ids.js";
+import {
+  agentId,
+  daemonId,
+  personId,
+  runtimeId,
+  sessionId,
+  taskId,
+} from "../../domain/ids.js";
 import type { Pool } from "./client.js";
 import { createTestPool, truncateAll } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
+import { PostgresDaemonRepository } from "./daemon-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
+import { PostgresRuntimeRepository } from "./runtime-repo.js";
 import { PostgresSessionRepository } from "./session-repo.js";
 import { PostgresTaskRepository } from "./task-repo.js";
 
@@ -179,5 +188,175 @@ describe("PostgresSessionRepository", () => {
     const same = await sessions.update(s.id, {});
     expect(same.id).toBe(s.id);
     expect(same.status).toBe("running");
+  });
+
+  describe("claimNextForRuntime", () => {
+    let daemons: PostgresDaemonRepository;
+    let runtimes: PostgresRuntimeRepository;
+    let runtime: string;
+
+    beforeEach(async () => {
+      daemons = new PostgresDaemonRepository(pool);
+      runtimes = new PostgresRuntimeRepository(pool);
+      const dId = daemonId();
+      await daemons.create({
+        id: dId,
+        owner_person_id: person,
+        external_id: "host-a",
+        device_name: "Host A",
+        token_hash: "h1",
+      });
+      runtime = runtimeId();
+      await runtimes.create({ id: runtime, daemon_id: dId, cli: "claude" });
+    });
+
+    it("returns undefined when no pending session exists for the runtime", async () => {
+      const claimed = await sessions.claimNextForRuntime(runtime);
+      expect(claimed).toBeUndefined();
+    });
+
+    it("promotes the oldest pending session to running and returns it", async () => {
+      const a = await sessions.create(
+        newSession({
+          id: sessionId(),
+          task_id: task,
+          runtime_id: runtime,
+          status: "pending",
+        }),
+      );
+      // Wait one tick so created_at differs.
+      await new Promise((r) => setTimeout(r, 10));
+      await sessions.create(
+        newSession({
+          id: sessionId(),
+          task_id: task,
+          runtime_id: runtime,
+          status: "pending",
+        }),
+      );
+
+      const claimed = await sessions.claimNextForRuntime(runtime);
+      expect(claimed?.id).toBe(a.id);
+      expect(claimed?.status).toBe("running");
+      expect(claimed?.started_at).toBeInstanceOf(Date);
+    });
+
+    it("skips sessions already claimed (status='running')", async () => {
+      await sessions.create(
+        newSession({
+          id: sessionId(),
+          task_id: task,
+          runtime_id: runtime,
+          status: "running",
+        }),
+      );
+      const claimed = await sessions.claimNextForRuntime(runtime);
+      expect(claimed).toBeUndefined();
+    });
+
+    it("skips sessions bound to a different runtime", async () => {
+      const otherRuntime = runtimeId();
+      // Use a different daemon so the FK doesn't conflict.
+      const otherDaemon = daemonId();
+      await daemons.create({
+        id: otherDaemon,
+        owner_person_id: person,
+        external_id: "host-b",
+        device_name: "Host B",
+        token_hash: "h2",
+      });
+      await runtimes.create({
+        id: otherRuntime,
+        daemon_id: otherDaemon,
+        cli: "claude",
+      });
+      await sessions.create(
+        newSession({
+          id: sessionId(),
+          task_id: task,
+          runtime_id: otherRuntime,
+          status: "pending",
+        }),
+      );
+      const claimed = await sessions.claimNextForRuntime(runtime);
+      expect(claimed).toBeUndefined();
+    });
+
+    it("two parallel claims race-safely return distinct sessions or undefined", async () => {
+      const ids = [sessionId(), sessionId()];
+      for (const id of ids) {
+        await sessions.create(
+          newSession({ id, task_id: task, runtime_id: runtime, status: "pending" }),
+        );
+      }
+      const [a, b] = await Promise.all([
+        sessions.claimNextForRuntime(runtime),
+        sessions.claimNextForRuntime(runtime),
+      ]);
+      const claimedIds = [a?.id, b?.id].filter((x): x is string => Boolean(x)).sort();
+      expect(claimedIds).toEqual(ids.slice().sort());
+    });
+  });
+
+  describe("countOwnedByDaemon", () => {
+    let daemons: PostgresDaemonRepository;
+    let runtimes: PostgresRuntimeRepository;
+    let dId: string;
+    let rId: string;
+
+    beforeEach(async () => {
+      daemons = new PostgresDaemonRepository(pool);
+      runtimes = new PostgresRuntimeRepository(pool);
+      dId = daemonId();
+      await daemons.create({
+        id: dId,
+        owner_person_id: person,
+        external_id: "host",
+        device_name: "Host",
+        token_hash: "t",
+      });
+      rId = runtimeId();
+      await runtimes.create({ id: rId, daemon_id: dId, cli: "claude" });
+    });
+
+    it("returns 0 for empty input without touching the DB", async () => {
+      expect(await sessions.countOwnedByDaemon(dId, [])).toBe(0);
+    });
+
+    it("counts sessions whose runtime is owned by the daemon", async () => {
+      const a = sessionId();
+      const b = sessionId();
+      await sessions.create(newSession({ id: a, runtime_id: rId, status: "running" }));
+      await sessions.create(newSession({ id: b, runtime_id: rId, status: "running" }));
+      expect(await sessions.countOwnedByDaemon(dId, [a, b])).toBe(2);
+    });
+
+    it("excludes sessions bound to other daemons' runtimes", async () => {
+      const otherDaemon = daemonId();
+      await daemons.create({
+        id: otherDaemon,
+        owner_person_id: person,
+        external_id: "other",
+        device_name: "Other",
+        token_hash: "t2",
+      });
+      const otherRuntime = runtimeId();
+      await runtimes.create({ id: otherRuntime, daemon_id: otherDaemon, cli: "claude" });
+
+      const owned = sessionId();
+      const stranger = sessionId();
+      await sessions.create(newSession({ id: owned, runtime_id: rId, status: "running" }));
+      await sessions.create(
+        newSession({ id: stranger, runtime_id: otherRuntime, status: "running" }),
+      );
+
+      expect(await sessions.countOwnedByDaemon(dId, [owned, stranger])).toBe(1);
+    });
+
+    it("excludes sessions with no runtime_id", async () => {
+      const s = sessionId();
+      await sessions.create(newSession({ id: s, status: "running" }));
+      expect(await sessions.countOwnedByDaemon(dId, [s])).toBe(0);
+    });
   });
 });

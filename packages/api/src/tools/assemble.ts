@@ -8,6 +8,7 @@ import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { CoreMemory, FactStore, MemoryAgent } from "@beevibe/core/services/memory";
 import type { TaskService } from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
+import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { MeshServer } from "../mesh/server.js";
 import { buildIcMeshTools, buildTeamMeshTools } from "./mesh.js";
 import { buildHierarchyTools } from "./hierarchy.js";
@@ -23,13 +24,20 @@ export interface AssembleToolsServices {
   workProductRepo: WorkProductRepository;
   taskService: TaskService;
   escalationService: EscalationService;
+  dispatchService: DispatchService;
   mesh: MeshServer;
   pool: Pool;
   memoryAgent: MemoryAgent;
 }
 
+/**
+ * /mcp callers are bv_a_ (agent) or bv_u_ (human). Daemons authenticate to
+ * /runtime/* only and are rejected at the /mcp entry point.
+ */
+export type McpCaller = Exclude<ResolvedCaller, { source: "daemon" }>;
+
 export interface AssembleToolsContext {
-  caller: ResolvedCaller;
+  caller: McpCaller;
   beevibeSid: string;
 }
 
@@ -87,6 +95,7 @@ export function assembleTools(
       taskService: services.taskService,
       memoryAgent: services.memoryAgent,
       escalationService: services.escalationService,
+      dispatchService: services.dispatchService,
       pool: services.pool,
     },
   );

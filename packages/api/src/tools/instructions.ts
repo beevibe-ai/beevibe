@@ -1,5 +1,5 @@
-import type { ResolvedCaller } from "@beevibe/core/auth";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
+import type { McpCaller } from "./assemble.js";
 
 /**
  * Build the MCP `instructions` string returned on `initialize`.
@@ -21,7 +21,7 @@ import type { MemoryAgent } from "@beevibe/core/services/memory";
  * call `prepareBriefing`.
  */
 export async function buildInstructions(
-  caller: ResolvedCaller,
+  caller: McpCaller,
   memoryAgent: MemoryAgent,
 ): Promise<string> {
   if (caller.source === "agent") {

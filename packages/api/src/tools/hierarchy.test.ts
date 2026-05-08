@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   Agent,
   AgentRepository,
+  Session,
   Task,
   TaskRepository,
   WorkProduct,
@@ -17,6 +18,7 @@ import type {
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 import type { TaskService } from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
+import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import { buildHierarchyTools } from "./hierarchy.js";
 import type { AgentTool, AgentToolResult } from "./types.js";
@@ -70,6 +72,7 @@ function buildServices(overrides: {
   taskService?: Partial<TaskService>;
   memoryAgent?: Partial<MemoryAgent>;
   escalationService?: Partial<EscalationService>;
+  dispatchService?: Partial<DispatchService>;
 } = {}) {
   const agentRepo = {
     findById: vi.fn(async () => undefined),
@@ -118,6 +121,21 @@ function buildServices(overrides: {
     ...overrides.escalationService,
   } as unknown as EscalationService;
 
+  const dispatchService = {
+    dispatchTask: vi.fn(async (input: { task?: Task; agentId: string }) => ({
+      session: {
+        id: "sess_test",
+        agent_id: input.agentId,
+        type: "task",
+        status: "pending",
+        intent: "x",
+        created_at: new Date(),
+      } as Session,
+      runtime_id: null,
+    })),
+    ...overrides.dispatchService,
+  } as unknown as DispatchService;
+
   const pool = {
     query: vi.fn(async () => ({ rows: [] })),
   } as unknown as Pool;
@@ -129,6 +147,7 @@ function buildServices(overrides: {
     taskService,
     memoryAgent,
     escalationService,
+    dispatchService,
     pool,
   };
 }

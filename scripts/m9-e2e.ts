@@ -489,7 +489,7 @@ async function main(): Promise<void> {
     await new Promise<void>((resolveP, reject) => {
       const child = spawn(
         "pnpm",
-        ["-r", "--filter", "@beevibe/api", "--filter", "@beevibe/executor", "build"],
+        ["-r", "--filter", "@beevibe/api", "--filter", "@beevibe/scheduler", "build"],
         { cwd: repoRoot, stdio: "inherit" },
       );
       child.on("exit", (code) =>
@@ -523,7 +523,7 @@ async function main(): Promise<void> {
 
     log("→ spawn api + executor");
     api = spawnBinary({ tag: "api", cwd: resolve(repoRoot, "packages/api"), env: childEnv });
-    exec = spawnBinary({ tag: "exec", cwd: resolve(repoRoot, "packages/executor"), env: childEnv });
+    exec = spawnBinary({ tag: "exec", cwd: resolve(repoRoot, "packages/scheduler"), env: childEnv });
     log(`  api pid=${api.pid} exec pid=${exec.pid}`);
 
     log("→ wait for both health endpoints");

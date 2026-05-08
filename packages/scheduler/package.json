@@ -1,12 +1,12 @@
 {
-  "name": "@beevibe/executor",
+  "name": "@beevibe/scheduler",
   "version": "0.0.1",
   "private": true,
-  "description": "Beevibe executor — polls DB for assigned tasks and dispatches task sessions",
+  "description": "Beevibe scheduler — claims null-runtime pending sessions as the in-process fallback claimant when no daemon is bound to the agent",
   "type": "module",
   "main": "./dist/main.js",
   "bin": {
-    "beevibe-executor": "./dist/main.js"
+    "beevibe-scheduler": "./dist/main.js"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",

@@ -15,8 +15,8 @@ import type {
   CreateEscalationInput,
 } from "@beevibe/core/services/escalation-service";
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import type { ResolvedCaller } from "@beevibe/core/auth";
 import type { AgentTool, AgentToolResult } from "./types.js";
+import type { McpCaller } from "./assemble.js";
 import type { MeshServer } from "../mesh/server.js";
 import {
   CannotNegotiateWithIcError,
@@ -40,7 +40,7 @@ export interface MeshToolServices {
 }
 
 export interface MeshToolContext {
-  caller: ResolvedCaller;
+  caller: McpCaller;
   /** Caller's beevibe session id (for ask/negotiate originator metadata). */
   beevibeSid: string;
 }

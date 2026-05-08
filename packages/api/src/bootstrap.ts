@@ -2,11 +2,13 @@ import path from "node:path";
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
+  PostgresDaemonRepository,
   PostgresEscalationRepository,
   PostgresMemoryFactRepository,
   PostgresNegotiationRepository,
   PostgresNegotiationRoundRepository,
   PostgresPersonRepository,
+  PostgresRuntimeRepository,
   PostgresSessionEventRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
@@ -27,6 +29,7 @@ import {
 } from "@beevibe/core/services/memory";
 import { TaskService } from "@beevibe/core/services/task-service";
 import { EscalationService } from "@beevibe/core/services/escalation-service";
+import { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { MeshServer } from "./mesh/server.js";
 import { BeevibeApiServer } from "./server.js";
 import { SessionCache } from "./session-cache.js";
@@ -35,7 +38,12 @@ import { createTaskRouter } from "./routes/task.js";
 import { createEscalationRouter } from "./routes/escalation.js";
 import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
+import { createChatRouter } from "./routes/chat.js";
 import { createStreamAuthMiddleware } from "./auth/middleware.js";
+import { ChatResolver } from "./runtime/chat-resolver.js";
+import { DaemonHub } from "./runtime/hub.js";
+import { createRuntimeRouter } from "./runtime/router.js";
+import { RuntimeWsServer } from "./runtime/ws-server.js";
 import { SseManager } from "./sse/manager.js";
 import { SseListener } from "./sse/listener.js";
 import { OwnerLookup } from "./sse/owner-lookup.js";
@@ -78,7 +86,7 @@ export interface BootstrapResult {
 }
 
 /**
- * Composition root for the api server. Mirrors `@beevibe/executor`'s
+ * Composition root for the api server. Mirrors `@beevibe/scheduler`'s
  * bootstrap so wiring is symmetric across the two binary composition roots.
  *
  * M6.1: pool + 3 repos + session cache + api server + Bearer auth.
@@ -94,6 +102,8 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
 
   const agentRepo = new PostgresAgentRepository(pool);
   const personRepo = new PostgresPersonRepository(pool);
+  const daemonRepo = new PostgresDaemonRepository(pool);
+  const runtimeRepo = new PostgresRuntimeRepository(pool);
   const sessionRepo = new PostgresSessionRepository(pool);
   const sessionEventRepo = new PostgresSessionEventRepository(pool);
   const taskRepo = new PostgresTaskRepository(pool);
@@ -123,14 +133,37 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     sessionRepo,
   });
 
-  // M6.4 escalation service: DB-only writes (no spawning). Re-queues
-  // initiator's task + creates synthetic task for counterparty on resolve;
-  // executor picks both up.
+  // Phase 4 — daemon-facing surface. Hub tracks live WS clients indexed
+  // by runtime_id. Built early so dispatchService can wire its
+  // onSessionInserted hook through it.
+  const daemonHub = new DaemonHub();
+  const chatResolver = new ChatResolver();
+
+  // Phase 4 — DispatchService is the single creation point for pending
+  // session rows. Call sites (create_task / revise_task / mesh /
+  // escalation / post-dispatch retry) call it instead of inserting
+  // sessions inline. The onSessionInserted hook fires a best-effort WS
+  // push to the bound runtime's daemon — daemons also poll every 30s,
+  // so a missed push is at most a 30-second wakeup delay.
+  const dispatchService = new DispatchService({
+    agentRepo,
+    sessionRepo,
+    taskRepo,
+    onSessionInserted: (session) => {
+      if (session.runtime_id) {
+        daemonHub.notify(session.runtime_id, session.id);
+      }
+    },
+  });
+
+  // M6.4 escalation service: DB-only writes for the resolution + dispatch
+  // for both initiator and counterparty post-resolution sessions.
   const escalationService = new EscalationService({
     escalationRepo,
     negotiationRepo,
     taskRepo,
     agentRepo,
+    dispatchService,
   });
 
   // M6.4 mesh server: in-process A2A broker. Reuses LocalWorkspaceManager
@@ -156,7 +189,9 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const makeMemoryAgent = (agentId: string): MemoryAgent =>
     createMemoryAgent({ agentId, coreMemory, factStore, promoter, embed });
 
-  // M6.4 mesh server (depends on makeMemoryAgent for spawned target sessions).
+  // M6.4 mesh server. Phase 4: spawn path goes through dispatchService —
+  // daemon claims the pending session for daemon-bound targets, executor
+  // fallback claims for null-runtime targets.
   const mesh = new MeshServer({
     agentRepo,
     sessionRepo,
@@ -165,6 +200,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     negotiationRoundRepo,
     workspaceManager,
     runtimeRegistry,
+    dispatchService,
     makeMemoryAgent,
   });
 
@@ -192,7 +228,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const server = new BeevibeApiServer({
     port: cfg.port ?? 3000,
     socketTimeoutMs: cfg.socketTimeoutMs,
-    authDeps: { agentRepo, personRepo },
+    authDeps: { agentRepo, personRepo, daemonRepo },
   });
 
   // Mount /mcp under the api server. Each call to createMcpRouter wires
@@ -209,6 +245,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     workProductRepo,
     taskService,
     escalationService,
+    dispatchService,
     mesh,
     pool,
     makeMemoryAgent,
@@ -241,6 +278,55 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   });
   server.getApp().use(viewRouter);
 
+
+  // Daemon HTTP surface — register / claim / events / done. The chat
+  // resolver fires on `session.type === 'chat'` so the awaiting POST
+  // /chat returns the agent's response.
+  const runtimeRouter = createRuntimeRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    agentRepo,
+    personRepo,
+    daemonRepo,
+    runtimeRepo,
+    sessionRepo,
+    sessionEventRepo,
+    hub: daemonHub,
+    makeMemoryAgent,
+    mcpServerUrl: cfg.mcpServerUrl,
+    skillsSourceDir: cfg.skillsSourceDir ?? path.resolve(process.cwd(), "skills"),
+    onSessionComplete: async (session) => {
+      if (session.type === "chat") {
+        chatResolver.resolve(session.id, session);
+      }
+      // Future: mesh resolver for cross-instance mesh, post-dispatch
+      // hook for parent-task rollup, etc.
+    },
+  });
+  server.getApp().use("/runtime", runtimeRouter);
+
+  // WSS upgrade for daemon push. Hangs off the same http.Server as Express;
+  // attach() registers a one-shot upgrade listener that filters by path.
+  const runtimeWsServer = new RuntimeWsServer({
+    hub: daemonHub,
+    authDeps: { agentRepo, personRepo, daemonRepo },
+    runtimeRepo,
+  });
+  runtimeWsServer.attach(server.getHttpServer());
+
+  // Phase 4 chat surface — daemon-first. dispatchService inserts a
+  // pending session, the daemon claims it (or executor for null-runtime
+  // agents), and /runtime/done fires chatResolver to unblock POST /chat.
+  const chatRouter = createChatRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    agentRepo,
+    personRepo,
+    sessionRepo,
+    dispatchService,
+    chatResolver,
+    hub: daemonHub,
+  });
+  server.getApp().use("/chat", chatRouter);
+
   // M8 final integration (#45): SSE live-updates flow.
   // Triggers in migration 1778300000000 emit on `bv_event`; SseListener
   // LISTENs on a dedicated pg.Client and fans out via SseManager;
@@ -254,7 +340,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   });
   sseListener.start();
   const streamRouter = createStreamRouter({
-    authMiddleware: createStreamAuthMiddleware({ agentRepo, personRepo }),
+    authMiddleware: createStreamAuthMiddleware({ agentRepo, personRepo, daemonRepo }),
     sseManager,
   });
   server.getApp().use("/api", streamRouter);
@@ -262,6 +348,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const shutdown = async (): Promise<void> => {
     sessionCache.stopIdleSweep();
     await sseListener.stop();
+    await runtimeWsServer.stop();
     await server.stop();
     await pool.end();
   };
