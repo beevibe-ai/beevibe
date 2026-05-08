@@ -40,6 +40,8 @@ export async function runStart(): Promise<void> {
     mcpServerUrl: `${cfg.api_url}/mcp`,
     runtimeRegistry,
     skillsSourceDir: skillsSourceDir ?? "/dev/null",
+    // env override lets tests / dev override ~/.beevibe/workspaces.
+    workspaceRoot: process.env.WORKSPACE_ROOT,
   });
 
   const supervisor = new Supervisor();
