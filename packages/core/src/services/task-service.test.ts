@@ -60,7 +60,7 @@ function makeAgent(review_policy?: ReviewPolicy): Agent {
     name: "A",
     owner_id: "person_1",
     hierarchy_level: "ic",
-    runtime_config: { type: "claude-code" },
+    runtime_config: { type: "claude" },
     review_policy,
     created_at: new Date(),
     updated_at: new Date(),

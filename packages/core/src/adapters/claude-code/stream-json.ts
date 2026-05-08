@@ -66,32 +66,100 @@ export function parseStreamJsonLine(line: string): StreamJsonMessage | null {
   }
 }
 
-export function extractStepEvent(msg: StreamJsonMessage): RuntimeStep | null {
+/**
+ * Convert a parsed stream-json message into 0+ RuntimeSteps.
+ *
+ * - tool_use messages → one tool_call step.
+ * - assistant messages with content blocks → one agent step per non-empty
+ *   text block + one tool_call step per inline tool_use block.
+ * - everything else → no step.
+ */
+export function extractStepEvents(msg: StreamJsonMessage): RuntimeStep[] {
+  const now = new Date().toISOString();
+
   if (msg.type === STREAM_TYPE.ToolUse || msg.subtype === STREAM_TYPE.ToolUse) {
-    return {
-      tool: msg.name ?? "unknown",
-      description: describeToolInput(msg.input ?? {}),
-      timestamp: new Date().toISOString(),
-    };
+    return [
+      {
+        kind: "tool_call",
+        tool: msg.name ?? "unknown",
+        description: describeToolInput(msg.input ?? {}),
+        timestamp: now,
+      },
+    ];
   }
 
   if (msg.type === STREAM_TYPE.ContentBlockStart && msg.content_block?.type === BLOCK_TYPE.ToolUse) {
     const block = msg.content_block;
-    return {
-      tool: block.name ?? "unknown",
-      description: describeToolInput((block.input ?? {}) as Record<string, unknown>),
-      timestamp: new Date().toISOString(),
-    };
+    return [
+      {
+        kind: "tool_call",
+        tool: block.name ?? "unknown",
+        description: describeToolInput((block.input ?? {}) as Record<string, unknown>),
+        timestamp: now,
+      },
+    ];
   }
 
-  return null;
+  if (msg.type === STREAM_TYPE.Assistant && msg.message && Array.isArray(msg.message.content)) {
+    const out: RuntimeStep[] = [];
+    for (const block of msg.message.content) {
+      if (block.type === BLOCK_TYPE.Text && typeof block.text === "string" && block.text.trim().length > 0) {
+        out.push({
+          kind: "agent",
+          description: block.text,
+          timestamp: now,
+        });
+      } else if (block.type === BLOCK_TYPE.ToolUse) {
+        out.push({
+          kind: "tool_call",
+          tool: block.name ?? "unknown",
+          description: describeToolInput((block.input ?? {}) as Record<string, unknown>),
+          timestamp: now,
+        });
+      }
+    }
+    return out;
+  }
+
+  return [];
 }
 
+/** @deprecated Use `extractStepEvents` (returns 0+ steps per message). */
+export function extractStepEvent(msg: StreamJsonMessage): RuntimeStep | null {
+  const steps = extractStepEvents(msg);
+  return steps[0] ?? null;
+}
+
+/**
+ * Pull the most informative human-readable field out of a tool's input
+ * payload. Used by the chat UI's "what's the agent doing right now"
+ * bubble — the goal is "Read packages/foo.ts" not "{file_path: ...}".
+ *
+ * Mesh / team-management fields come BEFORE generic ones so when an agent
+ * calls `create_subordinate_agent({name: "Backend"})` we see the name,
+ * not a JSON blob.
+ */
 function describeToolInput(input: Record<string, unknown>): string {
+  if (typeof input.question === "string") return input.question.slice(0, 200);
+  if (typeof input.answer === "string") return input.answer.slice(0, 200);
+  if (typeof input.intent === "string") return input.intent.slice(0, 200);
+  if (typeof input.feedback === "string") return input.feedback.slice(0, 200);
+  if (typeof input.proposal === "string") return input.proposal.slice(0, 200);
+  if (typeof input.blocker_summary === "string") return input.blocker_summary.slice(0, 200);
+  if (typeof input.summary === "string") return input.summary.slice(0, 200);
+  if (typeof input.name === "string" && typeof input.persona === "string")
+    return input.name.slice(0, 80);
   if (typeof input.file_path === "string") return input.file_path;
-  if (typeof input.command === "string") return input.command.slice(0, 100);
-  if (typeof input.query === "string") return input.query.slice(0, 100);
-  return JSON.stringify(input).slice(0, 100);
+  if (typeof input.command === "string") return input.command.slice(0, 200);
+  if (typeof input.query === "string") return input.query.slice(0, 200);
+  if (typeof input.pattern === "string") return input.pattern.slice(0, 200);
+  if (typeof input.path === "string") return input.path;
+  if (typeof input.url === "string") return input.url;
+  const keys = Object.keys(input);
+  if (keys.length === 1 && typeof input[keys[0]!] === "string") {
+    return (input[keys[0]!] as string).slice(0, 200);
+  }
+  return JSON.stringify(input).slice(0, 200);
 }
 
 /**

@@ -3,6 +3,7 @@ import type {
   AgentRepository,
   RuntimeRegistry,
   Session,
+  SessionEventRepository,
   SessionRepository,
   TaskRepository,
   Workspace,
@@ -161,6 +162,7 @@ export interface BuildHookDeps {
   taskService: TaskService;
   agentRepo: AgentRepository;
   sessionRepo: SessionRepository;
+  sessionEventRepo: SessionEventRepository;
   runtimeRegistry: RuntimeRegistry;
   workspaceManager: WorkspaceManager;
   makeMemoryAgent: (agentId: string) => MemoryAgent;
@@ -189,6 +191,7 @@ export function buildPostDispatchHook(
     const retryAgentSession = new AgentSession({
       agentRepo: deps.agentRepo,
       sessionRepo: deps.sessionRepo,
+      sessionEventRepo: deps.sessionEventRepo,
       runtime,
       memoryAgent,
     });

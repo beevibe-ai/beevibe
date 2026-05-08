@@ -1,6 +1,6 @@
 import type { ResolutionProposal } from "../domain/escalation.js";
 import type { Session, SessionType } from "../domain/session.js";
-import { sessionId as newSessionId } from "../domain/ids.js";
+import { sessionEventId, sessionId as newSessionId } from "../domain/ids.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type {
   AgentRuntime,
@@ -8,6 +8,7 @@ import type {
   RuntimeStep,
   Workspace,
 } from "../ports/runtime.js";
+import type { SessionEventRepository } from "../ports/session-event-repo.js";
 import type { SessionRepository } from "../ports/session-repo.js";
 import type { MemoryAgent } from "./memory/memory-agent.js";
 
@@ -133,6 +134,18 @@ export interface AgentSessionDeps {
   runtime: AgentRuntime;
   memoryAgent: MemoryAgent;
   /**
+   * Transcript persistence. Every `RuntimeStep` is appended to `session_event`
+   * so the session detail page can replay the agent's tool calls. Writes
+   * are best-effort (fire-and-forget; failures only log) but the dep
+   * itself is required so all composition roots wire it consistently.
+   *
+   * Backpressure note: append() is fire-and-forget — if Postgres is briefly
+   * unavailable, the step is lost from the persisted transcript but the LLM
+   * still progresses. Tracked by a per-process counter (currently logged
+   * via console.warn; promote to Prometheus later).
+   */
+  sessionEventRepo: SessionEventRepository;
+  /**
    * Optional fire-and-forget hook fired once the terminal session row is
    * written. Wired by composition roots — the executor uses it to call
    * `postDispatchCheck` (M6.5: parent rollup + leaf retry-once on missing
@@ -247,6 +260,30 @@ export class AgentSession {
       ? `${briefing.userMessagePrefix}\n\n${input.intent}`
       : input.intent;
 
+    // Compose onStep: transcript persistence (fire-and-forget; never
+    // blocks the LLM-bound tail) followed by the caller's hook (if any).
+    // The kind passes through from the runtime so the SSE pipeline can
+    // carry both tool-call streams and assistant text streams to UIs.
+    const eventRepo = this.deps.sessionEventRepo;
+    const callerOnStep = input.onStep;
+    const onStep = (step: RuntimeStep): void => {
+      void eventRepo
+        .append({
+          id: sessionEventId(),
+          session_id: sid,
+          kind: step.kind,
+          content: step.description,
+          tool_name: step.tool,
+        })
+        .catch((err) =>
+          console.warn(
+            `[AgentSession] session_event append dropped for ${sid}:`,
+            (err as Error).message,
+          ),
+        );
+      callerOnStep?.(step);
+    };
+
     // 4. Execute
     let result: RuntimeResult;
     try {
@@ -265,7 +302,7 @@ export class AgentSession {
         env: { BEEVIBE_SESSION_ID: sid },
         resume_session_id: priorCliSessionId,
         abort_signal: input.abortSignal,
-        onStep: input.onStep,
+        onStep,
         onSpawn: (meta) => {
           this.deps.sessionRepo
             .update(sid, {
@@ -306,6 +343,24 @@ export class AgentSession {
       process_group_id: result.process_group_id,
       completed_at: new Date(),
     });
+
+    // Terminal `summary` event — gives the detail page the agent's final
+    // response even when there were no tool calls (e.g. quick chat replies).
+    if (result.output) {
+      void eventRepo
+        .append({
+          id: sessionEventId(),
+          session_id: sid,
+          kind: "summary",
+          content: result.output,
+        })
+        .catch((err) =>
+          console.warn(
+            `[AgentSession] session_event summary dropped for ${sid}:`,
+            (err as Error).message,
+          ),
+        );
+    }
 
     // 6. Fire-and-forget post-session memory work.
     void this.deps.memoryAgent.onTaskComplete(sid).catch((err) =>

@@ -29,7 +29,7 @@ function fakeAgent(overrides: Partial<Agent> = {}): Agent {
     name: "A",
     owner_id: "person_1",
     hierarchy_level: "team",
-    runtime_config: { type: "claude-code" },
+    runtime_config: { type: "claude" },
     created_at: new Date("2026-04-01"),
     updated_at: new Date("2026-04-01"),
     ...overrides,

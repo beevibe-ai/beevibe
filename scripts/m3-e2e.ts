@@ -43,6 +43,7 @@ import { PostgresCoreMemoryRepository } from "../packages/core/src/adapters/post
 import { PostgresMemoryFactRepository } from "../packages/core/src/adapters/postgres/memory-fact-repo.js";
 import { PostgresPersonRepository } from "../packages/core/src/adapters/postgres/person-repo.js";
 import { PostgresSessionRepository } from "../packages/core/src/adapters/postgres/session-repo.js";
+import { PostgresSessionEventRepository } from "../packages/core/src/adapters/postgres/session-event-repo.js";
 import { DEFAULT_RUNTIME_CONFIG } from "../packages/core/src/domain/agent.js";
 import { agentId, personId } from "../packages/core/src/domain/ids.js";
 import { provisionAgent } from "../packages/core/src/auth/provision.js";
@@ -97,6 +98,7 @@ async function main(): Promise<void> {
     const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
     const factRepo = new PostgresMemoryFactRepository(pool);
     const sessions = new PostgresSessionRepository(pool);
+    const sessionEvents = new PostgresSessionEventRepository(pool);
 
     const owner = await persons.create({ id: personId(), name: "E2E Owner" });
     const { agent, blocks, apiKey } = await provisionAgent(
@@ -193,6 +195,7 @@ async function main(): Promise<void> {
     const session = new AgentSession({
       agentRepo: agents,
       sessionRepo: sessions,
+      sessionEventRepo: sessionEvents,
       runtime,
       memoryAgent,
     });

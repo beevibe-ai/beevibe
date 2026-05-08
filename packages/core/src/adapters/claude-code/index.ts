@@ -5,6 +5,7 @@ export type { CliProcessOptions, CliProcessResult } from "./spawn.js";
 export {
   parseStreamJsonLine,
   extractStepEvent,
+  extractStepEvents,
   parseClaudeStreamJson,
 } from "./stream-json.js";
 export type { StreamJsonMessage } from "./stream-json.js";

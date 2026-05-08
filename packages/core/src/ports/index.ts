@@ -6,6 +6,7 @@ export * from "./person-repo.js";
 export * from "./work-product-repo.js";
 export * from "./memory-fact-repo.js";
 export * from "./promotion-event-repo.js";
+export * from "./session-event-repo.js";
 export * from "./runtime.js";
 export * from "./workspace.js";
 export * from "./embedding-service.js";

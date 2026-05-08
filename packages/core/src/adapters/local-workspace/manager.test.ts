@@ -25,7 +25,7 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
     owner_id: "person_owner",
     hierarchy_level: "ic",
     api_key: "bv_a_testkey123",
-    runtime_config: { type: "claude-code", model: "claude-opus-4-7" },
+    runtime_config: { type: "claude", model: "claude-opus-4-7" },
     created_at: new Date(),
     updated_at: new Date(),
     ...overrides,
@@ -34,10 +34,10 @@ function makeAgent(overrides: Partial<Agent> = {}): Agent {
 
 // Fake claude-code runtime — only `skillsDir` and `type` are exercised here.
 const fakeClaudeRuntime = {
-  type: "claude-code",
+  type: "claude",
   skillsDir: (workspace: Workspace) => join(workspace.path, ".claude", "skills"),
 } as unknown as AgentRuntime;
-const fakeRuntimeRegistry: RuntimeRegistry = { "claude-code": fakeClaudeRuntime };
+const fakeRuntimeRegistry: RuntimeRegistry = { "claude": fakeClaudeRuntime };
 
 describe("LocalWorkspaceManager", () => {
   let workspaceRoot: string;
@@ -279,7 +279,7 @@ describe("LocalWorkspaceManager", () => {
         manager.ensureWorkspace({
           agent: makeAgent({
             id: "agent_unknown_runtime",
-            runtime_config: { type: "totally-fictional-runtime" as "claude-code" },
+            runtime_config: { type: "totally-fictional-runtime" as "claude" },
           }),
         }),
       ).rejects.toThrow(/No runtime registered/);

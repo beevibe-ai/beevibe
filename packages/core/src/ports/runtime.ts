@@ -12,7 +12,7 @@ import type { SessionUsage } from "../domain/session.js";
  * side effects happen inside the provided workspace.
  */
 export interface AgentRuntime {
-  /** Identifier for this runtime kind (e.g. "claude-code"). */
+  /** Identifier for this runtime kind (e.g. "claude"). Matches the CLI binary name on PATH. */
   readonly type: string;
 
   /** Execute a single session end-to-end and return its result. */
@@ -113,13 +113,21 @@ export interface RuntimeContext {
 }
 
 /**
- * A single tool-invocation observed during execution. Emitted via
+ * A single observable step during execution. Emitted via
  * `RuntimeContext.onStep` for UIs that stream progress.
+ *
+ * `tool_call` steps are tool invocations (set `tool` and a short
+ * `description` of the input); `agent` steps are assistant text chunks
+ * (`tool` undefined; `description` carries the text). `tool_result`
+ * and `summary` are emitted by post-processing layers (tool results
+ * surfaced inline, terminal summary appended after CLI exit).
  */
 export interface RuntimeStep {
-  /** Tool name (e.g. "Read", "Bash", "mcp__platform__search_context"). */
-  tool: string;
-  /** Short human-readable description (path, command, query, etc.). */
+  /** Step kind: 'tool_call' | 'agent' | 'tool_result' | 'summary'. */
+  kind: "tool_call" | "agent" | "tool_result" | "summary";
+  /** Tool name. Set for tool_call (and tool_result when known). */
+  tool?: string;
+  /** For tool_call: short description of input. For agent: the text. */
   description: string;
   /** ISO-8601 timestamp when the event was observed. */
   timestamp: string;

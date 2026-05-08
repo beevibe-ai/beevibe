@@ -5,7 +5,7 @@ export const HIERARCHY_LEVELS: readonly HierarchyLevel[] = ["ic", "team", "org"]
 export type ReviewPolicy = "require_human" | "auto_done";
 
 export interface RuntimeConfig {
-  type: "claude-code";
+  type: "claude";
   /**
    * Model alias passed to the CLI via `--model`. Optional: when unset, the
    * CLI uses its own default. Claude Code CLI accepts short aliases (`opus`,
@@ -20,7 +20,7 @@ export interface RuntimeConfig {
 }
 
 export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
-  type: "claude-code",
+  type: "claude",
   model: "opus",
 };
 

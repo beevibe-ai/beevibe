@@ -72,13 +72,22 @@ describe("extractStepEvent", () => {
     expect(step?.description).toBe("/tmp/x");
   });
 
-  it("falls back to JSON.stringify for unknown input shapes", () => {
+  it("falls back to JSON.stringify for unknown multi-key input shapes", () => {
     const step = extractStepEvent({
       type: "tool_use",
       name: "Custom",
-      input: { foo: "bar" },
+      input: { foo: "bar", baz: "qux" },
     });
     expect(step?.description).toContain("foo");
+  });
+
+  it("returns the lone string value for single-key input shapes", () => {
+    const step = extractStepEvent({
+      type: "tool_use",
+      name: "Custom",
+      input: { something: "the value" },
+    });
+    expect(step?.description).toBe("the value");
   });
 });
 

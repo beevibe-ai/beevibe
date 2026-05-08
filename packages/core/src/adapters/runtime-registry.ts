@@ -17,6 +17,6 @@ import { ClaudeCodeRuntime } from "./claude-code/runtime.js";
  */
 export function createDefaultRuntimeRegistry(): RuntimeRegistry {
   return {
-    "claude-code": new ClaudeCodeRuntime({}),
+    claude: new ClaudeCodeRuntime({}),
   };
 }
