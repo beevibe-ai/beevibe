@@ -38,7 +38,7 @@ describe("provisionWorkspace", () => {
     });
   });
 
-  it("is idempotent — does not overwrite an existing mcp-config.json", () => {
+  it("rewrites mcp-config.json on each call so token rotations land immediately", () => {
     withTmpHome((root) => {
       provisionWorkspace({
         agentId: "agent_42",
@@ -46,17 +46,13 @@ describe("provisionWorkspace", () => {
         mcpServerUrl: "http://api.test/mcp",
       });
       const cfgPath = join(root, ".beevibe", "workspaces", "agent_42", "mcp-config.json");
-      const first = readFileSync(cfgPath, "utf8");
-
       provisionWorkspace({
         agentId: "agent_42",
-        agentApiKey: "bv_a_second", // different token
+        agentApiKey: "bv_a_second",
         mcpServerUrl: "http://api.test/mcp",
       });
-      // First-write-wins: existing config is preserved so a token rotation
-      // by re-register doesn't accidentally clobber an in-flight session's
-      // working config.
-      expect(readFileSync(cfgPath, "utf8")).toBe(first);
+      const cfg = JSON.parse(readFileSync(cfgPath, "utf8"));
+      expect(cfg.mcpServers.beevibe.headers.Authorization).toBe("Bearer bv_a_second");
     });
   });
 });

@@ -3,6 +3,7 @@ import {
   daemonId as newDaemonId,
   runtimeId as newRuntimeId,
   sessionEventId as newSessionEventId,
+  isTerminalSessionStatus,
   type AgentRepository,
   type Session,
   type SessionEventRepository,
@@ -206,7 +207,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
       res.status(400).json({ error: "invalid_body", message: "session_id required" });
       return;
     }
-    if (body.status !== "succeeded" && body.status !== "failed" && body.status !== "cancelled") {
+    if (!isTerminalSessionStatus(body.status)) {
       res.status(400).json({ error: "invalid_status" });
       return;
     }

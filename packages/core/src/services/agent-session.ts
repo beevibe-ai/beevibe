@@ -107,15 +107,14 @@ export class AgentSession {
     const existing = input.sessionId
       ? await this.deps.sessionRepo.findById(input.sessionId)
       : undefined;
-    let session: Session;
     if (existing) {
       // Stamp workspace_path now that the worker has provisioned a local
       // sandbox; the rest of the row was set by dispatchService.
-      session = await this.deps.sessionRepo.update(sid, {
+      await this.deps.sessionRepo.update(sid, {
         workspace_path: input.workspace.path,
       });
     } else {
-      session = await this.deps.sessionRepo.create({
+      await this.deps.sessionRepo.create({
         id: sid,
         agent_id: input.agentId,
         task_id: input.taskId,
@@ -260,8 +259,6 @@ export class AgentSession {
       );
     }
 
-    // Intentionally do NOT await session.id  — return updated session row.
-    void session;
     return finalSession;
   }
 }

@@ -106,7 +106,17 @@ export class LocalWorkspaceManager implements WorkspaceManager {
   }
 }
 
-function buildMcpConfig(apiKey: string, mcpServerUrl: string): string {
+/**
+ * The mcp-config.json the spawner writes into each agent's workspace.
+ * Exported so the daemon (`@beevibe/daemon`) can produce byte-identical
+ * configs — the MCP server's parser sees one shape regardless of which
+ * spawn path provisioned the workspace.
+ *
+ * `${BEEVIBE_SESSION_ID}` is a literal placeholder; the Claude CLI
+ * interpolates from process env at config parse time, and the spawner
+ * sets BEEVIBE_SESSION_ID on the subprocess env.
+ */
+export function buildMcpConfig(apiKey: string, mcpServerUrl: string): string {
   return (
     JSON.stringify(
       {
@@ -116,9 +126,6 @@ function buildMcpConfig(apiKey: string, mcpServerUrl: string): string {
             url: mcpServerUrl,
             headers: {
               Authorization: `Bearer ${apiKey}`,
-              // Literal placeholder — Claude CLI interpolates from process env
-              // at config parse time; AgentSession sets BEEVIBE_SESSION_ID on
-              // the spawned subprocess env. Verified via runtime probe.
               "X-Beevibe-Session": "${BEEVIBE_SESSION_ID}",
             },
           },

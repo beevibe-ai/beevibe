@@ -5,7 +5,11 @@
  */
 
 import { ClaudeCodeRuntime } from "@beevibe/core/adapters/claude-code";
-import type { RuntimeStep, RuntimeResult } from "@beevibe/core";
+import type {
+  RuntimeStep,
+  RuntimeResult,
+  TerminalSessionStatus,
+} from "@beevibe/core";
 import type { ApiClient } from "./api-client.js";
 import { provisionWorkspace } from "./workspace.js";
 
@@ -93,7 +97,7 @@ export async function runDispatch(
     else scheduleFlush();
   };
 
-  let result: RuntimeResult;
+  let result: RuntimeResult | undefined;
   let runError: Error | undefined;
   try {
     result = await runtime.execute({
@@ -108,15 +112,10 @@ export async function runDispatch(
       onStep,
     });
   } catch (err) {
+    // Spawn / parse failure — runtime never produced a result. POST
+    // /runtime/done with a `failed` status anyway so the chat resolver
+    // unblocks instead of waiting out the 90s timeout.
     runError = err instanceof Error ? err : new Error(String(err));
-    // Compose a synthetic terminal result so the /runtime/done POST
-    // still fires; otherwise the chat resolver hangs until timeout.
-    result = {
-      status: "failed",
-      output: "",
-      cli_session_id: undefined,
-      usage: undefined,
-    } as unknown as RuntimeResult;
   }
 
   if (flushTimer) {
@@ -125,19 +124,21 @@ export async function runDispatch(
   }
   await flush();
 
+  const status: TerminalSessionStatus = runError
+    ? "failed"
+    : result?.status === "completed"
+      ? "succeeded"
+      : result?.status === "cancelled"
+        ? "cancelled"
+        : "failed";
   const done = {
     session_id: payload.session_id,
-    status:
-      result.status === "completed"
-        ? "succeeded"
-        : result.status === "failed"
-          ? "failed"
-          : "cancelled",
-    cli_session_id: result.cli_session_id,
-    result_summary: result.output,
-    exit_code: result.status === "completed" ? 0 : 1,
+    status,
+    cli_session_id: result?.cli_session_id,
+    result_summary: result?.output ?? "",
+    exit_code: status === "succeeded" ? 0 : 1,
     error: runError?.message,
-    usage: result.usage,
+    usage: result?.usage,
   };
   try {
     await deps.api.post("/runtime/done", done);

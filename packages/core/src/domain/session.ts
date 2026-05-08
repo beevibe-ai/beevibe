@@ -23,6 +23,26 @@ export const SESSION_STATUSES: readonly SessionStatus[] = [
   "cancelled",
 ] as const;
 
+/**
+ * Sessions with no further state transitions. /runtime/done validates
+ * its body against this set, dispatchService skips re-queueing tasks
+ * already in a matching session-terminal state, etc.
+ */
+export type TerminalSessionStatus = Exclude<SessionStatus, "pending" | "running">;
+
+export const TERMINAL_SESSION_STATUSES: readonly TerminalSessionStatus[] = [
+  "succeeded",
+  "failed",
+  "cancelled",
+] as const;
+
+export function isTerminalSessionStatus(s: unknown): s is TerminalSessionStatus {
+  return (
+    typeof s === "string" &&
+    (TERMINAL_SESSION_STATUSES as readonly string[]).includes(s)
+  );
+}
+
 export type SessionSpawnMode = "daemon" | "server_fallback_mesh";
 
 export interface SessionUsage {
