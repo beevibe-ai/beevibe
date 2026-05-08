@@ -4,6 +4,14 @@
  * `routes/stream.ts` per-browser handlers register callbacks via
  * `subscribe`. No persistence: an event missed during a disconnect is
  * lost, but React Query refetches on focus/reconnect so it converges.
+ *
+ * Per-user filtering: each subscriber registers with the caller's
+ * `personId`. The listener resolves an event's owner set (via
+ * `OwnerLookup`) and passes it to `publish`; subscribers only fire when
+ * their personId is in the owner set. Events with an empty owner set
+ * (entity gone, unknown event type, or DB lookup failed) are dropped —
+ * fail-closed so we never leak across users when ownership lookup
+ * fails.
  */
 
 export interface BvEvent {
@@ -15,20 +23,38 @@ export interface BvEvent {
 
 export type SseSubscriber = (event: BvEvent) => void;
 
-export class SseManager {
-  private readonly subscribers = new Set<SseSubscriber>();
+interface RegisteredSubscriber {
+  personId: string;
+  cb: SseSubscriber;
+}
 
-  subscribe(cb: SseSubscriber): () => void {
-    this.subscribers.add(cb);
+export class SseManager {
+  private readonly subscribers = new Set<RegisteredSubscriber>();
+
+  /**
+   * Register a subscriber for events owned by `personId`. Events
+   * published with an owner set that does NOT contain `personId` are
+   * skipped for this subscriber.
+   */
+  subscribe(personId: string, cb: SseSubscriber): () => void {
+    const entry: RegisteredSubscriber = { personId, cb };
+    this.subscribers.add(entry);
     return () => {
-      this.subscribers.delete(cb);
+      this.subscribers.delete(entry);
     };
   }
 
-  publish(event: BvEvent): void {
-    for (const cb of this.subscribers) {
+  /**
+   * Fan out an event to subscribers whose personId is in `owners`.
+   * `owners` is a frozen set produced by the listener via OwnerLookup;
+   * empty set drops the event (fail-closed).
+   */
+  publish(event: BvEvent, owners: ReadonlySet<string>): void {
+    if (owners.size === 0) return;
+    for (const sub of this.subscribers) {
+      if (!owners.has(sub.personId)) continue;
       try {
-        cb(event);
+        sub.cb(event);
       } catch (err) {
         console.error("[SseManager] subscriber threw:", (err as Error).message);
       }

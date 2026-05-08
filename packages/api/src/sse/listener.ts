@@ -9,10 +9,12 @@
 
 import { Client } from "pg";
 import type { SseManager, BvEvent } from "./manager.js";
+import type { OwnerLookup } from "./owner-lookup.js";
 
 export interface SseListenerConfig {
   databaseUrl: string;
   manager: SseManager;
+  ownerLookup: OwnerLookup;
   /** Default 5s. */
   reconnectDelayMs?: number;
 }
@@ -72,7 +74,10 @@ export class SseListener {
     client.on("notification", (msg) => {
       if (msg.channel !== "bv_event" || !msg.payload) return;
       const parsed = parseEvent(msg.payload);
-      if (parsed) this.config.manager.publish(parsed);
+      if (!parsed) return;
+      void this.config.ownerLookup.ownersOf(parsed).then((owners) => {
+        this.config.manager.publish(parsed, owners);
+      });
     });
 
     // pg.Client emits 'error' for socket-level issues, then ends the connection.

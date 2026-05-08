@@ -38,6 +38,7 @@ import { createStreamRouter } from "./routes/stream.js";
 import { createStreamAuthMiddleware } from "./auth/middleware.js";
 import { SseManager } from "./sse/manager.js";
 import { SseListener } from "./sse/listener.js";
+import { OwnerLookup } from "./sse/owner-lookup.js";
 
 export interface BootstrapConfig {
   databaseUrl: string;
@@ -245,7 +246,12 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   // LISTENs on a dedicated pg.Client and fans out via SseManager;
   // /api/stream pushes to subscribed browsers.
   const sseManager = new SseManager();
-  const sseListener = new SseListener({ databaseUrl: cfg.databaseUrl, manager: sseManager });
+  const ownerLookup = new OwnerLookup(pool);
+  const sseListener = new SseListener({
+    databaseUrl: cfg.databaseUrl,
+    manager: sseManager,
+    ownerLookup,
+  });
   sseListener.start();
   const streamRouter = createStreamRouter({
     authMiddleware: createStreamAuthMiddleware({ agentRepo, personRepo }),

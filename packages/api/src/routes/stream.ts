@@ -27,6 +27,7 @@ export function createStreamRouter(deps: StreamRoutesDeps): Router {
 
   router.get("/stream", (req, res) => {
     if (!requireHuman(req, res)) return;
+    const personId = req.caller!.personId;
 
     res.writeHead(200, {
       "Content-Type": "text/event-stream",
@@ -40,7 +41,7 @@ export function createStreamRouter(deps: StreamRoutesDeps): Router {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
 
-    const unsubscribe = deps.sseManager.subscribe(send);
+    const unsubscribe = deps.sseManager.subscribe(personId, send);
     const heartbeat = setInterval(() => {
       res.write(": heartbeat\n\n");
     }, HEARTBEAT_INTERVAL_MS);
