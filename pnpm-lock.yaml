@@ -138,7 +138,7 @@ importers:
         specifier: ^8.5.13
         version: 8.18.1
 
-  packages/executor:
+  packages/scheduler:
     dependencies:
       '@beevibe/core':
         specifier: workspace:*

@@ -86,7 +86,7 @@ export interface BootstrapResult {
 }
 
 /**
- * Composition root for the api server. Mirrors `@beevibe/executor`'s
+ * Composition root for the api server. Mirrors `@beevibe/scheduler`'s
  * bootstrap so wiring is symmetric across the two binary composition roots.
  *
  * M6.1: pool + 3 repos + session cache + api server + Bearer auth.

@@ -35,8 +35,8 @@ loadEnv({ path: resolve(here, "../.env") });
 
 import { bootstrap as bootstrapApi } from "../packages/api/src/bootstrap.js";
 import type { BootstrapResult as ApiBootstrapResult } from "../packages/api/src/bootstrap.js";
-import { bootstrap as bootstrapExecutor } from "../packages/executor/src/bootstrap.js";
-import type { BootstrapResult as ExecutorBootstrapResult } from "../packages/executor/src/bootstrap.js";
+import { bootstrap as bootstrapExecutor } from "../packages/scheduler/src/bootstrap.js";
+import type { BootstrapResult as ExecutorBootstrapResult } from "../packages/scheduler/src/bootstrap.js";
 import {
   agentId as makeAgentId,
   personId as makePersonId,
@@ -722,7 +722,7 @@ const inFlightCancel: Scenario = async (deps, stack) => {
   );
 
   if (cancelled.process_pid) {
-    const { isProcessAlive } = await import("../packages/executor/src/worker.js");
+    const { isProcessAlive } = await import("../packages/scheduler/src/worker.js");
     assert(
       !isProcessAlive(cancelled.process_pid),
       `CLI pid ${cancelled.process_pid} still alive after cancel`,

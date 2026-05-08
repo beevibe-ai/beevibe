@@ -53,7 +53,7 @@ const DEFAULT_API_URL = "http://localhost:3000";
 // ───────────────────────── helpers ─────────────────────────
 
 /**
- * Mirrors `packages/executor/src/worker.ts:isProcessAlive`. EPERM means the
+ * Mirrors `packages/scheduler/src/worker.ts:isProcessAlive`. EPERM means the
  * pid exists but in another uid — treat as alive to avoid spurious "safe
  * to clean" verdicts. ESRCH (or any other errno) means the process is gone.
  */
