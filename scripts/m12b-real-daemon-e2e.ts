@@ -251,7 +251,14 @@ async function main(): Promise<void> {
     // Tiny grace so the daemon's WS connect lands before we POST /chat.
     await new Promise((r) => setTimeout(r, 1500));
 
-    log("→ POST /chat (real claude turn)");
+    log("→ POST /chat (real claude turn — exercises an MCP tool)");
+    // Ask claude to call save_memory(content="m12b sentinel: <random>",
+    // fact_type="gotcha") and reply "pong". After the turn we assert
+    // both: (a) it replied "pong" (proves daemon round-trip), (b) the
+    // memory_fact table has a row with our sentinel content (proves
+    // the spawned CLI's MCP client reached /mcp via the workspace's
+    // mcp-config.json with the agent's bv_a_ token).
+    const sentinel = `m12b-sentinel-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     const chatPromise = fetch(`${apiUrl}/chat`, {
       method: "POST",
       headers: {
@@ -259,7 +266,9 @@ async function main(): Promise<void> {
         authorization: `Bearer ${alice.apiKey}`,
       },
       body: JSON.stringify({
-        message: "Reply with the literal word 'pong' and nothing else.",
+        message:
+          `First, call mcp__beevibe__save_memory with content="${sentinel}" ` +
+          `and fact_type="gotcha". Then reply with just the word "pong".`,
       }),
     });
 
@@ -313,6 +322,49 @@ async function main(): Promise<void> {
       throw new Error("expected ≥1 session_event row from real daemon");
     }
     log(`  ✓ session_event rows persisted from real daemon: ${eventCount}`);
+
+    // ── MCP-tool reachability check ────────────────────────────────
+    // The agent's CLI subprocess reads mcp-config.json from its
+    // workspace and calls /mcp with the bv_a_ token. A successful
+    // save_memory turns into a row in memory_fact. If the row is
+    // missing, either the CLI never read mcp-config.json or the
+    // token didn't authenticate correctly.
+    const { rows: factRows } = await pool.query<{ content: string }>(
+      `SELECT content FROM memory_fact WHERE agent_id = $1 AND content LIKE $2`,
+      [team.agent.id, `%${sentinel}%`],
+    );
+    if (factRows.length === 0) {
+      throw new Error(
+        `expected memory_fact row containing sentinel "${sentinel}"; ` +
+          `MCP tool save_memory did not land. Either the CLI didn't read ` +
+          `mcp-config.json or the bv_a_ token didn't authenticate.`,
+      );
+    }
+    log(`  ✓ MCP tool reached api: memory_fact row found ("${sentinel}")`);
+
+    // ── Skills sync check ──────────────────────────────────────────
+    // LocalWorkspaceManager.ensureWorkspace tier-syncs skills into
+    // <workspace>/.claude/skills/. For a team-tier agent, both
+    // beevibe-pre-task-setup (universal) and beevibe-team-mesh-negotiation
+    // (team-only) should be present.
+    const skillsDir = join(tmpWorkspaceRoot, team.agent.id, ".claude", "skills");
+    if (!existsSync(skillsDir)) {
+      throw new Error(`workspace skills dir missing: ${skillsDir}`);
+    }
+    for (const skillName of [
+      "beevibe-pre-task-setup",
+      "beevibe-team-mesh-negotiation",
+    ]) {
+      const skillFile = join(skillsDir, skillName, "SKILL.md");
+      if (!existsSync(skillFile)) {
+        throw new Error(
+          `expected ${skillName}/SKILL.md in workspace; missing at ${skillFile}`,
+        );
+      }
+    }
+    log(
+      `  ✓ skills present in workspace: beevibe-pre-task-setup, beevibe-team-mesh-negotiation`,
+    );
 
     await pool.end();
     log("\n✓ M12B e2e: real-daemon round-trip passed");
