@@ -397,7 +397,6 @@ async function composeDispatchPayload(
     agent_id: agent.id,
     agent_api_key: agent.api_key,
     agent_hierarchy_level: agent.hierarchy_level,
-    workspace_subdir: agent.id,
     intent: composeIntent(session.intent, briefing.userMessagePrefix),
     system_prompt_append: composeSystemPromptAppend(
       agent.runtime_config.system_prompt_addition,

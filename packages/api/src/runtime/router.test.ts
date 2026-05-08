@@ -313,7 +313,7 @@ describe("/runtime — integration", () => {
         session_id: sid,
         agent_id: a.agent.id,
         agent_api_key: a.agent.api_key,
-        workspace_subdir: a.agent.id,
+        agent_hierarchy_level: "team",
         type: "chat",
         mcp_server_url: "http://api.test/mcp",
         env: { BEEVIBE_SESSION_ID: sid, BEEVIBE_AGENT_ID: a.agent.id },

@@ -19,7 +19,6 @@ export interface DispatchPayload {
   agent_id: string;
   agent_api_key: string;
   agent_hierarchy_level: "ic" | "team" | "org";
-  workspace_subdir: string;
   intent: string;
   system_prompt_append: string;
   resume_session_id?: string;

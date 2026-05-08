@@ -61,7 +61,6 @@ export interface DispatchPayload {
    * sync. Pulled from agent.hierarchy_level at claim time.
    */
   agent_hierarchy_level: HierarchyLevel;
-  workspace_subdir: string;
   intent: string;
   system_prompt_append: string;
   /** When set, daemon spawns with `--resume <cli_session_id>`. */
