@@ -56,7 +56,7 @@ export interface TaskListItem extends Omit<Task, "description" | "result_summary
 
 export interface TaskLatestSessionSummary {
   short_id: string;
-  status: "running" | "succeeded" | "failed" | "cancelled";
+  status: SessionStatus;
   /** "2m", "1h", etc. — relative duration label. */
   elapsed: string;
   agent_label: string;

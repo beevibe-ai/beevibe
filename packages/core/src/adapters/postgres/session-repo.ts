@@ -1,6 +1,7 @@
 import type {
   Session,
   SessionBriefingSnapshot,
+  SessionSpawnMode,
   SessionStatus,
   SessionType,
   SessionUsage,
@@ -85,6 +86,7 @@ export class PostgresSessionRepository implements SessionRepository {
          cli_session_id, workspace_path,
          process_pid, process_group_id,
          result_summary, exit_code, error, usage,
+         runtime_id, spawn_mode,
          started_at, completed_at
        ) VALUES (
          $1, $2, $3, $4,
@@ -92,7 +94,8 @@ export class PostgresSessionRepository implements SessionRepository {
          $8, $9,
          $10, $11,
          $12, $13, $14, $15,
-         $16, NULL
+         $16, COALESCE($17, 'daemon'),
+         $18, NULL
        )
        RETURNING *`,
       [
@@ -111,6 +114,8 @@ export class PostgresSessionRepository implements SessionRepository {
         input.exit_code ?? null,
         input.error ?? null,
         input.usage ?? null,
+        input.runtime_id ?? null,
+        input.spawn_mode ?? null,
         input.started_at ?? null,
       ],
     );
@@ -131,6 +136,9 @@ export class PostgresSessionRepository implements SessionRepository {
       error: "error",
       usage: "usage",
       briefing: "briefing",
+      runtime_id: "runtime_id",
+      spawn_mode: "spawn_mode",
+      last_event_at: "last_event_at",
       started_at: "started_at",
       completed_at: "completed_at",
     });
@@ -168,6 +176,9 @@ function rowToSession(row: SessionRow): Session {
     error: row.error ?? undefined,
     usage: (row.usage ?? undefined) as SessionUsage | undefined,
     briefing: (row.briefing ?? undefined) as SessionBriefingSnapshot | undefined,
+    runtime_id: row.runtime_id ?? undefined,
+    spawn_mode: row.spawn_mode,
+    last_event_at: row.last_event_at ?? undefined,
     started_at: row.started_at ?? undefined,
     completed_at: row.completed_at ?? undefined,
     created_at: row.created_at,

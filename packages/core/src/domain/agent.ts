@@ -40,6 +40,8 @@ export interface Agent {
    * creation (initiator's value wins). Default 5 if undefined.
    */
   max_negotiation_rounds?: number;
+  /** Preferred runtime binding; null when no daemon registered for the agent's CLI. */
+  preferred_runtime_id?: string;
   created_at: Date;
   updated_at: Date;
 }

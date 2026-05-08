@@ -15,6 +15,7 @@ const TASK_PILL: Record<TaskStatus, { dot: string; bg: string; text: string; lab
 };
 
 const SESSION_PILL: Record<SessionStatus, { bg: string; text: string; label: string; pulse?: boolean }> = {
+  pending: { bg: "bg-secondary", text: "text-muted-foreground", label: "pending" },
   running: { bg: "bg-status-running/10", text: "text-status-running", label: "running", pulse: true },
   succeeded: { bg: "bg-status-done/10", text: "text-status-done", label: "succeeded" },
   failed: { bg: "bg-status-failed/10", text: "text-status-failed", label: "failed" },
