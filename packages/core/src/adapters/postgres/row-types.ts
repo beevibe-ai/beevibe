@@ -22,6 +22,7 @@ export interface AgentRow {
   max_task_sessions: number | null;
   max_mesh_sessions: number | null;
   max_negotiation_rounds: number | null;
+  preferred_runtime_id: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -62,6 +63,9 @@ export interface SessionRow {
   error: string | null;
   usage: SessionUsage | null;
   briefing: Record<string, unknown> | null;
+  runtime_id: string | null;
+  spawn_mode: string;
+  last_event_at: Date | null;
   started_at: Date | null;
   completed_at: Date | null;
   created_at: Date;

@@ -8,14 +8,22 @@ export const SESSION_TYPES: readonly SessionType[] = [
   "chat",
 ] as const;
 
-export type SessionStatus = "running" | "succeeded" | "failed" | "cancelled";
+export type SessionStatus =
+  | "pending"
+  | "running"
+  | "succeeded"
+  | "failed"
+  | "cancelled";
 
 export const SESSION_STATUSES: readonly SessionStatus[] = [
+  "pending",
   "running",
   "succeeded",
   "failed",
   "cancelled",
 ] as const;
+
+export type SessionSpawnMode = "daemon" | "server_fallback_mesh";
 
 export interface SessionUsage {
   cost_usd?: number;
@@ -89,6 +97,12 @@ export interface Session {
   error?: string;
   usage?: SessionUsage;
   briefing?: SessionBriefingSnapshot;
+  /** Bound at INSERT time. NULL means server-fallback-mesh path. */
+  runtime_id?: string;
+  /** Discriminates daemon-claimed sessions from server-fallback-mesh ones. */
+  spawn_mode?: SessionSpawnMode;
+  /** Updated by SessionEventRepository.append for orphan-reaper queries. */
+  last_event_at?: Date;
   started_at?: Date;
   completed_at?: Date;
   created_at: Date;
