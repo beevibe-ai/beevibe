@@ -45,6 +45,11 @@ import {
   sessionEventId as makeSessionEventId,
   sessionId as makeSessionId,
 } from "../packages/core/src/domain/ids.js";
+import { DEFAULT_RUNTIME_CONFIG } from "../packages/core/src/domain/agent.js";
+import { provisionAgent } from "../packages/core/src/auth/provision.js";
+import { PostgresAgentRepository } from "../packages/core/src/adapters/postgres/agent-repo.js";
+import { PostgresCoreMemoryRepository } from "../packages/core/src/adapters/postgres/core-memory-repo.js";
+import { PostgresPersonRepository } from "../packages/core/src/adapters/postgres/person-repo.js";
 import { PostgresSessionEventRepository } from "../packages/core/src/adapters/postgres/session-event-repo.js";
 import { createPool, type Pool } from "../packages/core/src/adapters/postgres/client.js";
 
@@ -101,26 +106,36 @@ interface SeedResult {
 }
 
 async function seedSession(pool: Pool): Promise<SeedResult> {
-  const pid = makePersonId();
-  const aid = makeAgentId();
+  const persons = new PostgresPersonRepository(pool);
+  const agents = new PostgresAgentRepository(pool);
+  const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
+
+  const owner = await persons.create({
+    id: makePersonId(),
+    name: "m10-tester",
+    email: `m10-${Date.now()}@example.test`,
+  });
+  const { agent } = await provisionAgent(
+    { agentRepo: agents, coreMemoryRepo },
+    {
+      id: makeAgentId(),
+      name: "M10 Test Agent",
+      owner_id: owner.id,
+      hierarchy_level: "team",
+      runtime_config: DEFAULT_RUNTIME_CONFIG,
+    },
+  );
+
+  // 'running' bypasses the new 'pending' default; we don't exercise the
+  // claim transition in this script — we test the session_event pipeline
+  // assuming a session is already executing.
   const sid = makeSessionId();
-  await pool.query(
-    `INSERT INTO person (id, name, email, api_key) VALUES ($1, $2, $3, $4)`,
-    [pid, "m10-tester", `m10-${Date.now()}@example.test`, `bv_u_${pid}`],
-  );
-  await pool.query(
-    `INSERT INTO agent (id, name, owner_id, hierarchy_level, runtime_config, api_key)
-     VALUES ($1, $2, $3, 'team', $4::jsonb, $5)`,
-    [aid, "M10 Test Agent", pid, JSON.stringify({ type: "claude" }), `bv_a_${aid}`],
-  );
-  // Use 'running' to bypass the new 'pending' default and get into
-  // the state where session_event INSERTs make sense for transcript replay.
   await pool.query(
     `INSERT INTO session (id, agent_id, type, status, intent, started_at)
      VALUES ($1, $2, 'task', 'running', 'm10 e2e', now())`,
-    [sid, aid],
+    [sid, agent.id],
   );
-  return { personId: pid, agentId: aid, sessionId: sid };
+  return { personId: owner.id, agentId: agent.id, sessionId: sid };
 }
 
 // ───────────────────────── scenarios ─────────────────────────

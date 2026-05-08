@@ -1,5 +1,5 @@
 import type { ResolutionProposal } from "../domain/escalation.js";
-import type { Session, SessionType } from "../domain/session.js";
+import type { Session, SessionEventKind, SessionType } from "../domain/session.js";
 import { sessionEventId, sessionId as newSessionId } from "../domain/ids.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type {
@@ -260,27 +260,26 @@ export class AgentSession {
       ? `${briefing.userMessagePrefix}\n\n${input.intent}`
       : input.intent;
 
-    // Compose onStep: transcript persistence (fire-and-forget; never
-    // blocks the LLM-bound tail) followed by the caller's hook (if any).
-    // The kind passes through from the runtime so the SSE pipeline can
-    // carry both tool-call streams and assistant text streams to UIs.
+    // Tee onStep into session_event; failures only log so the LLM tail
+    // never blocks on transcript persistence.
     const eventRepo = this.deps.sessionEventRepo;
-    const callerOnStep = input.onStep;
-    const onStep = (step: RuntimeStep): void => {
+    const appendEvent = (
+      kind: SessionEventKind,
+      content: string,
+      tool_name?: string,
+    ): void => {
       void eventRepo
-        .append({
-          id: sessionEventId(),
-          session_id: sid,
-          kind: step.kind,
-          content: step.description,
-          tool_name: step.tool,
-        })
+        .append({ id: sessionEventId(), session_id: sid, kind, content, tool_name })
         .catch((err) =>
           console.warn(
-            `[AgentSession] session_event append dropped for ${sid}:`,
+            `[AgentSession] session_event ${kind} dropped for ${sid}:`,
             (err as Error).message,
           ),
         );
+    };
+    const callerOnStep = input.onStep;
+    const onStep = (step: RuntimeStep): void => {
+      appendEvent(step.kind, step.description, step.tool);
       callerOnStep?.(step);
     };
 
@@ -344,23 +343,8 @@ export class AgentSession {
       completed_at: new Date(),
     });
 
-    // Terminal `summary` event — gives the detail page the agent's final
-    // response even when there were no tool calls (e.g. quick chat replies).
-    if (result.output) {
-      void eventRepo
-        .append({
-          id: sessionEventId(),
-          session_id: sid,
-          kind: "summary",
-          content: result.output,
-        })
-        .catch((err) =>
-          console.warn(
-            `[AgentSession] session_event summary dropped for ${sid}:`,
-            (err as Error).message,
-          ),
-        );
-    }
+    // Final summary covers replies with zero tool calls (e.g. short chat).
+    if (result.output) appendEvent("summary", result.output);
 
     // 6. Fire-and-forget post-session memory work.
     void this.deps.memoryAgent.onTaskComplete(sid).catch((err) =>

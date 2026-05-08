@@ -1,4 +1,4 @@
-import type { SessionUsage } from "../domain/session.js";
+import type { SessionEventKind, SessionUsage } from "../domain/session.js";
 
 /**
  * Universal agent-execution contract.
@@ -123,8 +123,7 @@ export interface RuntimeContext {
  * surfaced inline, terminal summary appended after CLI exit).
  */
 export interface RuntimeStep {
-  /** Step kind: 'tool_call' | 'agent' | 'tool_result' | 'summary'. */
-  kind: "tool_call" | "agent" | "tool_result" | "summary";
+  kind: SessionEventKind;
   /** Tool name. Set for tool_call (and tool_result when known). */
   tool?: string;
   /** For tool_call: short description of input. For agent: the text. */

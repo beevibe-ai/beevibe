@@ -1,25 +1,14 @@
--- Daemon-first restructure / Phase 1: extend bv_event for runtime + the
--- new session_event live-progress channel.
+-- Extends the bv_notify_event() function (initially defined in
+-- migration 1778300000000) to fire on two more table sources:
 --
--- This migration EXTENDS the bv_notify_event() function from migration
--- 1778300000000 to recognize two more table sources:
+--   runtime       → 'runtime.updated' on INSERT and UPDATE OF last_heartbeat.
+--                   UPDATE is narrowed to the heartbeat column so unrelated
+--                   updates (cli_version bumps) don't spam the SSE bus.
 --
---   runtime  → 'runtime.updated' on INSERT and on UPDATE OF last_heartbeat.
---              The "Settings → Runtimes" panel uses this for live online/
---              offline transitions without polling. We narrow UPDATE to
---              the heartbeat column so unrelated UPDATEs (cli_version on
---              daemon upgrade) don't spam the SSE bus.
---
---   session_event → 'session.event' on INSERT. Every step the daemon
---              streams back fires one notify so the chat UI's transcript
---              renders in real time. Note: this is the same channel and
---              minimal payload as everything else (just `event` + `id`,
---              where `id` is the session_id) — the chat UI re-fetches
---              the bounded transcript via getSessionView. Migration
---              1778700000000 (cherry-picked from research/chat-surface-
---              audit) adds a richer 'session.step' notify with inline
---              data, used in parallel for the optimistic streaming path
---              that doesn't wait on a re-fetch.
+--   session_event → 'session.event' on INSERT, payload {event,id=session_id}.
+--                   Drives a re-fetch path; the inline-data 'session.step'
+--                   notify (migration 1778700000000) runs in parallel for
+--                   optimistic streaming.
 
 CREATE OR REPLACE FUNCTION bv_notify_event() RETURNS trigger AS $$
 DECLARE

@@ -1,10 +1,12 @@
 import { describe, expect, it } from "vitest";
 import {
-  extractStepEvent,
+  extractStepEvents,
   parseClaudeStreamJson,
   parseStreamJsonLine,
   type StreamJsonMessage,
 } from "./stream-json.js";
+
+const firstStep = (msg: StreamJsonMessage) => extractStepEvents(msg)[0] ?? null;
 
 describe("parseStreamJsonLine", () => {
   it("returns null for empty input", () => {
@@ -27,9 +29,9 @@ describe("parseStreamJsonLine", () => {
   });
 });
 
-describe("extractStepEvent", () => {
+describe("extractStepEvents", () => {
   it("extracts file_path from tool_use input", () => {
-    const step = extractStepEvent({
+    const step = firstStep({
       type: "tool_use",
       name: "Read",
       input: { file_path: "/src/main.ts" },
@@ -40,7 +42,7 @@ describe("extractStepEvent", () => {
   });
 
   it("extracts command from Bash tool input", () => {
-    const step = extractStepEvent({
+    const step = firstStep({
       type: "tool_use",
       name: "Bash",
       input: { command: "ls -la /tmp" },
@@ -50,7 +52,7 @@ describe("extractStepEvent", () => {
   });
 
   it("extracts query from Grep input", () => {
-    const step = extractStepEvent({
+    const step = firstStep({
       type: "tool_use",
       name: "Grep",
       input: { query: "needle" },
@@ -59,12 +61,12 @@ describe("extractStepEvent", () => {
   });
 
   it("returns null for non-tool messages", () => {
-    expect(extractStepEvent({ type: "system" } as StreamJsonMessage)).toBeNull();
-    expect(extractStepEvent({ type: "result" } as StreamJsonMessage)).toBeNull();
+    expect(firstStep({ type: "system" } as StreamJsonMessage)).toBeNull();
+    expect(firstStep({ type: "result" } as StreamJsonMessage)).toBeNull();
   });
 
   it("extracts from content_block_start with tool_use block", () => {
-    const step = extractStepEvent({
+    const step = firstStep({
       type: "content_block_start",
       content_block: { type: "tool_use", name: "Write", input: { file_path: "/tmp/x" } },
     });
@@ -73,7 +75,7 @@ describe("extractStepEvent", () => {
   });
 
   it("falls back to JSON.stringify for unknown multi-key input shapes", () => {
-    const step = extractStepEvent({
+    const step = firstStep({
       type: "tool_use",
       name: "Custom",
       input: { foo: "bar", baz: "qux" },
@@ -82,7 +84,7 @@ describe("extractStepEvent", () => {
   });
 
   it("returns the lone string value for single-key input shapes", () => {
-    const step = extractStepEvent({
+    const step = firstStep({
       type: "tool_use",
       name: "Custom",
       input: { something: "the value" },

@@ -124,37 +124,28 @@ export function extractStepEvents(msg: StreamJsonMessage): RuntimeStep[] {
   return [];
 }
 
-/** @deprecated Use `extractStepEvents` (returns 0+ steps per message). */
-export function extractStepEvent(msg: StreamJsonMessage): RuntimeStep | null {
-  const steps = extractStepEvents(msg);
-  return steps[0] ?? null;
-}
-
 /**
  * Pull the most informative human-readable field out of a tool's input
- * payload. Used by the chat UI's "what's the agent doing right now"
- * bubble — the goal is "Read packages/foo.ts" not "{file_path: ...}".
- *
- * Mesh / team-management fields come BEFORE generic ones so when an agent
- * calls `create_subordinate_agent({name: "Backend"})` we see the name,
- * not a JSON blob.
+ * payload — "Read packages/foo.ts" not "{file_path: ...}". Frequency-
+ * ordered (file_path/command first → most tool calls), with mesh fields
+ * after; the no-overlap invariant is maintained at MCP-tool definition
+ * time, not here.
  */
+const PREFERRED_INPUT_FIELDS = [
+  "file_path", "command", "query", "pattern", "path", "url",
+  "question", "answer", "intent", "feedback", "proposal",
+  "blocker_summary", "summary",
+] as const;
+
 function describeToolInput(input: Record<string, unknown>): string {
-  if (typeof input.question === "string") return input.question.slice(0, 200);
-  if (typeof input.answer === "string") return input.answer.slice(0, 200);
-  if (typeof input.intent === "string") return input.intent.slice(0, 200);
-  if (typeof input.feedback === "string") return input.feedback.slice(0, 200);
-  if (typeof input.proposal === "string") return input.proposal.slice(0, 200);
-  if (typeof input.blocker_summary === "string") return input.blocker_summary.slice(0, 200);
-  if (typeof input.summary === "string") return input.summary.slice(0, 200);
-  if (typeof input.name === "string" && typeof input.persona === "string")
+  for (const k of PREFERRED_INPUT_FIELDS) {
+    const v = input[k];
+    if (typeof v === "string") return v.slice(0, 200);
+  }
+  // create_subordinate_agent shape: surface the new agent's name.
+  if (typeof input.name === "string" && typeof input.persona === "string") {
     return input.name.slice(0, 80);
-  if (typeof input.file_path === "string") return input.file_path;
-  if (typeof input.command === "string") return input.command.slice(0, 200);
-  if (typeof input.query === "string") return input.query.slice(0, 200);
-  if (typeof input.pattern === "string") return input.pattern.slice(0, 200);
-  if (typeof input.path === "string") return input.path;
-  if (typeof input.url === "string") return input.url;
+  }
   const keys = Object.keys(input);
   if (keys.length === 1 && typeof input[keys[0]!] === "string") {
     return (input[keys[0]!] as string).slice(0, 200);

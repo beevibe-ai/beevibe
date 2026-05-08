@@ -64,7 +64,6 @@ SELECT
           'content', e.content,
           'tool_name', e.tool_name
         )
-        ORDER BY e.created_at ASC, e.id ASC
       )
       FROM (
         SELECT * FROM session_event
