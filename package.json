@@ -16,7 +16,9 @@
     "clean": "turbo clean && rm -rf node_modules",
     "migrate": "node-pg-migrate --envPath .env",
     "migrate:test": "node-pg-migrate --envPath .env -d DATABASE_URL_TEST",
-    "install-skills": "tsx scripts/install-skills.ts"
+    "install-skills": "tsx scripts/install-skills.ts",
+    "bootstrap": "tsx scripts/init.ts",
+    "provision-user": "tsx scripts/provision-user.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

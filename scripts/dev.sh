@@ -36,9 +36,7 @@ fi
 
 # ─────────────────── env file ───────────────────
 if [ ! -f .env ]; then
-  echo "==> .env missing. Creating from .env.example..."
-  cp .env.example .env
-  echo "    Edit .env to add ANTHROPIC_API_KEY and OPENAI_API_KEY, then re-run."
+  echo "==> .env missing. Run \`pnpm bootstrap\` first to provision the local stack."
   exit 1
 fi
 
