@@ -78,6 +78,43 @@ export class PostgresSessionRepository implements SessionRepository {
     return rows.map(rowToSession);
   }
 
+  async claimNextForRuntime(runtimeId: string): Promise<Session | undefined> {
+    const { rows } = await this.pool.query<SessionRow>(
+      `WITH candidate AS (
+         SELECT id FROM session
+           WHERE runtime_id = $1
+             AND status = 'pending'
+           ORDER BY created_at ASC
+           FOR UPDATE SKIP LOCKED
+           LIMIT 1
+       )
+       UPDATE session
+          SET status = 'running',
+              started_at = COALESCE(started_at, now())
+         FROM candidate
+        WHERE session.id = candidate.id
+        RETURNING session.*`,
+      [runtimeId],
+    );
+    return rows[0] ? rowToSession(rows[0]) : undefined;
+  }
+
+  async countOwnedByDaemon(
+    daemonId: string,
+    sessionIds: string[],
+  ): Promise<number> {
+    if (sessionIds.length === 0) return 0;
+    const { rows } = await this.pool.query<{ count: string }>(
+      `SELECT COUNT(*)::text AS count
+         FROM session s
+         JOIN runtime r ON r.id = s.runtime_id
+        WHERE s.id = ANY($1::text[])
+          AND r.daemon_id = $2`,
+      [sessionIds, daemonId],
+    );
+    return Number(rows[0]?.count ?? 0);
+  }
+
   async create(input: NewSession): Promise<Session> {
     const { rows } = await this.pool.query<SessionRow>(
       `INSERT INTO session (

@@ -35,6 +35,21 @@ export interface SessionRepository {
    */
   listRunningWithPid(): Promise<Session[]>;
 
+  /**
+   * Atomically claim the oldest pending session bound to `runtimeId` and
+   * promote it to `running`. Returns undefined when nothing is pending.
+   * Implemented with `SELECT … FOR UPDATE SKIP LOCKED` so concurrent claims
+   * by parallel daemons each get a distinct session (or undefined).
+   */
+  claimNextForRuntime(runtimeId: string): Promise<Session | undefined>;
+
+  /**
+   * How many of `sessionIds` are bound to a runtime owned by `daemonId`?
+   * Single JOIN round-trip; the /runtime/* surface uses this to gate
+   * /events and /done writes against cross-tenant tampering.
+   */
+  countOwnedByDaemon(daemonId: string, sessionIds: string[]): Promise<number>;
+
   create(input: NewSession): Promise<Session>;
 
   update(id: string, patch: SessionPatch): Promise<Session>;

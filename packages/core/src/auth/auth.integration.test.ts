@@ -7,11 +7,16 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { PostgresAgentRepository } from "../adapters/postgres/agent-repo.js";
 import type { Pool } from "../adapters/postgres/client.js";
 import { PostgresCoreMemoryRepository } from "../adapters/postgres/core-memory-repo.js";
+import { PostgresDaemonRepository } from "../adapters/postgres/daemon-repo.js";
 import { PostgresPersonRepository } from "../adapters/postgres/person-repo.js";
 import { createTestPool, truncateAll } from "../test-helpers.js";
 import { DEFAULT_RUNTIME_CONFIG } from "../domain/agent.js";
-import { agentId, personId } from "../domain/ids.js";
-import { lookupApiKey } from "./api-key.js";
+import { agentId, daemonId, personId } from "../domain/ids.js";
+import {
+  generateDaemonApiKey,
+  hashDaemonToken,
+  lookupApiKey,
+} from "./api-key.js";
 import { findUserAgent } from "./find-user-agent.js";
 import { provisionAgent, provisionUser } from "./provision.js";
 
@@ -19,15 +24,21 @@ describe("auth — integration", () => {
   let pool: Pool;
   let agentRepo: PostgresAgentRepository;
   let personRepo: PostgresPersonRepository;
+  let daemonRepo: PostgresDaemonRepository;
   let coreMemoryRepo: PostgresCoreMemoryRepository;
-  let deps: { agentRepo: PostgresAgentRepository; personRepo: PostgresPersonRepository };
+  let deps: {
+    agentRepo: PostgresAgentRepository;
+    personRepo: PostgresPersonRepository;
+    daemonRepo: PostgresDaemonRepository;
+  };
 
   beforeAll(() => {
     pool = createTestPool();
     agentRepo = new PostgresAgentRepository(pool);
     personRepo = new PostgresPersonRepository(pool);
+    daemonRepo = new PostgresDaemonRepository(pool);
     coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
-    deps = { agentRepo, personRepo };
+    deps = { agentRepo, personRepo, daemonRepo };
   });
 
   beforeEach(async () => {
@@ -160,6 +171,42 @@ describe("auth — integration", () => {
     expect((await personRepo.findByApiKey(bob.apiKey))?.id).toBe(bob.person.id);
     // …but no team/org agent, so auth refuses.
     expect(await lookupApiKey(deps, bob.apiKey)).toBeUndefined();
+  });
+
+  it("lookupApiKey(daemonKey) → source='daemon' with daemonId + ownerPersonId", async () => {
+    const alice = await makeAlice();
+    const token = generateDaemonApiKey();
+    const id = daemonId();
+    await daemonRepo.create({
+      id,
+      owner_person_id: alice.person.id,
+      external_id: "macbook-pro",
+      device_name: "MacBook Pro",
+      token_hash: hashDaemonToken(token),
+    });
+
+    const caller = await lookupApiKey(deps, token);
+    expect(caller).toEqual({
+      source: "daemon",
+      daemonId: id,
+      ownerPersonId: alice.person.id,
+    });
+  });
+
+  it("revoked daemon tokens stop resolving", async () => {
+    const alice = await makeAlice();
+    const token = generateDaemonApiKey();
+    const id = daemonId();
+    await daemonRepo.create({
+      id,
+      owner_person_id: alice.person.id,
+      external_id: "macbook-pro",
+      device_name: "MacBook Pro",
+      token_hash: hashDaemonToken(token),
+    });
+    expect(await lookupApiKey(deps, token)).toBeDefined();
+    await daemonRepo.revoke(id);
+    expect(await lookupApiKey(deps, token)).toBeUndefined();
   });
 
   it("person.api_key UNIQUE prevents two users from sharing a key (provisionUser collisions bubble)", async () => {

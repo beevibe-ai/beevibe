@@ -28,8 +28,14 @@ export interface AssembleToolsServices {
   memoryAgent: MemoryAgent;
 }
 
+/**
+ * /mcp callers are bv_a_ (agent) or bv_u_ (human). Daemons authenticate to
+ * /runtime/* only and are rejected at the /mcp entry point.
+ */
+export type McpCaller = Exclude<ResolvedCaller, { source: "daemon" }>;
+
 export interface AssembleToolsContext {
-  caller: ResolvedCaller;
+  caller: McpCaller;
   beevibeSid: string;
 }
 

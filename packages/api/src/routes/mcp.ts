@@ -9,7 +9,7 @@ import {
   ListToolsRequestSchema,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { ResolvedCaller } from "@beevibe/core/auth";
+import type { McpCaller } from "../tools/assemble.js";
 import type { CoreMemory, FactStore, MemoryAgent } from "@beevibe/core/services/memory";
 import type {
   AgentRepository,
@@ -47,7 +47,7 @@ export interface McpRouterDeps {
 interface ActiveMcpSession {
   transport: StreamableHTTPServerTransport;
   server: McpLowLevelServer;
-  caller: ResolvedCaller;
+  caller: McpCaller;
   beevibeSid: string;
   createdAt: number;
 }
@@ -162,6 +162,15 @@ async function handleMcpRequest(
   if (!caller) {
     // Auth middleware should have handled this; defensive.
     res.status(401).json({ error: "unauthenticated" });
+    return;
+  }
+  if (caller.source === "daemon") {
+    // Daemons authenticate to /runtime/* only — they spawn the CLI which
+    // calls /mcp with its own bv_a_ token.
+    res.status(403).json({
+      error: "daemon_not_allowed",
+      message: "/mcp is for bv_a_ and bv_u_ callers; use /runtime/* for daemons",
+    });
     return;
   }
 

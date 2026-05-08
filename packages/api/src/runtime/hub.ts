@@ -1,0 +1,139 @@
+/**
+ * In-memory registry of connected daemon WebSocket clients, indexed by
+ * runtime_id. The HTTP claim path is the source of truth — this hub is a
+ * best-effort wakeup hint so daemons don't have to poll on a 1-second
+ * cadence to feel responsive.
+ *
+ * Pattern lifted from Multica's hub.go, simplified for v1:
+ *   - One daemon connects with N runtime_ids (one per detected CLI).
+ *   - One push to runtime_id X reaches every client subscribed to X.
+ *   - The dedup cache is per-client + per-(type, session_id), bounded at
+ *     128 entries FIFO. Prevents the same session_id from firing two
+ *     wakeups at the same client when an upstream calls notify twice.
+ *   - Best-effort: send failures are swallowed. Daemons recover via the
+ *     30-second HTTP claim poll if a wakeup is missed.
+ *   - Single-instance API for v1 — federation across instances is a Phase
+ *     10 concern (pg_notify('runtime_wakeup', json) + per-instance hubs).
+ */
+
+export type DaemonPushPayload =
+  | { type: "task_available"; runtime_id: string; session_id: string }
+  | { type: "cancel"; session_id: string };
+
+export interface DaemonClient {
+  daemonId: string;
+  runtimeIds: readonly string[];
+  /** Best-effort send. Hub catches throws and unregisters on failure. */
+  send(payload: DaemonPushPayload): void;
+}
+
+const DEDUP_CAP = 128;
+
+export class DaemonHub {
+  private readonly byRuntimeId = new Map<string, Set<DaemonClient>>();
+  private readonly byDaemonId = new Map<string, Set<DaemonClient>>();
+  private readonly dedup = new WeakMap<DaemonClient, Set<string>>();
+
+  register(client: DaemonClient): void {
+    for (const rid of client.runtimeIds) {
+      let bucket = this.byRuntimeId.get(rid);
+      if (!bucket) {
+        bucket = new Set();
+        this.byRuntimeId.set(rid, bucket);
+      }
+      bucket.add(client);
+    }
+    let dbucket = this.byDaemonId.get(client.daemonId);
+    if (!dbucket) {
+      dbucket = new Set();
+      this.byDaemonId.set(client.daemonId, dbucket);
+    }
+    dbucket.add(client);
+    this.dedup.set(client, new Set());
+  }
+
+  unregister(client: DaemonClient): void {
+    for (const rid of client.runtimeIds) {
+      const bucket = this.byRuntimeId.get(rid);
+      if (!bucket) continue;
+      bucket.delete(client);
+      if (bucket.size === 0) this.byRuntimeId.delete(rid);
+    }
+    const dbucket = this.byDaemonId.get(client.daemonId);
+    if (dbucket) {
+      dbucket.delete(client);
+      if (dbucket.size === 0) this.byDaemonId.delete(client.daemonId);
+    }
+    this.dedup.delete(client);
+  }
+
+  /**
+   * Wake all clients subscribed to `runtimeId` so they claim the pending
+   * session. Idempotent: a duplicate notify on the same session is dropped
+   * by the per-client dedup cache.
+   */
+  notify(runtimeId: string, sessionId: string): void {
+    const bucket = this.byRuntimeId.get(runtimeId);
+    if (!bucket || bucket.size === 0) return;
+    const payload: DaemonPushPayload = {
+      type: "task_available",
+      runtime_id: runtimeId,
+      session_id: sessionId,
+    };
+    for (const client of bucket) {
+      this.deliver(client, `task_available:${sessionId}`, payload);
+    }
+  }
+
+  /**
+   * Push a cancel frame to every client owned by the daemon. Sent when a
+   * human or escalation cancels an in-flight session — the daemon SIGTERMs
+   * the matching subprocess. Multiple clients per daemon would mean
+   * separate WS connections; sending to all is safe because cancel is
+   * idempotent.
+   */
+  cancel(daemonId: string, sessionId: string): void {
+    const bucket = this.byDaemonId.get(daemonId);
+    if (!bucket || bucket.size === 0) return;
+    const payload: DaemonPushPayload = { type: "cancel", session_id: sessionId };
+    for (const client of bucket) {
+      this.deliver(client, `cancel:${sessionId}`, payload);
+    }
+  }
+
+  /** Total live connections — exposed for /health and tests. */
+  size(): number {
+    let n = 0;
+    for (const bucket of this.byDaemonId.values()) n += bucket.size;
+    return n;
+  }
+
+  /** Is this runtime currently online (≥1 client subscribed)? */
+  hasRuntime(runtimeId: string): boolean {
+    return (this.byRuntimeId.get(runtimeId)?.size ?? 0) > 0;
+  }
+
+  private deliver(
+    client: DaemonClient,
+    dedupKey: string,
+    payload: DaemonPushPayload,
+  ): void {
+    const seen = this.dedup.get(client);
+    if (!seen) return;
+    if (seen.has(dedupKey)) return;
+    if (seen.size >= DEDUP_CAP) {
+      const oldest = seen.values().next().value;
+      if (oldest !== undefined) seen.delete(oldest);
+    }
+    seen.add(dedupKey);
+    try {
+      client.send(payload);
+    } catch (err) {
+      console.warn("[hub] send failed; unregistering client", {
+        daemonId: client.daemonId,
+        err: err instanceof Error ? err.message : String(err),
+      });
+      this.unregister(client);
+    }
+  }
+}

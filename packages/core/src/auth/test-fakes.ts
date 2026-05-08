@@ -1,6 +1,7 @@
 import { vi } from "vitest";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type { CoreMemoryBlockRepository } from "../ports/core-memory-repo.js";
+import type { DaemonRepository } from "../ports/daemon-repo.js";
 import type { PersonRepository } from "../ports/person-repo.js";
 
 /**
@@ -34,6 +35,19 @@ export function makePersonRepoFake(): PersonRepository {
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
+  };
+}
+
+export function makeDaemonRepoFake(): DaemonRepository {
+  return {
+    findById: vi.fn(),
+    findByOwnerAndExternalId: vi.fn(),
+    findByTokenHash: vi.fn(),
+    listActiveByOwner: vi.fn(),
+    create: vi.fn(),
+    update: vi.fn(),
+    touchLastSeen: vi.fn(),
+    revoke: vi.fn(),
   };
 }
 

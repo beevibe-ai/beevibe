@@ -2,11 +2,13 @@ import path from "node:path";
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
+  PostgresDaemonRepository,
   PostgresEscalationRepository,
   PostgresMemoryFactRepository,
   PostgresNegotiationRepository,
   PostgresNegotiationRoundRepository,
   PostgresPersonRepository,
+  PostgresRuntimeRepository,
   PostgresSessionEventRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
@@ -36,6 +38,9 @@ import { createEscalationRouter } from "./routes/escalation.js";
 import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
 import { createStreamAuthMiddleware } from "./auth/middleware.js";
+import { DaemonHub } from "./runtime/hub.js";
+import { createRuntimeRouter } from "./runtime/router.js";
+import { RuntimeWsServer } from "./runtime/ws-server.js";
 import { SseManager } from "./sse/manager.js";
 import { SseListener } from "./sse/listener.js";
 import { OwnerLookup } from "./sse/owner-lookup.js";
@@ -94,6 +99,8 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
 
   const agentRepo = new PostgresAgentRepository(pool);
   const personRepo = new PostgresPersonRepository(pool);
+  const daemonRepo = new PostgresDaemonRepository(pool);
+  const runtimeRepo = new PostgresRuntimeRepository(pool);
   const sessionRepo = new PostgresSessionRepository(pool);
   const sessionEventRepo = new PostgresSessionEventRepository(pool);
   const taskRepo = new PostgresTaskRepository(pool);
@@ -192,7 +199,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const server = new BeevibeApiServer({
     port: cfg.port ?? 3000,
     socketTimeoutMs: cfg.socketTimeoutMs,
-    authDeps: { agentRepo, personRepo },
+    authDeps: { agentRepo, personRepo, daemonRepo },
   });
 
   // Mount /mcp under the api server. Each call to createMcpRouter wires
@@ -241,6 +248,35 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   });
   server.getApp().use(viewRouter);
 
+  // Phase 4 — daemon-facing surface. The hub is in-memory; tracks live WS
+  // clients indexed by runtime_id. HTTP endpoints work without a live
+  // socket — daemons can claim via HTTP poll alone if WS push fails.
+  const daemonHub = new DaemonHub();
+  const runtimeRouter = createRuntimeRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    agentRepo,
+    daemonRepo,
+    runtimeRepo,
+    sessionRepo,
+    sessionEventRepo,
+    hub: daemonHub,
+    makeMemoryAgent,
+    mcpServerUrl: cfg.mcpServerUrl,
+    // onSessionComplete is wired in M4.6 (chatResolver) and M4.5 (post-
+    // dispatch hook); leaving unset means /runtime/done still finalizes
+    // the session row but no resolver fires.
+  });
+  server.getApp().use("/runtime", runtimeRouter);
+
+  // WSS upgrade for daemon push. Hangs off the same http.Server as Express;
+  // attach() registers a one-shot upgrade listener that filters by path.
+  const runtimeWsServer = new RuntimeWsServer({
+    hub: daemonHub,
+    authDeps: { agentRepo, personRepo, daemonRepo },
+    runtimeRepo,
+  });
+  runtimeWsServer.attach(server.getHttpServer());
+
   // M8 final integration (#45): SSE live-updates flow.
   // Triggers in migration 1778300000000 emit on `bv_event`; SseListener
   // LISTENs on a dedicated pg.Client and fans out via SseManager;
@@ -254,7 +290,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   });
   sseListener.start();
   const streamRouter = createStreamRouter({
-    authMiddleware: createStreamAuthMiddleware({ agentRepo, personRepo }),
+    authMiddleware: createStreamAuthMiddleware({ agentRepo, personRepo, daemonRepo }),
     sseManager,
   });
   server.getApp().use("/api", streamRouter);
@@ -262,6 +298,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const shutdown = async (): Promise<void> => {
     sessionCache.stopIdleSweep();
     await sseListener.stop();
+    await runtimeWsServer.stop();
     await server.stop();
     await pool.end();
   };

@@ -1,16 +1,25 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent } from "../domain/agent.js";
+import type { Daemon } from "../domain/daemon.js";
 import type { Person } from "../domain/person.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
+import type { DaemonRepository } from "../ports/daemon-repo.js";
 import type { PersonRepository } from "../ports/person-repo.js";
 import {
   AGENT_KEY_PREFIX,
+  DAEMON_KEY_PREFIX,
   USER_KEY_PREFIX,
   generateAgentApiKey,
+  generateDaemonApiKey,
   generateUserApiKey,
+  hashDaemonToken,
   lookupApiKey,
 } from "./api-key.js";
-import { makeAgentRepoFake, makePersonRepoFake } from "./test-fakes.js";
+import {
+  makeAgentRepoFake,
+  makeDaemonRepoFake,
+  makePersonRepoFake,
+} from "./test-fakes.js";
 
 function makeAgent(overrides: Partial<Agent> = {}): Agent {
   return {
@@ -35,12 +44,26 @@ function makePerson(overrides: Partial<Person> = {}): Person {
   };
 }
 
+function makeDaemon(overrides: Partial<Daemon> = {}): Daemon {
+  return {
+    id: "dmn_1",
+    owner_person_id: "person_1",
+    external_id: "macbook-pro",
+    device_name: "MacBook Pro",
+    token_hash: "deadbeef",
+    created_at: new Date(),
+    ...overrides,
+  };
+}
+
 let agentRepo: AgentRepository;
 let personRepo: PersonRepository;
+let daemonRepo: DaemonRepository;
 
 beforeEach(() => {
   agentRepo = makeAgentRepoFake();
   personRepo = makePersonRepoFake();
+  daemonRepo = makeDaemonRepoFake();
 });
 
 describe("generateAgentApiKey", () => {
@@ -151,5 +174,65 @@ describe("lookupApiKey — bv_u_ (human) path", () => {
     );
     const out = await lookupApiKey({ agentRepo, personRepo }, "bv_u_org");
     expect(out?.hierarchyLevel).toBe("org");
+  });
+});
+
+describe("generateDaemonApiKey + hashDaemonToken", () => {
+  it("starts with the daemon prefix and has 24 chars of entropy", () => {
+    const key = generateDaemonApiKey();
+    expect(key.startsWith(DAEMON_KEY_PREFIX)).toBe(true);
+    expect(key).toMatch(/^bv_d_[0-9A-Za-z]{24}$/);
+  });
+
+  it("hashDaemonToken is deterministic and avalanches on input changes", () => {
+    const a = hashDaemonToken("bv_d_aaaaaaaaaaaaaaaaaaaaaaaa");
+    const b = hashDaemonToken("bv_d_aaaaaaaaaaaaaaaaaaaaaaaa");
+    const c = hashDaemonToken("bv_d_aaaaaaaaaaaaaaaaaaaaaaab");
+    expect(a).toBe(b);
+    expect(a).not.toBe(c);
+    expect(a).toMatch(/^[0-9a-f]{64}$/);
+  });
+
+  it("daemon prefix is non-overlapping with agent and user prefixes", () => {
+    expect(generateDaemonApiKey().startsWith(AGENT_KEY_PREFIX)).toBe(false);
+    expect(generateDaemonApiKey().startsWith(USER_KEY_PREFIX)).toBe(false);
+    expect(generateAgentApiKey().startsWith(DAEMON_KEY_PREFIX)).toBe(false);
+    expect(generateUserApiKey().startsWith(DAEMON_KEY_PREFIX)).toBe(false);
+  });
+});
+
+describe("lookupApiKey — bv_d_ (daemon) path", () => {
+  it("returns a source='daemon' caller on a hash hit", async () => {
+    vi.mocked(daemonRepo.findByTokenHash).mockResolvedValue(
+      makeDaemon({ id: "dmn_42", owner_person_id: "person_zhe" }),
+    );
+    const out = await lookupApiKey(
+      { agentRepo, personRepo, daemonRepo },
+      "bv_d_token123",
+    );
+    expect(out).toEqual({
+      source: "daemon",
+      daemonId: "dmn_42",
+      ownerPersonId: "person_zhe",
+    });
+    expect(daemonRepo.findByTokenHash).toHaveBeenCalledWith(
+      hashDaemonToken("bv_d_token123"),
+    );
+    expect(agentRepo.findByApiKey).not.toHaveBeenCalled();
+    expect(personRepo.findByApiKey).not.toHaveBeenCalled();
+  });
+
+  it("returns undefined when no daemon matches the token hash", async () => {
+    vi.mocked(daemonRepo.findByTokenHash).mockResolvedValue(undefined);
+    const out = await lookupApiKey(
+      { agentRepo, personRepo, daemonRepo },
+      "bv_d_ghost",
+    );
+    expect(out).toBeUndefined();
+  });
+
+  it("returns undefined for bv_d_ tokens when daemonRepo is not provided", async () => {
+    const out = await lookupApiKey({ agentRepo, personRepo }, "bv_d_anything");
+    expect(out).toBeUndefined();
   });
 });
