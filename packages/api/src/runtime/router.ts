@@ -371,6 +371,7 @@ async function composeDispatchPayload(
     system_prompt_append: composeSystemPromptAppend(
       agent.runtime_config.system_prompt_addition,
       briefing.systemPromptAppend,
+      { appendChatDirectives: session.type === "chat" },
     ),
     resume_session_id: priorSession?.cli_session_id,
     model: agent.runtime_config.model,

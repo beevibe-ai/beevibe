@@ -113,21 +113,70 @@ write.
 </beevibe_memory>`;
 
 /**
+ * Display directives for chat-surface sessions. Static — same text for
+ * every chat session. Tells the agent which inline tokens the chat UI
+ * recognizes (id mentions, <open_view>, <suggest_action>) so the agent
+ * formats responses correctly.
+ */
+export const CHAT_DIRECTIVES = `<chat_directives>
+You are responding inside a chat surface — not a CLI. Three display
+directives the UI understands:
+
+1. **Reference any task / agent / session by its full id** (e.g.
+   \`task_abc123def456\`) inline in your response. The UI hydrates
+   each id as a clickable card linking to the detail page.
+
+2. **When the user clearly wants to land on a specific page** (e.g.
+   "show me the mesh", "open the billing task"), end your response
+   with one directive on its own line:
+
+   \`<open_view path="/the/path" label="Optional CTA label" />\`
+
+   Valid paths: \`/tasks\`, \`/tasks/<task_id>\`, \`/agents\`,
+   \`/agents/<agent_id>\`, \`/mesh\`, \`/memory\`, \`/promotions\`,
+   \`/dashboard\`. The UI renders this as a prominent "Open this →"
+   button below your message and strips the directive from the visible
+   text. Use this sparingly — only when the user's intent is clearly
+   navigational, not for every mention.
+
+3. **When you offer the user concrete next steps** (typically 2–4
+   focused options at the end of a turn), append one
+   \`<suggest_action>\` directive per option on its own line:
+
+   \`<suggest_action label="Approve as-is and spin up the team" />\`
+
+   Optionally pair with a longer \`prompt\` attribute — the chip
+   shows \`label\`, but clicking sends \`prompt\` as the user's next
+   message:
+
+   \`<suggest_action label="Approve" prompt="Approve as-is and spin up all three specialists now." />\`
+
+   Keep \`label\` short (under ~80 chars). Skip the chips entirely
+   when there's nothing concrete to choose.
+</chat_directives>`;
+
+/**
  * Compose the `--append-system-prompt` value. Cache-friendly order:
  * most-stable first (cross-agent constants → agent baseline → per-agent
  * core-memory briefing). archival_memory rides on the user message via
  * `composeIntent`, not here, because it's the per-session bit that breaks
  * cache.
+ *
+ * For chat sessions, pass `appendChatDirectives: true` so the static
+ * UI-format directives land at the tail (most-volatile slot — they
+ * don't affect cache for non-chat sessions).
  */
 export function composeSystemPromptAppend(
   agentSystemPromptAddition: string | undefined,
   briefingSystemPromptAppend: string,
+  options: { appendChatDirectives?: boolean } = {},
 ): string {
   return [
     BEEVIBE_LIFECYCLE_REMINDER,
     BEEVIBE_MEMORY_REMINDER,
     agentSystemPromptAddition ?? "",
     briefingSystemPromptAppend,
+    options.appendChatDirectives ? CHAT_DIRECTIVES : "",
   ]
     .filter((s) => s.length > 0)
     .join("\n\n");

@@ -22,6 +22,13 @@ export interface SessionRepository {
   listForAgent(agentId: string): Promise<Session[]>;
 
   /**
+   * Most-recent chat sessions for an agent, capped at `limit`. Used by
+   * the chat surface to rehydrate history on page load. Bounded so a
+   * heavy user with thousands of turns doesn't drag GET /chat.
+   */
+  listChatForAgent(agentId: string, limit: number): Promise<Session[]>;
+
+  /**
    * Count currently-running sessions for an agent.
    * Used by capacity checks (max_task_sessions / max_mesh_sessions).
    * `types` groups session kinds: pass `['task']` for task cap, pass the mesh types

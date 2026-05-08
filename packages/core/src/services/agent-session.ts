@@ -16,6 +16,7 @@ import { composeIntent, composeSystemPromptAppend } from "./spawn-prep.js";
 export {
   BEEVIBE_LIFECYCLE_REMINDER,
   BEEVIBE_MEMORY_REMINDER,
+  CHAT_DIRECTIVES,
   composeIntent,
   composeSystemPromptAppend,
 } from "./spawn-prep.js";

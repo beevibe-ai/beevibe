@@ -38,7 +38,9 @@ import { createTaskRouter } from "./routes/task.js";
 import { createEscalationRouter } from "./routes/escalation.js";
 import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
+import { createChatRouter } from "./routes/chat.js";
 import { createStreamAuthMiddleware } from "./auth/middleware.js";
+import { ChatResolver } from "./runtime/chat-resolver.js";
 import { DaemonHub } from "./runtime/hub.js";
 import { createRuntimeRouter } from "./runtime/router.js";
 import { RuntimeWsServer } from "./runtime/ws-server.js";
@@ -261,10 +263,14 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   });
   server.getApp().use(viewRouter);
 
+
   // Phase 4 — daemon-facing surface. The hub is in-memory; tracks live WS
   // clients indexed by runtime_id. HTTP endpoints work without a live
   // socket — daemons can claim via HTTP poll alone if WS push fails.
+  // The chat resolver is keyed by session_id; /runtime/done fires it so
+  // the awaiting POST /chat returns the agent's response.
   const daemonHub = new DaemonHub();
+  const chatResolver = new ChatResolver();
   const runtimeRouter = createRuntimeRouter({
     authMiddleware: server.getAuthMiddleware(),
     agentRepo,
@@ -275,9 +281,13 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     hub: daemonHub,
     makeMemoryAgent,
     mcpServerUrl: cfg.mcpServerUrl,
-    // onSessionComplete is wired in M4.6 (chatResolver) and M4.5 (post-
-    // dispatch hook); leaving unset means /runtime/done still finalizes
-    // the session row but no resolver fires.
+    onSessionComplete: async (session) => {
+      if (session.type === "chat") {
+        chatResolver.resolve(session.id, session);
+      }
+      // Future: mesh resolver for cross-instance mesh, post-dispatch
+      // hook for parent-task rollup, etc.
+    },
   });
   server.getApp().use("/runtime", runtimeRouter);
 
@@ -289,6 +299,20 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     runtimeRepo,
   });
   runtimeWsServer.attach(server.getHttpServer());
+
+  // Phase 4 chat surface — daemon-first. dispatchService inserts a
+  // pending session, the daemon claims it (or executor for null-runtime
+  // agents), and /runtime/done fires chatResolver to unblock POST /chat.
+  const chatRouter = createChatRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    agentRepo,
+    personRepo,
+    sessionRepo,
+    dispatchService,
+    chatResolver,
+    hub: daemonHub,
+  });
+  server.getApp().use("/chat", chatRouter);
 
   // M8 final integration (#45): SSE live-updates flow.
   // Triggers in migration 1778300000000 emit on `bv_event`; SseListener
