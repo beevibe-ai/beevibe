@@ -9,7 +9,7 @@ import { MeshGraphStatic } from "@/components/mesh/graph-static";
 import { ChainBudget } from "@/components/mesh/chain-budget";
 import { useMeshOverview } from "@/lib/hooks/use-mesh";
 import { isApiConfigured } from "@/lib/api/config";
-import type { MeshAsk, MeshDisplay } from "@/lib/types/mesh";
+import type { MeshDisplay } from "@/lib/types/mesh";
 
 export function MeshClient() {
   const { data, isLoading, isError } = useMeshOverview();
@@ -19,7 +19,7 @@ export function MeshClient() {
       <div className="max-w-5xl mx-auto pt-8 pb-12 px-6">
         <div className="mb-6 flex items-baseline justify-between gap-6">
           <div>
-            <h1 className="text-base font-semibold mb-1">Mesh activity</h1>
+            <h1 className="text-xl font-semibold tracking-tight mb-1">Mesh activity</h1>
             <p className="text-sm text-muted-foreground max-w-prose leading-relaxed">
               Agents ask each other when their bounded context isn&rsquo;t enough. Each ask is a session
               — caller&rsquo;s intent, target&rsquo;s response, with provenance.{" "}
@@ -34,11 +34,9 @@ export function MeshClient() {
         <div className="mt-10 text-xs text-muted-foreground flex items-start gap-2 max-w-2xl">
           <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
           <span>
-            <span className="text-foreground/80">Each ask is a session.</span> Caller and target
-            agents stay bounded — neither dumps its memory into a shared pool. The target answers
-            from its own context; the caller incorporates the answer into its work.{" "}
-            <span className="font-mono">ChainBudget</span> caps depth and total tokens to prevent
-            runaway asks.
+            Caller and target agents stay bounded — neither dumps its memory into a shared pool.
+            The target answers from its own context; the caller incorporates the answer into its
+            work.
           </span>
         </div>
       </div>
@@ -90,51 +88,13 @@ function Body({
     );
   }
 
-  if (!data || data.asks.length === 0) {
-    return (
-      <div className="grid grid-cols-5 gap-6">
-        <MeshActivityFeed />
-        <div className="col-span-2">
-          <MeshGraphStatic
-            nodes={data?.graph.nodes}
-            edges={data?.graph.edges}
-          />
-          <ChainBudget />
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="grid grid-cols-5 gap-6">
-      <section className="col-span-3">
-        <h2 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">
-          Recent asks{" "}
-          <span className="text-muted-foreground/70 tabular-nums">{data.asks.length}</span>
-        </h2>
-        <ul className="space-y-2">
-          {data.asks.map((ask) => (
-            <AskRow key={ask.id} ask={ask} />
-          ))}
-        </ul>
-      </section>
+      <MeshActivityFeed asks={data?.asks} />
       <div className="col-span-2 space-y-3">
-        <MeshGraphStatic nodes={data.graph.nodes} edges={data.graph.edges} />
+        <MeshGraphStatic nodes={data?.graph.nodes} edges={data?.graph.edges} />
         <ChainBudget />
       </div>
     </div>
-  );
-}
-
-function AskRow({ ask }: { ask: MeshAsk }) {
-  return (
-    <li className="rounded-lg border border-border bg-card p-3 text-sm">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-        <span className="text-foreground/85">{ask.caller}</span>
-        <span>→</span>
-        <span className="text-foreground/85">{ask.target}</span>
-        <span className="ml-auto tabular-nums">{ask.duration_label}</span>
-      </div>
-    </li>
   );
 }

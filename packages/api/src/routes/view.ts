@@ -33,6 +33,7 @@ import { listMemoryFacts } from "../views/memory.js";
 import { getDashboardSummary } from "../views/dashboard.js";
 import { getMeshOverview } from "../views/mesh.js";
 import { listPromotions } from "../views/promotions.js";
+import { listActivity } from "../views/activity.js";
 
 export interface ViewRoutesDeps {
   authMiddleware: RequestHandler;
@@ -108,7 +109,11 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
   router.get("/agent", async (req, res) => {
     if (!requireHuman(req, res)) return;
     try {
-      const agents = await listAgents(deps.pool);
+      // Scope to the caller's tree (their team agent + its IC subordinates).
+      // The list power-user feature ("show me everyone's agents") isn't
+      // wired today; scoping by default also closes the same multi-tenant
+      // leak the SSE filter closed in OwnerLookup.
+      const agents = await listAgents(deps.pool, req.caller.personId);
       res.json(agents);
     } catch (err) {
       handleError(err, res, "agent list");
@@ -210,6 +215,22 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(facts);
     } catch (err) {
       handleError(err, res, "memory fact list");
+    }
+  });
+
+  router.get("/activity", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      const limitParam =
+        typeof req.query.limit === "string" ? Number(req.query.limit) : 20;
+      const limit =
+        Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 100
+          ? limitParam
+          : 20;
+      const entries = await listActivity(deps.pool, req.caller.personId, limit);
+      res.json(entries);
+    } catch (err) {
+      handleError(err, res, "activity feed");
     }
   });
 
