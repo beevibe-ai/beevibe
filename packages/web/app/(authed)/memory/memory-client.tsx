@@ -155,8 +155,9 @@ function Body({
             description={
               hasQuery
                 ? "Try a different search."
-                : "Memory facts appear here as agents accumulate observations."
+                : "Facts appear here as agents accumulate observations during sessions. Chat with your team agent — what it learns ends up here."
             }
+            cta={hasQuery ? undefined : { href: "/", label: "Open chat" }}
           />
         </td>
       </tr>

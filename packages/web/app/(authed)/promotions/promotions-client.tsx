@@ -19,7 +19,7 @@ export function PromotionsClient() {
 
         <div className="mb-6 flex items-baseline justify-between gap-6">
           <div>
-            <h1 className="text-base font-semibold mb-1">Promotions</h1>
+            <h1 className="text-xl font-semibold tracking-tight mb-1">Promotions</h1>
             <p className="text-sm text-muted-foreground max-w-prose leading-relaxed">
               When the same observation reappears across sessions,{" "}
               <span className="font-mono text-foreground">FactPromoter</span> evaluates whether it has
