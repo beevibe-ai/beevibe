@@ -15,6 +15,7 @@ import {
   Sparkles,
   Terminal,
   TrendingUp,
+  Users,
 } from "lucide-react";
 import { useAgents } from "@/lib/hooks/use-agents";
 import type { AgentDisplay } from "@/lib/types/agents";
@@ -44,6 +45,7 @@ type NavItem = {
 // "talk to your team agent".
 const QUICK_ACTIONS: QuickAction[] = [
   { href: "/", label: "Chat", icon: MessageSquare },
+  { href: "/rooms", label: "Rooms", icon: Users },
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
 ];
 

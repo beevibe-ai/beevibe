@@ -165,6 +165,62 @@ export interface SignupInput {
   email: string;
 }
 
+export interface Room {
+  id: string;
+  name: string;
+  owner_person_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export type RoomMemberDetail =
+  | { kind: "person"; id: string; name: string; email: string | null }
+  | {
+      kind: "agent";
+      id: string;
+      name: string;
+      hierarchy: HierarchyLevel;
+      owner_person_id: string;
+    };
+
+export interface RoomMessage {
+  id: string;
+  room_id: string;
+  kind: "human" | "agent";
+  content: string;
+  sender_person_id?: string;
+  sender_agent_id?: string;
+  session_id?: string;
+  view_refs?: string[];
+  open_view?: { path: string; label?: string };
+  suggested_actions?: SuggestedAction[];
+  created_at: string;
+}
+
+export interface RoomTypingStep {
+  event_id: string;
+  kind: "agent" | "tool_call" | "tool_result" | "summary";
+  tool_name: string | null;
+  content: string;
+}
+
+export interface RoomTypingIndicator {
+  session_id: string;
+  agent_id: string;
+  agent_name: string;
+  started_at: string;
+  recent_steps: RoomTypingStep[];
+  total_steps: number;
+}
+
+export interface RoomDetail {
+  ok: true;
+  room: Room;
+  members: RoomMemberDetail[];
+  messages: RoomMessage[];
+  typing?: RoomTypingIndicator[];
+}
+
 export interface SignupResponse {
   ok: true;
   /** Freshly minted (or recovered) bv_u_ key. Persist client-side and use as Bearer. */
@@ -378,6 +434,31 @@ export const api = {
      */
     create: (input: SignupInput) =>
       fetchJson<SignupResponse>("/signup", { method: "POST", body: input }),
+  },
+  rooms: {
+    list: (opts: ReadOptions = {}) =>
+      fetchJson<{ ok: true; rooms: Room[] }>("/room", { signal: opts.signal }),
+    get: (id: string, opts: ReadOptions = {}) =>
+      fetchJson<RoomDetail>(`/room/${encodeURIComponent(id)}`, { signal: opts.signal }),
+    create: (input: { name: string }) =>
+      fetchJson<{ ok: true; room: Room }>("/room", { method: "POST", body: input }),
+    invite: (id: string, input: { email: string }) =>
+      fetchJson<{
+        ok: true;
+        invited: { person_id: string; name: string; email: string | null };
+      }>(`/room/${encodeURIComponent(id)}/invite`, { method: "POST", body: input }),
+    /** Self-join — caller adds themselves + their team agent. */
+    join: (id: string) =>
+      fetchJson<{ ok: true; room: Room }>(`/room/${encodeURIComponent(id)}/join`, {
+        method: "POST",
+      }),
+    sendMessage: (id: string, input: { content: string }) =>
+      fetchJson<{
+        ok: true;
+        message: RoomMessage;
+        invoked_agents: { id: string; name: string }[];
+        invoked_reason: "mention" | "name" | "team-default" | "none";
+      }>(`/room/${encodeURIComponent(id)}/message`, { method: "POST", body: input }),
   },
   runtimes: {
     /** List the caller's daemons + nested runtimes (Settings → Runtimes panel). */

@@ -56,4 +56,9 @@ export const queryKeys = {
     all: ["work-products"] as const,
     detail: (id: string) => ["work-products", "detail", id] as const,
   },
+  rooms: {
+    all: ["rooms"] as const,
+    list: () => ["rooms", "list"] as const,
+    detail: (id: string) => ["rooms", "detail", id] as const,
+  },
 } as const;

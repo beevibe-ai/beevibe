@@ -35,6 +35,7 @@ const eventInvalidations: Record<string, InvalidationKey[]> = {
   "promotion.created": [queryKeys.promotions.all, queryKeys.memory.all],
   "mesh.activity": [queryKeys.mesh.all, queryKeys.activity.all],
   "runtime.updated": [queryKeys.runtimes.all],
+  "room.message": [queryKeys.rooms.all],
 };
 
 function invalidate(client: QueryClient, eventName: string) {
