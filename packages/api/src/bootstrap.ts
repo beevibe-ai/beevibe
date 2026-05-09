@@ -40,6 +40,8 @@ import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
 import { createChatRouter } from "./routes/chat.js";
 import { createRuntimesRouter } from "./routes/runtimes.js";
+import { createSignupRouter } from "./routes/signup.js";
+import { createMeRouter } from "./routes/me.js";
 import { createStreamAuthMiddleware } from "./auth/middleware.js";
 import { ChatResolver } from "./runtime/chat-resolver.js";
 import { DaemonHub } from "./runtime/hub.js";
@@ -276,6 +278,19 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   });
   server.getApp().use("/escalation", escalationRouter);
 
+  // Phase 8 — self-serve signup. UNAUTHENTICATED. MUST be mounted
+  // BEFORE viewRouter (the read-only mount below has no path prefix
+  // and applies authMiddleware via `router.use`, so any request that
+  // reaches it without a Bearer token gets 401'd before its route
+  // matching runs). Set `BEEVIBE_SIGNUP_ENABLED=0` to disable.
+  const signupRouter = createSignupRouter({
+    agentRepo,
+    personRepo,
+    coreMemoryRepo,
+    enabled: process.env.BEEVIBE_SIGNUP_ENABLED !== "0",
+  });
+  server.getApp().use(signupRouter);
+
   // M8.2 read-only view routes — bv_u_ only. Direct-to-pool composers in
   // src/views/* return UI-shaped DTOs; no core repos touched on the read
   // path so the agent-execution surface stays uncoupled from web display.
@@ -345,6 +360,17 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     hub: daemonHub,
   });
   server.getApp().use("/runtimes", runtimesRouter);
+
+  // Phase 8 — onboarding/identity surface (bv_u_).
+  // GET /me, POST /me/onboarding/complete, GET /health/runtime.
+  const meRouter = createMeRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    personRepo,
+    agentRepo,
+    runtimeRegistry,
+    embed,
+  });
+  server.getApp().use(meRouter);
 
   // M8 final integration (#45): SSE live-updates flow.
   // Triggers in migration 1778300000000 emit on `bv_event`; SseListener
