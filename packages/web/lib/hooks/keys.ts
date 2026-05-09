@@ -52,4 +52,8 @@ export const queryKeys = {
     all: ["runtimes"] as const,
     list: () => ["runtimes", "list"] as const,
   },
+  workProducts: {
+    all: ["work-products"] as const,
+    detail: (id: string) => ["work-products", "detail", id] as const,
+  },
 } as const;

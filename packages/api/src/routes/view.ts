@@ -34,6 +34,7 @@ import { getDashboardSummary } from "../views/dashboard.js";
 import { getMeshOverview } from "../views/mesh.js";
 import { listPromotions } from "../views/promotions.js";
 import { listActivity } from "../views/activity.js";
+import { getWorkProduct } from "../views/work-product.js";
 
 export interface ViewRoutesDeps {
   authMiddleware: RequestHandler;
@@ -215,6 +216,25 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(facts);
     } catch (err) {
       handleError(err, res, "memory fact list");
+    }
+  });
+
+  router.get("/work-product/:id", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "missing_work_product_id" });
+      return;
+    }
+    try {
+      const wp = await getWorkProduct(deps.pool, id);
+      if (!wp) {
+        res.status(404).json({ error: "work_product_not_found" });
+        return;
+      }
+      res.json(wp);
+    } catch (err) {
+      handleError(err, res, "work product detail");
     }
   });
 

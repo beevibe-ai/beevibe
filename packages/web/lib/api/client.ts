@@ -160,6 +160,35 @@ export interface ChatConversationsResponse {
   conversations: ChatConversationSummary[];
 }
 
+export interface WorkProductDetail {
+  id: string;
+  task_id: string;
+  task_short_id: string;
+  task_title: string;
+  agent_id: string;
+  agent_label: string;
+  type:
+    | "pull_request"
+    | "branch"
+    | "commit"
+    | "document"
+    | "analysis"
+    | "report"
+    | "design"
+    | "artifact"
+    | "preview";
+  title: string;
+  summary?: string;
+  url?: string;
+  provider?: string;
+  external_id?: string;
+  /** Inlined file contents when url is file://. Render as markdown. */
+  body?: string;
+  url_is_local: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface ActivityEntry {
   id: string;
   short_id: string;
@@ -318,6 +347,12 @@ export const api = {
       fetchJson<ActivityEntry[]>("/activity", {
         signal: opts.signal,
         ...(opts.limit ? { query: { limit: opts.limit } } : {}),
+      }),
+  },
+  workProducts: {
+    get: (id: string, opts: ReadOptions = {}) =>
+      fetchJson<WorkProductDetail>(`/work-product/${encodeURIComponent(id)}`, {
+        signal: opts.signal,
       }),
   },
   runtimes: {
