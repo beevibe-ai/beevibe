@@ -3,12 +3,27 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, ArrowRight, MessageSquare, Plus, Send, Sparkles } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import {
+  AlertTriangle,
+  ArrowRight,
+  HardDrive,
+  MessageSquare,
+  Plus,
+  Send,
+  Sparkles,
+} from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
-import type { SuggestedAction } from "@/lib/api/client";
+import {
+  api,
+  type RuntimesListResponse,
+  type SuggestedAction,
+} from "@/lib/api/client";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
+import { useAgents } from "@/lib/hooks/use-agents";
 import { useMe } from "@/lib/hooks/use-me";
+import { queryKeys } from "@/lib/hooks/keys";
 import { sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { ReferenceCards } from "@/components/chat/reference-cards";
@@ -137,6 +152,7 @@ export function ChatClient() {
           </button>
         </header>
 
+        <DaemonOfflineBanner primaryAgentId={me?.primary_agent?.id} />
         <div ref={transcriptRef} className="flex-1 overflow-y-auto px-6 py-6">
           <div className="max-w-3xl mx-auto space-y-4">
             {messages.length === 0 ? (
@@ -360,6 +376,98 @@ function EmptyHint({
             <span>{s}</span>
           </button>
         ))}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Yellow banner shown above the transcript when the primary agent's
+ * pinned daemon is offline. Without it, chat sends would 503 with
+ * `agent_offline` and the user wouldn't know why.
+ */
+function DaemonOfflineBanner({
+  primaryAgentId,
+}: {
+  primaryAgentId: string | undefined;
+}) {
+  const { data: agents } = useAgents();
+  const runtimes = useQuery<RuntimesListResponse>({
+    queryKey: queryKeys.runtimes.list(),
+    queryFn: ({ signal }) => api.runtimes.list({ signal }),
+    enabled: isApiConfigured,
+    staleTime: 30_000,
+  });
+
+  if (!primaryAgentId || !agents || !runtimes.data) return null;
+  const primary = agents.find((a) => a.id === primaryAgentId);
+  if (!primary) return null;
+  const rid = primary.preferred_runtime_id;
+  if (!rid) {
+    return (
+      <Banner
+        title="No runtime pinned for your team agent"
+        body={
+          <>
+            Install beevibe-daemon and the agent will get pinned automatically.{" "}
+            <Link href="/runtimes" className="underline hover:text-foreground">
+              Set up a daemon →
+            </Link>
+          </>
+        }
+      />
+    );
+  }
+  const runtime = findRuntimeOnline(runtimes.data, rid);
+  if (runtime?.online) return null;
+  return (
+    <Banner
+      title="Your daemon is offline"
+      body={
+        <>
+          Your team agent can&apos;t respond until the daemon reconnects. Start
+          it with{" "}
+          <code className="font-mono text-foreground/90 bg-foreground/10 px-1 rounded">
+            beevibe-daemon start
+          </code>
+          {" "}or check the{" "}
+          <Link href="/runtimes" className="underline hover:text-foreground">
+            Runtimes panel
+          </Link>
+          .
+        </>
+      }
+    />
+  );
+}
+
+function findRuntimeOnline(
+  data: RuntimesListResponse,
+  runtimeId: string,
+): { online: boolean } | undefined {
+  for (const d of data.daemons) {
+    for (const r of d.runtimes) {
+      if (r.id === runtimeId) return { online: r.online };
+    }
+  }
+  return undefined;
+}
+
+function Banner({
+  title,
+  body,
+}: {
+  title: string;
+  body: React.ReactNode;
+}) {
+  return (
+    <div className="px-6 pt-3">
+      <div className="max-w-3xl mx-auto rounded-md border border-status-review/40 bg-status-review/10 px-3 py-2 flex items-start gap-2.5 text-xs">
+        <HardDrive className="h-3.5 w-3.5 mt-0.5 text-status-review shrink-0" />
+        <div className="min-w-0 flex-1">
+          <div className="font-medium text-foreground">{title}</div>
+          <div className="mt-0.5 text-muted-foreground">{body}</div>
+        </div>
       </div>
     </div>
   );

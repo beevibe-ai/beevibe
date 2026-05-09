@@ -17,7 +17,12 @@
  */
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import type { HierarchyLevel, SessionStatus, SessionType } from "@beevibe/core";
+import type {
+  HierarchyLevel,
+  SessionSpawnMode,
+  SessionStatus,
+  SessionType,
+} from "@beevibe/core";
 import { deriveShortId, formatDurationLabel } from "./format.js";
 import type { SessionDisplay, SessionBriefing, TranscriptEntry } from "./types.js";
 
@@ -37,6 +42,11 @@ interface SessionDetailRow {
   agent_hier: HierarchyLevel;
   task_title: string | null;
   transcript: TranscriptEventRow[] | null;
+  spawn_mode: SessionSpawnMode | null;
+  runtime_id: string | null;
+  runtime_cli: string | null;
+  runtime_cli_version: string | null;
+  daemon_device_name: string | null;
 }
 
 interface TranscriptEventRow {
@@ -51,10 +61,13 @@ const SESSION_BY_ID_PREFIX_SQL = /* sql */ `
 SELECT
   s.id, s.agent_id, s.task_id, s.type, s.status, s.intent,
   s.workspace_path, s.cli_session_id, s.started_at, s.completed_at,
-  s.briefing,
+  s.briefing, s.spawn_mode, s.runtime_id,
   a.name              AS agent_label,
   a.hierarchy_level   AS agent_hier,
   t.title             AS task_title,
+  r.cli               AS runtime_cli,
+  r.cli_version       AS runtime_cli_version,
+  d.device_name       AS daemon_device_name,
   COALESCE(
     (
       SELECT json_agg(
@@ -77,6 +90,8 @@ SELECT
 FROM session s
 JOIN agent a ON a.id = s.agent_id
 LEFT JOIN task t ON t.id = s.task_id
+LEFT JOIN runtime r ON r.id = s.runtime_id
+LEFT JOIN daemon d ON d.id = r.daemon_id
 WHERE s.id LIKE $1 || '%'
 LIMIT 2
 `;
@@ -138,6 +153,11 @@ function rowToSessionDisplay(row: SessionDetailRow): SessionDisplay {
     briefing: row.briefing ?? emptyBriefing(),
     transcript: (row.transcript ?? []).map(toTranscriptEntry),
     ask_threads: [],
+    spawn_mode: row.spawn_mode ?? undefined,
+    runtime_id: row.runtime_id ?? undefined,
+    runtime_cli: row.runtime_cli ?? undefined,
+    runtime_cli_version: row.runtime_cli_version ?? undefined,
+    daemon_device_name: row.daemon_device_name ?? undefined,
   };
 }
 

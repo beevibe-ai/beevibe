@@ -18,6 +18,7 @@ import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
 import { getLiveStatus, subscribeLiveStatus } from "@/lib/sse";
 import { formatRelativeTime, sessionHref, shortId } from "@/lib/format";
+import { AgentOnlineDot } from "@/components/agents/agent-online-dot";
 import type { AgentDisplay } from "@/lib/types/agents";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { SessionType } from "@beevibe/core";
@@ -142,6 +143,7 @@ function TeamRoster() {
               >
                 <div className="flex items-baseline gap-1.5">
                   <span className="text-xs font-medium truncate flex-1 min-w-0">{a.name}</span>
+                  <AgentOnlineDot preferredRuntimeId={a.preferred_runtime_id} />
                   <HierBadge hier={a.hierarchy} />
                 </div>
                 <div className="mt-0.5 text-[10px] text-muted-foreground tabular-nums flex items-center gap-1.5">

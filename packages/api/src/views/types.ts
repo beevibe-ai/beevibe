@@ -17,6 +17,7 @@
 import type {
   Agent,
   HierarchyLevel,
+  SessionSpawnMode,
   Task,
   TaskStatus,
   WorkProduct,
@@ -96,6 +97,12 @@ export interface AgentDisplay
   themes?: string[];
   runtime?: string;
   review_policy?: string;
+  /**
+   * The agent's pinned `runtime` row id. The Runtimes panel uses this to
+   * derive an online dot (lookup runtime_id in the cached runtimes list).
+   * Null for agents without a daemon yet (e.g. legacy seeded fixtures).
+   */
+  preferred_runtime_id?: string;
 }
 
 export interface RecentSession {
@@ -185,6 +192,20 @@ export interface SessionDisplay {
   briefing: SessionBriefing;
   transcript: TranscriptEntry[];
   ask_threads?: AskThread[];
+  /**
+   * Where the session ran. `'daemon'` is the normal path (matched runtime
+   * on a user's machine); `'server_fallback_mesh'` is the restricted-tool
+   * path used when a mesh target's daemon is offline (Phase 7 work).
+   */
+  spawn_mode?: SessionSpawnMode;
+  /** Pinned runtime for this session; absent for server-fallback sessions. */
+  runtime_id?: string;
+  /** Joined from runtime: CLI name (e.g. "claude"). */
+  runtime_cli?: string;
+  /** Joined from runtime: CLI version captured at register time. */
+  runtime_cli_version?: string;
+  /** Joined from daemon → device_name. Renders as "Ran on <X>". */
+  daemon_device_name?: string;
 }
 
 export interface SessionBriefing {

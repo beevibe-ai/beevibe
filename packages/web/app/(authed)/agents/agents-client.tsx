@@ -6,6 +6,7 @@ import { useAgents } from "@/lib/hooks/use-agents";
 import { isApiConfigured } from "@/lib/api/config";
 import { OrgChart } from "@/components/agents/org-chart";
 import { SpecializationTable } from "@/components/agents/specialization-table";
+import { AgentOnlineDot } from "@/components/agents/agent-online-dot";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { Avatar } from "@/components/avatar";
@@ -111,6 +112,7 @@ function AgentRow({ agent }: { agent: AgentDisplay }) {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium truncate">{agent.display_name}</span>
+            <AgentOnlineDot preferredRuntimeId={agent.preferred_runtime_id} />
             <HierChip hier={agent.hierarchy} />
           </div>
           {agent.specialization ? (
