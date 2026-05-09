@@ -10,6 +10,7 @@ import type { AgentDisplay } from "@/lib/types/agents";
 import type { SessionDisplay } from "@/lib/types/sessions";
 import type { MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
+import type { InboxItem } from "@/lib/types/inbox";
 import type {
   HierarchyLevel,
   MemoryScope,
@@ -416,6 +417,14 @@ export const api = {
     /** Recent sessions across the caller's agent tree. Used by the live chat rail. */
     list: (opts: ReadOptions & { limit?: number } = {}) =>
       fetchJson<ActivityEntry[]>("/activity", {
+        signal: opts.signal,
+        ...(opts.limit ? { query: { limit: opts.limit } } : {}),
+      }),
+  },
+  inbox: {
+    /** Items the caller owes a decision on (review/blocked tasks + escalations). */
+    list: (opts: ReadOptions & { limit?: number } = {}) =>
+      fetchJson<InboxItem[]>("/inbox", {
         signal: opts.signal,
         ...(opts.limit ? { query: { limit: opts.limit } } : {}),
       }),

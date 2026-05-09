@@ -35,6 +35,7 @@ import { getMeshOverview } from "../views/mesh.js";
 import { listPromotions } from "../views/promotions.js";
 import { listActivity } from "../views/activity.js";
 import { getWorkProduct } from "../views/work-product.js";
+import { listInbox } from "../views/inbox.js";
 
 export interface ViewRoutesDeps {
   authMiddleware: RequestHandler;
@@ -235,6 +236,18 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(wp);
     } catch (err) {
       handleError(err, res, "work product detail");
+    }
+  });
+
+  router.get("/inbox", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      const limitParam = typeof req.query.limit === "string" ? Number(req.query.limit) : 50;
+      const limit = Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 200 ? limitParam : 50;
+      const items = await listInbox(deps.pool, req.caller.personId, { limit });
+      res.json(items);
+    } catch (err) {
+      handleError(err, res, "inbox");
     }
   });
 

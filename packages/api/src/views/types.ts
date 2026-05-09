@@ -415,6 +415,42 @@ export interface PromotionEvent {
   rejected: boolean;
 }
 
+// ── Inbox — items the caller owes a decision on ─────────────────────────────
+
+export type InboxItemKind = "task_review" | "task_blocked" | "escalation_pending";
+
+export interface InboxItem {
+  /** Composite, stable across kinds — `<kind>:<entity_id>`. */
+  id: string;
+  kind: InboxItemKind;
+  /** Task title or escalation summary, truncated to 120 chars. */
+  title: string;
+  /** Secondary line — assignee/blocker label or counterparty list. */
+  detail: string;
+  /** Where to send the user when they click the row. */
+  href: string;
+  /** When the row entered the inbox state (review/blocked/pending). */
+  age_at: Date;
+}
+
+// ── Agent network — caller's team + peer teams from shared rooms ────────────
+
+export interface AgentPeerOwner {
+  /** Person id that owns the peer team. */
+  owner_id: string;
+  /** Person's display name — surfaced as "Daniel's team" etc. in the UI. */
+  owner_label: string;
+  /** Full agent tree for that owner — team agent + ICs. */
+  agents: AgentDisplay[];
+}
+
+export interface AgentNetwork {
+  /** The caller's own agents (their orbit). */
+  self: AgentDisplay[];
+  /** Other people's agents the caller co-exists with via shared rooms. */
+  peers: AgentPeerOwner[];
+}
+
 // ── Re-exports of ambient types that web imports alongside the DTOs ─────────
 
 export type { TaskStatus };
