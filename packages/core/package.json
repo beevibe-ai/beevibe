@@ -11,6 +11,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./domain": {
+      "types": "./dist/domain/index.d.ts",
+      "default": "./dist/domain/index.js"
+    },
     "./adapters/postgres": {
       "types": "./dist/adapters/postgres/index.d.ts",
       "default": "./dist/adapters/postgres/index.js"

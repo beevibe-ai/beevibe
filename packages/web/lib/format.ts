@@ -1,5 +1,27 @@
-export function formatRelativeTime(date: Date, now: Date = new Date()): string {
-  const diffMs = now.getTime() - date.getTime();
+export type DateLike = Date | string | number;
+
+/**
+ * Coerce `Date | string | number | undefined` into a Date. JSON-bound
+ * api responses arrive as strings even when their TypeScript types
+ * claim `Date`; defensive callers pass them straight through helpers
+ * like this one without manual `new Date(...)` wrapping. Returns
+ * `undefined` for missing input (so callers can short-circuit) and
+ * `undefined` for invalid input (so a bad value doesn't render as
+ * "Invalid Date").
+ */
+export function toDate(value: DateLike | null | undefined): Date | undefined {
+  if (value == null) return undefined;
+  const d = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(d.getTime()) ? undefined : d;
+}
+
+export function formatRelativeTime(
+  date: DateLike,
+  now: Date = new Date(),
+): string {
+  const d = toDate(date);
+  if (!d) return "—";
+  const diffMs = now.getTime() - d.getTime();
   const diffSec = Math.floor(diffMs / 1000);
   if (diffSec < 60) return "just now";
   const diffMin = Math.floor(diffSec / 60);
@@ -18,9 +40,24 @@ export function shortId(id: string): string {
   return `#${trimmed.slice(0, 6)}`;
 }
 
+/**
+ * Strip the typed-id prefix and return what's left — used as the
+ * stable "@token" form for room mentions and as the short URL
+ * fragment in the conversation sidebar. e.g. `agent_kBpTkqiCbsB3` →
+ * `kBpTkqiCbsB3`. Falls back to the full id when there's no
+ * underscore (which shouldn't happen for typed ids, but cheap to
+ * guard).
+ */
+export function idSuffix(id: string): string {
+  const i = id.indexOf("_");
+  return i < 0 ? id : id.slice(i + 1) || id;
+}
+
 export function sessionHref(sid: string, taskId?: string): string {
-  if (taskId) return `/tasks/${taskId}/sessions/${sid}`;
-  return "#";
+  // The full id starts with "sess_"; route URLs use the 6-char suffix.
+  const sessionShort = sid.startsWith("sess_") ? sid.slice(5, 11) : sid.slice(0, 6);
+  if (taskId) return `/tasks/${taskId}/sessions/${sessionShort}`;
+  return `/sessions/${sessionShort}`;
 }
 
 /**
@@ -28,13 +65,14 @@ export function sessionHref(sid: string, taskId?: string): string {
  * "30s" / "5m" / "1h 12m" / "2d 3h". Returns "—" if no start.
  */
 export function formatDurationLabel(
-  startedAt: Date | null | undefined,
-  completedAt: Date | null | undefined,
+  startedAt: DateLike | null | undefined,
+  completedAt: DateLike | null | undefined,
   now: Date = new Date(),
 ): string {
-  if (!startedAt) return "—";
-  const end = completedAt ?? now;
-  const diffSec = Math.max(0, Math.floor((end.getTime() - startedAt.getTime()) / 1000));
+  const start = toDate(startedAt);
+  if (!start) return "—";
+  const end = toDate(completedAt) ?? now;
+  const diffSec = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 1000));
   if (diffSec < 60) return `${diffSec}s`;
   const min = Math.floor(diffSec / 60);
   if (min < 60) return `${min}m`;
