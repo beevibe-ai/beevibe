@@ -19,6 +19,9 @@ import {
   Terminal,
   TrendingUp,
 } from "lucide-react";
+import { useAgents } from "@/lib/hooks/use-agents";
+import type { AgentDisplay } from "@/lib/types/agents";
+import { AgentOnlineDot } from "./agents/agent-online-dot";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
@@ -136,7 +139,7 @@ export function Sidebar() {
           open={openAgents}
           onToggle={() => setOpenAgents((v) => !v)}
         >
-          <EmptyAgentList />
+          <AgentList pathname={pathname} />
         </Section>
 
         <Section
@@ -288,11 +291,66 @@ function NavRow({ item, pathname }: { item: NavItem; pathname: string }) {
   );
 }
 
-function EmptyAgentList() {
+function AgentList({ pathname }: { pathname: string }) {
+  const { data, isLoading } = useAgents();
+  if (isLoading) {
+    return (
+      <div className="space-y-px">
+        {[0, 1].map((i) => (
+          <div
+            key={i}
+            className="h-7 pl-5 pr-2 flex items-center"
+          >
+            <div className="h-3 w-24 rounded bg-muted animate-pulse" />
+          </div>
+        ))}
+      </div>
+    );
+  }
+  const agents = data ?? [];
+  if (agents.length === 0) {
+    return (
+      <div className="h-7 pl-5 pr-2 flex items-center text-sm text-muted-foreground/60">
+        No agents yet
+      </div>
+    );
+  }
   return (
-    <div className="h-7 pl-5 pr-2 flex items-center text-sm text-muted-foreground/60">
-      No agents yet
+    <div className="space-y-px">
+      {agents.map((a) => (
+        <AgentRow key={a.id} agent={a} pathname={pathname} />
+      ))}
     </div>
+  );
+}
+
+function AgentRow({ agent, pathname }: { agent: AgentDisplay; pathname: string }) {
+  const href = `/agents/${agent.id}`;
+  const active = pathname === href || pathname.startsWith(`${href}/`);
+  return (
+    <Link
+      href={href}
+      aria-current={active ? "page" : undefined}
+      className={cn(
+        "flex items-center gap-2 h-7 pl-5 pr-2 rounded-md text-sm transition-colors",
+        active
+          ? "bg-secondary text-foreground font-medium"
+          : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
+      )}
+    >
+      <AgentOnlineDot preferredRuntimeId={agent.preferred_runtime_id} />
+      <span className="flex-1 truncate">{agent.display_name}</span>
+      <span
+        className={cn(
+          "shrink-0 px-1 py-px rounded text-[9px] font-mono uppercase tracking-wide",
+          agent.hierarchy === "team" && "bg-hier-team/15 text-hier-team",
+          agent.hierarchy === "org" && "bg-hier-org/15 text-hier-org",
+          agent.hierarchy === "ic" && "bg-muted/70 text-muted-foreground",
+        )}
+      >
+        {agent.hierarchy}
+      </span>
+    </Link>
   );
 }
 
