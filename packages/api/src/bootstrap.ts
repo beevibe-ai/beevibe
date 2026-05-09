@@ -77,6 +77,12 @@ export interface BootstrapConfig {
    * here into each agent's `<workspace>/.claude/skills/`.
    */
   skillsSourceDir?: string;
+  /**
+   * Extra cross-origin web origins to allow on top of the localhost
+   * defaults. Forwarded to the api server's CORS middleware. Hosted
+   * deployments typically pass `parseAllowedOrigins(process.env.BEEVIBE_CORS_ORIGINS)`.
+   */
+  corsAllowedOrigins?: readonly string[];
 }
 
 export interface BootstrapResult {
@@ -228,8 +234,9 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
 
   const server = new BeevibeApiServer({
     port: cfg.port ?? 3000,
-    socketTimeoutMs: cfg.socketTimeoutMs,
+    ...(cfg.socketTimeoutMs !== undefined ? { socketTimeoutMs: cfg.socketTimeoutMs } : {}),
     authDeps: { agentRepo, personRepo, daemonRepo },
+    ...(cfg.corsAllowedOrigins ? { corsAllowedOrigins: cfg.corsAllowedOrigins } : {}),
   });
 
   // Mount /mcp under the api server. Each call to createMcpRouter wires

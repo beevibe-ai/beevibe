@@ -2,6 +2,7 @@ import express, { json, type Express, type RequestHandler } from "express";
 import { createServer, type Server } from "node:http";
 import type { LookupApiKeyDeps } from "@beevibe/core/auth";
 import { createAuthMiddleware } from "./auth/middleware.js";
+import { createCorsMiddleware } from "./cors.js";
 import { healthRoute } from "./routes/health.js";
 
 /** Default 5-minute socket timeout. Covers `negotiate` rounds (each ~60-120s). */
@@ -12,6 +13,14 @@ export interface BeevibeApiServerConfig {
   authDeps: LookupApiKeyDeps;
   /** Override the default socket timeout. Default 5 min. */
   socketTimeoutMs?: number;
+  /**
+   * Extra origins to allow on top of the localhost defaults. Typical
+   * production deployment populates this from BEEVIBE_CORS_ORIGINS at
+   * the api binary's entry point. The middleware always allows
+   * `http://localhost:<port>` and `http://127.0.0.1:<port>` so dev
+   * works out of the box with no env config.
+   */
+  corsAllowedOrigins?: readonly string[];
 }
 
 /**
@@ -37,6 +46,14 @@ export class BeevibeApiServer {
 
   constructor(private readonly config: BeevibeApiServerConfig) {
     this.app = express();
+
+    // CORS first — ahead of body parsing + auth so OPTIONS preflights
+    // (which carry no body and no Authorization header by spec) get a
+    // 204 instead of 400 / 401. The middleware echoes specific
+    // origins (no wildcard) so Allow-Credentials stays valid for SSE.
+    this.app.use(createCorsMiddleware({
+      ...(config.corsAllowedOrigins ? { allowedOrigins: config.corsAllowedOrigins } : {}),
+    }));
     this.app.use(json());
 
     this.authMiddleware = createAuthMiddleware(config.authDeps);
