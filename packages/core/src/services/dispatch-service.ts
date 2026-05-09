@@ -32,6 +32,15 @@ export interface DispatchServiceDeps {
    * are caught and logged so dispatch never fails on hub flakiness.
    */
   onSessionInserted?: (session: Session) => void | Promise<void>;
+  /**
+   * Liveness predicate for the resolved runtime. When provided and the
+   * resolved runtime returns `false`, mesh-typed dispatches demote to
+   * `runtime_id = null` + `spawn_mode = 'server_fallback_mesh'` so the
+   * server-fallback worker picks them up with a restricted tool surface.
+   * Task / chat dispatches do NOT demote — for those we want the row to
+   * stay pinned and wait for the daemon to come back.
+   */
+  isRuntimeOnline?: (runtimeId: string) => boolean;
 }
 
 export interface DispatchInput {
@@ -94,7 +103,15 @@ export class DispatchService {
       throw new Error(`DispatchService: agent not found: ${input.agentId}`);
     }
 
-    const runtime_id = resolveRuntimeId(input, agent, prior?.runtime_id);
+    const resolved = resolveRuntimeId(input, agent, prior?.runtime_id);
+    const isMesh = input.type === "mesh_ask" || input.type === "mesh_negotiate";
+    const offline =
+      resolved !== null &&
+      this.deps.isRuntimeOnline !== undefined &&
+      !this.deps.isRuntimeOnline(resolved);
+    const fallback = isMesh && offline;
+    const runtime_id = fallback ? null : resolved;
+    const spawn_mode = fallback ? "server_fallback_mesh" : "daemon";
 
     const session = await this.deps.sessionRepo.create({
       id: input.sessionIdOverride ?? newSessionId(),
@@ -105,7 +122,7 @@ export class DispatchService {
       intent: input.intent,
       status: "pending",
       runtime_id: runtime_id ?? undefined,
-      spawn_mode: "daemon",
+      spawn_mode,
       ...(input.callerAgentId ? { caller_agent_id: input.callerAgentId } : {}),
       ...(input.roomId ? { room_id: input.roomId } : {}),
     });

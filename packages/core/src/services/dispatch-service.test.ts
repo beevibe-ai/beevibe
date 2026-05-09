@@ -296,3 +296,142 @@ describe("DispatchService.dispatchTask", () => {
     expect(sessionRepo.create).not.toHaveBeenCalled();
   });
 });
+
+describe("DispatchService server-fallback (mesh-typed sessions)", () => {
+  it("mesh_ask demotes to server_fallback_mesh when preferred runtime is offline", async () => {
+    vi.mocked(agentRepo.findById).mockResolvedValue(
+      makeAgent({ preferred_runtime_id: "rt_offline" }),
+    );
+    const isRuntimeOnline = vi.fn().mockReturnValue(false);
+    svc = new DispatchService({
+      agentRepo,
+      sessionRepo,
+      onSessionInserted,
+      isRuntimeOnline,
+    });
+
+    const result = await svc.dispatchTask({
+      agentId: "agent_default",
+      intent: "ask",
+      reason: { kind: "fresh" },
+      type: "mesh_ask",
+    });
+
+    expect(isRuntimeOnline).toHaveBeenCalledWith("rt_offline");
+    expect(result.runtime_id).toBeNull();
+    const insert = vi.mocked(sessionRepo.create).mock.calls[0]![0];
+    expect(insert.spawn_mode).toBe("server_fallback_mesh");
+    expect(insert.runtime_id).toBeUndefined();
+  });
+
+  it("mesh_negotiate also demotes when preferred runtime is offline", async () => {
+    vi.mocked(agentRepo.findById).mockResolvedValue(
+      makeAgent({ preferred_runtime_id: "rt_offline" }),
+    );
+    svc = new DispatchService({
+      agentRepo,
+      sessionRepo,
+      onSessionInserted,
+      isRuntimeOnline: () => false,
+    });
+
+    await svc.dispatchTask({
+      agentId: "agent_default",
+      intent: "negotiate",
+      reason: { kind: "fresh" },
+      type: "mesh_negotiate",
+    });
+
+    const insert = vi.mocked(sessionRepo.create).mock.calls[0]![0];
+    expect(insert.spawn_mode).toBe("server_fallback_mesh");
+  });
+
+  it("mesh ask STAYS pinned to runtime when daemon is online", async () => {
+    vi.mocked(agentRepo.findById).mockResolvedValue(
+      makeAgent({ preferred_runtime_id: "rt_online" }),
+    );
+    svc = new DispatchService({
+      agentRepo,
+      sessionRepo,
+      onSessionInserted,
+      isRuntimeOnline: (rt) => rt === "rt_online",
+    });
+
+    const result = await svc.dispatchTask({
+      agentId: "agent_default",
+      intent: "ask",
+      reason: { kind: "fresh" },
+      type: "mesh_ask",
+    });
+
+    expect(result.runtime_id).toBe("rt_online");
+    const insert = vi.mocked(sessionRepo.create).mock.calls[0]![0];
+    expect(insert.spawn_mode).toBe("daemon");
+    expect(insert.runtime_id).toBe("rt_online");
+  });
+
+  it("task dispatch DOES NOT demote when daemon offline (stays pinned, waits for daemon)", async () => {
+    vi.mocked(agentRepo.findById).mockResolvedValue(
+      makeAgent({ preferred_runtime_id: "rt_offline" }),
+    );
+    svc = new DispatchService({
+      agentRepo,
+      sessionRepo,
+      onSessionInserted,
+      isRuntimeOnline: () => false,
+    });
+
+    const result = await svc.dispatchTask({
+      agentId: "agent_default",
+      intent: "do thing",
+      reason: { kind: "fresh" },
+      type: "task",
+    });
+
+    expect(result.runtime_id).toBe("rt_offline");
+    const insert = vi.mocked(sessionRepo.create).mock.calls[0]![0];
+    expect(insert.spawn_mode).toBe("daemon");
+    expect(insert.runtime_id).toBe("rt_offline");
+  });
+
+  it("chat dispatch DOES NOT demote when daemon offline (chat handler returns 503 instead)", async () => {
+    vi.mocked(agentRepo.findById).mockResolvedValue(
+      makeAgent({ preferred_runtime_id: "rt_offline" }),
+    );
+    svc = new DispatchService({
+      agentRepo,
+      sessionRepo,
+      onSessionInserted,
+      isRuntimeOnline: () => false,
+    });
+
+    await svc.dispatchTask({
+      agentId: "agent_default",
+      intent: "hi",
+      reason: { kind: "fresh" },
+      type: "chat",
+    });
+
+    const insert = vi.mocked(sessionRepo.create).mock.calls[0]![0];
+    expect(insert.spawn_mode).toBe("daemon");
+    expect(insert.runtime_id).toBe("rt_offline");
+  });
+
+  it("no isRuntimeOnline predicate → never demotes", async () => {
+    vi.mocked(agentRepo.findById).mockResolvedValue(
+      makeAgent({ preferred_runtime_id: "rt_unknown" }),
+    );
+    // svc from beforeEach has no isRuntimeOnline.
+
+    await svc.dispatchTask({
+      agentId: "agent_default",
+      intent: "ask",
+      reason: { kind: "fresh" },
+      type: "mesh_ask",
+    });
+
+    const insert = vi.mocked(sessionRepo.create).mock.calls[0]![0];
+    expect(insert.spawn_mode).toBe("daemon");
+    expect(insert.runtime_id).toBe("rt_unknown");
+  });
+});
