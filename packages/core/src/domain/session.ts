@@ -122,6 +122,13 @@ export interface Session {
   spawn_mode?: SessionSpawnMode;
   /** Maintained by SessionEventRepository.append; consumed by the orphan reaper. */
   last_event_at?: Date;
+  /**
+   * Set when this session was kicked off from inside a room — SSE
+   * fanout uses it to deliver session.event payloads to every member
+   * of the room, not just the agent's owner. NULL for ordinary task
+   * / chat / mesh sessions.
+   */
+  room_id?: string;
   started_at?: Date;
   completed_at?: Date;
   created_at: Date;

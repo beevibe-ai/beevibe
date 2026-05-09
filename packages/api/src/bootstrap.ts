@@ -8,6 +8,7 @@ import {
   PostgresNegotiationRepository,
   PostgresNegotiationRoundRepository,
   PostgresPersonRepository,
+  PostgresRoomRepository,
   PostgresRuntimeRepository,
   PostgresSessionEventRepository,
   PostgresSessionRepository,
@@ -122,6 +123,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const negotiationRepo = new PostgresNegotiationRepository(pool);
   const negotiationRoundRepo = new PostgresNegotiationRoundRepository(pool);
   const escalationRepo = new PostgresEscalationRepository(pool);
+  const roomRepo = new PostgresRoomRepository(pool);
 
   // External services (LLM + embeddings) for memory pipeline
   const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
