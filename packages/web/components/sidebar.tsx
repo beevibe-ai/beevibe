@@ -1,178 +1,168 @@
 "use client";
 
-import { useState } from "react";
+import { useCallback, useEffect } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
-  ChevronDown,
-  ChevronRight,
-  HardDrive,
-  LayoutDashboard,
+  Bot,
   ListChecks,
   type LucideIcon,
   MessageSquare,
-  Network,
-  Sparkles,
-  Terminal,
-  TrendingUp,
+  PanelLeftClose,
+  PanelLeftOpen,
   Users,
 } from "lucide-react";
-import { useAgents } from "@/lib/hooks/use-agents";
-import type { AgentDisplay } from "@/lib/types/agents";
-import { AgentOnlineDot } from "./agents/agent-online-dot";
 import { cn } from "@/lib/utils";
+import { useAgents } from "@/lib/hooks/use-agents";
+import { useCollapsible } from "@/lib/hooks/use-collapsible";
+import { Avatar } from "./avatar";
+import { ConversationSidebar } from "./chat/conversation-sidebar";
+import { LiveStatusDot } from "./chat/live-panel";
+import { AgentsSidebar, RoomsSidebar, TasksAttentionSidebar } from "./mode-sidebars";
 import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
-
-type QuickAction = {
-  href: string;
-  label: string;
-  icon: LucideIcon;
-  badge?: number;
-};
 
 type NavItem = {
   href: string;
   label: string;
   icon: LucideIcon;
   isActive: (pathname: string) => boolean;
-  badge?: number;
-  trailing?: string;
 };
 
-// `/` renders the chat surface (the team-agent-first UX); the
-// dashboard moved to its own route so the home tile is always
-// "talk to your team agent".
-const QUICK_ACTIONS: QuickAction[] = [
-  { href: "/", label: "Chat", icon: MessageSquare },
-  { href: "/rooms", label: "Rooms", icon: Users },
-  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-];
+// "Teams" tab IS the network canvas — landing on /agents drops you
+// into the orbit of your team and the people you collaborate with.
+// Metrics / memory / mesh / promotions share this mode's sidebar so
+// primary nav stays narrow.
+const TEAMS_ROUTES = ["/agents", "/dashboard", "/memory", "/mesh", "/promotions"] as const;
+const matchesTeams = (p: string): boolean => TEAMS_ROUTES.some((r) => p.startsWith(r));
+const matchesChat = (p: string): boolean => p === "/" || p.startsWith("/chat");
 
-const WORKSPACE_ITEMS: NavItem[] = [
-  {
-    href: "/tasks",
-    label: "Tasks",
-    icon: ListChecks,
-    isActive: (p) => p.startsWith("/tasks"),
-  },
-  {
-    href: "/mesh",
-    label: "Mesh",
-    icon: Network,
-    isActive: (p) => p.startsWith("/mesh"),
-  },
-];
-
-const KNOWLEDGE_ITEMS: NavItem[] = [
-  {
-    href: "/memory",
-    label: "Memory",
-    icon: Sparkles,
-    isActive: (p) => p.startsWith("/memory"),
-  },
-  {
-    href: "/promotions",
-    label: "Promotions",
-    icon: TrendingUp,
-    isActive: (p) => p.startsWith("/promotions"),
-  },
-];
-
-const SETTINGS_ITEMS: NavItem[] = [
-  {
-    href: "/runtimes",
-    label: "Runtimes",
-    icon: HardDrive,
-    isActive: (p) => p.startsWith("/runtimes"),
-  },
+const PRIMARY_MODES: NavItem[] = [
+  { href: "/agents", label: "Teams", icon: Bot, isActive: matchesTeams },
+  { href: "/", label: "Chat", icon: MessageSquare, isActive: matchesChat },
+  { href: "/rooms", label: "Rooms", icon: Users, isActive: (p) => p.startsWith("/rooms") },
+  { href: "/tasks", label: "Tasks", icon: ListChecks, isActive: (p) => p.startsWith("/tasks") },
 ];
 
 export function Sidebar() {
-  const pathname = usePathname();
-  const [openAgents, setOpenAgents] = useState(true);
-  const [openWorkspace, setOpenWorkspace] = useState(true);
-  const [openKnowledge, setOpenKnowledge] = useState(true);
-  const [openSettings, setOpenSettings] = useState(true);
+  const pathname = usePathname() ?? "";
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const [collapsed, toggleCollapsed] = useCollapsible("bv-sidebar-collapsed");
+
+  const conversationId = searchParams?.get("c") ?? undefined;
+  const isFresh = searchParams?.get("new") === "1";
+  const startNewConversation = useCallback(() => {
+    router.push("/chat?new=1");
+  }, [router]);
+
+  // Global keyboard shortcuts:
+  //   ⌘\  toggles sidebar (unbound elsewhere; doesn't collide)
+  //   ⌘O  starts a new chat (matches Notion's "+ New chat ⌘O")
+  // Both bypass when the user is already typing — text fields and
+  // contenteditable surfaces own those keystrokes.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.metaKey || e.ctrlKey)) return;
+      const t = e.target as HTMLElement | null;
+      const inEditable =
+        t &&
+        (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable);
+      if (e.key === "\\") {
+        e.preventDefault();
+        toggleCollapsed();
+        return;
+      }
+      if ((e.key === "o" || e.key === "O") && !inEditable) {
+        e.preventDefault();
+        startNewConversation();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [toggleCollapsed, startNewConversation]);
+
+  if (collapsed) {
+    return (
+      <aside aria-label="Sidebar (collapsed)" className="w-9 shrink-0">
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label="Expand sidebar (⌘\)"
+          title="Expand sidebar (⌘\)"
+          className="w-full h-full bg-card border-r border-border/60 hover:bg-secondary/50 flex flex-col items-center pt-3 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        >
+          <PanelLeftOpen className="h-4 w-4" />
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside className="w-[248px] shrink-0 bg-card border-r border-border/60 flex flex-col">
-      <WorkspaceHeader />
+      <WorkspaceHeader onCollapse={toggleCollapsed} />
 
-      <div className="px-2 pt-1 pb-2 space-y-px">
-        {QUICK_ACTIONS.map((a) => (
-          <Link
-            key={a.label}
-            href={a.href}
-            aria-current={pathname === a.href ? "page" : undefined}
-            className={cn(
-              "flex items-center gap-2.5 h-7 px-2 rounded-md text-sm transition-colors",
-              pathname === a.href
-                ? "bg-secondary text-foreground font-medium"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
-            )}
-          >
-            <a.icon className="h-3.5 w-3.5 shrink-0" />
-            <span className="flex-1 truncate">{a.label}</span>
-            {a.badge ? <Badge value={a.badge} /> : null}
-          </Link>
-        ))}
-      </div>
+      <ModeStrip pathname={pathname} />
 
-      <nav className="flex-1 overflow-y-auto px-2 pb-2 space-y-3" aria-label="Main">
-        <Section
-          title="Agents"
-          open={openAgents}
-          onToggle={() => setOpenAgents((v) => !v)}
-        >
-          <AgentList pathname={pathname} />
-        </Section>
+      <div className="mx-2 mt-2 border-t border-border/60" />
 
-        <Section
-          title="Workspace"
-          open={openWorkspace}
-          onToggle={() => setOpenWorkspace((v) => !v)}
-        >
-          {WORKSPACE_ITEMS.map((item) => (
-            <div key={item.href}>
-              <NavRow item={item} pathname={pathname} />
-              {item.href === "/tasks" ? <ActiveSessionPin pathname={pathname} /> : null}
-            </div>
-          ))}
-        </Section>
+      {renderModePanel({
+        pathname,
+        conversationId,
+        isFresh,
+        selectedTaskId: searchParams?.get("p") ?? undefined,
+      })}
 
-        <Section
-          title="Knowledge"
-          open={openKnowledge}
-          onToggle={() => setOpenKnowledge((v) => !v)}
-        >
-          {KNOWLEDGE_ITEMS.map((item) => (
-            <NavRow key={item.href} item={item} pathname={pathname} />
-          ))}
-        </Section>
-
-        <Section
-          title="Settings"
-          open={openSettings}
-          onToggle={() => setOpenSettings((v) => !v)}
-        >
-          {SETTINGS_ITEMS.map((item) => (
-            <NavRow key={item.href} item={item} pathname={pathname} />
-          ))}
-        </Section>
-      </nav>
+      <NewChatButton onClick={startNewConversation} />
 
       <div className="p-2 border-t border-border/60 flex items-center gap-1">
         <UserWidget />
+        {/* Always-visible live/polling indicator — LivePanel defaults
+            collapsed, so without this the user couldn't tell whether
+            updates were streaming or polling unless they expanded it. */}
+        <LiveStatusDot className="mx-1" />
         <ThemeToggle />
       </div>
     </aside>
   );
 }
 
-function WorkspaceHeader() {
+function NewChatButton({ onClick }: { onClick: () => void }) {
+  // Pinned-bottom global affordance — always one click (or ⌘O) away
+  // regardless of mode. Same role as Notion's "+ New chat ⌘O" pill.
+  // Uses the team-agent avatar leading icon so the button reads as
+  // "talk to your team", not a generic "create" — but at a size that
+  // doesn't dominate non-chat modes (tasks/agents/rooms) where the
+  // CTA is contextually secondary.
+  const agents = useAgents();
+  const teamAgent = agents.data?.find((a) => a.hierarchy !== "ic");
+  const initial = (teamAgent?.display_name ?? teamAgent?.name ?? "?").charAt(0).toUpperCase();
   return (
-    <div className="h-12 px-3 mx-2 mt-2 flex items-center gap-2">
+    <div className="px-2 py-2 border-t border-border/60">
+      <button
+        type="button"
+        onClick={onClick}
+        title="New chat (⌘O)"
+        aria-label="New chat (⌘O)"
+        className="w-full inline-flex items-center gap-2 h-8 pl-1.5 pr-2.5 rounded-full bg-secondary/40 hover:bg-secondary text-foreground text-[13px] font-medium transition-colors cursor-pointer"
+      >
+        <Avatar
+          initial={initial}
+          kind={teamAgent?.hierarchy ?? "team"}
+          size={18}
+        />
+        <span className="flex-1 text-left">New chat</span>
+        <kbd className="text-[10px] font-mono text-muted-foreground/70 tabular-nums">
+          ⌘O
+        </kbd>
+      </button>
+    </div>
+  );
+}
+
+function WorkspaceHeader({ onCollapse }: { onCollapse: () => void }) {
+  return (
+    <div className="flex items-center gap-2 h-12 px-3 mx-2 mt-2">
       <div className="h-6 w-6 rounded-md bg-primary flex items-center justify-center shrink-0">
         <span className="text-primary-foreground text-[13px] font-bold leading-none">b</span>
       </div>
@@ -181,155 +171,116 @@ function WorkspaceHeader() {
           beevibe
         </div>
       </div>
-    </div>
-  );
-}
-
-function Section({
-  title,
-  count,
-  open,
-  onToggle,
-  children,
-}: {
-  title: string;
-  count?: number;
-  open: boolean;
-  onToggle: () => void;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="space-y-px">
-      <div className="group flex items-center h-6 px-2 -mx-px">
-        <button
-          type="button"
-          onClick={onToggle}
-          aria-expanded={open}
-          className="flex items-center gap-1 flex-1 min-w-0 cursor-pointer"
-        >
-          {open ? (
-            <ChevronDown className="h-3 w-3 text-muted-foreground/60 shrink-0" />
-          ) : (
-            <ChevronRight className="h-3 w-3 text-muted-foreground/60 shrink-0" />
-          )}
-          <span className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/70 group-hover:text-muted-foreground transition-colors">
-            {title}
-          </span>
-          {count !== undefined ? (
-            <span className="text-[10px] text-muted-foreground/50 ml-1 tabular-nums">
-              {count}
-            </span>
-          ) : null}
-        </button>
-      </div>
-      {open ? <div className="space-y-px">{children}</div> : null}
-    </div>
-  );
-}
-
-function NavRow({ item, pathname }: { item: NavItem; pathname: string }) {
-  const active = item.isActive(pathname);
-  return (
-    <Link
-      href={item.href}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "flex items-center gap-2.5 h-7 pl-5 pr-2 rounded-md text-sm transition-colors",
-        active
-          ? "bg-secondary text-foreground font-medium"
-          : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
-      )}
-    >
-      <item.icon className="h-3.5 w-3.5 shrink-0" />
-      <span className="flex-1 truncate">{item.label}</span>
-      {item.badge ? <Badge value={item.badge} /> : null}
-      {item.trailing ? (
-        <span className="text-[10px] text-muted-foreground/60 tabular-nums">{item.trailing}</span>
-      ) : null}
-    </Link>
-  );
-}
-
-function AgentList({ pathname }: { pathname: string }) {
-  const { data, isLoading } = useAgents();
-  if (isLoading) {
-    return (
-      <div className="space-y-px">
-        {[0, 1].map((i) => (
-          <div key={i} className="h-7 pl-5 pr-2 flex items-center">
-            <div className="h-3 w-24 rounded bg-muted animate-pulse" />
-          </div>
-        ))}
-      </div>
-    );
-  }
-  const agents = data ?? [];
-  if (agents.length === 0) {
-    return (
-      <div className="h-7 pl-5 pr-2 flex items-center text-sm text-muted-foreground/60">
-        No agents yet
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-px">
-      {agents.map((a) => (
-        <AgentRow key={a.id} agent={a} pathname={pathname} />
-      ))}
-    </div>
-  );
-}
-
-function AgentRow({ agent, pathname }: { agent: AgentDisplay; pathname: string }) {
-  const href = `/agents/${agent.id}`;
-  const active = pathname === href || pathname.startsWith(`${href}/`);
-  return (
-    <Link
-      href={href}
-      aria-current={active ? "page" : undefined}
-      className={cn(
-        "flex items-center gap-2 h-7 pl-5 pr-2 rounded-md text-sm transition-colors",
-        active
-          ? "bg-secondary text-foreground font-medium"
-          : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
-      )}
-    >
-      <AgentOnlineDot preferredRuntimeId={agent.preferred_runtime_id} />
-      <span className="flex-1 truncate">{agent.display_name}</span>
-      <span
-        className={cn(
-          "shrink-0 px-1 py-px rounded text-[9px] font-mono uppercase tracking-wide",
-          agent.hierarchy === "team" && "bg-hier-team/15 text-hier-team",
-          agent.hierarchy === "org" && "bg-hier-org/15 text-hier-org",
-          agent.hierarchy === "ic" && "bg-muted/70 text-muted-foreground",
-        )}
+      <button
+        type="button"
+        onClick={onCollapse}
+        aria-label="Collapse sidebar (⌘\)"
+        title="Collapse sidebar (⌘\)"
+        className="h-6 w-6 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors shrink-0"
       >
-        {agent.hierarchy}
-      </span>
-    </Link>
+        <PanelLeftClose className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }
 
-function ActiveSessionPin({ pathname }: { pathname: string }) {
-  const match = pathname.match(/^\/tasks\/([^/]+)\/sessions\/([^/]+)/);
-  if (!match) return null;
-  const [, taskId, sid] = match;
+/**
+ * Extract the `:id` segment after a known prefix so the per-mode
+ * sidebar can highlight the active item. Returns `undefined` when the
+ * path is just the index (e.g. `/agents`, no id) or doesn't match.
+ */
+function extractIdFromPath(pathname: string, prefix: string): string | undefined {
+  if (!pathname.startsWith(prefix)) return undefined;
+  const rest = pathname.slice(prefix.length);
+  if (!rest) return undefined;
+  const id = rest.split("/")[0];
+  return id || undefined;
+}
+
+interface ModePanelArgs {
+  pathname: string;
+  conversationId: string | undefined;
+  isFresh: boolean;
+  /** Currently-peeked task id from `?p=`, when on /tasks. */
+  selectedTaskId: string | undefined;
+}
+
+/**
+ * Pick the right per-mode sidebar component for the current route.
+ * First match wins; falls back to filler space so the chrome height
+ * stays consistent across modes that don't have a context list yet.
+ */
+function renderModePanel(args: ModePanelArgs): React.ReactNode {
+  const { pathname, conversationId, isFresh, selectedTaskId } = args;
+  if (matchesChat(pathname)) {
+    return (
+      <ConversationSidebar
+        activeConversationId={conversationId}
+        isFresh={isFresh}
+      />
+    );
+  }
+  if (matchesTeams(pathname)) {
+    return <AgentsSidebar pathname={pathname} />;
+  }
+  if (pathname.startsWith("/rooms")) {
+    return <RoomsSidebar activeRoomId={extractIdFromPath(pathname, "/rooms/")} />;
+  }
+  // /tasks rail surfaces the human-attention inbox: review +
+  // blocked + escalation rows with inline approve. It's NOT a
+  // duplicate of the kanban (the old TasksSidebar was). Different
+  // axis: kanban = "all work in flight," inbox = "things waiting
+  // on you specifically."
+  if (pathname.startsWith("/tasks")) {
+    return (
+      <TasksAttentionSidebar
+        activeTaskId={selectedTaskId ?? extractIdFromPath(pathname, "/tasks/")}
+      />
+    );
+  }
+  return <div className="flex-1" />;
+}
+
+/**
+ * Horizontal icon strip for primary modes. Active mode expands to a
+ * pill with its label inline; inactive modes stay icon-only with a
+ * hover tooltip. Models Notion's Home / Chat / Mic / Inbox / Search
+ * strip — visual gesture for mode-switching, no vertical bloat.
+ */
+function ModeStrip({ pathname }: { pathname: string }) {
   return (
-    <Link
-      href={`/tasks/${taskId}/sessions/${sid}`}
-      aria-current="page"
-      className="flex items-center gap-2 h-7 pl-9 pr-2 rounded-md text-sm bg-secondary text-foreground font-medium"
+    <nav
+      aria-label="Primary modes"
+      className="flex items-center gap-0.5 px-2 pt-1 pb-1.5"
     >
-      <Terminal className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-      <span className="font-mono text-[12px] truncate">{sid}</span>
-    </Link>
+      {PRIMARY_MODES.map((item) => {
+        const active = item.isActive(pathname);
+        if (active) {
+          return (
+            <Link
+              key={item.href}
+              href={item.href}
+              aria-current="page"
+              className="inline-flex items-center gap-1.5 h-8 pl-2 pr-3 rounded-full bg-secondary text-foreground text-sm font-medium transition-colors"
+            >
+              <item.icon className="h-4 w-4 shrink-0" />
+              <span className="leading-none">{item.label}</span>
+            </Link>
+          );
+        }
+        return (
+          <Link
+            key={item.href}
+            href={item.href}
+            aria-label={item.label}
+            title={item.label}
+            className="h-8 w-8 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors"
+          >
+            <item.icon className="h-4 w-4" />
+          </Link>
+        );
+      })}
+    </nav>
   );
 }
 
-function Badge({ value }: { value: number }) {
-  return (
-    <span className="inline-flex items-center justify-center h-4 min-w-[1rem] px-1 rounded text-[10px] font-medium bg-status-review/15 text-status-review tabular-nums">
-      {value}
-    </span>
-  );
-}
