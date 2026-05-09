@@ -9,6 +9,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   Agent,
   AgentRepository,
+  CoreMemoryBlockRepository,
   Session,
   Task,
   TaskRepository,
@@ -140,6 +141,11 @@ function buildServices(overrides: {
     query: vi.fn(async () => ({ rows: [] })),
   } as unknown as Pool;
 
+  const coreMemoryRepo = {
+    findByAgent: vi.fn(async () => []),
+    updateContent: vi.fn(async () => undefined),
+  } as unknown as CoreMemoryBlockRepository;
+
   return {
     agentRepo,
     taskRepo,
@@ -149,6 +155,7 @@ function buildServices(overrides: {
     escalationService,
     dispatchService,
     pool,
+    coreMemoryRepo,
   };
 }
 
@@ -187,27 +194,28 @@ describe("buildHierarchyTools — IC vs team gating", () => {
     ]);
   });
 
-  it("team tier exposes all 14 tools (8 shared + 6 team-only incl revise_task + add_to_escalation)", () => {
+  it("team tier exposes 15 tools (8 shared + 6 team-only + create_subordinate_agent)", () => {
     const tools = buildHierarchyTools(
       { agentId: "agent_t", hierarchyLevel: "team" },
       buildServices(),
     );
     const names = tools.map((t) => t.name);
-    expect(names.length).toBe(14);
+    expect(names.length).toBe(15);
     expect(names).toContain("find_subordinates");
     expect(names).toContain("find_peers");
     expect(names).toContain("create_task");
     expect(names).toContain("check_work_status");
     expect(names).toContain("revise_task");
     expect(names).toContain("add_to_escalation");
+    expect(names).toContain("create_subordinate_agent");
   });
 
-  it("org tier also gets all 14 (parents have subordinates too)", () => {
+  it("org tier also gets all 15 (parents have subordinates too)", () => {
     const tools = buildHierarchyTools(
       { agentId: "agent_o", hierarchyLevel: "org" },
       buildServices(),
     );
-    expect(tools.length).toBe(14);
+    expect(tools.length).toBe(15);
   });
 });
 

@@ -1,6 +1,7 @@
 import type { ResolvedCaller } from "@beevibe/core/auth";
 import type {
   AgentRepository,
+  CoreMemoryBlockRepository,
   TaskRepository,
   WorkProductRepository,
 } from "@beevibe/core";
@@ -28,6 +29,8 @@ export interface AssembleToolsServices {
   mesh: MeshServer;
   pool: Pool;
   memoryAgent: MemoryAgent;
+  /** Phase 9: backs `create_subordinate_agent` (seeds persona/domain blocks). */
+  coreMemoryRepo: CoreMemoryBlockRepository;
 }
 
 /**
@@ -56,7 +59,7 @@ export interface AssembleToolsContext {
  *     2 mesh: respond_ask (when targeted by team-tier `ask`),
  *             report_blocker (escalate up to direct parent)
  *
- *   Team / org (22 tools):
+ *   Team / org (23 tools):
  *     2 memory + 14 hierarchy (8 shared + 6 team-only) +
  *     6 mesh (ask, respond_ask, negotiate, respond_negotiate,
  *             report_blocker, escalate_to_humans).
@@ -97,6 +100,7 @@ export function assembleTools(
       escalationService: services.escalationService,
       dispatchService: services.dispatchService,
       pool: services.pool,
+      coreMemoryRepo: services.coreMemoryRepo,
     },
   );
 

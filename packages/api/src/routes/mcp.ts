@@ -13,6 +13,7 @@ import type { McpCaller } from "../tools/assemble.js";
 import type { CoreMemory, FactStore, MemoryAgent } from "@beevibe/core/services/memory";
 import type {
   AgentRepository,
+  CoreMemoryBlockRepository,
   SessionRepository,
   TaskRepository,
   WorkProductRepository,
@@ -32,6 +33,8 @@ export interface McpRouterDeps {
   authMiddleware: RequestHandler;
   factStore: FactStore;
   coreMemory: CoreMemory;
+  /** Phase 9: backs `create_subordinate_agent` (seeds persona/domain blocks). */
+  coreMemoryRepo: CoreMemoryBlockRepository;
   sessionCache: SessionCache;
   sessionRepo: SessionRepository;
   agentRepo: AgentRepository;
@@ -212,6 +215,7 @@ async function handleMcpRequest(
     {
       factStore: deps.factStore,
       coreMemory: deps.coreMemory,
+      coreMemoryRepo: deps.coreMemoryRepo,
       agentRepo: deps.agentRepo,
       taskRepo: deps.taskRepo,
       workProductRepo: deps.workProductRepo,
