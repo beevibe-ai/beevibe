@@ -3,10 +3,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./config", () => ({
   apiBaseUrl: "https://api.example.com",
   isApiConfigured: true,
-  userKey: null,
+  getUserKey: () => null,
 }));
 
-import { fetchJson, ApiError } from "./http";
+import { fetchJson, ApiError, describeError, setOnUnauthorized } from "./http";
 
 const fetchMock = vi.fn();
 
@@ -111,6 +111,40 @@ describe("fetchJson", () => {
       body: "plain text response",
     });
   });
+
+  it("ApiError extracts errorCode and serverMessage from JSON body", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "rate_limited", message: "Slow down." }), {
+        status: 429,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    try {
+      await fetchJson("/api/x");
+      throw new Error("expected throw");
+    } catch (err) {
+      expect(err).toBeInstanceOf(ApiError);
+      const ae = err as ApiError;
+      expect(ae.errorCode).toBe("rate_limited");
+      expect(ae.serverMessage).toBe("Slow down.");
+      expect(describeError(ae)).toBe("Slow down.");
+    }
+  });
+
+  it("setOnUnauthorized handler fires on 401 responses", async () => {
+    const handler = vi.fn();
+    setOnUnauthorized(handler);
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    await expect(fetchJson("/api/protected")).rejects.toBeInstanceOf(ApiError);
+    expect(handler).toHaveBeenCalledTimes(1);
+    setOnUnauthorized(() => {});
+  });
 });
 
 describe("fetchJson when API is not configured", () => {
@@ -119,7 +153,7 @@ describe("fetchJson when API is not configured", () => {
     vi.doMock("./config", () => ({
       apiBaseUrl: null,
       isApiConfigured: false,
-      userKey: null,
+      getUserKey: () => null,
     }));
 
     const { fetchJson: ucFetch, ApiNotConfigured } = await import("./http");
@@ -132,12 +166,12 @@ describe("fetchJson when API is not configured", () => {
 });
 
 describe("fetchJson with userKey configured", () => {
-  it("attaches Authorization: Bearer <userKey> when configured", async () => {
+  it("attaches Authorization: Bearer <userKey> when getUserKey() returns a key", async () => {
     vi.resetModules();
     vi.doMock("./config", () => ({
       apiBaseUrl: "https://api.example.com",
       isApiConfigured: true,
-      userKey: "bv_u_test_key",
+      getUserKey: () => "bv_u_test_key",
     }));
 
     const { fetchJson: authedFetch } = await import("./http");

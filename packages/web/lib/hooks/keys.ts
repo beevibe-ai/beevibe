@@ -32,4 +32,24 @@ export const queryKeys = {
     all: ["dashboard"] as const,
     summary: () => ["dashboard", "summary"] as const,
   },
+  me: {
+    all: ["me"] as const,
+    self: () => ["me", "self"] as const,
+    health: () => ["me", "health"] as const,
+  },
+  activity: {
+    all: ["activity"] as const,
+    feed: () => ["activity", "feed"] as const,
+  },
+  chat: {
+    all: ["chat"] as const,
+    /** Per-conversation history. `undefined` = the most recent conversation. */
+    history: (conversationId?: string) =>
+      ["chat", "history", conversationId ?? "<latest>"] as const,
+    conversations: () => ["chat", "conversations"] as const,
+  },
+  runtimes: {
+    all: ["runtimes"] as const,
+    list: () => ["runtimes", "list"] as const,
+  },
 } as const;

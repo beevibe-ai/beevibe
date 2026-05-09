@@ -1,4 +1,38 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+function makeMockStorage(): Storage {
+  let store: Record<string, string> = {};
+  return {
+    get length() {
+      return Object.keys(store).length;
+    },
+    clear() {
+      store = {};
+    },
+    getItem(key: string) {
+      return Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null;
+    },
+    key(index: number) {
+      return Object.keys(store)[index] ?? null;
+    },
+    removeItem(key: string) {
+      delete store[key];
+    },
+    setItem(key: string, value: string) {
+      store[key] = value;
+    },
+  };
+}
+
+beforeEach(() => {
+  // happy-dom in this project ships an unconfigured `localStorage` (no
+  // setItem / getItem). Inject a minimal in-memory mock for these tests.
+  Object.defineProperty(window, "localStorage", {
+    value: makeMockStorage(),
+    configurable: true,
+    writable: true,
+  });
+});
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -42,19 +76,64 @@ describe("api config", () => {
     expect(isApiConfigured).toBe(false);
   });
 
-  it("exposes userKey from NEXT_PUBLIC_BV_USER_KEY when set", async () => {
+  it("getUserKey() returns NEXT_PUBLIC_BV_USER_KEY when no localStorage entry", async () => {
     vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
-    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "bv_u_test123");
+    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "bv_u_envfallback");
     vi.resetModules();
-    const { userKey } = await loadConfig();
-    expect(userKey).toBe("bv_u_test123");
+    const { getUserKey } = await loadConfig();
+    expect(getUserKey()).toBe("bv_u_envfallback");
   });
 
-  it("treats missing NEXT_PUBLIC_BV_USER_KEY as null userKey (no auth header)", async () => {
+  it("getUserKey() returns null when neither env nor localStorage has a key", async () => {
     vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
     vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "");
     vi.resetModules();
-    const { userKey } = await loadConfig();
-    expect(userKey).toBeNull();
+    const { getUserKey } = await loadConfig();
+    expect(getUserKey()).toBeNull();
+  });
+
+  it("setUserKey() persists to localStorage and getUserKey() returns it (overriding env)", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
+    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "bv_u_env");
+    vi.resetModules();
+    const { getUserKey, setUserKey } = await loadConfig();
+    setUserKey("bv_u_localstorage");
+    expect(getUserKey()).toBe("bv_u_localstorage");
+  });
+
+  it("clearUserKey() removes localStorage entry, falling back to env", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
+    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "bv_u_env");
+    vi.resetModules();
+    const { getUserKey, setUserKey, clearUserKey } = await loadConfig();
+    setUserKey("bv_u_localstorage");
+    clearUserKey();
+    expect(getUserKey()).toBe("bv_u_env");
+  });
+
+  it("subscribeToUserKey() fires on setUserKey + clearUserKey, stops after unsubscribe", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
+    vi.resetModules();
+    const { setUserKey, clearUserKey, subscribeToUserKey } = await loadConfig();
+    const cb = vi.fn();
+    const unsub = subscribeToUserKey(cb);
+    setUserKey("bv_u_one");
+    setUserKey("bv_u_two");
+    clearUserKey();
+    expect(cb).toHaveBeenCalledTimes(3);
+    unsub();
+    setUserKey("bv_u_three");
+    expect(cb).toHaveBeenCalledTimes(3);
+  });
+
+  it("isWellFormedUserKey accepts well-formed bv_u_ keys and rejects others", async () => {
+    vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
+    vi.resetModules();
+    const { isWellFormedUserKey } = await loadConfig();
+    expect(isWellFormedUserKey("bv_u_abc1234567890ABCD")).toBe(true);
+    expect(isWellFormedUserKey("bv_u_short")).toBe(false);
+    expect(isWellFormedUserKey("bv_a_abc1234567890ABCD")).toBe(false);
+    expect(isWellFormedUserKey("nope")).toBe(false);
+    expect(isWellFormedUserKey("")).toBe(false);
   });
 });

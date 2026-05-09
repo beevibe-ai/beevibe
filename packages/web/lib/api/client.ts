@@ -10,7 +10,14 @@ import type { AgentDisplay } from "@/lib/types/agents";
 import type { SessionDisplay } from "@/lib/types/sessions";
 import type { MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
-import type { Task, MemoryScope, TaskPriority } from "@beevibe/core";
+import type {
+  HierarchyLevel,
+  MemoryScope,
+  SessionStatus,
+  SessionType,
+  Task,
+  TaskPriority,
+} from "@beevibe/core";
 import type { Lifecycle } from "@/lib/tasks-grouping";
 
 export type TaskView = "all" | "mine" | "sprint" | "timeline";
@@ -45,6 +52,128 @@ export interface CreateTaskInput {
   priority?: TaskPriority;
   assignee_id?: string;
   parent_task_id?: string;
+}
+
+export interface MeResponse {
+  person: {
+    id: string;
+    name: string;
+    email: string | null;
+    onboarding_completed_at: string | null;
+  };
+  primary_agent: {
+    id: string;
+    name: string;
+    hierarchy: "ic" | "team" | "org";
+  } | null;
+  needs_onboarding: boolean;
+}
+
+export interface HealthResponse {
+  ok: boolean;
+  /** `claude` CLI presence — chat agents spawn as CLI subprocesses. */
+  claude_cli: { ok: boolean; message?: string };
+  /**
+   * OpenAI embeddings — used by memory briefing's vector recall.
+   * `skipped: true` means no `OPENAI_API_KEY` was configured at boot;
+   * memory writes will return a friendly disabled message and recall
+   * returns blocks-only briefings. Chat works either way.
+   */
+  openai: { ok: boolean; skipped?: boolean; message?: string };
+}
+
+export interface ChatSendInput {
+  message: string;
+  /** Previous turn's session id — enables `--resume` continuity. */
+  prior_session_id?: string;
+  /**
+   * Caller-supplied session id for the new turn. Lets the chat UI subscribe
+   * to `session.step` SSE events for this id BEFORE the server starts the
+   * run, so streaming step rendering doesn't miss the early events.
+   */
+  session_id?: string;
+}
+
+export interface SuggestedAction {
+  /** Short text shown on the chip. */
+  label: string;
+  /** Optional longer message sent on click — defaults to label. */
+  prompt?: string;
+}
+
+export interface ChatTurnResponse {
+  ok: true;
+  agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" };
+  session_id: string;
+  response: string;
+  status: "running" | "succeeded" | "failed" | "cancelled";
+  /** Entity ids the agent referenced in its response (task_*, agent_*, sess_*). */
+  view_refs: string[];
+  /**
+   * If the agent emitted an `<open_view path="..."/>` directive, the
+   * resolved path is here so the chat UI can render a prominent "Open this →" CTA.
+   */
+  open_view?: { path: string; label?: string };
+  /**
+   * If the agent ended its reply with `<suggest_action>` directives, each
+   * label becomes a clickable chip below the bubble that re-sends the
+   * label as the next user message.
+   */
+  suggested_actions?: SuggestedAction[];
+}
+
+export interface ChatHistoryMessage {
+  id: string;
+  role: "user" | "agent";
+  content: string;
+  session_id?: string;
+  view_refs?: string[];
+  open_view?: { path: string; label?: string };
+  suggested_actions?: SuggestedAction[];
+}
+
+export interface ChatHistoryResponse {
+  ok: true;
+  agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" } | null;
+  messages: ChatHistoryMessage[];
+  /** The most recent session id, used to chain `prior_session_id` on the next turn. */
+  prior_session_id: string | null;
+  /** Head session id of the conversation these messages belong to. */
+  conversation_id: string | null;
+}
+
+export interface ChatConversationSummary {
+  /** Head session id of the chain (the first turn). */
+  head_id: string;
+  /** First user message, used as the title in conversation pickers. */
+  title: string;
+  /** Number of turns (sessions) in the chain. */
+  turn_count: number;
+  /** ISO timestamp of the most recent turn in the chain. */
+  last_at: string;
+  /** Brief preview of the latest agent reply (or user intent if no reply yet). */
+  last_preview: string;
+}
+
+export interface ChatConversationsResponse {
+  ok: true;
+  conversations: ChatConversationSummary[];
+}
+
+export interface ActivityEntry {
+  id: string;
+  short_id: string;
+  agent_id: string;
+  agent_label: string;
+  agent_hierarchy: HierarchyLevel;
+  type: SessionType;
+  status: SessionStatus;
+  intent: string;
+  task_id: string | null;
+  task_title: string | null;
+  task_short_id: string | null;
+  started_at: string;
+  duration_label: string;
 }
 
 export type EscalationResolveInput =
@@ -127,6 +256,49 @@ export const api = {
   dashboard: {
     summary: (opts: ReadOptions = {}) =>
       fetchJson<DashboardSummary>("/dashboard", { signal: opts.signal }),
+  },
+  chat: {
+    /**
+     * Send one turn to the caller's primary agent. Server runs
+     * dispatchService → daemon claims → chatResolver awaits done.
+     */
+    send: (input: ChatSendInput) =>
+      fetchJson<ChatTurnResponse>("/chat", { method: "POST", body: input }),
+    /**
+     * Conversation history, oldest first.
+     *   - no `conversationId` → most recent conversation chain
+     *   - `conversationId` set → that specific chain (full `sess_xxx` head id)
+     */
+    history: (opts: ReadOptions & { conversationId?: string } = {}) =>
+      fetchJson<ChatHistoryResponse>("/chat", {
+        signal: opts.signal,
+        ...(opts.conversationId ? { query: { c: opts.conversationId } } : {}),
+      }),
+    /** List recent conversations (chains) for the caller's primary agent. */
+    conversations: (opts: ReadOptions = {}) =>
+      fetchJson<ChatConversationsResponse>("/chat/conversations", {
+        signal: opts.signal,
+      }),
+  },
+  activity: {
+    /** Recent sessions across the caller's agent tree. Used by the live chat rail. */
+    list: (opts: ReadOptions & { limit?: number } = {}) =>
+      fetchJson<ActivityEntry[]>("/activity", {
+        signal: opts.signal,
+        ...(opts.limit ? { query: { limit: opts.limit } } : {}),
+      }),
+  },
+  me: {
+    /** Identity + onboarding state for the welcome flow. */
+    self: (opts: ReadOptions = {}) =>
+      fetchJson<MeResponse>("/me", { signal: opts.signal }),
+    completeOnboarding: () =>
+      fetchJson<{ ok: true; onboarding_completed_at: string | null }>(
+        "/me/onboarding/complete",
+        { method: "POST" },
+      ),
+    health: (opts: ReadOptions = {}) =>
+      fetchJson<HealthResponse>("/health/runtime", { signal: opts.signal }),
   },
   escalations: {
     resolve: (id: string, input: EscalationResolveInput) =>
