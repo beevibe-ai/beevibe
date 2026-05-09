@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, AlertTriangle, FileText, ListChecks, Terminal } from "lucide-react";
+import {
+  ArrowLeft,
+  AlertTriangle,
+  FileText,
+  ListChecks,
+  Terminal,
+} from "lucide-react";
 import { useTask } from "@/lib/hooks/use-tasks";
 import {
   useApproveTask,
@@ -20,6 +26,7 @@ import { Skeleton } from "@/components/skeleton";
 import { RichTextRender } from "@/components/rich-text";
 import { formatRelativeTime, shortId } from "@/lib/format";
 import type { TaskDetail, TaskDetailSessionRow } from "@/lib/api/types";
+import type { WorkProduct } from "@beevibe/core";
 
 const TasksBackLink = () => (
   <Link
@@ -237,23 +244,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
             ) : (
               <ul className="space-y-2">
                 {task.work_products.map((wp) => (
-                  <li
-                    key={wp.id}
-                    className="rounded-lg border border-border bg-card p-3 flex items-start gap-3"
-                  >
-                    <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{wp.title}</div>
-                      {wp.summary ? (
-                        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
-                          {wp.summary}
-                        </p>
-                      ) : null}
-                    </div>
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0">
-                      {wp.type.replace(/_/g, " ")}
-                    </span>
-                  </li>
+                  <WorkProductCard key={wp.id} wp={wp} />
                 ))}
               </ul>
             )}
@@ -334,6 +325,32 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         ) : null}
       </footer>
     </DetailShell>
+  );
+}
+
+function WorkProductCard({ wp }: { wp: WorkProduct }) {
+  // Card → dedicated /work-products/[id] page where the body renders
+  // full-width with markdown. We used to inline-expand here, but the
+  // briefing bodies are real documents (audits, reports) — they want a
+  // page, not a sliver of a card.
+  return (
+    <li>
+      <Link
+        href={`/work-products/${wp.id}`}
+        className="rounded-lg border border-border bg-card p-3 flex items-start gap-3 hover:bg-secondary/30 transition-colors"
+      >
+        <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium">{wp.title}</div>
+          {wp.summary ? (
+            <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{wp.summary}</p>
+          ) : null}
+        </div>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 mt-0.5">
+          {wp.type.replace(/_/g, " ")}
+        </span>
+      </Link>
+    </li>
   );
 }
 
