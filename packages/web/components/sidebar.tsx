@@ -6,15 +6,12 @@ import { usePathname } from "next/navigation";
 import {
   ChevronDown,
   ChevronRight,
-  ChevronsUpDown,
   HardDrive,
-  Home,
+  LayoutDashboard,
   ListChecks,
   type LucideIcon,
+  MessageSquare,
   Network,
-  Plus,
-  Search,
-  Settings2,
   Sparkles,
   Terminal,
   TrendingUp,
@@ -27,11 +24,10 @@ import { ThemeToggle } from "./theme-toggle";
 import { UserWidget } from "./user-widget";
 
 type QuickAction = {
-  href?: string;
+  href: string;
   label: string;
   icon: LucideIcon;
   badge?: number;
-  onClick?: () => void;
 };
 
 type NavItem = {
@@ -43,9 +39,12 @@ type NavItem = {
   trailing?: string;
 };
 
+// `/` renders the chat surface (the team-agent-first UX); the
+// dashboard moved to its own route so the home tile is always
+// "talk to your team agent".
 const QUICK_ACTIONS: QuickAction[] = [
-  { label: "Search", icon: Search, onClick: () => {} },
-  { href: "/", label: "Home", icon: Home },
+  { href: "/", label: "Chat", icon: MessageSquare },
+  { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
 ];
 
 const WORKSPACE_ITEMS: NavItem[] = [
@@ -96,41 +95,26 @@ export function Sidebar() {
 
   return (
     <aside className="w-[248px] shrink-0 bg-card border-r border-border/60 flex flex-col">
-      <WorkspaceSwitcher />
+      <WorkspaceHeader />
 
       <div className="px-2 pt-1 pb-2 space-y-px">
-        {QUICK_ACTIONS.map((a) =>
-          a.href ? (
-            <Link
-              key={a.label}
-              href={a.href}
-              aria-current={pathname === a.href ? "page" : undefined}
-              className={cn(
-                "flex items-center gap-2.5 h-7 px-2 rounded-md text-sm transition-colors",
-                pathname === a.href
-                  ? "bg-secondary text-foreground font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
-              )}
-            >
-              <a.icon className="h-3.5 w-3.5 shrink-0" />
-              <span className="flex-1 truncate">{a.label}</span>
-              {a.badge ? <Badge value={a.badge} /> : null}
-            </Link>
-          ) : (
-            <button
-              key={a.label}
-              type="button"
-              onClick={a.onClick}
-              className="w-full flex items-center gap-2.5 h-7 px-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-secondary/70 transition-colors cursor-pointer"
-            >
-              <a.icon className="h-3.5 w-3.5 shrink-0" />
-              <span className="flex-1 truncate text-left">{a.label}</span>
-              <kbd className="text-[10px] font-mono text-muted-foreground/70 bg-secondary/60 px-1 rounded border border-border">
-                ⌘K
-              </kbd>
-            </button>
-          ),
-        )}
+        {QUICK_ACTIONS.map((a) => (
+          <Link
+            key={a.label}
+            href={a.href}
+            aria-current={pathname === a.href ? "page" : undefined}
+            className={cn(
+              "flex items-center gap-2.5 h-7 px-2 rounded-md text-sm transition-colors",
+              pathname === a.href
+                ? "bg-secondary text-foreground font-medium"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary/70",
+            )}
+          >
+            <a.icon className="h-3.5 w-3.5 shrink-0" />
+            <span className="flex-1 truncate">{a.label}</span>
+            {a.badge ? <Badge value={a.badge} /> : null}
+          </Link>
+        ))}
       </div>
 
       <nav className="flex-1 overflow-y-auto px-2 pb-2 space-y-3" aria-label="Main">
@@ -179,35 +163,23 @@ export function Sidebar() {
       <div className="p-2 border-t border-border/60 flex items-center gap-1">
         <UserWidget />
         <ThemeToggle />
-        <button
-          type="button"
-          aria-label="Sidebar settings"
-          className="h-8 w-8 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors shrink-0"
-        >
-          <Settings2 className="h-4 w-4" />
-        </button>
       </div>
     </aside>
   );
 }
 
-function WorkspaceSwitcher() {
+function WorkspaceHeader() {
   return (
-    <button
-      type="button"
-      aria-label="Switch owner"
-      className="group flex items-center gap-2 h-12 px-3 mx-2 mt-2 rounded-md hover:bg-secondary/70 cursor-pointer transition-colors"
-    >
+    <div className="h-12 px-3 mx-2 mt-2 flex items-center gap-2">
       <div className="h-6 w-6 rounded-md bg-primary flex items-center justify-center shrink-0">
         <span className="text-primary-foreground text-[13px] font-bold leading-none">b</span>
       </div>
-      <div className="flex-1 min-w-0 text-left">
+      <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold tracking-tight leading-tight truncate">
           beevibe
         </div>
       </div>
-      <ChevronsUpDown className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
-    </button>
+    </div>
   );
 }
 
@@ -216,16 +188,12 @@ function Section({
   count,
   open,
   onToggle,
-  actionLabel,
-  onAction,
   children,
 }: {
   title: string;
   count?: number;
   open: boolean;
   onToggle: () => void;
-  actionLabel?: string;
-  onAction?: () => void;
   children: React.ReactNode;
 }) {
   return (
@@ -251,17 +219,6 @@ function Section({
             </span>
           ) : null}
         </button>
-        {actionLabel ? (
-          <button
-            type="button"
-            onClick={onAction}
-            aria-label={actionLabel}
-            title={actionLabel}
-            className="opacity-0 group-hover:opacity-100 h-5 w-5 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-all"
-          >
-            <Plus className="h-3 w-3" />
-          </button>
-        ) : null}
       </div>
       {open ? <div className="space-y-px">{children}</div> : null}
     </div>
@@ -297,10 +254,7 @@ function AgentList({ pathname }: { pathname: string }) {
     return (
       <div className="space-y-px">
         {[0, 1].map((i) => (
-          <div
-            key={i}
-            className="h-7 pl-5 pr-2 flex items-center"
-          >
+          <div key={i} className="h-7 pl-5 pr-2 flex items-center">
             <div className="h-3 w-24 rounded bg-muted animate-pulse" />
           </div>
         ))}

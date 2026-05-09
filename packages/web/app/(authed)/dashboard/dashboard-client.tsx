@@ -20,7 +20,7 @@ const ATTENTION_DOT: Record<AttentionItem["status"], string> = {
   review: "bg-status-review",
 };
 
-export function HomeClient() {
+export function DashboardClient() {
   const { data, isLoading, isError } = useDashboard();
 
   return (

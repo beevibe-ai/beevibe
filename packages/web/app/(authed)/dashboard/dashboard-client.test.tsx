@@ -16,7 +16,7 @@ vi.mock("@/lib/api/client", () => ({
   api: { dashboard: { summary: vi.fn() } },
 }));
 
-import { HomeClient } from "./home-client";
+import { DashboardClient } from "./dashboard-client";
 import { api } from "@/lib/api/client";
 
 const summaryMock = vi.mocked(api.dashboard.summary);
@@ -26,7 +26,7 @@ function renderHome() {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
   }
-  return render(<HomeClient />, { wrapper: Wrapper });
+  return render(<DashboardClient />, { wrapper: Wrapper });
 }
 
 const sample: DashboardSummary = {
@@ -62,7 +62,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("HomeClient", () => {
+describe("DashboardClient", () => {
   it("renders the not-configured empty state and never fetches", () => {
     apiState.isApiConfigured = false;
     renderHome();
