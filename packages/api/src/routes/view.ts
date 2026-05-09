@@ -123,6 +123,23 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     }
   });
 
+  // IMPORTANT: register `/agent/network` BEFORE `/agent/:id` so Express
+  // doesn't match "network" as a path param. Same reason `/agent` (the
+  // list) is fine — it's a different path entirely.
+  router.get("/agent/network", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      // Cross-owner read: caller's tree plus peer teams from rooms
+      // they share. Peer set is derived from room_member co-attendance,
+      // which is the explicit consent surface (you're in a room with
+      // them, so seeing their team agents isn't a leak).
+      const network = await getAgentNetwork(deps.pool, req.caller.personId);
+      res.json(network);
+    } catch (err) {
+      handleError(err, res, "agent network");
+    }
+  });
+
   router.get("/agent/:id", async (req, res) => {
     if (!requireHuman(req, res)) return;
     const id = req.params.id;
@@ -265,20 +282,6 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(wp);
     } catch (err) {
       handleError(err, res, "work product detail");
-    }
-  });
-
-  router.get("/agent/network", async (req, res) => {
-    if (!requireHuman(req, res)) return;
-    try {
-      // Cross-owner read: caller's tree plus peer teams from rooms
-      // they share. Peer set is derived from room_member co-attendance,
-      // which is the explicit consent surface (you're in a room with
-      // them, so seeing their team agents isn't a leak).
-      const network = await getAgentNetwork(deps.pool, req.caller.personId);
-      res.json(network);
-    } catch (err) {
-      handleError(err, res, "agent network");
     }
   });
 
