@@ -31,7 +31,6 @@ import {
   type Agent,
   type AgentRepository,
   type PersonRepository,
-  type Room,
   type RoomMessage,
   type RoomRepository,
   type RuntimeRegistry,
@@ -641,17 +640,37 @@ export function resolveAddressees<A extends AgentMatchable>(
   memberAgents: readonly A[],
   speakerOwnerAgentId: string | undefined,
 ): { agents: A[]; reason: AddresseeReason } {
-  // 1. Explicit mention. @<full_id> | @<short_id> | @<normalized_name>.
+  // 1. Explicit @mention always wins.
   const mentions = resolveMentions(content, memberAgents);
   if (mentions.length > 0) return { agents: mentions, reason: "mention" };
 
-  // 2. Name-substring match. Agent's full normalized name must appear
-  // in the normalized message text. Min length 4 so nothing matches
-  // by accident on short common words.
+  // 2. Vocative — the addressee at the start of the message, before
+  // the first comma or colon. "team, get Bob's team's take..." has
+  // "team" as the vocative; "Bob's team's take" is just the subject.
+  // Try name-match FIRST: "Bob's team" beats "team" because the more
+  // specific addressee was named explicitly. Fall back to the
+  // team-keyword for plain "team," / "agents,". The vocative-name
+  // match is more permissive than the in-message one — it also
+  // accepts a single-word vocative ("bob:") matching an agent's
+  // first name token, since informal addressing is the norm in
+  // a chat room.
+  const vocative = extractVocative(content);
+  if (vocative) {
+    const namedInVocative = matchAgentVocative(vocative, memberAgents);
+    if (namedInVocative.length > 0) return { agents: namedInVocative, reason: "name" };
+    if (TEAM_ADDRESS_RE.test(vocative) && speakerOwnerAgentId) {
+      const own = memberAgents.find((a) => a.id === speakerOwnerAgentId);
+      if (own) return { agents: [own], reason: "team-default" };
+    }
+  }
+
+  // 3. Name-substring anywhere. "Bob's team, what do you think?"
+  // (without a leading vocative) still routes to Bob's team.
   const named = matchAgentsByName(content, memberAgents);
   if (named.length > 0) return { agents: named, reason: "name" };
 
-  // 3. Generic team-address. Speaker's own team agent answers.
+  // 4. Generic team keyword anywhere. "what do the agents think" →
+  // speaker's team agent answers.
   if (TEAM_ADDRESS_RE.test(content) && speakerOwnerAgentId) {
     const own = memberAgents.find((a) => a.id === speakerOwnerAgentId);
     if (own) return { agents: [own], reason: "team-default" };
@@ -661,6 +680,18 @@ export function resolveAddressees<A extends AgentMatchable>(
 }
 
 const TEAM_ADDRESS_RE = /\b(teams?|agents?|specialists?|assistants?)\b/i;
+
+/**
+ * Extract the leading vocative — text before the first `,` or `:`
+ * within the first ~80 chars. "team, foo" → "team"; "Bob's team:
+ * foo" → "Bob's team"; plain "what's up" → null. Empty / overly
+ * long candidates are rejected so we don't pick up the entire
+ * sentence as a "vocative".
+ */
+function extractVocative(content: string): string | null {
+  const m = content.match(/^\s*([^,:\n]{1,80})[,:]/);
+  return m?.[1]?.trim() ?? null;
+}
 
 /**
  * Match each `@mention` in `content` against a member agent. Tokens
@@ -727,6 +758,32 @@ function matchAgentsByName<A extends AgentMatchable>(
     out.push(a);
   }
   return out;
+}
+
+/**
+ * Vocative-position name match — looser than `matchAgentsByName`
+ * because the user already signaled "I'm addressing someone" via
+ * the leading punctuation. Tries:
+ *   1. Strict full-name substring (same as the in-message matcher).
+ *   2. Single-word vocative matching an agent's first name token —
+ *      "bob:" routes to the "bob's team" agent because the user is
+ *      using the informal first name in a chat. Skipped when the
+ *      vocative has multiple words (those should match by the
+ *      strict path or not at all).
+ */
+function matchAgentVocative<A extends AgentMatchable>(
+  vocative: string,
+  memberAgents: readonly A[],
+): A[] {
+  const strict = matchAgentsByName(vocative, memberAgents);
+  if (strict.length > 0) return strict;
+  const v = normalize(vocative);
+  if (!v || v.includes(" ")) return [];
+  for (const a of memberAgents) {
+    const firstToken = normalize(a.name).split(" ")[0];
+    if (firstToken && firstToken === v) return [a];
+  }
+  return [];
 }
 
 function normalize(s: string): string {

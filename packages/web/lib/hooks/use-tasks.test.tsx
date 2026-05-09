@@ -87,12 +87,12 @@ describe("useTasks", () => {
     const wrap = wrapper();
     const a = renderHook(() => useTasks({ view: "mine" }), { wrapper: wrap });
     await waitFor(() => expect(a.result.current.isSuccess).toBe(true));
-    const b = renderHook(() => useTasks({ view: "sprint" }), { wrapper: wrap });
+    const b = renderHook(() => useTasks({ view: "mine" }), { wrapper: wrap });
     await waitFor(() => expect(b.result.current.isSuccess).toBe(true));
 
     expect(listMock).toHaveBeenCalledTimes(2);
     expect(listMock).toHaveBeenNthCalledWith(1, { view: "mine" }, expect.objectContaining({}));
-    expect(listMock).toHaveBeenNthCalledWith(2, { view: "sprint" }, expect.objectContaining({}));
+    expect(listMock).toHaveBeenNthCalledWith(2, { view: "mine" }, expect.objectContaining({}));
   });
 
   it("surfaces errors from the api", async () => {

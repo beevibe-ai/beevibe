@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -21,6 +21,7 @@ import { FactTypeTag } from "@/components/fact-type-tag";
 import { ScopeChip } from "@/components/scope-chip";
 import { RichTextRender } from "@/components/rich-text";
 import { useMemoryFacts } from "@/lib/hooks/use-memory";
+import { useSlashFocus } from "@/lib/hooks/use-slash-focus";
 import { isApiConfigured } from "@/lib/api/config";
 import { formatRelativeTime } from "@/lib/format";
 import type { MemoryFactDisplay, FactCounts } from "@/lib/types/memory-facts";
@@ -31,6 +32,8 @@ const EMPTY_FACTS: MemoryFactDisplay[] = [];
 export function MemoryClient() {
   const [scope, setScope] = useState<ScopeFilter>("all");
   const [query, setQuery] = useState("");
+  const searchRef = useRef<HTMLInputElement>(null);
+  useSlashFocus(searchRef);
 
   const filterScope: MemoryScope | undefined = scope === "all" ? undefined : scope;
   const { data, isLoading, isError } = useMemoryFacts({ scope: filterScope });
@@ -48,10 +51,11 @@ export function MemoryClient() {
         <div className="relative flex-1 max-w-lg">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <input
+            ref={searchRef}
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search memory — semantic + keyword"
+            placeholder="Search memory — semantic + keyword   ( / )"
             aria-label="Search memory"
             className="w-full h-9 pl-10 pr-3 text-sm rounded-md bg-secondary placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 transition-shadow"
           />

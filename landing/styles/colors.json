@@ -1,0 +1,56 @@
+{
+  "_comment": "Canonical color palette for landing/. Values mirror the inline CSS variables in index.html :root / .dark blocks. Components should reference these names; if you add a color here, sync the matching CSS variable in index.html (no build step).",
+  "_format": "Each color is given as an HSL triplet string (matches the hsl(var(--name)) pattern used in index.html), plus a hex equivalent for tooling.",
+
+  "light": {
+    "background":         { "hsl": "0 0% 100%",     "hex": "#ffffff" },
+    "foreground":         { "hsl": "240 10% 4%",    "hex": "#0a0a0c" },
+    "card":               { "hsl": "240 5% 98%",    "hex": "#fafafa" },
+    "card-foreground":    { "hsl": "240 10% 4%",    "hex": "#0a0a0c" },
+    "primary":            { "hsl": "48 96% 53%",    "hex": "#facc15" },
+    "primary-foreground": { "hsl": "240 10% 4%",    "hex": "#0a0a0c" },
+    "secondary":          { "hsl": "240 5% 96%",    "hex": "#f4f4f5" },
+    "secondary-foreground": { "hsl": "240 6% 10%",  "hex": "#18181b" },
+    "muted":              { "hsl": "240 5% 96%",    "hex": "#f4f4f5" },
+    "muted-foreground":   { "hsl": "240 4% 46%",    "hex": "#71717a" },
+    "border":             { "hsl": "240 6% 90%",    "hex": "#e4e4e7" },
+    "input":              { "hsl": "240 6% 90%",    "hex": "#e4e4e7" },
+    "ring":               { "hsl": "47 96% 47%",    "hex": "#eab308" }
+  },
+
+  "dark": {
+    "background":         { "hsl": "240 10% 4%",    "hex": "#0a0a0c" },
+    "foreground":         { "hsl": "0 0% 98%",      "hex": "#fafafa" },
+    "card":               { "hsl": "240 6% 10%",    "hex": "#18181b" },
+    "card-foreground":    { "hsl": "0 0% 98%",      "hex": "#fafafa" },
+    "primary":            { "hsl": "48 96% 53%",    "hex": "#facc15" },
+    "primary-foreground": { "hsl": "240 10% 4%",    "hex": "#0a0a0c" },
+    "secondary":          { "hsl": "240 4% 16%",    "hex": "#27272a" },
+    "secondary-foreground": { "hsl": "0 0% 98%",    "hex": "#fafafa" },
+    "muted":              { "hsl": "240 4% 16%",    "hex": "#27272a" },
+    "muted-foreground":   { "hsl": "240 5% 65%",    "hex": "#a1a1aa" },
+    "border":             { "hsl": "240 4% 16%",    "hex": "#27272a" },
+    "input":              { "hsl": "240 4% 16%",    "hex": "#27272a" },
+    "ring":               { "hsl": "48 96% 53%",    "hex": "#facc15" }
+  },
+
+  "status": {
+    "pending": { "hsl": "240 4% 46%",  "hex": "#71717a" },
+    "running": { "hsl": "217 91% 60%", "hex": "#3b82f6" },
+    "review":  { "hsl": "38 92% 50%",  "hex": "#f59e0b" },
+    "blocked": { "hsl": "25 95% 53%",  "hex": "#f97316" },
+    "done":    { "hsl": "160 84% 39%", "hex": "#10b981" },
+    "failed":  { "hsl": "0 84% 60%",   "hex": "#ef4444" }
+  },
+
+  "hierarchy": {
+    "ic":   { "hsl": "240 4% 46%",  "hex": "#71717a" },
+    "team": { "hsl": "262 83% 58%", "hex": "#8b5cf6" },
+    "org":  { "hsl": "38 92% 50%",  "hex": "#f59e0b" }
+  },
+
+  "brand": {
+    "linkedin":       { "hsl": "210 90% 40%", "hex": "#0a66c2", "_comment": "LinkedIn brand blue, official #0A66C2 used on share buttons." },
+    "linkedin-hover": { "hsl": "210 90% 33%", "hex": "#004182", "_comment": "Darker hover state for the LinkedIn share button." }
+  }
+}

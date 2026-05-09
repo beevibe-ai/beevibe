@@ -152,14 +152,30 @@ trap cleanup INT TERM
 if pgrep -f "cloudflared tunnel.*localhost:${BEEVIBE_API_PORT}" >/dev/null 2>&1 ||
    pgrep -f "cloudflared tunnel.*localhost:${BEEVIBE_WEB_PORT}" >/dev/null 2>&1 ||
    pgrep -f "tsx watch.*src/main\.ts" >/dev/null 2>&1 ||
+   pgrep -f "tsc.*watch.*core" >/dev/null 2>&1 ||
    pgrep -f "next-server" >/dev/null 2>&1; then
   echo "==> Killing leftover beevibe processes from a previous session..."
   pkill -f "tsx watch.*src/main\.ts" 2>/dev/null || true
+  pkill -f "tsc.*watch.*core" 2>/dev/null || true
   pkill -f "next dev" 2>/dev/null || true
   pkill -f "next-server" 2>/dev/null || true
   pkill -f "cloudflared tunnel" 2>/dev/null || true
   sleep 1
 fi
+
+# Build @beevibe/core first so the api/executor have a fresh `dist/` to
+# import on startup. The api package.json points `@beevibe/core` at
+# `./dist/index.js`, so without this step the runtime sees whatever was
+# last committed to dist (often weeks-stale, silently). Then start
+# `tsc --watch` in the background to keep dist/ in sync as core source
+# changes — without this, every edit to packages/core requires a manual
+# `pnpm --filter @beevibe/core build` and a dev-server restart, which is
+# an easy footgun (we hit it landing the SSE streaming changes).
+echo "==> Building @beevibe/core..."
+pnpm --filter @beevibe/core build >/dev/null
+
+pnpm --filter @beevibe/core dev 2>&1 \
+  | sed -u 's/^/[core] /' &
 
 # api + executor go up first so they're listening when cloudflared and
 # the web dev server start probing.

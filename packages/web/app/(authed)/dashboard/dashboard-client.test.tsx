@@ -76,11 +76,10 @@ describe("DashboardClient", () => {
     expect(await screen.findByText("Couldn't load dashboard")).toBeInTheDocument();
   });
 
-  it("renders KPIs + breakdown + fleet + attention when data is loaded", async () => {
+  it("renders the Metrics header + KPIs + breakdown + fleet when data is loaded", async () => {
     summaryMock.mockResolvedValue(sample);
     renderHome();
     expect(await screen.findByText("Active sessions")).toBeInTheDocument();
-    expect(screen.getByText("Needs attention")).toBeInTheDocument();
-    expect(screen.getByText("needs key")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Metrics" })).toBeInTheDocument();
   });
 });

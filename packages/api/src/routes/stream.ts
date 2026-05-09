@@ -36,28 +36,30 @@ export function createStreamRouter(deps: StreamRoutesDeps): Router {
     });
     res.flushHeaders?.();
 
-    // Immediate flush so the browser EventSource transitions to OPEN
-    // and (critically) cloudflared / any intermediate HTTP/2 proxy
-    // commits to streaming mode instead of buffering. Without this
-    // first byte, http2 proxies may hold the response until the
-    // first interval-driven heartbeat 25s later — by which time the
-    // EventSource has already timed out.
-    res.write(": connected\n\n");
-
     const send = (event: BvEvent) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
+
+    // Sentinel event sent immediately so the browser's `onmessage`
+    // fires (comment lines like `: connected\n\n` don't trigger it),
+    // ackData() runs, and the client's health-timer flips status to
+    // "live" within milliseconds. Critical: cloudflared / any HTTP/2
+    // proxy also commits to streaming mode here instead of buffering,
+    // since we've now written body bytes the proxy must forward. The
+    // event has no semantic meaning — it's a no-op in eventInvalidations.
+    send({ event: "stream.ready", id: "ready" });
 
     // Register with the caller's personId — SseManager only invokes this
     // callback for events owned by this person (per OwnerLookup), so two
     // users on the same process never see each other's task / agent /
     // session activity.
     const unsubscribe = deps.sseManager.subscribe(req.caller.personId, send);
-    // Heartbeat every 5s instead of 25s — cloudflared's HTTP/2 stream
-    // can drop "idle" connections aggressively, and the original 25s
-    // matched nginx defaults. 5s is well within any common timeout.
+    // Heartbeat every 5s as a `data:` event (not a comment) so the
+    // client's `onmessage` keeps firing and any latent
+    // anti-idle-buffering on the proxy stays primed. The event payload
+    // is a sentinel — not in eventInvalidations, ignored downstream.
     const heartbeat = setInterval(() => {
-      res.write(": heartbeat\n\n");
+      send({ event: "stream.heartbeat", id: "heartbeat" });
     }, HEARTBEAT_INTERVAL_MS);
 
     const cleanup = () => {

@@ -77,6 +77,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       "-",
       "--output-format",
       "stream-json",
+      "--include-partial-messages",
       "--verbose",
       "--dangerously-skip-permissions",
       "--strict-mcp-config",

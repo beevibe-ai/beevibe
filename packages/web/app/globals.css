@@ -4,24 +4,30 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
+    /* Paper tint: pure white reads as untouched template; the warm
+       cream gives cards somewhere to sit and harmonizes with the
+       yellow primary (which dominates dark mode brand chrome). Hue
+       40 = warm cream, ~5% saturation, ~98% lightness = #fbf9f5-ish.
+       Cards lift slightly above the page (97% L). Borders pick up a
+       trace of warmth too so they don't read cool against the page. */
+    --background: 40 30% 98%;
     --foreground: 240 10% 4%;
-    --card: 240 5% 98%;
+    --card: 40 25% 97%;
     --card-foreground: 240 10% 4%;
-    --popover: 0 0% 100%;
+    --popover: 40 30% 99%;
     --popover-foreground: 240 10% 4%;
     --primary: 48 96% 53%;
     --primary-foreground: 240 10% 4%;
-    --secondary: 240 5% 96%;
+    --secondary: 40 12% 94%;
     --secondary-foreground: 240 6% 10%;
-    --muted: 240 5% 96%;
+    --muted: 40 12% 94%;
     --muted-foreground: 240 4% 46%;
-    --accent: 240 5% 96%;
+    --accent: 40 12% 94%;
     --accent-foreground: 240 6% 10%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-    --border: 240 6% 90%;
-    --input: 240 6% 90%;
+    --border: 40 10% 88%;
+    --input: 40 10% 88%;
     --ring: 47 96% 47%;
     --radius: 0.375rem;
 
@@ -129,21 +135,45 @@
   }
 }
 
-/* ── Chat markdown — see components/chat/markdown.tsx ─────────────────── */
+/* ── Chat markdown — see components/chat/markdown.tsx ───────────────────
+   Rhythm tuned for long agent replies (multi-paragraph, nested lists,
+   bold callouts). Tight pre-streaming defaults made walls of text;
+   these values let the bubble breathe. */
 .chat-md > *:first-child { margin-top: 0; }
 .chat-md > *:last-child { margin-bottom: 0; }
-.chat-md p { margin: 0.4em 0; }
+.chat-md p { margin: 0.7em 0; }
 .chat-md p:first-child { margin-top: 0; }
 .chat-md p:last-child { margin-bottom: 0; }
-.chat-md h1 { font-size: 1.05em; font-weight: 600; margin: 0.8em 0 0.3em; }
-.chat-md h2 { font-size: 1em; font-weight: 600; margin: 0.7em 0 0.3em; }
-.chat-md h3 { font-size: 0.95em; font-weight: 600; margin: 0.6em 0 0.25em; }
-.chat-md h4, .chat-md h5, .chat-md h6 { font-weight: 600; margin: 0.5em 0 0.2em; }
-.chat-md ul, .chat-md ol { margin: 0.4em 0; padding-left: 1.4em; }
+/* Headings start sections — generous top margin, tight bottom margin
+   so the heading hugs its content. :first-child kills the top margin
+   when a heading opens the bubble. */
+.chat-md h1 { font-size: 1.05em; font-weight: 600; margin: 1.2em 0 0.4em; }
+.chat-md h2 { font-size: 1em;    font-weight: 600; margin: 1em 0 0.35em; }
+.chat-md h3 { font-size: 0.95em; font-weight: 600; margin: 0.85em 0 0.3em; }
+.chat-md h4, .chat-md h5, .chat-md h6 { font-weight: 600; margin: 0.7em 0 0.25em; }
+.chat-md h1:first-child, .chat-md h2:first-child,
+.chat-md h3:first-child, .chat-md h4:first-child,
+.chat-md h5:first-child, .chat-md h6:first-child { margin-top: 0; }
+.chat-md ul, .chat-md ol { margin: 0.6em 0; padding-left: 1.4em; }
 .chat-md ul { list-style: disc; }
 .chat-md ol { list-style: decimal; }
-.chat-md li { margin: 0.15em 0; }
+/* Top-level items earn breathing room — they're often multi-sentence
+   with nested children. */
+.chat-md li { margin: 0.4em 0; }
 .chat-md li > p { margin: 0; }
+/* Nested lists de-emphasize: lighter color + tighter rhythm. The
+   visual ladder lets the eye land on the top-level structure first. */
+.chat-md ul ul, .chat-md ol ol, .chat-md ul ol, .chat-md ol ul {
+  margin: 0.3em 0;
+  color: hsl(var(--muted-foreground));
+}
+.chat-md ul ul li, .chat-md ol ol li,
+.chat-md ul ol li, .chat-md ol ul li {
+  margin: 0.2em 0;
+}
+/* Bold inside markdown leans on weight 600, not 700 — so it sits
+   visibly between body and heading instead of competing with h2/h3. */
+.chat-md strong { font-weight: 600; }
 .chat-md a { color: hsl(var(--primary-foreground)); text-decoration: underline; text-underline-offset: 2px; }
 .chat-md:not(.chat-md-inverted) a { color: hsl(217 91% 50%); }
 .chat-md code {

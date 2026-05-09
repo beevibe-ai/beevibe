@@ -28,11 +28,13 @@ import {
   type Lifecycle,
 } from "../views/tasks-grouping.js";
 import { listAgents, getAgent } from "../views/agents.js";
+import { getAgentNetwork } from "../views/agent-network.js";
 import { getSessionByShortId, AmbiguousShortIdError } from "../views/sessions.js";
 import { listMemoryFacts } from "../views/memory.js";
 import { getDashboardSummary } from "../views/dashboard.js";
 import { getMeshOverview } from "../views/mesh.js";
 import { listPromotions } from "../views/promotions.js";
+import { listInbox } from "../views/inbox.js";
 import { listActivity } from "../views/activity.js";
 import { getWorkProduct } from "../views/work-product.js";
 
@@ -45,7 +47,7 @@ export interface ViewRoutesDeps {
 const LIFECYCLES = new Set<Lifecycle>(
   Object.keys(TASK_STATUSES_BY_LIFECYCLE) as Lifecycle[],
 );
-const VIEWS = new Set<TaskListFilter["view"]>(["all", "mine", "sprint", "timeline"]);
+const VIEWS = new Set<TaskListFilter["view"]>(["all", "mine"]);
 const SCOPES = new Set<MemoryScope>(MEMORY_SCOPES);
 
 export function createViewRouter(deps: ViewRoutesDeps): Router {
@@ -118,6 +120,20 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(agents);
     } catch (err) {
       handleError(err, res, "agent list");
+    }
+  });
+
+  router.get("/agent/network", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      // Cross-owner read: caller's tree plus peer teams from rooms
+      // they share. Peer set is derived from room_member co-attendance,
+      // which is the explicit consent surface (you're in a room with
+      // them, so seeing their team agents isn't a leak).
+      const network = await getAgentNetwork(deps.pool, req.caller.personId);
+      res.json(network);
+    } catch (err) {
+      handleError(err, res, "agent network");
     }
   });
 
@@ -214,6 +230,18 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(overview);
     } catch (err) {
       handleError(err, res, "mesh overview");
+    }
+  });
+
+  router.get("/inbox", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : NaN;
+    const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+    try {
+      const items = await listInbox(deps.pool, req.caller.personId, { limit });
+      res.json(items);
+    } catch (err) {
+      handleError(err, res, "inbox list");
     }
   });
 

@@ -7,9 +7,11 @@ import type {
 } from "./types";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { AgentDisplay } from "@/lib/types/agents";
+import type { AgentNetwork } from "@/lib/types/agent-network";
 import type { SessionDisplay } from "@/lib/types/sessions";
 import type { MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
+import type { InboxItem } from "@/lib/types/inbox";
 import type {
   HierarchyLevel,
   MemoryScope,
@@ -20,7 +22,7 @@ import type {
 } from "@beevibe/core";
 import type { Lifecycle } from "@/lib/tasks-grouping";
 
-export type TaskView = "all" | "mine" | "sprint" | "timeline";
+export type TaskView = "all" | "mine";
 
 export interface TaskListFilter {
   lifecycle?: Lifecycle;
@@ -329,6 +331,8 @@ export const api = {
       fetchJson<AgentDisplay[]>("/agent", { signal: opts.signal }),
     get: (id: string, opts: ReadOptions = {}) =>
       fetchJson<AgentDetail>(`/agent/${encodeURIComponent(id)}`, { signal: opts.signal }),
+    network: (opts: ReadOptions = {}) =>
+      fetchJson<AgentNetwork>("/agent/network", { signal: opts.signal }),
   },
   sessions: {
     /** Path param is the 6-char short_id (no '#'). */
@@ -351,6 +355,13 @@ export const api = {
   promotions: {
     list: (opts: ReadOptions = {}) =>
       fetchJson<PromotionEvent[]>("/promotion", { signal: opts.signal }),
+  },
+  inbox: {
+    list: (opts: ReadOptions & { limit?: number } = {}) =>
+      fetchJson<InboxItem[]>("/inbox", {
+        signal: opts.signal,
+        ...(opts.limit ? { query: { limit: opts.limit } } : {}),
+      }),
   },
   mesh: {
     overview: (filter: { since?: string } = {}, opts: ReadOptions = {}) =>
