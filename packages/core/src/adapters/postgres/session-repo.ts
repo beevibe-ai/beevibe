@@ -146,6 +146,30 @@ export class PostgresSessionRepository implements SessionRepository {
     return Number(rows[0]?.count ?? 0);
   }
 
+  async findLatestForAgentInRoom(
+    agentId: string,
+    roomId: string,
+  ): Promise<Session | undefined> {
+    const { rows } = await this.pool.query<SessionRow>(
+      `SELECT * FROM session
+        WHERE agent_id = $1 AND room_id = $2
+        ORDER BY created_at DESC
+        LIMIT 1`,
+      [agentId, roomId],
+    );
+    return rows[0] ? rowToSession(rows[0]) : undefined;
+  }
+
+  async listRunningInRoom(roomId: string): Promise<Session[]> {
+    const { rows } = await this.pool.query<SessionRow>(
+      `SELECT * FROM session
+        WHERE room_id = $1 AND status = 'running'
+        ORDER BY started_at ASC`,
+      [roomId],
+    );
+    return rows.map(rowToSession);
+  }
+
   async create(input: NewSession): Promise<Session> {
     const { rows } = await this.pool.query<SessionRow>(
       `INSERT INTO session (
@@ -154,7 +178,7 @@ export class PostgresSessionRepository implements SessionRepository {
          cli_session_id, workspace_path,
          process_pid, process_group_id,
          result_summary, exit_code, error, usage,
-         runtime_id, spawn_mode,
+         runtime_id, spawn_mode, room_id,
          started_at, completed_at
        ) VALUES (
          $1, $2, $3, $4,
@@ -162,8 +186,8 @@ export class PostgresSessionRepository implements SessionRepository {
          $8, $9,
          $10, $11,
          $12, $13, $14, $15,
-         $16, COALESCE($17, 'daemon'),
-         $18, NULL
+         $16, COALESCE($17, 'daemon'), $18,
+         $19, NULL
        )
        RETURNING *`,
       [
@@ -184,6 +208,7 @@ export class PostgresSessionRepository implements SessionRepository {
         input.usage ?? null,
         input.runtime_id ?? null,
         input.spawn_mode ?? null,
+        input.room_id ?? null,
         input.started_at ?? null,
       ],
     );
@@ -247,6 +272,7 @@ function rowToSession(row: SessionRow): Session {
     runtime_id: row.runtime_id ?? undefined,
     spawn_mode: row.spawn_mode,
     last_event_at: row.last_event_at ?? undefined,
+    room_id: row.room_id ?? undefined,
     started_at: row.started_at ?? undefined,
     completed_at: row.completed_at ?? undefined,
     created_at: row.created_at,

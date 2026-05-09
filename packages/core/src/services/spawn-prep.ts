@@ -239,6 +239,8 @@ export function composeSystemPromptAppend(
   options: {
     appendChatDirectives?: boolean;
     appendOnboardingDirectives?: boolean;
+    /** Free-form text appended at the very end (e.g., room directives). */
+    extra?: string;
   } = {},
 ): string {
   return [
@@ -248,6 +250,7 @@ export function composeSystemPromptAppend(
     briefingSystemPromptAppend,
     options.appendChatDirectives ? CHAT_DIRECTIVES : "",
     options.appendOnboardingDirectives ? ONBOARDING_DIRECTIVES : "",
+    options.extra ?? "",
   ]
     .filter((s) => s.length > 0)
     .join("\n\n");

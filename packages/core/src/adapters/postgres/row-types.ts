@@ -67,6 +67,7 @@ export interface SessionRow {
   runtime_id: string | null;
   spawn_mode: SessionSpawnMode;
   last_event_at: Date | null;
+  room_id: string | null;
   started_at: Date | null;
   completed_at: Date | null;
   created_at: Date;

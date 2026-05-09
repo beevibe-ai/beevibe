@@ -43,6 +43,7 @@ import { createChatRouter } from "./routes/chat.js";
 import { createRuntimesRouter } from "./routes/runtimes.js";
 import { createSignupRouter } from "./routes/signup.js";
 import { createMeRouter } from "./routes/me.js";
+import { createRoomRouter } from "./routes/room.js";
 import { createStreamAuthMiddleware } from "./auth/middleware.js";
 import { ChatResolver } from "./runtime/chat-resolver.js";
 import { DaemonHub } from "./runtime/hub.js";
@@ -374,6 +375,22 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     embed,
   });
   server.getApp().use(meRouter);
+
+  // Phase 11 — rooms (bv_u_). Multi-tenant chat surface; @-mentioned
+  // agents run via AgentSession inline (server-side) — daemon-dispatch
+  // for room turns is a follow-up.
+  const roomRouter = createRoomRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    roomRepo,
+    agentRepo,
+    personRepo,
+    sessionRepo,
+    sessionEventRepo,
+    workspaceManager,
+    runtimeRegistry,
+    makeMemoryAgent,
+  });
+  server.getApp().use("/room", roomRouter);
 
   // M8 final integration (#45): SSE live-updates flow.
   // Triggers in migration 1778300000000 emit on `bv_event`; SseListener

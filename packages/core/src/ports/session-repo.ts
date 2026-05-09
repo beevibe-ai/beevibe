@@ -66,6 +66,21 @@ export interface SessionRepository {
    */
   countOwnedByDaemon(daemonId: string, sessionIds: string[]): Promise<number>;
 
+  /**
+   * Most recent session this agent ran inside the given room — used by
+   * the room turn handler to resume the agent's `--resume <cli_session_id>`
+   * conversation across turns. Returns undefined when the agent hasn't
+   * run in the room yet.
+   */
+  findLatestForAgentInRoom(agentId: string, roomId: string): Promise<Session | undefined>;
+
+  /**
+   * Sessions currently `running` inside a room — used by the room
+   * detail view to render typing indicators ("Bob's team is working
+   * on a turn…").
+   */
+  listRunningInRoom(roomId: string): Promise<Session[]>;
+
   create(input: NewSession): Promise<Session>;
 
   update(id: string, patch: SessionPatch): Promise<Session>;
