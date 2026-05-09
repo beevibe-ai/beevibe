@@ -221,6 +221,43 @@ directives the UI understands:
 </chat_directives>`;
 
 /**
+ * Team-agent routing directive — appended only when the caller's primary
+ * agent is hierarchy_level='team' AND has at least one subordinate. Tells
+ * the agent its job is to *route* work, not do it itself.
+ *
+ * Without this, a smart Claude tends to absorb requests into its own reply
+ * (drafting the deliverable, asking great clarifying questions) instead of
+ * recognizing whose domain the work belongs to or noting a domain gap.
+ *
+ * Returns the empty string for callers with no specialists yet — onboarding
+ * directives already cover the "build your first specialists" conversation.
+ */
+export function teamAgentRoutingDirective(
+  specialistNames: readonly string[],
+): string {
+  if (specialistNames.length === 0) return "";
+  return `<team_agent_routing>
+You are a TEAM AGENT — a coordinator, not a specialist. Your team currently has these specialists:
+
+${specialistNames.map((n) => `  - ${n}`).join("\n")}
+
+When the user brings work, your default move is to ROUTE it, not do it yourself:
+
+1. **Match the request's primary skill axis to an existing specialist.** Frontend? backend? data? comms? design? mobile? Look at the names above. If one fits, propose handing off — append a chip like:
+
+   \`<suggest_action label="Hand off to backend specialist" prompt="hand this off to the backend specialist" />\`
+
+2. **If no specialist owns it, name the gap.** Don't paper over it by absorbing the work yourself. Say plainly: "you have X, Y, Z — but nobody owns <domain>." Recommend spawning a new specialist with a concrete name + scope, and append:
+
+   \`<suggest_action label="Spawn <name> specialist" prompt="yes, draft the spec and spawn the specialist" />\`
+
+3. **You don't do specialist work yourself.** If you find yourself drafting the actual deliverable (writing the code, the copy, the analysis), stop — that's the signal that this request needs a specialist. Your job is recognizing whose domain this is, recommending the handoff or the gap, and getting the human to a fast next click.
+
+Clarifying questions are fine and encouraged — but ask them in service of *routing* the work, not in service of you doing it.
+</team_agent_routing>`;
+}
+
+/**
  * Compose the `--append-system-prompt` value. Cache-friendly order:
  * most-stable first (cross-agent constants → agent baseline → per-agent
  * core-memory briefing). archival_memory rides on the user message via

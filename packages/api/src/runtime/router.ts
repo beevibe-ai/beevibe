@@ -25,6 +25,7 @@ import type { MemoryAgent } from "@beevibe/core/services/memory";
 import {
   composeIntent,
   composeSystemPromptAppend,
+  teamAgentRoutingDirective,
 } from "@beevibe/core/services/agent-session";
 import { requireDaemon, requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "./hub.js";
@@ -371,26 +372,42 @@ async function composeDispatchPayload(
 
   const memoryAgent = deps.makeMemoryAgent(agent.id);
   const isChat = session.type === "chat";
-  // Briefing, prior-session, and (for chat) onboarding-state lookups are
-  // independent — overlap them so the resume-chain hot path doesn't pay
-  // all round-trips serially.
-  const [briefing, priorSession, owner] = await Promise.all([
+  const isTeamChat = isChat && agent.hierarchy_level === "team";
+  // Briefing, prior-session, (for chat) onboarding-state, and (for team
+  // chat) subordinate roster lookups are independent — overlap them so
+  // the resume-chain hot path doesn't pay all round-trips serially.
+  const [briefing, priorSession, owner, subordinates] = await Promise.all([
     memoryAgent.prepareBriefing(session.intent),
     session.prior_session_id
       ? deps.sessionRepo.findById(session.prior_session_id)
       : Promise.resolve(undefined),
     isChat ? deps.personRepo.findById(agent.owner_id) : Promise.resolve(undefined),
+    isTeamChat
+      ? deps.agentRepo.findSubordinates(agent.id)
+      : Promise.resolve([]),
   ]);
+  // Team-agent routing only fires post-onboarding (the onboarding
+  // directives drive the build-your-team conversation themselves) and
+  // only when there's at least one specialist to route to.
+  const isOnboarding = isChat && !owner?.onboarding_completed_at;
+  const teamRouting =
+    isTeamChat && !isOnboarding && subordinates.length > 0
+      ? teamAgentRoutingDirective(subordinates.map((s) => s.name))
+      : "";
 
-  // Persist briefing snapshot for the session detail page; best-effort.
-  void deps.sessionRepo
-    .update(session.id, { briefing: briefing.snapshot })
-    .catch((err: unknown) =>
-      console.warn(
-        "[runtime/claim] briefing snapshot persist failed:",
-        err instanceof Error ? err.message : String(err),
-      ),
+  // Persist briefing snapshot for the session detail page. Awaited (was
+  // fire-and-forget) so /runtime/claim can't return before the snapshot
+  // lands — eliminates a race where the session detail page would read
+  // the row before the persist completes, and the integration tests
+  // would see briefing undefined.
+  try {
+    await deps.sessionRepo.update(session.id, { briefing: briefing.snapshot });
+  } catch (err) {
+    console.warn(
+      "[runtime/claim] briefing snapshot persist failed:",
+      err instanceof Error ? err.message : String(err),
     );
+  }
 
   return {
     session_id: session.id,
@@ -403,7 +420,8 @@ async function composeDispatchPayload(
       briefing.systemPromptAppend,
       {
         appendChatDirectives: isChat,
-        appendOnboardingDirectives: isChat && !owner?.onboarding_completed_at,
+        appendOnboardingDirectives: isOnboarding,
+        extra: teamRouting,
       },
     ),
     resume_session_id: priorSession?.cli_session_id,

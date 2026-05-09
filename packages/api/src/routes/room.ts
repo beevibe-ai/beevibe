@@ -24,6 +24,7 @@ import { Router, type RequestHandler, type Response } from "express";
 import {
   AgentSession,
   type AgentSessionDeps,
+  teamAgentRoutingDirective,
 } from "@beevibe/core/services/agent-session";
 import {
   roomId as makeRoomId,
@@ -575,6 +576,18 @@ async function runMentionedAgents(
         agent.id,
         roomId,
       );
+      // Team agents in rooms ALSO get the routing directive (delegate-don't-
+      // absorb) on top of room directives — same reasoning as in the chat
+      // path: a team agent's job is to route work, even when collaborating
+      // with peers from other teams in a shared room.
+      const subordinates =
+        agent.hierarchy_level === "team"
+          ? await deps.agentRepo.findSubordinates(agent.id)
+          : [];
+      const teamRouting =
+        subordinates.length > 0
+          ? teamAgentRoutingDirective(subordinates.map((s) => s.name))
+          : "";
       const session = await agentSession.run({
         agentId: agent.id,
         intent,
@@ -582,7 +595,9 @@ async function runMentionedAgents(
         type: "chat",
         roomId,
         ...(prior ? { priorSessionId: prior.id } : {}),
-        extraSystemPromptAppend: ROOM_DIRECTIVES,
+        extraSystemPromptAppend: [ROOM_DIRECTIVES, teamRouting]
+          .filter((s) => s.length > 0)
+          .join("\n\n"),
       });
       const visible = session.result_summary ?? "";
       await deps.roomRepo.appendMessage({

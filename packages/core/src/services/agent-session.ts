@@ -20,6 +20,7 @@ export {
   ONBOARDING_DIRECTIVES,
   composeIntent,
   composeSystemPromptAppend,
+  teamAgentRoutingDirective,
 } from "./spawn-prep.js";
 
 export interface AgentSessionDeps {
