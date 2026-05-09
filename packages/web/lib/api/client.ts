@@ -11,6 +11,7 @@ import type { SessionDisplay } from "@/lib/types/sessions";
 import type { MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
 import type { InboxItem } from "@/lib/types/inbox";
+import type { AgentNetwork } from "@/lib/types/agent-network";
 import type {
   HierarchyLevel,
   MemoryScope,
@@ -359,6 +360,9 @@ export const api = {
       fetchJson<AgentDisplay[]>("/agent", { signal: opts.signal }),
     get: (id: string, opts: ReadOptions = {}) =>
       fetchJson<AgentDetail>(`/agent/${encodeURIComponent(id)}`, { signal: opts.signal }),
+    /** Caller's tree + peer teams from rooms they share. */
+    network: (opts: ReadOptions = {}) =>
+      fetchJson<AgentNetwork>("/agent/network", { signal: opts.signal }),
   },
   sessions: {
     /** Path param is the 6-char short_id (no '#'). */

@@ -36,6 +36,7 @@ import { listPromotions } from "../views/promotions.js";
 import { listActivity } from "../views/activity.js";
 import { getWorkProduct } from "../views/work-product.js";
 import { listInbox } from "../views/inbox.js";
+import { getAgentNetwork } from "../views/agent-network.js";
 
 export interface ViewRoutesDeps {
   authMiddleware: RequestHandler;
@@ -236,6 +237,20 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(wp);
     } catch (err) {
       handleError(err, res, "work product detail");
+    }
+  });
+
+  router.get("/agent/network", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      // Cross-owner read: caller's tree plus peer teams from rooms
+      // they share. Peer set is derived from room_member co-attendance,
+      // which is the explicit consent surface (you're in a room with
+      // them, so seeing their team agents isn't a leak).
+      const network = await getAgentNetwork(deps.pool, req.caller.personId);
+      res.json(network);
+    } catch (err) {
+      handleError(err, res, "agent network");
     }
   });
 

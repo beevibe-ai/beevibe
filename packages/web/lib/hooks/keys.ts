@@ -45,6 +45,10 @@ export const queryKeys = {
     all: ["inbox"] as const,
     list: () => ["inbox", "list"] as const,
   },
+  agentNetwork: {
+    all: ["agent-network"] as const,
+    self: () => ["agent-network", "self"] as const,
+  },
   chat: {
     all: ["chat"] as const,
     /** Per-conversation history. `undefined` = the most recent conversation. */
