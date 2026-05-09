@@ -7,6 +7,7 @@ import {
   PostgresMemoryFactRepository,
   PostgresNegotiationRepository,
   PostgresNegotiationRoundRepository,
+  PostgresAgentProvisionEventRepository,
   PostgresPersonRepository,
   PostgresRoomRepository,
   PostgresRuntimeRepository,
@@ -125,6 +126,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const negotiationRoundRepo = new PostgresNegotiationRoundRepository(pool);
   const escalationRepo = new PostgresEscalationRepository(pool);
   const roomRepo = new PostgresRoomRepository(pool);
+  const agentProvisionEventRepo = new PostgresAgentProvisionEventRepository(pool);
 
   // External services (LLM + embeddings) for memory pipeline
   const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
@@ -252,6 +254,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     factStore,
     coreMemory,
     coreMemoryRepo,
+    agentProvisionEventRepo,
     sessionCache,
     sessionRepo,
     agentRepo,

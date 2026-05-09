@@ -23,3 +23,4 @@ export const daemonId = (): string => generateId("dmn");
 export const runtimeId = (): string => generateId("rt");
 export const roomId = (): string => generateId("room");
 export const roomMessageId = (): string => generateId("rmsg");
+export const agentProvisionEventId = (): string => generateId("ape");

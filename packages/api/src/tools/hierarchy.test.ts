@@ -8,6 +8,7 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
   Agent,
+  AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
   Session,
@@ -146,6 +147,12 @@ function buildServices(overrides: {
     updateContent: vi.fn(async () => undefined),
   } as unknown as CoreMemoryBlockRepository;
 
+  const agentProvisionEventRepo = {
+    create: vi.fn(async () => ({})),
+    countByParentSince: vi.fn(async () => 0),
+    listByParent: vi.fn(async () => []),
+  } as unknown as AgentProvisionEventRepository;
+
   return {
     agentRepo,
     taskRepo,
@@ -156,6 +163,7 @@ function buildServices(overrides: {
     dispatchService,
     pool,
     coreMemoryRepo,
+    agentProvisionEventRepo,
   };
 }
 

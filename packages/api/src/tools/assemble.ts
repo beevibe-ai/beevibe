@@ -1,5 +1,6 @@
 import type { ResolvedCaller } from "@beevibe/core/auth";
 import type {
+  AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
   TaskRepository,
@@ -31,6 +32,8 @@ export interface AssembleToolsServices {
   memoryAgent: MemoryAgent;
   /** Phase 9: backs `create_subordinate_agent` (seeds persona/domain blocks). */
   coreMemoryRepo: CoreMemoryBlockRepository;
+  /** Phase 9: audit log + per-parent daily cap on subordinate spawning. */
+  agentProvisionEventRepo: AgentProvisionEventRepository;
 }
 
 /**
@@ -101,6 +104,7 @@ export function assembleTools(
       dispatchService: services.dispatchService,
       pool: services.pool,
       coreMemoryRepo: services.coreMemoryRepo,
+      agentProvisionEventRepo: services.agentProvisionEventRepo,
     },
   );
 

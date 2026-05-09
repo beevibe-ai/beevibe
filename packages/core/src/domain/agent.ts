@@ -42,6 +42,12 @@ export interface Agent {
   max_negotiation_rounds?: number;
   /** Preferred runtime binding; null when no daemon registered for the agent's CLI. */
   preferred_runtime_id?: string;
+  /**
+   * Soft-archive marker (Phase 9). Agents stay in the DB for mesh
+   * history + audit; the web list views and the agent picker hide
+   * any agent with archived_at set.
+   */
+  archived_at?: Date;
   created_at: Date;
   updated_at: Date;
 }

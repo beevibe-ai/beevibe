@@ -25,9 +25,11 @@ import {
   TASK_STATUSES,
   WORK_PRODUCT_TYPES,
   agentId as makeAgentId,
+  agentProvisionEventId as makeApeId,
   taskId as makeTaskId,
   workProductId as makeWorkProductId,
   type Agent,
+  type AgentProvisionEventRepository,
   type AgentRepository,
   type CoreMemoryBlockRepository,
   type HierarchyLevel,
@@ -97,6 +99,12 @@ export interface HierarchyToolServices {
    * overwrites persona/domain with the briefing the parent supplies.
    */
   coreMemoryRepo: CoreMemoryBlockRepository;
+  /**
+   * Phase 9: audit log + per-parent daily cap on subordinate spawning.
+   * Each `create_subordinate_agent` invocation writes one row + reads
+   * the count for the current parent to enforce the cap.
+   */
+  agentProvisionEventRepo: AgentProvisionEventRepository;
 }
 
 export interface HierarchyToolContext {
@@ -990,6 +998,14 @@ function buildTeamOnlyTools(
 // cap matches what survives in dropdowns.
 const PROVISION_NAME_INVALID_RE = /[\x00-\x1f\x7f]/;
 
+/**
+ * Per-parent daily limit on `create_subordinate_agent` invocations.
+ * 8 is generous — onboarding typically picks 2-3 specialists; the cap
+ * only bites on a runaway loop. Override at call site if a power user
+ * legitimately needs more.
+ */
+const SUBORDINATE_DAILY_CAP = 8;
+
 function createSubordinateAgentTool(
   ctx: HierarchyToolContext,
   services: HierarchyToolServices,
@@ -1068,6 +1084,27 @@ function createSubordinateAgentTool(
           };
         }
 
+        // Phase 9 per-parent daily cap. A runaway team agent could
+        // otherwise spawn dozens of specialists in a loop. The cap is
+        // intentionally generous; it bites only on pathological cases.
+        const recentSpawns = await services.agentProvisionEventRepo.countByParentSince(
+          parent.id,
+          24 * 60 * 60,
+        );
+        if (recentSpawns >= SUBORDINATE_DAILY_CAP) {
+          return {
+            content: {
+              error: "subordinate_daily_cap",
+              message:
+                `Parent '${parent.name}' has spawned ${recentSpawns} subordinates in the last 24h ` +
+                `(cap: ${SUBORDINATE_DAILY_CAP}). Reuse an existing specialist or wait for the window to expire.`,
+              cap: SUBORDINATE_DAILY_CAP,
+              count: recentSpawns,
+            },
+            isError: true,
+          };
+        }
+
         // Inherit the parent's runtime so all the user's agents share the
         // same Claude auth + model. Carry the user-supplied persona into
         // the system prompt as a short addition (the heavyweight context
@@ -1100,6 +1137,27 @@ function createSubordinateAgentTool(
           services.coreMemoryRepo.updateContent(agent.id, "persona", persona),
           services.coreMemoryRepo.updateContent(agent.id, "domain", domain),
         ]);
+
+        // Phase 9 audit log row — backs the daily cap query above + the
+        // /agents/[id] audit panel ("spawned by X on D, persona was Y").
+        try {
+          await services.agentProvisionEventRepo.create({
+            id: makeApeId(),
+            parent_agent_id: parent.id,
+            child_agent_id: agent.id,
+            owner_person_id: parent.owner_id,
+            child_name: name,
+            persona,
+            domain,
+          });
+        } catch (err) {
+          // Don't fail the spawn if the audit row can't write; the
+          // agent + memory are the user-visible artifacts. Log loudly.
+          console.error(
+            `[create_subordinate_agent] audit row failed for child ${agent.id}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
 
         return {
           content: {
