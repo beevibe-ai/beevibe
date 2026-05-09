@@ -19,23 +19,29 @@ export interface BvEvent {
 type InvalidationKey = readonly unknown[];
 
 const eventInvalidations: Record<string, InvalidationKey[]> = {
-  "task.updated": [queryKeys.tasks.all, queryKeys.dashboard.all, queryKeys.activity.all],
-  "task.created": [queryKeys.tasks.all, queryKeys.dashboard.all, queryKeys.activity.all],
-  "agent.updated": [queryKeys.agents.all, queryKeys.activity.all],
-  // session.updated fires on row create + status change (not on every
-  // step), so adding chat.all here is bounded — multi-tab + multi-device
-  // users see new chat turns appear without manual reload.
-  "session.updated": [
-    queryKeys.sessions.all,
+  "task.updated": [
     queryKeys.tasks.all,
+    queryKeys.dashboard.all,
     queryKeys.activity.all,
-    queryKeys.chat.all,
+    queryKeys.inbox.all,
   ],
+  "task.created": [
+    queryKeys.tasks.all,
+    queryKeys.dashboard.all,
+    queryKeys.activity.all,
+    queryKeys.inbox.all,
+  ],
+  "agent.updated": [
+    queryKeys.agents.all,
+    queryKeys.activity.all,
+    queryKeys.agentNetwork.all,
+  ],
+  "session.updated": [queryKeys.sessions.all, queryKeys.tasks.all, queryKeys.activity.all],
   "memory.fact.created": [queryKeys.memory.all],
   "promotion.created": [queryKeys.promotions.all, queryKeys.memory.all],
-  "mesh.activity": [queryKeys.mesh.all, queryKeys.activity.all],
-  "runtime.updated": [queryKeys.runtimes.all],
-  "room.message": [queryKeys.rooms.all],
+  "mesh.activity": [queryKeys.mesh.all, queryKeys.activity.all, queryKeys.inbox.all],
+  "room.message": [queryKeys.rooms.all, queryKeys.activity.all],
+  "runtime.updated": [queryKeys.runtimes.all, queryKeys.agents.all],
 };
 
 function invalidate(client: QueryClient, eventName: string) {
@@ -97,8 +103,11 @@ export function subscribeLiveStatus(cb: (s: LiveStatus) => void): () => void {
 function ensureSource(): EventSource | undefined {
   if (!isApiConfigured || !apiBaseUrl || typeof window === "undefined") return undefined;
   if (source) return source;
+  // Once we've decided the proxy buffers SSE, don't keep trying — the
+  // browser would auto-reconnect every ~6s and spam the api log.
   if (sseDisabled) return undefined;
   const key = getUserKey();
+  // No key = unauthenticated; bail. Visitor needs to sign in first.
   if (!key) return undefined;
   const url = new URL(`${apiBaseUrl}/api/stream`);
   url.searchParams.set("token", key);
@@ -108,6 +117,10 @@ function ensureSource(): EventSource | undefined {
 
   let receivedAnyData = false;
 
+  // Health probe — if we don't see any bytes within HEALTH_TIMEOUT_MS,
+  // assume the proxy is buffering and disable SSE for the rest of
+  // this tab session. The server emits ":connected\n\n" + a heartbeat
+  // every 5s, so on a healthy connection we trip this within ~1s.
   const healthTimer = setTimeout(() => {
     if (!receivedAnyData && source === created) {
       console.info(
@@ -156,6 +169,10 @@ function ensureSource(): EventSource | undefined {
     }
   };
 
+  // EventSource fires onerror when the stream drops. If we haven't
+  // received any data, treat it like the buffering case and stop
+  // retrying. If we DID receive data, EventSource will auto-reconnect
+  // and that's fine.
   created.onerror = () => {
     if (receivedAnyData) return; // let EventSource reconnect
     console.info("[sse] error before any data — falling back to polling.");
@@ -174,7 +191,9 @@ function ensureSource(): EventSource | undefined {
 }
 
 // Resubscribe whenever the user key changes (sign-in / sign-out) so the
-// EventSource carries the new token.
+// EventSource carries the new token. The current source has the old
+// token baked into its URL, so we close and let the next subscriber
+// recreate it.
 let unsubscribeKeyWatcher: (() => void) | undefined;
 function ensureKeyWatcher(): void {
   if (unsubscribeKeyWatcher) return;

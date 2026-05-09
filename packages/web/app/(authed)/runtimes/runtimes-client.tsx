@@ -153,7 +153,7 @@ function DaemonCard({ daemon }: { daemon: DaemonPanelEntry }) {
             )}
           </div>
         </div>
-        <RevokeButton daemonId={daemon.id} deviceName={daemon.device_name} />
+        <RevokeButton daemonId={daemon.id} deviceName={daemon.device_name ?? "this daemon"} />
       </header>
       <ul className="divide-y divide-border/50">
         {daemon.runtimes.length === 0 ? (
@@ -229,7 +229,7 @@ function RevokeButton({
   const client = useQueryClient();
   const [confirming, setConfirming] = useState(false);
   const mutation = useMutation({
-    mutationFn: () => api.runtimes.revokeDaemon(daemonId),
+    mutationFn: () => api.runtimes.revoke(daemonId),
     onSuccess: () => {
       client.invalidateQueries({ queryKey: queryKeys.runtimes.all });
       setConfirming(false);

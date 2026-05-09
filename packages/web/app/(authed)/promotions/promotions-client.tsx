@@ -3,7 +3,6 @@
 import { AlertTriangle, Info, TrendingUp, type LucideIcon } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { PromotionEventSkeleton } from "@/components/skeletons";
-import { MemorySubNav } from "@/components/memory/sub-nav";
 import { PromotionEventRow } from "@/components/promotions/event-row";
 import { usePromotions } from "@/lib/hooks/use-promotions";
 import { isApiConfigured } from "@/lib/api/config";
@@ -15,8 +14,6 @@ export function PromotionsClient() {
   return (
     <div className="flex-1 overflow-auto">
       <div className="max-w-6xl mx-auto pt-8 pb-12 px-6">
-        <MemorySubNav />
-
         <div className="mb-6 flex items-baseline justify-between gap-6">
           <div>
             <h1 className="text-xl font-semibold tracking-tight mb-1">Promotions</h1>

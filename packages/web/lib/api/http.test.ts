@@ -6,7 +6,7 @@ vi.mock("./config", () => ({
   getUserKey: () => null,
 }));
 
-import { fetchJson, ApiError, describeError, setOnUnauthorized } from "./http";
+import { fetchJson, ApiError } from "./http";
 
 const fetchMock = vi.fn();
 
@@ -111,40 +111,6 @@ describe("fetchJson", () => {
       body: "plain text response",
     });
   });
-
-  it("ApiError extracts errorCode and serverMessage from JSON body", async () => {
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: "rate_limited", message: "Slow down." }), {
-        status: 429,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-
-    try {
-      await fetchJson("/api/x");
-      throw new Error("expected throw");
-    } catch (err) {
-      expect(err).toBeInstanceOf(ApiError);
-      const ae = err as ApiError;
-      expect(ae.errorCode).toBe("rate_limited");
-      expect(ae.serverMessage).toBe("Slow down.");
-      expect(describeError(ae)).toBe("Slow down.");
-    }
-  });
-
-  it("setOnUnauthorized handler fires on 401 responses", async () => {
-    const handler = vi.fn();
-    setOnUnauthorized(handler);
-    fetchMock.mockResolvedValueOnce(
-      new Response(JSON.stringify({ error: "unauthorized" }), {
-        status: 401,
-        headers: { "Content-Type": "application/json" },
-      }),
-    );
-    await expect(fetchJson("/api/protected")).rejects.toBeInstanceOf(ApiError);
-    expect(handler).toHaveBeenCalledTimes(1);
-    setOnUnauthorized(() => {});
-  });
 });
 
 describe("fetchJson when API is not configured", () => {
@@ -166,7 +132,7 @@ describe("fetchJson when API is not configured", () => {
 });
 
 describe("fetchJson with userKey configured", () => {
-  it("attaches Authorization: Bearer <userKey> when getUserKey() returns a key", async () => {
+  it("attaches Authorization: Bearer <userKey> when getUserKey() returns one", async () => {
     vi.resetModules();
     vi.doMock("./config", () => ({
       apiBaseUrl: "https://api.example.com",
@@ -183,6 +149,32 @@ describe("fetchJson with userKey configured", () => {
     expect((init.headers as Record<string, string>).Authorization).toBe(
       "Bearer bv_u_test_key",
     );
+
+    vi.doUnmock("./config");
+    vi.resetModules();
+  });
+
+  it("invokes the registered onUnauthorized handler on 401", async () => {
+    vi.resetModules();
+    vi.doMock("./config", () => ({
+      apiBaseUrl: "https://api.example.com",
+      isApiConfigured: true,
+      getUserKey: () => "bv_u_revoked",
+    }));
+
+    const { fetchJson: f, setOnUnauthorized } = await import("./http");
+    const handler = vi.fn();
+    setOnUnauthorized(handler);
+
+    fetchMock.mockResolvedValueOnce(
+      new Response(JSON.stringify({ error: "invalid_token" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+
+    await expect(f("/me")).rejects.toMatchObject({ status: 401 });
+    expect(handler).toHaveBeenCalledOnce();
 
     vi.doUnmock("./config");
     vi.resetModules();

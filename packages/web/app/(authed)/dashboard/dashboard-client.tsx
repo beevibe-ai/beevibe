@@ -1,24 +1,16 @@
 "use client";
 
-import Link from "next/link";
 import { AlertTriangle, LayoutDashboard } from "lucide-react";
 import { useDashboard } from "@/lib/hooks/use-dashboard";
 import { isApiConfigured } from "@/lib/api/config";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { KpiTileSkeleton } from "@/components/skeletons";
-import { cn } from "@/lib/utils";
 import { KpiTile } from "@/components/home/kpi-tile";
 import { FleetBars } from "@/components/home/fleet-bars";
 import { StatusBreakdownBar } from "@/components/home/status-breakdown";
 import { TrendChart } from "@/components/home/trend-chart";
-import type { AttentionItem, DashboardDisplay } from "@/lib/types/dashboard";
-
-const ATTENTION_DOT: Record<AttentionItem["status"], string> = {
-  blocked: "bg-status-blocked",
-  failed: "bg-status-failed",
-  review: "bg-status-review",
-};
+import type { DashboardDisplay } from "@/lib/types/dashboard";
 
 export function DashboardClient() {
   const { data, isLoading, isError } = useDashboard();
@@ -79,8 +71,19 @@ function Body({
     );
   }
 
+  // /agents (the Home tab) is the front door now — that's where the
+  // orbit lives. /dashboard is the "Metrics" sub-page under
+  // Observability: KPIs, status, fleet, trend. Items needing decisions
+  // are surfaced in the sidebar Inbox, so we don't repeat them here.
   return (
-    <div className="space-y-6">
+    <div className="space-y-10">
+      <header>
+        <h1 className="text-xl font-semibold tracking-tight">Metrics</h1>
+        <p className="mt-1 text-sm text-muted-foreground max-w-prose">
+          Throughput, fleet activity, and trends across your team&apos;s work.
+        </p>
+      </header>
+
       <div className="grid grid-cols-4 gap-6">
         {data.kpis.map((stat, i) => (
           <KpiTile key={i} stat={stat} />
@@ -112,38 +115,6 @@ function Body({
           changePercent={data.trend_change_percent}
         />
       </div>
-
-      {data.attention.length > 0 ? (
-        <section>
-          <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
-            Needs attention{" "}
-            <span className="text-muted-foreground/70 tabular-nums">{data.attention.length}</span>
-          </h2>
-          <ul className="space-y-2">
-            {data.attention.map((item, i) => (
-              <AttentionRow key={i} item={item} />
-            ))}
-          </ul>
-        </section>
-      ) : null}
     </div>
-  );
-}
-
-function AttentionRow({ item }: { item: AttentionItem }) {
-  return (
-    <li>
-      <Link
-        href={item.href}
-        className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 hover:bg-secondary/30 transition-colors"
-      >
-        <span
-          className={cn("h-1.5 w-1.5 rounded-full shrink-0", ATTENTION_DOT[item.status])}
-          aria-hidden
-        />
-        <span className="flex-1 min-w-0 truncate text-sm">{item.title}</span>
-        <span className="text-xs text-muted-foreground tabular-nums shrink-0">{item.age}</span>
-      </Link>
-    </li>
   );
 }

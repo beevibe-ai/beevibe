@@ -19,6 +19,7 @@ export const apiBaseUrl: string | null =
 const STORAGE_KEY = "bv:user_key";
 const ENV_FALLBACK_KEY = process.env.NEXT_PUBLIC_BV_USER_KEY?.trim() || null;
 
+/** Subscribe to key-change events so React components can re-render. */
 type Listener = () => void;
 const listeners = new Set<Listener>();
 function notify(): void {
@@ -34,7 +35,7 @@ function notify(): void {
 /**
  * Returns the active user key. SSR-safe: returns env fallback (or null)
  * during pre-render; on the client, reads localStorage and falls back to
- * env if nothing's stored.
+ * env if nothing's stored. Exported for the api client + SSE.
  */
 export function getUserKey(): string | null {
   if (typeof window === "undefined") return ENV_FALLBACK_KEY;

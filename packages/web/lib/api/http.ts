@@ -21,7 +21,7 @@ export class ApiError extends Error {
   }
 }
 
-/** Best-effort human-readable message: server message > error code > raw status. */
+/** Best-effort human-readable message: server message > error.message > raw status. */
 export function describeError(err: unknown): string {
   if (err instanceof ApiError) {
     if (err.serverMessage) return err.serverMessage;

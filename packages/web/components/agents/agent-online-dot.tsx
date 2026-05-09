@@ -89,7 +89,7 @@ function findRuntime(
   for (const d of data.daemons) {
     for (const r of d.runtimes) {
       if (r.id === runtimeId) {
-        return { online: r.online, cli: r.cli, cli_version: r.cli_version };
+        return { online: r.online, cli: r.cli, cli_version: r.cli_version ?? null };
       }
     }
   }

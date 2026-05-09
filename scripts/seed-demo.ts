@@ -11,9 +11,13 @@
  * first architecture:
  *   - `runtime_config.type` → `"claude"` (CLI naming was normalized in
  *     Phase 1; m8 still used the old `"claude-code"` literal).
- *   - Agents land with `preferred_runtime_id = null` (the user's daemon
- *     gets bound after they run `beevibe-daemon setup`; the auto-bind in
- *     bootstrap picks the first online runtime for each agent).
+ *   - Each persona gets a seed daemon + runtime row (no real WebSocket
+ *     connection — DaemonHub.hasRuntime returns false so the UI dot
+ *     stays grey, which is correct for seed data). Every team and IC
+ *     agent has `preferred_runtime_id` bound to that runtime so the
+ *     dispatch path resolves correctly. The user runs
+ *     `beevibe-daemon setup` from their own machine to add a real
+ *     daemon for the persona they sign in as.
  *
  * Cost: ~64 memory_fact rows × ~30 tokens via OpenAI text-embedding-3-small
  * ≈ 2k tokens ≈ $0.00004 per run.
@@ -200,6 +204,8 @@ async function main(): Promise<void> {
     PostgresNegotiationRoundRepository,
     PostgresEscalationRepository,
     PostgresRoomRepository,
+    PostgresDaemonRepository,
+    PostgresRuntimeRepository,
   } = await import("../packages/core/src/adapters/postgres/index.js");
   const { provisionAgent, provisionUser } = await import(
     "../packages/core/src/auth/provision.js"
@@ -208,6 +214,7 @@ async function main(): Promise<void> {
   const { OpenAIEmbeddingService } = await import(
     "../packages/core/src/adapters/openai/embeddings.js"
   );
+  const crypto = await import("node:crypto");
 
   const pool = createPool({ connectionString: databaseUrl });
   const personRepo = new PostgresPersonRepository(pool);
@@ -221,9 +228,17 @@ async function main(): Promise<void> {
   const negRoundRepo = new PostgresNegotiationRoundRepository(pool);
   const escRepo = new PostgresEscalationRepository(pool);
   const roomRepo = new PostgresRoomRepository(pool);
+  const daemonRepo = new PostgresDaemonRepository(pool);
+  const runtimeRepo = new PostgresRuntimeRepository(pool);
   const embed = new OpenAIEmbeddingService();
 
-  type AgentLite = { id: string; name: string; owner_id: string; hierarchy_level: string };
+  type AgentLite = {
+    id: string;
+    name: string;
+    owner_id: string;
+    hierarchy_level: string;
+    preferred_runtime_id?: string;
+  };
 
   interface PersonaResolved {
     spec: PersonaSpec;
@@ -255,6 +270,43 @@ async function main(): Promise<void> {
         console.log(`  ${green("+")} ${spec.name} ${dim(personId)} ${dim("(new)")}`);
       }
 
+      // Seed daemon + runtime per persona so every agent has a
+      // preferred_runtime_id binding. The seed daemon doesn't actually
+      // connect a real WebSocket — DaemonHub.hasRuntime returns false and
+      // the UI's online dot stays grey. That's correct for seed data:
+      // the structure is right, but no real CLI is on the other end. The
+      // user runs `beevibe-daemon setup` from their own machine to add a
+      // live runtime; the api's bootstrap auto-bind point them to the
+      // first online runtime.
+      const ext = `seed-${spec.email.split("@")[0]}`;
+      let daemonRow = await daemonRepo.findByOwnerAndExternalId(personId, ext);
+      if (!daemonRow) {
+        const tokenHash = crypto
+          .createHash("sha256")
+          .update(`bv_d_seed_${personId}`)
+          .digest("hex");
+        daemonRow = await daemonRepo.create({
+          id: ids.daemonId(),
+          owner_person_id: personId,
+          external_id: ext,
+          device_name: `${spec.name}'s machine (seed)`,
+          token_hash: tokenHash,
+        });
+        console.log(`    ${green("+")} daemon ${dim(daemonRow.id)} ${spec.name}'s machine (seed)`);
+      } else {
+        console.log(`    ${green("✓")} daemon ${dim(daemonRow.id)} ${dim("(existing)")}`);
+      }
+      let runtimeRow = await runtimeRepo.findByDaemonAndCli(daemonRow.id, "claude");
+      if (!runtimeRow) {
+        runtimeRow = await runtimeRepo.create({
+          id: ids.runtimeId(),
+          daemon_id: daemonRow.id,
+          cli: "claude",
+          cli_version: "seed-2.0.0",
+        });
+        console.log(`    ${green("+")} runtime ${dim(runtimeRow.id)} claude`);
+      }
+
       let teamAgent = await agentRepo.findTopLevelForOwner(personId);
       if (!teamAgent) {
         const created = await provisionAgent(
@@ -265,10 +317,17 @@ async function main(): Promise<void> {
             owner_id: personId,
             hierarchy_level: "team",
             runtime_config: { type: "claude", model: "claude-opus-4-7" },
+            preferred_runtime_id: runtimeRow.id,
           },
         );
         teamAgent = created.agent;
         console.log(`    ${green("+")} team agent ${dim(teamAgent.id)} ${spec.teamLabel}`);
+      } else if (!teamAgent.preferred_runtime_id) {
+        // Re-bind on re-run if a previous seed left the binding empty.
+        teamAgent = await agentRepo.update(teamAgent.id, {
+          preferred_runtime_id: runtimeRow.id,
+        });
+        console.log(`    ${dim("·")} re-bound team agent ${dim(teamAgent.id)} → runtime ${dim(runtimeRow.id)}`);
       }
 
       const subs = await agentRepo.findSubordinates(teamAgent.id);
@@ -276,7 +335,15 @@ async function main(): Promise<void> {
       for (const ic of spec.ics) {
         const existing = subs.find((a) => a.name === ic.name);
         if (existing) {
-          icAgents.set(ic.focus, existing);
+          if (!existing.preferred_runtime_id) {
+            const updated = await agentRepo.update(existing.id, {
+              preferred_runtime_id: runtimeRow.id,
+            });
+            icAgents.set(ic.focus, updated);
+            console.log(`    ${dim("·")} re-bound IC ${dim(updated.id)} → runtime ${dim(runtimeRow.id)}`);
+          } else {
+            icAgents.set(ic.focus, existing);
+          }
           continue;
         }
         const created = await provisionAgent(
@@ -288,6 +355,7 @@ async function main(): Promise<void> {
             parent_agent_id: teamAgent.id,
             hierarchy_level: "ic",
             runtime_config: { type: "claude", model: "claude-opus-4-7" },
+            preferred_runtime_id: runtimeRow.id,
           },
         );
         icAgents.set(ic.focus, created.agent);

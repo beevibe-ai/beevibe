@@ -1,128 +1,248 @@
 "use client";
 
-import Link from "next/link";
-import { AlertTriangle, Bot } from "lucide-react";
-import { useAgents } from "@/lib/hooks/use-agents";
+import { useCallback } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { AlertTriangle, Bot, Maximize2, Minus, Plus } from "lucide-react";
+import { useAgentNetwork } from "@/lib/hooks/use-agent-network";
 import { isApiConfigured } from "@/lib/api/config";
-import { OrgChart } from "@/components/agents/org-chart";
-import { SpecializationTable } from "@/components/agents/specialization-table";
-import { AgentOnlineDot } from "@/components/agents/agent-online-dot";
 import { EmptyState } from "@/components/empty-state";
-import { Skeleton } from "@/components/skeleton";
-import { Avatar } from "@/components/avatar";
-import { HierChip } from "@/components/hier-chip";
-import type { AgentDisplay } from "@/lib/types/agents";
+import { TeamOrbit } from "@/components/team-orbit";
+import { AgentDetailPanel } from "@/components/agents/agent-detail-panel";
+import { usePanZoom } from "@/lib/hooks/use-pan-zoom";
+import type { AgentPeerOwner } from "@/lib/types/agent-network";
 
+/**
+ * /agents — pan/zoom canvas of the agent network.
+ *
+ * Self orbit at the canvas origin (0,0); peer orbits arranged radially
+ * around it. The whole world is wrapped in a transformable layer so
+ * the user can drag to pan and wheel/pinch to zoom — same gestures
+ * Figma / Excalidraw / Miro use, so the affordance reads without
+ * onboarding.
+ *
+ * Clicking an agent opens its detail in a Notion-style peek panel
+ * anchored to the right of the canvas. State is mirrored in the URL
+ * via `?p=<agentId>` so the panel survives reload + back-button.
+ */
 export function AgentsClient() {
-  const { data, isLoading, isError } = useAgents();
-  const count = data?.length ?? 0;
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const selectedAgentId = searchParams?.get("p") ?? undefined;
+
+  const openAgent = useCallback(
+    (agentId: string) => {
+      // Replace, not push — opening the panel shouldn't make the back
+      // button bounce through every agent the user clicked. Closing
+      // (cleared param) DOES push so back button restores the panel.
+      router.replace(`/agents?p=${encodeURIComponent(agentId)}`, { scroll: false });
+    },
+    [router],
+  );
+
+  const closeAgent = useCallback(() => {
+    router.push("/agents", { scroll: false });
+  }, [router]);
+
+  const { data, isLoading, isError } = useAgentNetwork();
+  const peers = data?.peers ?? [];
+
+  const panZoom = usePanZoom({ minScale: 0.4, maxScale: 2.5 });
 
   return (
-    <div className="flex-1 overflow-auto">
-      <div className="pt-8 pb-12 px-6">
-        <div className="max-w-5xl mx-auto mb-8">
-          <div className="text-base text-muted-foreground">
-            {count > 0 ? (
-              <>
-                <span className="text-foreground font-medium tabular-nums">{count}</span>{" "}
-                {count === 1 ? "agent" : "agents"} in your org.
-              </>
-            ) : (
-              <>
-                <span className="text-foreground font-medium">No agents</span> in your org yet.
-              </>
-            )}
-          </div>
-        </div>
-
-        <div className="max-w-5xl mx-auto">
-          <Body data={data} isLoading={isLoading} isError={isError} />
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function Body({
-  data,
-  isLoading,
-  isError,
-}: {
-  data: AgentDisplay[] | undefined;
-  isLoading: boolean;
-  isError: boolean;
-}) {
-  if (!isApiConfigured) {
-    return (
-      <div className="rounded-lg border border-dashed border-border">
-        <EmptyState
+    <div className="relative flex-1 overflow-hidden bg-gradient-to-b from-background to-secondary/20">
+      {!isApiConfigured ? (
+        <CenteredShell
           icon={Bot}
           title="API not configured"
           description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load agents."
         />
-      </div>
-    );
-  }
+      ) : isError ? (
+        <CenteredShell icon={AlertTriangle} title="Couldn't load the network" />
+      ) : (
+        <>
+          <Caption hasPeers={peers.length > 0} />
 
-  if (isError) {
-    return (
-      <div className="rounded-lg border border-dashed border-border">
-        <EmptyState icon={AlertTriangle} title="Couldn't load agents" />
-      </div>
-    );
-  }
+          {/* Pan/zoom container — captures wheel + pointer, transforms
+              the inner world. Cursor hint reads as "draggable canvas". */}
+          <div
+            ref={panZoom.containerRef}
+            className="absolute inset-0 cursor-grab touch-none select-none"
+            // Touch-action none + select-none keep mobile pan from
+            // scrolling the page or selecting card text mid-drag.
+          >
+            <div
+              className="absolute left-1/2 top-1/2 will-change-transform"
+              style={panZoom.style}
+            >
+              {/* Self orbit anchored at world origin (0,0); the parent
+                  div is already centered via left-50%/top-50%, so a
+                  translate(-50%,-50%) on the orbit's wrapper keeps it
+                  visually centered when the canvas is at scale 1 with
+                  zero pan. */}
+              <div
+                className="absolute"
+                style={{ left: 0, top: 0, transform: "translate(-50%, -50%)" }}
+              >
+                <TeamOrbit
+                  agents={data?.self}
+                  size="large"
+                  loading={isLoading}
+                  onSelect={openAgent}
+                />
+              </div>
 
-  if (isLoading) {
-    return (
-      <div className="space-y-3">
-        {[0, 1, 2, 3].map((i) => (
-          <Skeleton key={i} className="h-16 rounded-lg" />
-        ))}
-      </div>
-    );
-  }
+              {peers.map((peer, i) => {
+                const pos = satellitePosition(i, peers.length);
+                return (
+                  <div
+                    key={peer.owner_id}
+                    className="absolute flex flex-col items-center"
+                    style={{
+                      left: `${pos.x}px`,
+                      top: `${pos.y}px`,
+                      transform: "translate(-50%, -50%)",
+                    }}
+                  >
+                    <PeerLabel peer={peer} />
+                    <TeamOrbit
+                      agents={peer.agents}
+                      size="satellite"
+                      onSelect={openAgent}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          </div>
 
-  if (!data || data.length === 0) {
-    return (
-      <>
-        <OrgChart />
-        <SpecializationTable />
-      </>
-    );
-  }
+          <CanvasControls
+            scale={panZoom.transform.scale}
+            onZoomIn={() => panZoom.zoomBy(1.25)}
+            onZoomOut={() => panZoom.zoomBy(0.8)}
+            onReset={panZoom.reset}
+          />
+        </>
+      )}
 
-  return (
-    <ul className="space-y-2">
-      {data.map((agent) => (
-        <AgentRow key={agent.id} agent={agent} />
-      ))}
-    </ul>
+      {selectedAgentId ? (
+        <AgentDetailPanel agentId={selectedAgentId} onClose={closeAgent} />
+      ) : null}
+    </div>
   );
 }
 
-function AgentRow({ agent }: { agent: AgentDisplay }) {
-  const initial = agent.display_name.charAt(0).toUpperCase();
+function Caption({ hasPeers }: { hasPeers: boolean }) {
+  // Top-left overlay framing what the user is looking at the first
+  // time they land. `pointer-events-none` so it never absorbs a pan
+  // start. The pan handler also skips children with data-pan="ignore"
+  // but pointer-events-none is the cheaper guarantee.
   return (
-    <li>
-      <Link
-        href={`/agents/${agent.id}`}
-        className="flex items-center gap-3 rounded-lg border border-border bg-card p-3 hover:bg-secondary/30 transition-colors"
+    <div
+      className="absolute top-6 left-6 max-w-xs pointer-events-none z-10"
+      data-pan="ignore"
+    >
+      <h1 className="text-sm font-semibold tracking-tight">Your team</h1>
+      <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+        {hasPeers
+          ? "Your team agent at center, specialists orbiting them. People you collaborate with float around the edges. Drag to pan, scroll to zoom — click any agent to open a peek."
+          : "Your team agent at center, specialists orbiting them. Drag to pan, scroll to zoom — click any agent to open a peek."}
+      </p>
+    </div>
+  );
+}
+
+function PeerLabel({ peer }: { peer: AgentPeerOwner }) {
+  return (
+    <div className="mb-1 text-[11px] uppercase tracking-wider text-muted-foreground font-medium whitespace-nowrap">
+      {peer.owner_label}&apos;s team
+    </div>
+  );
+}
+
+/**
+ * Place satellite #i out of n equally around the world origin, starting
+ * at 3 o'clock. Distance is tuned so a self orbit (radius ~290) and a
+ * satellite orbit (radius ~165) keep ~80px of breathing room between
+ * their card rings even when both have wrapping/wide cards.
+ */
+function satellitePosition(i: number, n: number): { x: number; y: number } {
+  const distance = 660;
+  const angle = (i / n) * 2 * Math.PI;
+  return {
+    x: Math.cos(angle) * distance,
+    y: Math.sin(angle) * distance,
+  };
+}
+
+function CanvasControls({
+  scale,
+  onZoomIn,
+  onZoomOut,
+  onReset,
+}: {
+  scale: number;
+  onZoomIn: () => void;
+  onZoomOut: () => void;
+  onReset: () => void;
+}) {
+  return (
+    <div
+      className="absolute bottom-6 right-6 z-10 inline-flex items-center gap-1 rounded-full border border-border bg-card/90 backdrop-blur-sm shadow-sm px-1.5 py-1"
+      data-pan="ignore"
+    >
+      <CanvasButton onClick={onZoomOut} aria-label="Zoom out" title="Zoom out">
+        <Minus className="h-3.5 w-3.5" />
+      </CanvasButton>
+      <button
+        type="button"
+        onClick={onReset}
+        title="Reset view"
+        className="h-7 px-2 inline-flex items-center justify-center text-[11px] font-mono text-muted-foreground hover:text-foreground tabular-nums cursor-pointer"
       >
-        <Avatar initial={initial} kind={agent.hierarchy} size={36} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium truncate">{agent.display_name}</span>
-            <AgentOnlineDot preferredRuntimeId={agent.preferred_runtime_id} />
-            <HierChip hier={agent.hierarchy} />
-          </div>
-          {agent.specialization ? (
-            <p className="text-xs text-muted-foreground truncate mt-0.5">{agent.specialization}</p>
-          ) : null}
-        </div>
-        <div className="text-xs text-muted-foreground tabular-nums shrink-0">
-          {agent.sessions_count ?? 0} sessions
-        </div>
-      </Link>
-    </li>
+        {Math.round(scale * 100)}%
+      </button>
+      <CanvasButton onClick={onZoomIn} aria-label="Zoom in" title="Zoom in">
+        <Plus className="h-3.5 w-3.5" />
+      </CanvasButton>
+      <span className="w-px h-4 bg-border mx-0.5" aria-hidden />
+      <CanvasButton onClick={onReset} aria-label="Recenter" title="Recenter">
+        <Maximize2 className="h-3.5 w-3.5" />
+      </CanvasButton>
+    </div>
+  );
+}
+
+function CanvasButton({
+  onClick,
+  children,
+  ...rest
+}: React.ButtonHTMLAttributes<HTMLButtonElement>) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="h-7 w-7 inline-flex items-center justify-center rounded-full text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
+      {...rest}
+    >
+      {children}
+    </button>
+  );
+}
+
+function CenteredShell({
+  icon,
+  title,
+  description,
+}: {
+  icon: typeof Bot;
+  title: string;
+  description?: string;
+}) {
+  return (
+    <div className="absolute inset-0 flex items-center justify-center p-6">
+      <div className="rounded-lg border border-dashed border-border w-full max-w-md">
+        <EmptyState icon={icon} title={title} description={description} />
+      </div>
+    </div>
   );
 }

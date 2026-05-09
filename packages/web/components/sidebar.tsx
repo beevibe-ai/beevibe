@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Bot,
+  Cpu,
   ListChecks,
   type LucideIcon,
   MessageSquare,
@@ -121,6 +122,17 @@ export function Sidebar() {
             collapsed, so without this the user couldn't tell whether
             updates were streaming or polling unless they expanded it. */}
         <LiveStatusDot className="mx-1" />
+        <Link
+          href="/runtimes"
+          aria-label="Runtimes"
+          title="Runtimes (your daemons + CLIs)"
+          className={cn(
+            "h-7 w-7 inline-flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors",
+            pathname.startsWith("/runtimes") && "text-foreground bg-secondary",
+          )}
+        >
+          <Cpu className="h-4 w-4" />
+        </Link>
         <ThemeToggle />
       </div>
     </aside>

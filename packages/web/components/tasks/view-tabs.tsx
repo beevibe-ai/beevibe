@@ -1,84 +1,84 @@
 "use client";
 
-import {
-  ArrowUpDown,
-  Filter,
-  Maximize2,
-  MoreHorizontal,
-  Search,
-  Zap,
-} from "lucide-react";
+import { useRef } from "react";
+import { Archive, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSlashFocus } from "@/lib/hooks/use-slash-focus";
 
-export type TaskView = "all" | "mine" | "sprint" | "timeline";
-
-// Note: this toolbar previously had a "+ New" button that opened a
-// create-task dialog. Removed in #48 — tasks are minted by team agents
-// through human-agent conversation, not by the human clicking "+".
-// A bare "+" remained as an "add view" placeholder; removed too — it
-// wasn't wired and the mindless-click test failed (users couldn't tell
-// what it did).
+// Header for /tasks. The earlier strip had "All tasks / My tasks"
+// tabs but "My tasks" was a placebo — the backend treated mine = all,
+// and the agent-driven task model doesn't have a clean "I own this"
+// concept anyway (tasks are agent-assigned). The attention inbox in
+// the sidebar replaces the affordance with something real: tasks
+// waiting on the human. Header here is just title + archive toggle
+// + search.
 
 interface Props {
-  current: TaskView;
-  onChange: (next: TaskView) => void;
   onSearch: () => void;
   query: string;
   onQueryChange: (value: string) => void;
+  /** Number of failed+cancelled tasks under the current filter. */
+  archivedCount: number;
+  showArchived: boolean;
+  onToggleArchived: () => void;
 }
 
-const VIEWS: { key: TaskView; label: string }[] = [
-  { key: "all", label: "All tasks" },
-  { key: "mine", label: "My tasks" },
-  { key: "sprint", label: "Active sprint" },
-  { key: "timeline", label: "Timeline" },
-];
-
-export function ViewTabs({ current, onChange, onSearch, query, onQueryChange }: Props) {
+export function ViewTabs({
+  onSearch,
+  query,
+  onQueryChange,
+  archivedCount,
+  showArchived,
+  onToggleArchived,
+}: Props) {
   return (
-    <div className="flex items-center gap-1 px-6 pt-6 border-b border-border/60">
-      <div className="flex items-center gap-0.5 flex-1 min-w-0 -mb-px">
-        {VIEWS.map((v) => {
-          const active = current === v.key;
-          return (
-            <button
-              key={v.key}
-              type="button"
-              onClick={() => onChange(v.key)}
-              className={cn(
-                "h-9 px-3 inline-flex items-center gap-1.5 text-[13px] border-b-2 transition-colors cursor-pointer",
-                active
-                  ? "font-medium border-foreground text-foreground"
-                  : "font-normal border-transparent text-muted-foreground hover:text-foreground",
-              )}
-            >
-              {v.label}
-            </button>
-          );
-        })}
-      </div>
+    <div className="flex items-center gap-3 px-6 pt-5 pb-4 border-b border-border/60">
+      <h1 className="text-base font-semibold tracking-tight leading-none">Tasks</h1>
+      <p className="text-xs text-muted-foreground leading-none flex-1 min-w-0 truncate">
+        Work the team is moving through, grouped by status.
+      </p>
 
-      <div className="flex items-center gap-1 mb-1.5 shrink-0">
-        <ToolbarIcon label="Sort" icon={ArrowUpDown} />
-        <ToolbarIcon label="Filter" icon={Filter} />
-        <ToolbarIcon label="Automate" icon={Zap} />
+      <div className="shrink-0 flex items-center gap-2">
+        {/* Archive toggle — only when there's anything to show. The
+            cancelled + failed tasks would otherwise dominate Done, so
+            they're hidden by default. Click to surface a sixth lane. */}
+        {archivedCount > 0 ? (
+          <ArchiveToggle
+            count={archivedCount}
+            showing={showArchived}
+            onToggle={onToggleArchived}
+          />
+        ) : null}
         <SearchBox query={query} onChange={onQueryChange} onFocus={onSearch} />
-        <ToolbarIcon label="Expand" icon={Maximize2} />
-        <ToolbarIcon label="More" icon={MoreHorizontal} />
       </div>
     </div>
   );
 }
 
-function ToolbarIcon({ label, icon: Icon }: { label: string; icon: typeof ArrowUpDown }) {
+function ArchiveToggle({
+  count,
+  showing,
+  onToggle,
+}: {
+  count: number;
+  showing: boolean;
+  onToggle: () => void;
+}) {
   return (
     <button
       type="button"
-      aria-label={label}
-      title={label}
-      className="h-7 w-7 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
+      onClick={onToggle}
+      aria-pressed={showing}
+      title={showing ? "Hide archived (failed + cancelled)" : "Show archived (failed + cancelled)"}
+      className={cn(
+        "h-7 inline-flex items-center gap-1.5 px-2 rounded text-[11px] font-medium border transition-colors cursor-pointer tabular-nums",
+        showing
+          ? "border-border bg-secondary text-foreground"
+          : "border-transparent text-muted-foreground hover:text-foreground hover:bg-secondary/60",
+      )}
     >
-      <Icon className="h-3.5 w-3.5" />
+      <Archive className="h-3 w-3" />
+      <span>{count} archived</span>
     </button>
   );
 }
@@ -92,19 +92,21 @@ function SearchBox({
   onChange: (v: string) => void;
   onFocus: () => void;
 }) {
+  const ref = useRef<HTMLInputElement>(null);
+  useSlashFocus(ref);
   return (
     <div className="relative">
       <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3 w-3 text-muted-foreground pointer-events-none" />
       <input
+        ref={ref}
         type="search"
         value={query}
         onChange={(e) => onChange(e.target.value)}
         onFocus={onFocus}
-        placeholder="Search…"
+        placeholder="Search   /"
         aria-label="Search tasks"
         className="h-7 pl-7 pr-2 w-32 focus:w-48 transition-[width] duration-150 text-[12px] rounded bg-transparent border border-transparent hover:border-border focus:border-border focus:bg-background placeholder:text-muted-foreground focus:outline-none focus:ring-0"
       />
     </div>
   );
 }
-

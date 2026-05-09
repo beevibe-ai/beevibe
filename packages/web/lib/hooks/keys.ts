@@ -49,17 +49,6 @@ export const queryKeys = {
     all: ["agent-network"] as const,
     self: () => ["agent-network", "self"] as const,
   },
-  chat: {
-    all: ["chat"] as const,
-    /** Per-conversation history. `undefined` = the most recent conversation. */
-    history: (conversationId?: string) =>
-      ["chat", "history", conversationId ?? "<latest>"] as const,
-    conversations: () => ["chat", "conversations"] as const,
-  },
-  runtimes: {
-    all: ["runtimes"] as const,
-    list: () => ["runtimes", "list"] as const,
-  },
   workProducts: {
     all: ["work-products"] as const,
     detail: (id: string) => ["work-products", "detail", id] as const,
@@ -68,5 +57,16 @@ export const queryKeys = {
     all: ["rooms"] as const,
     list: () => ["rooms", "list"] as const,
     detail: (id: string) => ["rooms", "detail", id] as const,
+  },
+  runtimes: {
+    all: ["runtimes"] as const,
+    list: () => ["runtimes", "list"] as const,
+  },
+  chat: {
+    all: ["chat"] as const,
+    /** Per-conversation history. `undefined` = the most recent conversation. */
+    history: (conversationId?: string) =>
+      ["chat", "history", conversationId ?? "<latest>"] as const,
+    conversations: () => ["chat", "conversations"] as const,
   },
 } as const;

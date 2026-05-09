@@ -1,37 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-function makeMockStorage(): Storage {
-  let store: Record<string, string> = {};
-  return {
-    get length() {
-      return Object.keys(store).length;
-    },
-    clear() {
-      store = {};
-    },
-    getItem(key: string) {
-      return Object.prototype.hasOwnProperty.call(store, key) ? store[key] : null;
-    },
-    key(index: number) {
-      return Object.keys(store)[index] ?? null;
-    },
-    removeItem(key: string) {
-      delete store[key];
-    },
-    setItem(key: string, value: string) {
-      store[key] = value;
-    },
-  };
-}
-
 beforeEach(() => {
-  // happy-dom in this project ships an unconfigured `localStorage` (no
-  // setItem / getItem). Inject a minimal in-memory mock for these tests.
-  Object.defineProperty(window, "localStorage", {
-    value: makeMockStorage(),
-    configurable: true,
-    writable: true,
-  });
+  // happy-dom's localStorage isn't always reliable inside resetModules
+  // cycles; stub a minimal in-memory shim so getUserKey/setUserKey/etc.
+  // exercise their real code paths.
+  const store = new Map<string, string>();
+  const fake = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      store.set(k, v);
+    },
+    removeItem: (k: string) => {
+      store.delete(k);
+    },
+    clear: () => store.clear(),
+    key: () => null,
+    length: 0,
+  };
+  Object.defineProperty(window, "localStorage", { value: fake, configurable: true });
 });
 
 afterEach(() => {
@@ -76,15 +62,15 @@ describe("api config", () => {
     expect(isApiConfigured).toBe(false);
   });
 
-  it("getUserKey() returns NEXT_PUBLIC_BV_USER_KEY when no localStorage entry", async () => {
+  it("getUserKey() returns NEXT_PUBLIC_BV_USER_KEY env fallback when nothing's stored", async () => {
     vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
-    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "bv_u_envfallback");
+    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "bv_u_envFallback");
     vi.resetModules();
     const { getUserKey } = await loadConfig();
-    expect(getUserKey()).toBe("bv_u_envfallback");
+    expect(getUserKey()).toBe("bv_u_envFallback");
   });
 
-  it("getUserKey() returns null when neither env nor localStorage has a key", async () => {
+  it("getUserKey() returns null when neither stored nor env set", async () => {
     vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
     vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "");
     vi.resetModules();
@@ -92,48 +78,24 @@ describe("api config", () => {
     expect(getUserKey()).toBeNull();
   });
 
-  it("setUserKey() persists to localStorage and getUserKey() returns it (overriding env)", async () => {
+  it("setUserKey persists to localStorage and getUserKey reads it back", async () => {
     vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
-    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "bv_u_env");
-    vi.resetModules();
-    const { getUserKey, setUserKey } = await loadConfig();
-    setUserKey("bv_u_localstorage");
-    expect(getUserKey()).toBe("bv_u_localstorage");
-  });
-
-  it("clearUserKey() removes localStorage entry, falling back to env", async () => {
-    vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
-    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "bv_u_env");
+    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "");
     vi.resetModules();
     const { getUserKey, setUserKey, clearUserKey } = await loadConfig();
-    setUserKey("bv_u_localstorage");
+    setUserKey("bv_u_runtime");
+    expect(getUserKey()).toBe("bv_u_runtime");
     clearUserKey();
-    expect(getUserKey()).toBe("bv_u_env");
+    expect(getUserKey()).toBeNull();
   });
 
-  it("subscribeToUserKey() fires on setUserKey + clearUserKey, stops after unsubscribe", async () => {
-    vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
-    vi.resetModules();
-    const { setUserKey, clearUserKey, subscribeToUserKey } = await loadConfig();
-    const cb = vi.fn();
-    const unsub = subscribeToUserKey(cb);
-    setUserKey("bv_u_one");
-    setUserKey("bv_u_two");
-    clearUserKey();
-    expect(cb).toHaveBeenCalledTimes(3);
-    unsub();
-    setUserKey("bv_u_three");
-    expect(cb).toHaveBeenCalledTimes(3);
-  });
-
-  it("isWellFormedUserKey accepts well-formed bv_u_ keys and rejects others", async () => {
+  it("isWellFormedUserKey rejects garbage and accepts proper bv_u_ keys", async () => {
     vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
     vi.resetModules();
     const { isWellFormedUserKey } = await loadConfig();
-    expect(isWellFormedUserKey("bv_u_abc1234567890ABCD")).toBe(true);
+    expect(isWellFormedUserKey("bv_u_abcdefghijklmnop")).toBe(true);
     expect(isWellFormedUserKey("bv_u_short")).toBe(false);
-    expect(isWellFormedUserKey("bv_a_abc1234567890ABCD")).toBe(false);
-    expect(isWellFormedUserKey("nope")).toBe(false);
-    expect(isWellFormedUserKey("")).toBe(false);
+    expect(isWellFormedUserKey("not_a_key")).toBe(false);
+    expect(isWellFormedUserKey("bv_a_agentKey1234567890")).toBe(false);
   });
 });

@@ -191,7 +191,6 @@ function ChatSessionBody({ session }: { session: SessionDisplay }) {
           </FooterField>
         ) : null}
         <FooterField label="Type">{session.type}</FooterField>
-        <RanOnField session={session} />
       </footer>
     </>
   );
@@ -223,30 +222,4 @@ function ToolTranscript({ entries }: { entries: TranscriptEntry[] }) {
       ))}
     </ol>
   );
-}
-
-function RanOnField({ session }: { session: SessionDisplay }) {
-  if (session.spawn_mode === "server_fallback_mesh") {
-    return (
-      <FooterField label="Ran on">
-        <span title="Target daemon was offline; spawned server-side with restricted tools.">
-          beevibe-server <span className="text-muted-foreground/70">(fallback)</span>
-        </span>
-      </FooterField>
-    );
-  }
-  if (session.daemon_device_name) {
-    return (
-      <FooterField label="Ran on">
-        <span>{session.daemon_device_name}</span>
-        {session.runtime_cli ? (
-          <span className="text-muted-foreground/70 ml-1">
-            · {session.runtime_cli}
-            {session.runtime_cli_version ? ` ${session.runtime_cli_version}` : null}
-          </span>
-        ) : null}
-      </FooterField>
-    );
-  }
-  return null;
 }

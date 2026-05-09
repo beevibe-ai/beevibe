@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { render, screen } from "@testing-library/react";
 import type { ReactNode } from "react";
 import type { AgentDisplay } from "@/lib/types/agents";
+import type { AgentNetwork } from "@/lib/types/agent-network";
 
 const apiState = { isApiConfigured: true };
 
@@ -13,13 +14,21 @@ vi.mock("@/lib/api/config", () => ({
 }));
 
 vi.mock("@/lib/api/client", () => ({
-  api: { agents: { list: vi.fn(), get: vi.fn() } },
+  api: { agents: { list: vi.fn(), get: vi.fn(), network: vi.fn() } },
+}));
+
+// AgentsClient reads router/search params for the side-panel ?p= state.
+// These mocks just keep the hooks happy under happy-dom.
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => "/agents",
 }));
 
 import { AgentsClient } from "./agents-client";
 import { api } from "@/lib/api/client";
 
-const listMock = vi.mocked(api.agents.list);
+const networkMock = vi.mocked(api.agents.network);
 
 function renderAgents() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -30,19 +39,29 @@ function renderAgents() {
 }
 
 const baseAgent: AgentDisplay = {
-  id: "agt_1",
-  name: "alice",
-  display_name: "Alice",
-  hierarchy: "ic",
-  hierarchy_level: "ic",
-  owner_id: "u_1",
+  id: "agt_team",
+  name: "alice's team",
+  display_name: "Alice's team",
+  hierarchy: "team",
+  hierarchy_level: "team",
+  owner_id: "u_alice",
   created_at: new Date(),
   updated_at: new Date(),
 };
 
+const baseIc: AgentDisplay = {
+  ...baseAgent,
+  id: "agt_ic",
+  name: "backend",
+  display_name: "Backend",
+  hierarchy: "ic",
+  hierarchy_level: "ic",
+  parent_agent_id: "agt_team",
+};
+
 beforeEach(() => {
   apiState.isApiConfigured = true;
-  listMock.mockReset();
+  networkMock.mockReset();
 });
 
 afterEach(() => {
@@ -54,30 +73,48 @@ describe("AgentsClient", () => {
     apiState.isApiConfigured = false;
     renderAgents();
     expect(screen.getByText("API not configured")).toBeInTheDocument();
-    expect(listMock).not.toHaveBeenCalled();
+    expect(networkMock).not.toHaveBeenCalled();
   });
 
-  it("falls back to OrgChart + SpecializationTable when api returns []", async () => {
-    listMock.mockResolvedValue([]);
+  it("renders the no-agents empty state when self is empty", async () => {
+    networkMock.mockResolvedValue({ self: [], peers: [] } satisfies AgentNetwork);
     renderAgents();
-    expect(
-      await screen.findByRole("heading", { name: /Specialization depth/i }),
-    ).toBeInTheDocument();
-    expect(screen.getAllByText("No agents yet").length).toBeGreaterThan(0);
+    expect(await screen.findByText("No agents yet")).toBeInTheDocument();
   });
 
-  it("renders agent rows with hierarchy chip + session count when populated", async () => {
-    listMock.mockResolvedValue([
-      { ...baseAgent, id: "a1", display_name: "Alice", sessions_count: 5 },
-      { ...baseAgent, id: "a2", display_name: "Bob", hierarchy: "team", sessions_count: 12 },
-    ]);
+  it("renders the team orbit with team center + IC ring when populated", async () => {
+    networkMock.mockResolvedValue({
+      self: [baseAgent, baseIc],
+      peers: [],
+    });
     renderAgents();
-    expect(await screen.findByText("Alice")).toBeInTheDocument();
-    expect(screen.getByText("Bob")).toBeInTheDocument();
-    expect(screen.getByText("5 sessions")).toBeInTheDocument();
-    expect(screen.getByText("12 sessions")).toBeInTheDocument();
-    expect(
-      screen.getAllByText((_, el) => el?.textContent === "2 agents in your org.").length,
-    ).toBeGreaterThan(0);
+    expect(await screen.findByText("Alice's team")).toBeInTheDocument();
+    expect(screen.getByText("Backend")).toBeInTheDocument();
+  });
+
+  it("renders peer orbits when the network includes other owners", async () => {
+    networkMock.mockResolvedValue({
+      self: [baseAgent],
+      peers: [
+        {
+          owner_id: "u_dan",
+          owner_label: "Daniel",
+          agents: [
+            {
+              ...baseAgent,
+              id: "agt_d_team",
+              display_name: "Roadmap pod",
+              owner_id: "u_dan",
+            },
+          ],
+        },
+      ],
+    });
+    renderAgents();
+    // Peer label sits above each satellite orbit on the canvas.
+    expect(await screen.findByText("Daniel's team")).toBeInTheDocument();
+    expect(screen.getByText("Roadmap pod")).toBeInTheDocument(); // agent card
+    // The page caption mentions collaborators when peers are present.
+    expect(screen.getByText(/People you collaborate with/)).toBeInTheDocument();
   });
 });

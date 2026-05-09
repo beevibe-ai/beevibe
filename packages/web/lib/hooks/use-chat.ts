@@ -1,11 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-// Import from the narrow `./domain` subpath to avoid pulling in
-// `@beevibe/core/auth` (which uses `node:crypto` for daemon-token
-// hashing — incompatible with browser bundling).
-import { sessionId } from "@beevibe/core/domain";
 import {
   api,
   type ChatHistoryMessage,
@@ -34,10 +30,15 @@ export interface ChatMessage {
 let nextLocalId = 0;
 const localId = (): string => `m_${++nextLocalId}`;
 
-// Client mints the session id so it can subscribe to `session.step` SSE
-// events for this turn BEFORE the server starts the run. Uses the same
-// nanoid-backed helper the server uses (uniform distribution by
-// construction, no modulo bias).
+const SID_ALPHABET = "0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+
+function mintSessionId(): string {
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  let suffix = "";
+  for (const b of bytes) suffix += SID_ALPHABET[b % SID_ALPHABET.length];
+  return `sess_${suffix}`;
+}
 
 function fromHistory(m: ChatHistoryMessage): ChatMessage {
   return {
@@ -68,48 +69,66 @@ export interface UseChatOptions {
 }
 
 /**
- * Conversation state for the chat surface.
- *
- * Hydrates from `GET /chat` on mount so a reload doesn't lose the
- * conversation. Sessions are persisted server-side (the `session`
- * table) and reconstructed as messages by the route handler. When
- * `conversationId` is set, only that conversation's chain is fetched.
- *
- * Cache invalidation for tasks/dashboard/sessions rides the SSE channel
- * via `useLiveUpdates` — no explicit refetch from this hook.
+ * Fresh conversations get their own cache slot so a draft in flight
+ * doesn't pollute the loaded "latest" conversation, and vice versa.
+ */
+const FRESH_CACHE_ID = "__draft__";
+
+/** Empty response shape used to seed a fresh-cache entry. */
+const FRESH_HISTORY: ChatHistoryResponse = {
+  ok: true,
+  agent: null,
+  messages: [],
+  prior_session_id: null,
+  conversation_id: null,
+};
+
+/**
+ * Conversation state for the chat surface, as a thin layer over React
+ * Query. The cache slot keyed by `conversationId` (or `__draft__` for
+ * fresh) is the single source of truth — sends mutate it via
+ * `setQueryData`, and `prior_session_id` is read straight off the cached
+ * response. No component-state copies of messages or chain pointers.
  */
 export function useChat(opts: UseChatOptions = {}) {
   const { conversationId, fresh } = opts;
-  const [localMessages, setLocalMessages] = useState<ChatMessage[]>([]);
-  const [priorSessionId, setPriorSessionId] = useState<string | undefined>();
   const queryClient = useQueryClient();
 
+  const cacheId = fresh ? FRESH_CACHE_ID : conversationId;
+  const queryKey = queryKeys.chat.history(cacheId);
+
   const history = useQuery<ChatHistoryResponse>({
-    queryKey: queryKeys.chat.history(conversationId),
+    queryKey,
     queryFn: ({ signal }) => api.chat.history({ conversationId, signal }),
-    // When `fresh` is set we still want the cache populated so a future
-    // navigation to /chat (without ?new) shows the prior conversation —
-    // but we don't need the round-trip RIGHT NOW for the empty surface.
+    // Fresh surface has no server-side chain to fetch; the cache slot
+    // accumulates locally via mutation `setQueryData` below.
     enabled: isApiConfigured && !fresh,
     staleTime: Infinity,
   });
 
-  // Initialize prior_session_id from history once it lands. If the user
-  // sends a new turn, that takes over (setPriorSessionId in onSuccess);
-  // we only seed once per history load. Re-seeds when the conversation
-  // changes (key includes conversationId).
-  const seededFor = useRef<string | undefined>(undefined);
-  const seedKeyForConversation = `${conversationId ?? "<latest>"}::${
-    history.data?.prior_session_id ?? "<empty>"
-  }`;
+  // Seed the fresh cache slot when entering a fresh surface so a stale
+  // draft from a prior /chat?new=1 visit doesn't reappear. Depends on
+  // primitives only — `queryKey` is a fresh array every render, which
+  // would re-fire this effect and clobber optimistic updates.
   useEffect(() => {
-    if (fresh) return;
-    const data = history.data;
-    if (!data) return;
-    if (seededFor.current === seedKeyForConversation) return;
-    seededFor.current = seedKeyForConversation;
-    setPriorSessionId(data.prior_session_id ?? undefined);
-  }, [history.data, fresh, seedKeyForConversation]);
+    if (!fresh) return;
+    queryClient.setQueryData<ChatHistoryResponse>(
+      queryKeys.chat.history(FRESH_CACHE_ID),
+      FRESH_HISTORY,
+    );
+    // Run on entry only — onMutate/onSuccess own the slot from then on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fresh]);
+
+  const messages = useMemo<ChatMessage[]>(
+    () => (history.data?.messages ?? []).map(fromHistory),
+    [history.data],
+  );
+
+  // Derived from the cache, not duplicated in component state. Whoever
+  // owns the cache (history fetch or our setQueryData calls) is also the
+  // source of truth for what to chain onto next.
+  const priorSessionId = history.data?.prior_session_id ?? undefined;
 
   const mutation = useMutation<
     ChatTurnResponse,
@@ -122,49 +141,69 @@ export function useChat(opts: UseChatOptions = {}) {
         session_id: sessionId,
         prior_session_id: priorSessionId,
       }),
+    onMutate: ({ message }) => {
+      // Optimistically append the user's turn so it shows up instantly.
+      queryClient.setQueryData<ChatHistoryResponse>(queryKey, (prev) => {
+        const base = prev ?? FRESH_HISTORY;
+        return {
+          ...base,
+          messages: [
+            ...base.messages,
+            { id: localId(), role: "user", content: message },
+          ],
+        };
+      });
+    },
     onSuccess: (data) => {
-      setLocalMessages((prev) => [
-        ...prev,
-        {
-          id: localId(),
+      // Append the agent turn and advance the chain pointer in-place.
+      queryClient.setQueryData<ChatHistoryResponse>(queryKey, (prev) => {
+        const base = prev ?? FRESH_HISTORY;
+        const agentMessage: ChatHistoryMessage = {
+          id: `a_${data.session_id}`,
           role: "agent",
           content: data.response,
           session_id: data.session_id,
-          view_refs: data.view_refs,
+          ...(data.view_refs ? { view_refs: data.view_refs } : {}),
           ...(data.open_view ? { open_view: data.open_view } : {}),
           ...(data.suggested_actions ? { suggested_actions: data.suggested_actions } : {}),
-        },
-      ]);
-      // Only the first turn of a conversation can flip the server's
-      // onboarding flag — refetch /me so the welcome wizard exits
-      // automatically. Subsequent turns can't change onboarding state, so
-      // we skip the invalidation entirely.
+        };
+        return {
+          ...base,
+          messages: [...base.messages, agentMessage],
+          prior_session_id: data.session_id,
+        };
+      });
+      // First turn of a brand-new conversation can flip the server's
+      // onboarding flag; refetch /me so the welcome wizard exits.
       if (priorSessionId === undefined) {
         queryClient.invalidateQueries({ queryKey: queryKeys.me.all });
       }
-      setPriorSessionId(data.session_id);
-      // A new turn on this surface invalidates the conversation list so
-      // sidebars / pickers see the new conversation immediately.
+      // Conversation list (sidebar) needs to see the new chain.
       queryClient.invalidateQueries({ queryKey: queryKeys.chat.conversations() });
+      // The "latest" conversation slot may now be stale — when the chat
+      // surface drops the `?new=1` param it'll refetch and land on the
+      // chain we just created.
+      queryClient.invalidateQueries({
+        queryKey: queryKeys.chat.history(undefined),
+      });
+    },
+    onError: () => {
+      // Roll back the optimistic user turn so the input doesn't look
+      // sent-and-stuck.
+      queryClient.setQueryData<ChatHistoryResponse>(queryKey, (prev) => {
+        if (!prev) return prev;
+        const last = prev.messages[prev.messages.length - 1];
+        if (last?.role !== "user") return prev;
+        return { ...prev, messages: prev.messages.slice(0, -1) };
+      });
     },
   });
-
-  // Concatenate history + local turns. When `fresh`, we drop history
-  // entirely until the user sends their first message — then localMessages
-  // takes over and the conversation list refetches to show the new chain.
-  const messages = useMemo<ChatMessage[]>(() => {
-    if (fresh) return localMessages;
-    const seed = history.data?.messages ?? [];
-    return [...seed.map(fromHistory), ...localMessages];
-  }, [history.data, localMessages, fresh]);
 
   const send = useCallback(
     (rawMessage: string) => {
       const trimmed = rawMessage.trim();
       if (!trimmed || mutation.isPending) return;
-      const sid = sessionId();
-      setLocalMessages((prev) => [...prev, { id: localId(), role: "user", content: trimmed }]);
-      mutation.mutate({ message: trimmed, sessionId: sid });
+      mutation.mutate({ message: trimmed, sessionId: mintSessionId() });
     },
     [mutation],
   );

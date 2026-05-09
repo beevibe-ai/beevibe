@@ -1,7 +1,7 @@
 "use client";
 
 import { MoreHorizontal } from "lucide-react";
-import { TaskCard } from "./task-card";
+import { TaskCard, type TaskSelectHandler } from "./task-card";
 import { cn } from "@/lib/utils";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { Lifecycle } from "@/lib/tasks-grouping";
@@ -19,7 +19,17 @@ export type BoardLane = {
 // affordance was removed in #48 — when the human chat surface lands, the
 // "create" entry point lives there.
 
-export function BoardColumn({ lane, flashTopCard }: { lane: BoardLane; flashTopCard?: boolean }) {
+export function BoardColumn({
+  lane,
+  flashTopCard,
+  onSelectTask,
+  activeTaskId,
+}: {
+  lane: BoardLane;
+  flashTopCard?: boolean;
+  onSelectTask?: TaskSelectHandler;
+  activeTaskId?: string;
+}) {
   return (
     <div className="flex flex-col min-w-[280px] w-[300px] shrink-0">
       <div className="flex items-center gap-2 h-8 px-1 mb-2">
@@ -41,7 +51,13 @@ export function BoardColumn({ lane, flashTopCard }: { lane: BoardLane; flashTopC
 
       <div className="flex flex-col gap-2">
         {lane.tasks.map((task, i) => (
-          <TaskCard key={task.id} task={task} flash={flashTopCard && i === 0} />
+          <TaskCard
+            key={task.id}
+            task={task}
+            flash={flashTopCard && i === 0}
+            onSelect={onSelectTask}
+            active={activeTaskId === task.id}
+          />
         ))}
       </div>
     </div>

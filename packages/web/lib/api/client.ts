@@ -7,11 +7,11 @@ import type {
 } from "./types";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { AgentDisplay } from "@/lib/types/agents";
+import type { AgentNetwork } from "@/lib/types/agent-network";
 import type { SessionDisplay } from "@/lib/types/sessions";
 import type { MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
 import type { InboxItem } from "@/lib/types/inbox";
-import type { AgentNetwork } from "@/lib/types/agent-network";
 import type {
   HierarchyLevel,
   MemoryScope,
@@ -22,7 +22,7 @@ import type {
 } from "@beevibe/core";
 import type { Lifecycle } from "@/lib/tasks-grouping";
 
-export type TaskView = "all" | "mine" | "sprint" | "timeline";
+export type TaskView = "all" | "mine";
 
 export interface TaskListFilter {
   lifecycle?: Lifecycle;
@@ -124,49 +124,6 @@ export interface ChatTurnResponse {
   suggested_actions?: SuggestedAction[];
 }
 
-export interface ChatHistoryMessage {
-  id: string;
-  role: "user" | "agent";
-  content: string;
-  session_id?: string;
-  view_refs?: string[];
-  open_view?: { path: string; label?: string };
-  suggested_actions?: SuggestedAction[];
-}
-
-export interface ChatHistoryResponse {
-  ok: true;
-  agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" } | null;
-  messages: ChatHistoryMessage[];
-  /** The most recent session id, used to chain `prior_session_id` on the next turn. */
-  prior_session_id: string | null;
-  /** Head session id of the conversation these messages belong to. */
-  conversation_id: string | null;
-}
-
-export interface ChatConversationSummary {
-  /** Head session id of the chain (the first turn). */
-  head_id: string;
-  /** First user message, used as the title in conversation pickers. */
-  title: string;
-  /** Number of turns (sessions) in the chain. */
-  turn_count: number;
-  /** ISO timestamp of the most recent turn in the chain. */
-  last_at: string;
-  /** Brief preview of the latest agent reply (or user intent if no reply yet). */
-  last_preview: string;
-}
-
-export interface ChatConversationsResponse {
-  ok: true;
-  conversations: ChatConversationSummary[];
-}
-
-export interface SignupInput {
-  name: string;
-  email: string;
-}
-
 export interface Room {
   id: string;
   name: string;
@@ -193,6 +150,7 @@ export interface RoomMessage {
   sender_person_id?: string;
   sender_agent_id?: string;
   session_id?: string;
+  /** Entity ids the agent referenced in this message, hydrated as cards. */
   view_refs?: string[];
   open_view?: { path: string; label?: string };
   suggested_actions?: SuggestedAction[];
@@ -211,6 +169,7 @@ export interface RoomTypingIndicator {
   agent_id: string;
   agent_name: string;
   started_at: string;
+  /** Last ~6 tool calls for this session, polled. SSE may add more on top. */
   recent_steps: RoomTypingStep[];
   total_steps: number;
 }
@@ -220,17 +179,8 @@ export interface RoomDetail {
   room: Room;
   members: RoomMemberDetail[];
   messages: RoomMessage[];
+  /** Agents currently working on a turn for this room. May be omitted by older server builds. */
   typing?: RoomTypingIndicator[];
-}
-
-export interface SignupResponse {
-  ok: true;
-  /** Freshly minted (or recovered) bv_u_ key. Persist client-side and use as Bearer. */
-  api_key: string;
-  person: { id: string; name: string; email: string };
-  primary_agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" };
-  /** True when an existing person with this email was returned instead of created. */
-  existed: boolean;
 }
 
 export interface WorkProductDetail {
@@ -281,20 +231,21 @@ export interface ActivityEntry {
 export interface RuntimePanelEntry {
   id: string;
   cli: string;
-  cli_version: string | null;
-  last_heartbeat: string | null;
-  /** True iff a daemon WS client subscribed to this runtime is connected. */
+  cli_version?: string;
+  /** True when a live WebSocket from this runtime is connected. */
   online: boolean;
-  capabilities: Record<string, unknown>;
-  created_at: string;
+  /** ISO last_heartbeat timestamp; absent when the runtime has never beat. */
+  last_heartbeat?: string;
 }
 
 export interface DaemonPanelEntry {
   id: string;
-  device_name: string;
+  device_name?: string;
   external_id: string;
-  last_seen_at: string | null;
+  /** ISO created_at. */
   created_at: string;
+  /** ISO last_seen_at — when the daemon last hit /runtime/heartbeat. */
+  last_seen_at?: string;
   runtimes: RuntimePanelEntry[];
 }
 
@@ -303,11 +254,57 @@ export interface RuntimesListResponse {
   daemons: DaemonPanelEntry[];
 }
 
-export interface RevokeDaemonResponse {
+export interface SignupInput {
+  name: string;
+  email: string;
+}
+
+export interface SignupResponse {
   ok: true;
-  daemon_id: string;
-  /** True when the daemon was already revoked before this call (idempotent). */
-  already_revoked: boolean;
+  /** Freshly minted (or recovered) bv_u_ key. Persist client-side and use as Bearer. */
+  api_key: string;
+  person: { id: string; name: string; email: string };
+  primary_agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" };
+  /** True when an existing person with this email was returned instead of created. */
+  existed: boolean;
+}
+
+export interface ChatHistoryMessage {
+  id: string;
+  role: "user" | "agent";
+  content: string;
+  session_id?: string;
+  view_refs?: string[];
+  open_view?: { path: string; label?: string };
+  suggested_actions?: SuggestedAction[];
+}
+
+export interface ChatHistoryResponse {
+  ok: true;
+  agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" } | null;
+  messages: ChatHistoryMessage[];
+  /** The most recent session id, used to chain `prior_session_id` on the next turn. */
+  prior_session_id: string | null;
+  /** Head session id of the conversation these messages belong to. */
+  conversation_id: string | null;
+}
+
+export interface ChatConversationSummary {
+  /** Head session id of the chain (the first turn). */
+  head_id: string;
+  /** First user message, used as the title in conversation pickers. */
+  title: string;
+  /** Number of turns (sessions) in the chain. */
+  turn_count: number;
+  /** ISO timestamp of the most recent turn in the chain. */
+  last_at: string;
+  /** Brief preview of the latest agent reply (or user intent if no reply yet). */
+  last_preview: string;
+}
+
+export interface ChatConversationsResponse {
+  ok: true;
+  conversations: ChatConversationSummary[];
 }
 
 export type EscalationResolveInput =
@@ -360,7 +357,6 @@ export const api = {
       fetchJson<AgentDisplay[]>("/agent", { signal: opts.signal }),
     get: (id: string, opts: ReadOptions = {}) =>
       fetchJson<AgentDetail>(`/agent/${encodeURIComponent(id)}`, { signal: opts.signal }),
-    /** Caller's tree + peer teams from rooms they share. */
     network: (opts: ReadOptions = {}) =>
       fetchJson<AgentNetwork>("/agent/network", { signal: opts.signal }),
     archive: (id: string) =>
@@ -368,6 +364,15 @@ export const api = {
         `/agent/${encodeURIComponent(id)}/archive`,
         { method: "POST", body: {} },
       ),
+  },
+  runtimes: {
+    list: (opts: ReadOptions = {}) =>
+      fetchJson<RuntimesListResponse>("/runtimes", { signal: opts.signal }),
+    revoke: (id: string) =>
+      fetchJson<{ ok: true }>(`/runtimes/${encodeURIComponent(id)}/revoke`, {
+        method: "POST",
+        body: {},
+      }),
   },
   sessions: {
     /** Path param is the 6-char short_id (no '#'). */
@@ -391,6 +396,13 @@ export const api = {
     list: (opts: ReadOptions = {}) =>
       fetchJson<PromotionEvent[]>("/promotion", { signal: opts.signal }),
   },
+  inbox: {
+    list: (opts: ReadOptions & { limit?: number } = {}) =>
+      fetchJson<InboxItem[]>("/inbox", {
+        signal: opts.signal,
+        ...(opts.limit ? { query: { limit: opts.limit } } : {}),
+      }),
+  },
   mesh: {
     overview: (filter: { since?: string } = {}, opts: ReadOptions = {}) =>
       fetchJson<MeshOverview>("/mesh", { query: { ...filter }, signal: opts.signal }),
@@ -402,7 +414,7 @@ export const api = {
   chat: {
     /**
      * Send one turn to the caller's primary agent. Server runs
-     * dispatchService → daemon claims → chatResolver awaits done.
+     * AgentSession.run synchronously; expect a 5–30s wait for the response.
      */
     send: (input: ChatSendInput) =>
       fetchJson<ChatTurnResponse>("/chat", { method: "POST", body: input }),
@@ -411,7 +423,9 @@ export const api = {
      *   - no `conversationId` → most recent conversation chain
      *   - `conversationId` set → that specific chain (full `sess_xxx` head id)
      */
-    history: (opts: ReadOptions & { conversationId?: string } = {}) =>
+    history: (
+      opts: ReadOptions & { conversationId?: string } = {},
+    ) =>
       fetchJson<ChatHistoryResponse>("/chat", {
         signal: opts.signal,
         ...(opts.conversationId ? { query: { c: opts.conversationId } } : {}),
@@ -430,28 +444,11 @@ export const api = {
         ...(opts.limit ? { query: { limit: opts.limit } } : {}),
       }),
   },
-  inbox: {
-    /** Items the caller owes a decision on (review/blocked tasks + escalations). */
-    list: (opts: ReadOptions & { limit?: number } = {}) =>
-      fetchJson<InboxItem[]>("/inbox", {
-        signal: opts.signal,
-        ...(opts.limit ? { query: { limit: opts.limit } } : {}),
-      }),
-  },
   workProducts: {
     get: (id: string, opts: ReadOptions = {}) =>
       fetchJson<WorkProductDetail>(`/work-product/${encodeURIComponent(id)}`, {
         signal: opts.signal,
       }),
-  },
-  signup: {
-    /**
-     * Self-serve signup. Mints a person + their primary team agent +
-     * a fresh bv_u_ key. Unauthenticated. Idempotent on email — if a
-     * person with that email already exists, returns their existing key.
-     */
-    create: (input: SignupInput) =>
-      fetchJson<SignupResponse>("/signup", { method: "POST", body: input }),
   },
   rooms: {
     list: (opts: ReadOptions = {}) =>
@@ -465,7 +462,7 @@ export const api = {
         ok: true;
         invited: { person_id: string; name: string; email: string | null };
       }>(`/room/${encodeURIComponent(id)}/invite`, { method: "POST", body: input }),
-    /** Self-join — caller adds themselves + their team agent. */
+    /** Self-join — caller adds themselves + their team agent. Used after invite-link signup. */
     join: (id: string) =>
       fetchJson<{ ok: true; room: Room }>(`/room/${encodeURIComponent(id)}/join`, {
         method: "POST",
@@ -473,21 +470,22 @@ export const api = {
     sendMessage: (id: string, input: { content: string }) =>
       fetchJson<{
         ok: true;
+        /** The persisted human message — returned synchronously. */
         message: RoomMessage;
+        /** Agents that were invoked in the background — their responses arrive via SSE. */
         invoked_agents: { id: string; name: string }[];
+        /** Why those agents were chosen — explicit mention, name match, "team" default, or none. */
         invoked_reason: "mention" | "name" | "team-default" | "none";
       }>(`/room/${encodeURIComponent(id)}/message`, { method: "POST", body: input }),
   },
-  runtimes: {
-    /** List the caller's daemons + nested runtimes (Settings → Runtimes panel). */
-    list: (opts: ReadOptions = {}) =>
-      fetchJson<RuntimesListResponse>("/runtimes", { signal: opts.signal }),
-    /** Revoke a daemon by id; idempotent. Cascades to all of its runtimes. */
-    revokeDaemon: (daemonId: string) =>
-      fetchJson<RevokeDaemonResponse>(
-        `/runtimes/${encodeURIComponent(daemonId)}/revoke`,
-        { method: "POST", body: {} },
-      ),
+  signup: {
+    /**
+     * Self-serve signup. Mints a person + their primary team agent +
+     * a fresh bv_u_ key. Unauthenticated. Idempotent on email — if a
+     * person with that email already exists, returns their existing key.
+     */
+    create: (input: SignupInput) =>
+      fetchJson<SignupResponse>("/signup", { method: "POST", body: input }),
   },
   me: {
     /** Identity + onboarding state for the welcome flow. */
