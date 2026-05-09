@@ -176,6 +176,38 @@ export interface ActivityEntry {
   duration_label: string;
 }
 
+export interface RuntimePanelEntry {
+  id: string;
+  cli: string;
+  cli_version: string | null;
+  last_heartbeat: string | null;
+  /** True iff a daemon WS client subscribed to this runtime is connected. */
+  online: boolean;
+  capabilities: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface DaemonPanelEntry {
+  id: string;
+  device_name: string;
+  external_id: string;
+  last_seen_at: string | null;
+  created_at: string;
+  runtimes: RuntimePanelEntry[];
+}
+
+export interface RuntimesListResponse {
+  ok: true;
+  daemons: DaemonPanelEntry[];
+}
+
+export interface RevokeDaemonResponse {
+  ok: true;
+  daemon_id: string;
+  /** True when the daemon was already revoked before this call (idempotent). */
+  already_revoked: boolean;
+}
+
 export type EscalationResolveInput =
   | {
       source: "initiator" | "counterparty";
@@ -287,6 +319,17 @@ export const api = {
         signal: opts.signal,
         ...(opts.limit ? { query: { limit: opts.limit } } : {}),
       }),
+  },
+  runtimes: {
+    /** List the caller's daemons + nested runtimes (Settings → Runtimes panel). */
+    list: (opts: ReadOptions = {}) =>
+      fetchJson<RuntimesListResponse>("/runtimes", { signal: opts.signal }),
+    /** Revoke a daemon by id; idempotent. Cascades to all of its runtimes. */
+    revokeDaemon: (daemonId: string) =>
+      fetchJson<RevokeDaemonResponse>(
+        `/runtimes/${encodeURIComponent(daemonId)}/revoke`,
+        { method: "POST", body: {} },
+      ),
   },
   me: {
     /** Identity + onboarding state for the welcome flow. */

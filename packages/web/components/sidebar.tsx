@@ -7,6 +7,7 @@ import {
   ChevronDown,
   ChevronRight,
   ChevronsUpDown,
+  HardDrive,
   Home,
   ListChecks,
   type LucideIcon,
@@ -74,11 +75,21 @@ const KNOWLEDGE_ITEMS: NavItem[] = [
   },
 ];
 
+const SETTINGS_ITEMS: NavItem[] = [
+  {
+    href: "/runtimes",
+    label: "Runtimes",
+    icon: HardDrive,
+    isActive: (p) => p.startsWith("/runtimes"),
+  },
+];
+
 export function Sidebar() {
   const pathname = usePathname();
   const [openAgents, setOpenAgents] = useState(true);
   const [openWorkspace, setOpenWorkspace] = useState(true);
   const [openKnowledge, setOpenKnowledge] = useState(true);
+  const [openSettings, setOpenSettings] = useState(true);
 
   return (
     <aside className="w-[248px] shrink-0 bg-card border-r border-border/60 flex flex-col">
@@ -147,6 +158,16 @@ export function Sidebar() {
           onToggle={() => setOpenKnowledge((v) => !v)}
         >
           {KNOWLEDGE_ITEMS.map((item) => (
+            <NavRow key={item.href} item={item} pathname={pathname} />
+          ))}
+        </Section>
+
+        <Section
+          title="Settings"
+          open={openSettings}
+          onToggle={() => setOpenSettings((v) => !v)}
+        >
+          {SETTINGS_ITEMS.map((item) => (
             <NavRow key={item.href} item={item} pathname={pathname} />
           ))}
         </Section>
