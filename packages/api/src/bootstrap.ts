@@ -32,6 +32,7 @@ import {
 import { TaskService } from "@beevibe/core/services/task-service";
 import { EscalationService } from "@beevibe/core/services/escalation-service";
 import { DispatchService } from "@beevibe/core/services/dispatch-service";
+import { DaemonOrphanReaper } from "@beevibe/core/services/orphan-reaper";
 import { MeshServer } from "./mesh/server.js";
 import { BeevibeApiServer } from "./server.js";
 import { SessionCache } from "./session-cache.js";
@@ -400,6 +401,25 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   });
   server.getApp().use("/room", roomRouter);
 
+  // Phase 5 daemon-orphan reaper. Marks daemon-bound running sessions
+  // failed when both the session's last_event_at AND the runtime's
+  // last_heartbeat are stale. For task sessions, fires a crash_recovery
+  // dispatch pinned to the same runtime so it resumes when the daemon
+  // reconnects. For chat sessions, the onSessionReaped hook unblocks the
+  // awaiting POST /chat via the chat resolver.
+  const daemonOrphanReaper = new DaemonOrphanReaper({
+    sessionRepo,
+    taskRepo,
+    dispatchService,
+    onSessionReaped: (session) => {
+      if (session.type === "chat") {
+        chatResolver.resolve(session.id, session);
+      }
+      // Mesh waiters time out via their own awaitResolver; no fanout here.
+    },
+  });
+  void daemonOrphanReaper.start();
+
   // M8 final integration (#45): SSE live-updates flow.
   // Triggers in migration 1778300000000 emit on `bv_event`; SseListener
   // LISTENs on a dedicated pg.Client and fans out via SseManager;
@@ -420,6 +440,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
 
   const shutdown = async (): Promise<void> => {
     sessionCache.stopIdleSweep();
+    await daemonOrphanReaper.stop();
     await sseListener.stop();
     await runtimeWsServer.stop();
     await server.stop();

@@ -59,6 +59,10 @@
       "types": "./dist/services/dispatch-service.d.ts",
       "default": "./dist/services/dispatch-service.js"
     },
+    "./services/orphan-reaper": {
+      "types": "./dist/services/orphan-reaper.d.ts",
+      "default": "./dist/services/orphan-reaper.js"
+    },
     "./services/skills": {
       "types": "./dist/services/skills/index.d.ts",
       "default": "./dist/services/skills/index.js"

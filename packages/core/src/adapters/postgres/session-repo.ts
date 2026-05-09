@@ -89,6 +89,23 @@ export class PostgresSessionRepository implements SessionRepository {
     return rows.map(rowToSession);
   }
 
+  async listDaemonOrphaned(opts: {
+    sessionStaleSeconds: number;
+    runtimeHeartbeatStaleSeconds: number;
+  }): Promise<Session[]> {
+    const { rows } = await this.pool.query<SessionRow>(
+      `SELECT s.* FROM session s
+         JOIN runtime r ON r.id = s.runtime_id
+        WHERE s.status = 'running'
+          AND s.runtime_id IS NOT NULL
+          AND COALESCE(s.last_event_at, s.created_at) < now() - ($1 * INTERVAL '1 second')
+          AND COALESCE(r.last_heartbeat, r.created_at) < now() - ($2 * INTERVAL '1 second')
+        ORDER BY s.created_at ASC`,
+      [opts.sessionStaleSeconds, opts.runtimeHeartbeatStaleSeconds],
+    );
+    return rows.map(rowToSession);
+  }
+
   async claimNextForRuntime(runtimeId: string): Promise<Session | undefined> {
     const { rows } = await this.pool.query<SessionRow>(
       `WITH candidate AS (

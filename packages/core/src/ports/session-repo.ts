@@ -43,6 +43,24 @@ export interface SessionRepository {
   listRunningWithPid(): Promise<Session[]>;
 
   /**
+   * Find running sessions whose daemon has gone silent. A row qualifies when:
+   *   - `status='running'` AND `runtime_id IS NOT NULL` (i.e., daemon-bound)
+   *   - the session's own `last_event_at` is older than `sessionStaleSeconds`
+   *     (or null and the row is older than `sessionStaleSeconds`)
+   *   - the bound runtime's `last_heartbeat` is older than
+   *     `runtimeHeartbeatStaleSeconds` (or null and runtime row older than
+   *     that threshold)
+   *
+   * The two-axis check rules out "session is just slow" (heartbeat fresh,
+   * just no events for a few minutes) — only sessions whose daemon is also
+   * silent get reaped.
+   */
+  listDaemonOrphaned(opts: {
+    sessionStaleSeconds: number;
+    runtimeHeartbeatStaleSeconds: number;
+  }): Promise<Session[]>;
+
+  /**
    * Atomically claim the oldest pending session bound to `runtimeId` and
    * promote it to `running`. Returns undefined when nothing is pending.
    * Implemented with `SELECT … FOR UPDATE SKIP LOCKED` so concurrent claims
