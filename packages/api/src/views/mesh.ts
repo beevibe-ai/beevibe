@@ -39,7 +39,10 @@ const WINDOW = "24 hours";
 // stay in sync across all 5 queries.
 const NEGO_WINDOW = `created_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'active'`;
 const SESS_WINDOW = `type IN ('mesh_ask', 'blocker') AND (started_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'running')`;
-const SESS_FROM = `substring(intent FROM 'from="([^"]+)"')`;
+// Use the indexed `caller_agent_id` column with a regex fallback for any
+// pre-backfill row that slipped through (defense in depth — the migration
+// `1780100000000_add-session-caller-agent-id.sql` populated existing rows).
+const SESS_FROM = `COALESCE(caller_agent_id, substring(intent FROM 'from="([^"]+)"'))`;
 
 const NEGOTIATIONS_SQL = /* sql */ `
 SELECT

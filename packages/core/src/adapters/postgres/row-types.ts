@@ -68,6 +68,7 @@ export interface SessionRow {
   spawn_mode: SessionSpawnMode;
   last_event_at: Date | null;
   room_id: string | null;
+  caller_agent_id: string | null;
   started_at: Date | null;
   completed_at: Date | null;
   created_at: Date;

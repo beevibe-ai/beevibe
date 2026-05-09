@@ -129,6 +129,14 @@ export interface Session {
    * / chat / mesh sessions.
    */
   room_id?: string;
+  /**
+   * For mesh-typed sessions (mesh_ask / mesh_negotiate / blocker):
+   * the agent that initiated the ask. The mesh activity view + graph
+   * read this directly instead of regex-extracting from the intent
+   * XML (replaces the SQL `substring(intent FROM 'from="..."')`
+   * approach so the column can be indexed).
+   */
+  caller_agent_id?: string;
   started_at?: Date;
   completed_at?: Date;
   created_at: Date;

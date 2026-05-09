@@ -58,6 +58,17 @@ export interface DispatchInput {
    * counterparty_session_id on the negotiation row.
    */
   sessionIdOverride?: string;
+  /**
+   * For mesh-typed sessions: the agent that initiated the ask. Stamped
+   * on `session.caller_agent_id` so the mesh activity view can read
+   * the column directly instead of regex-extracting from intent XML.
+   */
+  callerAgentId?: string;
+  /**
+   * Stamped on `session.room_id` when the dispatch was kicked off
+   * inside a room context.
+   */
+  roomId?: string;
 }
 
 export interface DispatchResult {
@@ -95,6 +106,8 @@ export class DispatchService {
       status: "pending",
       runtime_id: runtime_id ?? undefined,
       spawn_mode: "daemon",
+      ...(input.callerAgentId ? { caller_agent_id: input.callerAgentId } : {}),
+      ...(input.roomId ? { room_id: input.roomId } : {}),
     });
 
     if (input.task && input.type === "task") {
