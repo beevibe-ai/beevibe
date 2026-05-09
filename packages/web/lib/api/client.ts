@@ -363,6 +363,11 @@ export const api = {
     /** Caller's tree + peer teams from rooms they share. */
     network: (opts: ReadOptions = {}) =>
       fetchJson<AgentNetwork>("/agent/network", { signal: opts.signal }),
+    archive: (id: string) =>
+      fetchJson<{ ok: true; archived_at: string }>(
+        `/agent/${encodeURIComponent(id)}/archive`,
+        { method: "POST", body: {} },
+      ),
   },
   sessions: {
     /** Path param is the 6-char short_id (no '#'). */

@@ -103,6 +103,8 @@ export interface AgentDisplay
    * Null for agents without a daemon yet (e.g. legacy seeded fixtures).
    */
   preferred_runtime_id?: string;
+  /** ISO timestamp when archived; absent for live agents. */
+  archived_at?: string;
 }
 
 export interface RecentSession {

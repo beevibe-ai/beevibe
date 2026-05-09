@@ -142,6 +142,34 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     }
   });
 
+  router.post("/agent/:id/archive", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "missing_agent_id" });
+      return;
+    }
+    try {
+      const existing = await deps.agentRepo.findById(id);
+      if (!existing) {
+        res.status(404).json({ error: "agent_not_found" });
+        return;
+      }
+      if (existing.owner_id !== req.caller.personId) {
+        res.status(403).json({ error: "not_owner" });
+        return;
+      }
+      if (existing.archived_at) {
+        res.json({ ok: true, archived_at: existing.archived_at.toISOString() });
+        return;
+      }
+      const updated = await deps.agentRepo.update(id, { archived_at: new Date() });
+      res.json({ ok: true, archived_at: updated.archived_at!.toISOString() });
+    } catch (err) {
+      handleError(err, res, "agent archive");
+    }
+  });
+
   router.get("/session/:shortId", async (req, res) => {
     if (!requireHuman(req, res)) return;
     const shortId = req.params.shortId;

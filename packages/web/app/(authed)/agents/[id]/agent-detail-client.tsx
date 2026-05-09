@@ -1,9 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, AlertTriangle, Bot } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, AlertTriangle, Bot, Archive } from "lucide-react";
 import { useAgent } from "@/lib/hooks/use-agents";
 import { isApiConfigured } from "@/lib/api/config";
+import { api } from "@/lib/api/client";
+import { queryKeys } from "@/lib/hooks/keys";
 import { Avatar } from "@/components/avatar";
 import { HierChip } from "@/components/hier-chip";
 import { CoreBlockCard } from "@/components/agents/core-block-card";
@@ -81,6 +86,17 @@ export function AgentDetailClient({ agentId }: { agentId: string }) {
 function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
   const initial = agent.display_name.charAt(0).toUpperCase();
   const presence = agent.metrics.sessions > 0 ? "idle" : "off";
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const archiveMutation = useMutation({
+    mutationFn: () => api.agents.archive(agent.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+      router.push("/agents");
+    },
+  });
+  const archived = Boolean(agent.archived_at);
 
   return (
     <DetailShell nav={<AgentsBackLink />}>
@@ -91,18 +107,48 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
             <div className="flex items-center gap-2 mb-1">
               <h1 className="text-xl font-semibold leading-tight">{agent.display_name}</h1>
               <HierChip hier={agent.hierarchy} />
+              {archived ? (
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  archived
+                </span>
+              ) : null}
             </div>
             {agent.specialization ? (
               <p className="text-sm text-muted-foreground">{agent.specialization}</p>
             ) : null}
           </div>
-          <div className="shrink-0">
-            <button
-              type="button"
-              className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer"
-            >
-              Edit
-            </button>
+          <div className="shrink-0 flex items-center gap-2">
+            {!archived ? (
+              confirming ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setConfirming(false)}
+                    disabled={archiveMutation.isPending}
+                    className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => archiveMutation.mutate()}
+                    disabled={archiveMutation.isPending}
+                    className="h-8 px-3 rounded text-xs font-medium border border-destructive bg-destructive/10 text-destructive hover:bg-destructive/15 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {archiveMutation.isPending ? "Archiving…" : "Confirm archive"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirming(true)}
+                  className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer inline-flex items-center gap-1"
+                >
+                  <Archive className="h-3 w-3" />
+                  Archive
+                </button>
+              )
+            ) : null}
           </div>
         </div>
 
@@ -181,6 +227,11 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         {agent.runtime ? <FooterField label="Runtime">{agent.runtime}</FooterField> : null}
         {agent.review_policy ? (
           <FooterField label="Review policy">{agent.review_policy}</FooterField>
+        ) : null}
+        {agent.archived_at ? (
+          <FooterField label="Archived">
+            {new Date(agent.archived_at).toLocaleString()}
+          </FooterField>
         ) : null}
       </footer>
     </DetailShell>
