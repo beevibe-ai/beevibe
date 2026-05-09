@@ -39,6 +39,7 @@ import { createEscalationRouter } from "./routes/escalation.js";
 import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
 import { createChatRouter } from "./routes/chat.js";
+import { createRuntimesRouter } from "./routes/runtimes.js";
 import { createStreamAuthMiddleware } from "./auth/middleware.js";
 import { ChatResolver } from "./runtime/chat-resolver.js";
 import { DaemonHub } from "./runtime/hub.js";
@@ -326,6 +327,17 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     hub: daemonHub,
   });
   server.getApp().use("/chat", chatRouter);
+
+  // Phase 5 Runtimes panel — bv_u_ surface for Settings → Runtimes.
+  // GET /runtimes lists daemons + runtimes (with hub-derived online
+  // status); POST /runtimes/:id/revoke revokes a daemon by id.
+  const runtimesRouter = createRuntimesRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    daemonRepo,
+    runtimeRepo,
+    hub: daemonHub,
+  });
+  server.getApp().use("/runtimes", runtimesRouter);
 
   // M8 final integration (#45): SSE live-updates flow.
   // Triggers in migration 1778300000000 emit on `bv_event`; SseListener
