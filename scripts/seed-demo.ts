@@ -39,6 +39,14 @@ const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 
 const PRIMARY_NAME = "Daniel";
 
+/**
+ * Default password for every seeded persona. Identical across personas
+ * by design — these are demo accounts on a dev DB; the goal is one-click
+ * "switch user in another browser" not real credential security. Override
+ * via `BEEVIBE_SEED_PASSWORD` if you want a different one.
+ */
+const SEED_PASSWORD = process.env.BEEVIBE_SEED_PASSWORD ?? "demo1234";
+
 interface PersonaSpec {
   name: string;
   email: string;
@@ -210,6 +218,9 @@ async function main(): Promise<void> {
   const { provisionAgent, provisionUser } = await import(
     "../packages/core/src/auth/provision.js"
   );
+  const { hashPassword } = await import(
+    "../packages/core/src/auth/password.js"
+  );
   const ids = await import("../packages/core/src/domain/ids.js");
   const { OpenAIEmbeddingService } = await import(
     "../packages/core/src/adapters/openai/embeddings.js"
@@ -259,11 +270,28 @@ async function main(): Promise<void> {
       if (existingPerson?.api_key) {
         personId = existingPerson.id;
         apiKey = existingPerson.api_key;
-        console.log(`  ${green("✓")} ${spec.name} ${dim(personId)} ${dim("(existing)")}`);
+        // Backfill: existing persons (provisioned before password auth)
+        // land here without password_hash. Set the seed password so they
+        // can sign in via email + password instead of paste-key.
+        if (!existingPerson.password_hash) {
+          await personRepo.update(personId, {
+            password_hash: await hashPassword(SEED_PASSWORD),
+          });
+          console.log(
+            `  ${green("✓")} ${spec.name} ${dim(personId)} ${dim("(existing, password set)")}`,
+          );
+        } else {
+          console.log(`  ${green("✓")} ${spec.name} ${dim(personId)} ${dim("(existing)")}`);
+        }
       } else {
         const result = await provisionUser(
           { personRepo },
-          { id: ids.personId(), name: spec.name, email: spec.email },
+          {
+            id: ids.personId(),
+            name: spec.name,
+            email: spec.email,
+            password_hash: await hashPassword(SEED_PASSWORD),
+          },
         );
         personId = result.person.id;
         apiKey = result.apiKey;
@@ -638,7 +666,17 @@ async function main(): Promise<void> {
 
     // ── Summary ────────────────────────────────────────────────────────
     console.log("\n" + bold("Seed complete."));
-    console.log(dim("\nAPI keys (sign in at the web /sign-in page):"));
+    console.log(
+      dim(
+        "\nAll seeded users share the same password (demo data — not for prod):",
+      ),
+    );
+    console.log(`  ${bold("password:")} ${SEED_PASSWORD}`);
+    console.log(dim("\nSign in at /sign-in with email + password:"));
+    for (const r of resolved) {
+      console.log(`  ${r.spec.name.padEnd(20)} ${r.spec.email}`);
+    }
+    console.log(dim("\nOr fall back to bv_u_ paste-key sign-in:"));
     for (const r of resolved) {
       console.log(`  ${r.spec.name.padEnd(20)} ${r.apiKey}`);
     }
