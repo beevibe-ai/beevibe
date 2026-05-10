@@ -4,8 +4,9 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
+  Check,
+  Copy,
   Cpu,
-  ExternalLink,
   HardDrive,
   Plus,
   Terminal,
@@ -17,16 +18,13 @@ import {
   type RuntimePanelEntry,
   type RuntimesListResponse,
 } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
+import { apiBaseUrl, getUserKey, isApiConfigured } from "@/lib/api/config";
 import { describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { cn } from "@/lib/utils";
-
-/** Brew tap incantation shown to users without a daemon. */
-const INSTALL_COMMAND = "brew install beevibe-ai/tap/beevibe-daemon";
 
 export function RuntimesClient() {
   const query = useQuery<RuntimesListResponse>({
@@ -311,20 +309,59 @@ function AddAnotherMachine() {
 }
 
 function InstallSnippet() {
+  const userKey = typeof window !== "undefined" ? getUserKey() : null;
+  const apiUrl = apiBaseUrl ?? "http://localhost:3000";
+  const setupCmd = `pnpm daemon setup --api ${apiUrl} --user-token ${userKey ?? "<your-key>"}`;
+  const startCmd = `pnpm daemon start`;
   return (
-    <div className="w-full max-w-md">
-      <div className="rounded-md border border-border bg-background px-3 py-2 font-mono text-xs text-foreground/90">
-        {INSTALL_COMMAND}
+    <div className="w-full max-w-xl space-y-2">
+      <CommandRow label="1. Register" command={setupCmd} />
+      <CommandRow label="2. Start (long-running)" command={startCmd} />
+      <p className="text-[11px] text-muted-foreground/80 leading-snug pt-1">
+        Run from a checkout of the beevibe repo. A published{" "}
+        <span className="font-mono">npx @beevibe/daemon</span> / brew tap
+        is on the roadmap so users can install without the repo.
+      </p>
+    </div>
+  );
+}
+
+function CommandRow({ label, command }: { label: string; command: string }) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    if (typeof navigator === "undefined" || !navigator.clipboard) return;
+    await navigator.clipboard.writeText(command);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1500);
+  };
+  return (
+    <div className="rounded-md border border-border bg-card overflow-hidden text-left">
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/60 bg-secondary/30">
+        <Terminal className="h-3 w-3 text-muted-foreground" />
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+          {label}
+        </span>
+        <button
+          type="button"
+          onClick={copy}
+          className="ml-auto inline-flex items-center gap-1 h-5 px-1.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
+        >
+          {copied ? (
+            <>
+              <Check className="h-3 w-3 text-status-done" />
+              copied
+            </>
+          ) : (
+            <>
+              <Copy className="h-3 w-3" />
+              copy
+            </>
+          )}
+        </button>
       </div>
-      <a
-        href="https://github.com/beevibe-ai/beevibe#daemon-setup"
-        target="_blank"
-        rel="noreferrer noopener"
-        className="mt-2 inline-flex items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
-      >
-        Setup docs
-        <ExternalLink className="h-3 w-3" />
-      </a>
+      <code className="block px-3 py-2.5 text-xs font-mono text-foreground/85 overflow-x-auto whitespace-pre">
+        {command}
+      </code>
     </div>
   );
 }
