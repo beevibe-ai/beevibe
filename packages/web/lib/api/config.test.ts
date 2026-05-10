@@ -62,25 +62,27 @@ describe("api config", () => {
     expect(isApiConfigured).toBe(false);
   });
 
-  it("getUserKey() returns NEXT_PUBLIC_BV_USER_KEY env fallback when nothing's stored", async () => {
+  it("getUserKey() ignores NEXT_PUBLIC_BV_USER_KEY (env fallback was removed)", async () => {
     vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
     vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "bv_u_envFallback");
     vi.resetModules();
     const { getUserKey } = await loadConfig();
-    expect(getUserKey()).toBe("bv_u_envFallback");
+    // Pre-password-auth, the env var was honored as a dev convenience.
+    // It auto-signed-in every visitor and auto-re-signed-in after
+    // sign-out (because clearUserKey just dropped to the env value).
+    // Now: env is ignored, sign-out actually signs you out.
+    expect(getUserKey()).toBeNull();
   });
 
-  it("getUserKey() returns null when neither stored nor env set", async () => {
+  it("getUserKey() returns null when nothing's stored", async () => {
     vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
-    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "");
     vi.resetModules();
     const { getUserKey } = await loadConfig();
     expect(getUserKey()).toBeNull();
   });
 
-  it("setUserKey persists to localStorage and getUserKey reads it back", async () => {
+  it("setUserKey persists to localStorage and getUserKey reads it back; clear unwinds", async () => {
     vi.stubEnv("NEXT_PUBLIC_BV_API_URL", "http://localhost:3002");
-    vi.stubEnv("NEXT_PUBLIC_BV_USER_KEY", "");
     vi.resetModules();
     const { getUserKey, setUserKey, clearUserKey } = await loadConfig();
     setUserKey("bv_u_runtime");

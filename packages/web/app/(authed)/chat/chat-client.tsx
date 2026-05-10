@@ -94,9 +94,8 @@ export function ChatClient() {
         <div className="max-w-md text-center text-sm text-muted-foreground">
           <MessageSquare className="h-6 w-6 mx-auto mb-2 text-muted-foreground/60" />
           <div className="text-foreground font-medium mb-1">Chat not connected</div>
-          Set <span className="font-mono">NEXT_PUBLIC_BV_API_URL</span> +{" "}
-          <span className="font-mono">NEXT_PUBLIC_BV_USER_KEY</span> to start chatting with your team
-          agent.
+          Set <span className="font-mono">NEXT_PUBLIC_BV_API_URL</span> in{" "}
+          <span className="font-mono">.env.local</span> to start chatting with your team agent.
         </div>
       </div>
     );

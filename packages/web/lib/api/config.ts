@@ -2,13 +2,15 @@
  * Runtime auth config. The api base URL is build-time (every visitor
  * hits the same backend). The user key is per-visitor — read from
  * localStorage on the client, never baked into the JS bundle. Each user
- * pastes their `bv_u_` on the /sign-in page; the key persists in their
- * browser only and is sent on every api request as a Bearer token.
+ * signs in via /sign-in (email + password OR pastes their `bv_u_` key);
+ * the key persists in their browser only and is sent on every api
+ * request as a Bearer token.
  *
- * `NEXT_PUBLIC_BV_USER_KEY` env is honored as a dev convenience: when
- * set, it's the default key for unauthed visitors and skips the sign-in
- * gate. Set it to empty in production deploys so every visitor signs in
- * with their own key.
+ * Historical: `NEXT_PUBLIC_BV_USER_KEY` was honored as a dev fallback
+ * pre-password-auth. Removed because it auto-signed-in every visitor
+ * (and re-signed-in immediately after sign-out, since clearing
+ * localStorage just dropped to the env fallback). With password auth
+ * shipped, every visitor signs in with their own credentials.
  */
 
 const rawBaseUrl = process.env.NEXT_PUBLIC_BV_API_URL?.trim();
@@ -17,7 +19,6 @@ export const apiBaseUrl: string | null =
   rawBaseUrl && rawBaseUrl.length > 0 ? rawBaseUrl.replace(/\/+$/, "") : null;
 
 const STORAGE_KEY = "bv:user_key";
-const ENV_FALLBACK_KEY = process.env.NEXT_PUBLIC_BV_USER_KEY?.trim() || null;
 
 /** Subscribe to key-change events so React components can re-render. */
 type Listener = () => void;
@@ -33,15 +34,14 @@ function notify(): void {
 }
 
 /**
- * Returns the active user key. SSR-safe: returns env fallback (or null)
- * during pre-render; on the client, reads localStorage and falls back to
- * env if nothing's stored. Exported for the api client + SSE.
+ * Returns the active user key, or null when no one's signed in.
+ * SSR-safe: returns null during pre-render (SSR has no localStorage
+ * and no per-visitor identity).
  */
 export function getUserKey(): string | null {
-  if (typeof window === "undefined") return ENV_FALLBACK_KEY;
+  if (typeof window === "undefined") return null;
   const stored = window.localStorage.getItem(STORAGE_KEY);
-  if (stored && stored.length > 0) return stored;
-  return ENV_FALLBACK_KEY;
+  return stored && stored.length > 0 ? stored : null;
 }
 
 export function setUserKey(key: string): void {

@@ -233,8 +233,8 @@ function ProvidersStep({ onNext }: { onNext: () => void }) {
           </div>
           <div className="text-muted-foreground">
             Make sure <span className="font-mono">pnpm dev</span> is running and{" "}
-            <span className="font-mono">NEXT_PUBLIC_BV_API_URL</span> /{" "}
-            <span className="font-mono">NEXT_PUBLIC_BV_USER_KEY</span> are set.
+            <span className="font-mono">NEXT_PUBLIC_BV_API_URL</span> is set in{" "}
+            <span className="font-mono">.env.local</span>.
           </div>
         </div>
       ) : null}
@@ -381,10 +381,10 @@ function NotConfigured() {
         <MessageSquare className="h-6 w-6 mx-auto text-muted-foreground/60" />
         <div className="text-foreground font-medium">beevibe isn&apos;t connected yet</div>
         <p>
-          Set <span className="font-mono">NEXT_PUBLIC_BV_API_URL</span> +{" "}
-          <span className="font-mono">NEXT_PUBLIC_BV_USER_KEY</span> in your{" "}
-          <span className="font-mono">.env</span> and run{" "}
-          <span className="font-mono">pnpm dev</span> to get started.
+          Set <span className="font-mono">NEXT_PUBLIC_BV_API_URL</span> in{" "}
+          <span className="font-mono">.env.local</span>, run{" "}
+          <span className="font-mono">pnpm dev</span>, then sign in at{" "}
+          <span className="font-mono">/sign-in</span>.
         </p>
       </div>
     </div>
