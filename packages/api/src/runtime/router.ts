@@ -97,6 +97,33 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
     try {
       const { daemon, token, isNew } = await upsertDaemon(deps, req.caller!.personId, body);
       const runtimes = await upsertRuntimes(deps, daemon.id, body.runtimes);
+
+      // Convenience auto-bind: if the caller's primary team agent has no
+      // preferred_runtime_id yet, bind it to the first registered runtime.
+      // Removes one click from fresh-user setup; users with multiple
+      // runtimes can rebind from /agents/[id] later. Fire-and-forget;
+      // never let a binding hiccup fail registration.
+      if (runtimes.length > 0) {
+        try {
+          const primary = await deps.agentRepo.findTopLevelForOwner(
+            req.caller!.personId,
+          );
+          if (primary && !primary.preferred_runtime_id) {
+            await deps.agentRepo.update(primary.id, {
+              preferred_runtime_id: runtimes[0]!.id,
+            });
+            console.log(
+              `[runtime/register] auto-bound agent ${primary.id} → runtime ${runtimes[0]!.id}`,
+            );
+          }
+        } catch (err) {
+          console.warn(
+            "[runtime/register] auto-bind failed (non-fatal):",
+            err instanceof Error ? err.message : err,
+          );
+        }
+      }
+
       const response: RuntimeRegisterResponse = {
         daemon_id: daemon.id,
         daemon_token: token,

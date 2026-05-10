@@ -19,7 +19,8 @@
     "install-skills": "tsx scripts/install-skills.ts",
     "bootstrap": "tsx scripts/init.ts",
     "provision-user": "tsx scripts/provision-user.ts",
-    "seed-demo": "tsx scripts/seed-demo.ts"
+    "seed-demo": "tsx scripts/seed-demo.ts",
+    "daemon": "tsx packages/daemon/src/main.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
