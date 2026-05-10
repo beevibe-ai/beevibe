@@ -28,6 +28,7 @@ export function SignUpClient() {
 
   const [name, setName] = useState("");
   const [email, setEmail] = useState(inviteEmail);
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -42,10 +43,18 @@ export function SignUpClient() {
       setError("Web isn't configured to talk to an api server.");
       return;
     }
+    if (password.length < 8) {
+      setError("Password must be at least 8 characters.");
+      return;
+    }
     setError(null);
     setSubmitting(true);
     try {
-      const res = await api.signup.create({ name: name.trim(), email: email.trim() });
+      const res = await api.signup.create({
+        name: name.trim(),
+        email: email.trim(),
+        password,
+      });
       setUserKey(res.api_key);
       // If this was an invite-link flow, the new user joins the target
       // room directly (URL = bearer of trust). Their team agent gets
@@ -125,6 +134,21 @@ export function SignUpClient() {
           disabled={submitting}
         />
 
+        <label className="block text-xs font-medium text-foreground mb-1.5 mt-3" htmlFor="password">
+          Password
+        </label>
+        <input
+          id="password"
+          type="password"
+          autoComplete="new-password"
+          minLength={8}
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="at least 8 characters"
+          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          disabled={submitting}
+        />
+
         {error ? (
           <div className="mt-3 flex items-start gap-1.5 text-xs text-status-failed">
             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
@@ -134,7 +158,12 @@ export function SignUpClient() {
 
         <button
           type="submit"
-          disabled={submitting || name.trim().length === 0 || email.trim().length === 0}
+          disabled={
+            submitting ||
+            name.trim().length === 0 ||
+            email.trim().length === 0 ||
+            password.length < 8
+          }
           className="mt-5 w-full inline-flex items-center justify-center gap-1.5 h-9 rounded text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           {submitting ? (

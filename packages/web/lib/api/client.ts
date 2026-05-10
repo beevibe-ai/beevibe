@@ -257,6 +257,7 @@ export interface RuntimesListResponse {
 export interface SignupInput {
   name: string;
   email: string;
+  password: string;
 }
 
 export interface SignupResponse {
@@ -493,10 +494,26 @@ export const api = {
     /**
      * Self-serve signup. Mints a person + their primary team agent +
      * a fresh bv_u_ key. Unauthenticated. Idempotent on email — if a
-     * person with that email already exists, returns their existing key.
+     * person with that email already exists AND the password matches,
+     * returns their existing key. If the email exists with a different
+     * password, returns 401 (no leak about email existence).
      */
     create: (input: SignupInput) =>
       fetchJson<SignupResponse>("/signup", { method: "POST", body: input }),
+  },
+  signin: {
+    /**
+     * Credential exchange. Returns the existing bv_u_ key on
+     * {email, password} match. Pure-key sign-in (paste the bv_u_)
+     * remains available on the same form for legacy users whose
+     * accounts predate passwords.
+     */
+    create: (input: { email: string; password: string }) =>
+      fetchJson<{
+        ok: true;
+        api_key: string;
+        person: { id: string; name: string; email: string | null };
+      }>("/signin", { method: "POST", body: input }),
   },
   me: {
     /** Identity + onboarding state for the welcome flow. */

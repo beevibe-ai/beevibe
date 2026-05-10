@@ -23,7 +23,13 @@ import {
   type CoreMemoryBlockRepository,
   type PersonRepository,
 } from "@beevibe/core";
-import { provisionAgent, provisionUser } from "@beevibe/core/auth";
+import {
+  hashPassword,
+  provisionAgent,
+  provisionUser,
+  validatePasswordShape,
+  verifyPassword,
+} from "@beevibe/core/auth";
 
 export interface SignupRoutesDeps {
   agentRepo: AgentRepository;
@@ -58,6 +64,7 @@ export function createSignupRouter(deps: SignupRoutesDeps): Router {
       const name = typeof body.name === "string" ? body.name.trim() : "";
       const email =
         typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
+      const password = typeof body.password === "string" ? body.password : "";
 
       if (!name || !NAME_RE.test(name)) {
         res.status(400).json({
@@ -71,22 +78,50 @@ export function createSignupRouter(deps: SignupRoutesDeps): Router {
         res.status(400).json({ error: "invalid_email", message: "valid email required" });
         return;
       }
+      const pwdCheck = validatePasswordShape(password);
+      if (!pwdCheck.ok) {
+        res.status(400).json({
+          error: "invalid_password",
+          message: `password ${pwdCheck.reason}`,
+        });
+        return;
+      }
 
-      // Idempotent on email — return the existing key if there's already
-      // a person with this email + ensure they have a team agent.
+      // Idempotent on email. Two cases when the row already exists:
+      //   1. has password_hash → verify the supplied password matches
+      //      before returning the key (otherwise this would be a
+      //      credential-stuffing oracle for any known email)
+      //   2. no password_hash (legacy / seeded user) → set the supplied
+      //      password as their first password and return the key
       const existing = await deps.personRepo.findByEmail(email);
       let key: string;
       let person_id: string;
       let person_name: string;
 
       if (existing?.api_key) {
+        if (existing.password_hash) {
+          const match = await verifyPassword(password, existing.password_hash);
+          if (!match) {
+            res.status(401).json({
+              error: "invalid_credentials",
+              message: "An account exists for that email, but the password didn't match.",
+            });
+            return;
+          }
+        } else {
+          // First password set on a legacy account — adopt this password.
+          await deps.personRepo.update(existing.id, {
+            password_hash: await hashPassword(password),
+          });
+        }
         key = existing.api_key;
         person_id = existing.id;
         person_name = existing.name;
       } else {
+        const password_hash = await hashPassword(password);
         const result = await provisionUser(
           { personRepo: deps.personRepo },
-          { id: makePersonId(), name, email },
+          { id: makePersonId(), name, email, password_hash },
         );
         key = result.apiKey;
         person_id = result.person.id;

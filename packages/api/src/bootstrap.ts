@@ -44,6 +44,7 @@ import { createStreamRouter } from "./routes/stream.js";
 import { createChatRouter } from "./routes/chat.js";
 import { createRuntimesRouter } from "./routes/runtimes.js";
 import { createSignupRouter } from "./routes/signup.js";
+import { createSigninRouter } from "./routes/signin.js";
 import { createMeRouter } from "./routes/me.js";
 import { createRoomRouter } from "./routes/room.js";
 import { createStreamAuthMiddleware } from "./auth/middleware.js";
@@ -303,6 +304,13 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     enabled: process.env.BEEVIBE_SIGNUP_ENABLED !== "0",
   });
   server.getApp().use(signupRouter);
+
+  // POST /signin — credential exchange. Same gate as signup.
+  const signinRouter = createSigninRouter({
+    personRepo,
+    enabled: process.env.BEEVIBE_SIGNUP_ENABLED !== "0",
+  });
+  server.getApp().use(signinRouter);
 
   // M8.2 read-only view routes — bv_u_ only. Direct-to-pool composers in
   // src/views/* return UI-shaped DTOs; no core repos touched on the read

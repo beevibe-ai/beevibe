@@ -42,10 +42,16 @@ export class PostgresPersonRepository implements PersonRepository {
 
   async create(input: NewPerson): Promise<Person> {
     const { rows } = await this.pool.query<PersonRow>(
-      `INSERT INTO person (id, name, email, api_key)
-       VALUES ($1, $2, $3, $4)
+      `INSERT INTO person (id, name, email, api_key, password_hash)
+       VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
-      [input.id, input.name, input.email ?? null, input.api_key ?? null],
+      [
+        input.id,
+        input.name,
+        input.email ?? null,
+        input.api_key ?? null,
+        input.password_hash ?? null,
+      ],
     );
     return rowToPerson(rows[0]!);
   }
@@ -55,6 +61,7 @@ export class PostgresPersonRepository implements PersonRepository {
       name: "name",
       email: "email",
       api_key: "api_key",
+      password_hash: "password_hash",
       onboarding_completed_at: "onboarding_completed_at",
     });
 
@@ -85,6 +92,7 @@ function rowToPerson(row: PersonRow): Person {
     name: row.name,
     email: row.email ?? undefined,
     api_key: row.api_key ?? undefined,
+    password_hash: row.password_hash ?? undefined,
     onboarding_completed_at: row.onboarding_completed_at ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
