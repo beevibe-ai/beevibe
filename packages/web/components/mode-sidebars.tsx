@@ -8,6 +8,7 @@ import {
   Bot,
   Check,
   CheckCircle2,
+  Cpu,
   GaugeCircle,
   Inbox,
   Loader2,
@@ -72,6 +73,7 @@ const AGENTS_SUBNAV = [
   { href: "/memory", label: "Memory", icon: Sparkles },
   { href: "/mesh", label: "Mesh", icon: Network },
   { href: "/promotions", label: "Promotions", icon: TrendingUp },
+  { href: "/runtimes", label: "Runtimes", icon: Cpu },
 ] as const;
 
 export function AgentsSidebar({ pathname }: { pathname: string }) {
