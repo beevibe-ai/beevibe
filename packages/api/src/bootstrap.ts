@@ -311,6 +311,8 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     authMiddleware: server.getAuthMiddleware(),
     pool,
     agentRepo,
+    runtimeRepo,
+    daemonRepo,
   });
   server.getApp().use(viewRouter);
 

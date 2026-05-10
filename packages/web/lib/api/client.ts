@@ -364,6 +364,17 @@ export const api = {
         `/agent/${encodeURIComponent(id)}/archive`,
         { method: "POST", body: {} },
       ),
+    /**
+     * Re-bind the agent's preferred runtime. Pass null to unbind (the agent
+     * stops running on a specific daemon — task / chat sessions then sit
+     * pending until rebound; mesh asks fall back to the server-fallback
+     * worker).
+     */
+    setRuntime: (id: string, runtimeId: string | null) =>
+      fetchJson<{ ok: true; preferred_runtime_id: string | null }>(
+        `/agent/${encodeURIComponent(id)}/runtime`,
+        { method: "POST", body: { runtime_id: runtimeId } },
+      ),
   },
   runtimes: {
     list: (opts: ReadOptions = {}) =>

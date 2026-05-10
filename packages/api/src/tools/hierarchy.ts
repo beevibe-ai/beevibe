@@ -1127,6 +1127,12 @@ function createSubordinateAgentTool(
             parent_agent_id: parent.id,
             hierarchy_level: "ic",
             runtime_config,
+            // Same human, same machine — the child's CLI should run on
+            // the same daemon as its parent. The user can rebind via the
+            // agent detail page if they want it on a different runtime.
+            ...(parent.preferred_runtime_id
+              ? { preferred_runtime_id: parent.preferred_runtime_id }
+              : {}),
           },
         );
 

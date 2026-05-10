@@ -3,11 +3,11 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, AlertTriangle, Bot, Archive } from "lucide-react";
 import { useAgent } from "@/lib/hooks/use-agents";
 import { isApiConfigured } from "@/lib/api/config";
-import { api } from "@/lib/api/client";
+import { api, type RuntimesListResponse } from "@/lib/api/client";
 import { queryKeys } from "@/lib/hooks/keys";
 import { Avatar } from "@/components/avatar";
 import { HierChip } from "@/components/hier-chip";
@@ -200,6 +200,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         </div>
 
         <aside className="col-span-1 space-y-4">
+          <RuntimePicker agent={agent} />
           {agent.outgoing_mesh_hints.length ? (
             <section className="rounded-lg border border-border bg-card p-4">
               <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
@@ -251,5 +252,83 @@ function RecentSessionRow({ session }: { session: RecentSession }) {
       ) : null}
       <span className="text-xs text-muted-foreground tabular-nums shrink-0">{session.age}</span>
     </li>
+  );
+}
+
+function RuntimePicker({ agent }: { agent: AgentDetail }) {
+  const queryClient = useQueryClient();
+  const runtimesQuery = useQuery<RuntimesListResponse>({
+    queryKey: queryKeys.runtimes.list(),
+    queryFn: ({ signal }) => api.runtimes.list({ signal }),
+    staleTime: 30_000,
+  });
+  const mutation = useMutation({
+    mutationFn: (runtimeId: string | null) => api.agents.setRuntime(agent.id, runtimeId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+    },
+  });
+
+  const allRuntimes =
+    runtimesQuery.data?.daemons.flatMap((d) =>
+      d.runtimes.map((r) => ({
+        id: r.id,
+        cli: r.cli,
+        cli_version: r.cli_version,
+        online: r.online,
+        device: d.device_name ?? d.external_id,
+      })),
+    ) ?? [];
+
+  const value = agent.preferred_runtime_id ?? "";
+
+  return (
+    <section className="rounded-lg border border-border bg-card p-4">
+      <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
+        Runtime
+      </h3>
+      {runtimesQuery.isLoading ? (
+        <p className="text-xs text-muted-foreground italic">Loading runtimes…</p>
+      ) : allRuntimes.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          No daemons registered yet.{" "}
+          <Link href="/runtimes" className="underline hover:text-foreground">
+            Set up a daemon
+          </Link>
+          .
+        </p>
+      ) : (
+        <>
+          <select
+            value={value}
+            disabled={mutation.isPending}
+            onChange={(e) => {
+              const next = e.target.value === "" ? null : e.target.value;
+              mutation.mutate(next);
+            }}
+            className="w-full text-sm rounded border border-border bg-background px-2 py-1.5 cursor-pointer disabled:opacity-50"
+          >
+            <option value="">— unbound —</option>
+            {allRuntimes.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.device} · {r.cli}
+                {r.cli_version ? ` ${r.cli_version}` : ""}
+                {r.online ? " (online)" : " (offline)"}
+              </option>
+            ))}
+          </select>
+          {mutation.isError ? (
+            <p className="text-xs text-destructive mt-1.5">
+              Couldn&apos;t update runtime.
+            </p>
+          ) : null}
+          <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+            The agent runs on this daemon&apos;s CLI. Unbinding makes task / chat
+            sessions sit pending until rebound; mesh asks fall back to the
+            server.
+          </p>
+        </>
+      )}
+    </section>
   );
 }
