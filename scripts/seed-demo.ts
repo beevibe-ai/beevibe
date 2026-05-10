@@ -270,15 +270,22 @@ async function main(): Promise<void> {
       if (existingPerson?.api_key) {
         personId = existingPerson.id;
         apiKey = existingPerson.api_key;
-        // Backfill: existing persons (provisioned before password auth)
-        // land here without password_hash. Set the seed password so they
-        // can sign in via email + password instead of paste-key.
+        // Backfill on existing personas:
+        //   - password_hash if they predate password auth
+        //   - onboarding_completed_at so they skip the welcome wizard
+        //     (they already have a full team + ICs + tasks; the wizard
+        //     would walk them through "set up your team" which is wrong)
+        const patch: { password_hash?: string; onboarding_completed_at?: Date } = {};
         if (!existingPerson.password_hash) {
-          await personRepo.update(personId, {
-            password_hash: await hashPassword(SEED_PASSWORD),
-          });
+          patch.password_hash = await hashPassword(SEED_PASSWORD);
+        }
+        if (!existingPerson.onboarding_completed_at) {
+          patch.onboarding_completed_at = new Date();
+        }
+        if (Object.keys(patch).length > 0) {
+          await personRepo.update(personId, patch);
           console.log(
-            `  ${green("✓")} ${spec.name} ${dim(personId)} ${dim("(existing, password set)")}`,
+            `  ${green("✓")} ${spec.name} ${dim(personId)} ${dim(`(existing, backfilled: ${Object.keys(patch).join(", ")})`)}`,
           );
         } else {
           console.log(`  ${green("✓")} ${spec.name} ${dim(personId)} ${dim("(existing)")}`);
@@ -295,6 +302,9 @@ async function main(): Promise<void> {
         );
         personId = result.person.id;
         apiKey = result.apiKey;
+        // Mark onboarding done so the new persona drops straight into
+        // /chat instead of /welcome (consistent with backfill above).
+        await personRepo.update(personId, { onboarding_completed_at: new Date() });
         console.log(`  ${green("+")} ${spec.name} ${dim(personId)} ${dim("(new)")}`);
       }
 
