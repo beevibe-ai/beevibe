@@ -106,13 +106,9 @@ jobs:
   npm-publish:
     needs: build-binaries
     runs-on: ubuntu-latest
-    # `id-token: write` is what makes npm Trusted Publishing work — the
-    # GitHub Actions runner mints a short-lived OIDC token, npm verifies
-    # the token's `repository` + `workflow` claims against the trusted
-    # publisher configured for @beevibe/daemon, and authenticates the
-    # publish without any long-lived token in our secrets. Same token
-    # is used for the provenance attestation that ships with the
-    # published tarball.
+    # `id-token: write` serves two purposes at once: npm Trusted Publishing
+    # auth (no NPM_TOKEN needed) and the provenance attestation that ships
+    # with the published tarball.
     permissions:
       contents: read
       id-token: write
