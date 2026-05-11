@@ -176,12 +176,40 @@ function IntroStep({ onNext }: { onNext: () => void }) {
 
 // ── Step 2: install daemon — show command, poll until it appears ──────
 
+type InstallChannel = "brew" | "npx" | "direct";
+
+interface InstallOption {
+  id: InstallChannel;
+  label: string;
+  /** Short subtitle shown under the label in the tab strip. */
+  hint: string;
+}
+
+const INSTALL_OPTIONS: readonly InstallOption[] = [
+  { id: "brew", label: "Homebrew", hint: "macOS" },
+  { id: "npx", label: "npx", hint: "any platform with Node" },
+  { id: "direct", label: "Direct download", hint: "advanced" },
+];
+
+/**
+ * Detect the user's OS from navigator.userAgent so we default the tab
+ * to whatever is most natural for them. Falls back to `npx` (universal).
+ * Runs once on mount — userAgent doesn't change for the page lifetime.
+ */
+function detectDefaultChannel(): InstallChannel {
+  if (typeof navigator === "undefined") return "npx";
+  const ua = navigator.userAgent;
+  if (/Mac OS X|Macintosh/i.test(ua)) return "brew";
+  return "npx";
+}
+
 function InstallStep({ onDaemonReady }: { onDaemonReady: () => void }) {
   const userKey = typeof window !== "undefined" ? getUserKey() : null;
   const apiUrl = apiBaseUrl ?? "http://localhost:3000";
+  const keyOrPlaceholder = userKey ?? "<your-key>";
+  const setupArgs = `setup --api ${apiUrl} --user-token ${keyOrPlaceholder}`;
 
-  const setupCmd = `pnpm daemon setup --api ${apiUrl} --user-token ${userKey ?? "<your-key>"}`;
-  const startCmd = `pnpm daemon start`;
+  const [channel, setChannel] = useState<InstallChannel>(() => detectDefaultChannel());
 
   // Poll /runtimes every 3s until at least one daemon shows up.
   const query = useQuery<RuntimesListResponse>({
@@ -199,13 +227,80 @@ function InstallStep({ onDaemonReady }: { onDaemonReady: () => void }) {
         <h2 className="text-xl font-semibold">Install the daemon</h2>
         <p className="text-sm text-muted-foreground max-w-prose mx-auto">
           The daemon spawns your agents&apos; CLI subprocesses on your machine.
-          Run these two commands in a new terminal:
+          Pick the install path that fits your setup:
         </p>
       </div>
 
-      <div className="space-y-3 max-w-xl mx-auto">
-        <CommandBlock label="1. Register" command={setupCmd} />
-        <CommandBlock label="2. Start (long-running)" command={startCmd} />
+      <div className="max-w-xl mx-auto space-y-3">
+        <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
+          {INSTALL_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setChannel(opt.id)}
+              className={cn(
+                "flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+                channel === opt.id
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <div>{opt.label}</div>
+              <div className="text-[10px] font-normal opacity-80 mt-0.5">{opt.hint}</div>
+            </button>
+          ))}
+        </div>
+
+        {channel === "brew" ? (
+          <div className="space-y-2">
+            <CommandBlock
+              label="1. Install via Homebrew"
+              command="brew install beevibe-ai/tap/beevibe-daemon"
+            />
+            <CommandBlock label="2. Register" command={`beevibe-daemon ${setupArgs}`} />
+            <CommandBlock label="3. Start (long-running)" command="beevibe-daemon start" />
+          </div>
+        ) : null}
+
+        {channel === "npx" ? (
+          <div className="space-y-2">
+            <CommandBlock
+              label="1. Register (downloads daemon on first run)"
+              command={`npx -y @beevibe/daemon@latest ${setupArgs}`}
+            />
+            <CommandBlock
+              label="2. Start (long-running)"
+              command="npx -y @beevibe/daemon@latest start"
+            />
+          </div>
+        ) : null}
+
+        {channel === "direct" ? (
+          <div className="space-y-2">
+            <p className="text-xs text-muted-foreground leading-relaxed">
+              Pick the binary that matches your platform from{" "}
+              <a
+                href="https://github.com/beevibe-ai/beevibe/releases/latest"
+                target="_blank"
+                rel="noreferrer noopener"
+                className="underline hover:text-foreground"
+              >
+                the latest GitHub release
+              </a>
+              {" "}— darwin-arm64, darwin-x64, linux-x64, or linux-arm64. Then:
+            </p>
+            <CommandBlock
+              label="1. Download (substitute your platform)"
+              command={
+                'curl -fsSL -o ~/.local/bin/beevibe-daemon \\\n' +
+                '  "https://github.com/beevibe-ai/beevibe/releases/latest/download/beevibe-daemon-darwin-arm64" \\\n' +
+                '  && chmod +x ~/.local/bin/beevibe-daemon'
+              }
+            />
+            <CommandBlock label="2. Register" command={`beevibe-daemon ${setupArgs}`} />
+            <CommandBlock label="3. Start (long-running)" command="beevibe-daemon start" />
+          </div>
+        ) : null}
       </div>
 
       <div
