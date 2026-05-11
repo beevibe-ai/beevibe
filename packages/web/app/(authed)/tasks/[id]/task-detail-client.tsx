@@ -2,7 +2,13 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { ArrowLeft, AlertTriangle, FileText, ListChecks, Terminal } from "lucide-react";
+import {
+  ArrowLeft,
+  AlertTriangle,
+  FileText,
+  ListChecks,
+  Terminal,
+} from "lucide-react";
 import { useTask } from "@/lib/hooks/use-tasks";
 import {
   useApproveTask,
@@ -11,15 +17,17 @@ import {
 } from "@/lib/hooks/use-task-mutations";
 import { isApiConfigured } from "@/lib/api/config";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
+import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { DetailShell } from "@/components/detail/detail-shell";
 import { FooterField } from "@/components/detail/footer-field";
 import { HierChip } from "@/components/hier-chip";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
-import { RichTextRender } from "@/components/rich-text";
+import { richTextToMarkdown } from "@/components/rich-text";
 import { formatRelativeTime, shortId } from "@/lib/format";
 import type { TaskDetail, TaskDetailSessionRow } from "@/lib/api/types";
+import type { WorkProduct } from "@beevibe/core";
 
 const TasksBackLink = () => (
   <Link
@@ -204,10 +212,10 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
               Description
             </h2>
             {task.description?.length ? (
-              <div className="prose prose-sm max-w-none text-foreground whitespace-pre-wrap">
-                {task.description.map((part, i) => (
-                  <RichTextRender key={i} value={part} />
-                ))}
+              <div className="text-foreground/90">
+                <ChatMarkdown
+                  content={task.description.map(richTextToMarkdown).join("\n\n")}
+                />
               </div>
             ) : (
               <p className="text-sm text-muted-foreground italic">No description.</p>
@@ -219,8 +227,8 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
               <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
                 Result summary
               </h2>
-              <div className="text-sm text-foreground whitespace-pre-wrap">
-                <RichTextRender value={task.result_summary} />
+              <div className="text-foreground/90">
+                <ChatMarkdown content={richTextToMarkdown(task.result_summary)} />
               </div>
             </section>
           ) : null}
@@ -237,23 +245,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
             ) : (
               <ul className="space-y-2">
                 {task.work_products.map((wp) => (
-                  <li
-                    key={wp.id}
-                    className="rounded-lg border border-border bg-card p-3 flex items-start gap-3"
-                  >
-                    <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-                    <div className="flex-1 min-w-0">
-                      <div className="text-sm font-medium truncate">{wp.title}</div>
-                      {wp.summary ? (
-                        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">
-                          {wp.summary}
-                        </p>
-                      ) : null}
-                    </div>
-                    <span className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0">
-                      {wp.type.replace(/_/g, " ")}
-                    </span>
-                  </li>
+                  <WorkProductCard key={wp.id} wp={wp} />
                 ))}
               </ul>
             )}
@@ -334,6 +326,32 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         ) : null}
       </footer>
     </DetailShell>
+  );
+}
+
+function WorkProductCard({ wp }: { wp: WorkProduct }) {
+  // Card → dedicated /work-products/[id] page where the body renders
+  // full-width with markdown. We used to inline-expand here, but the
+  // briefing bodies are real documents (audits, reports) — they want a
+  // page, not a sliver of a card.
+  return (
+    <li>
+      <Link
+        href={`/work-products/${wp.id}`}
+        className="rounded-lg border border-border bg-card p-3 flex items-start gap-3 hover:bg-secondary/30 transition-colors"
+      >
+        <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-medium">{wp.title}</div>
+          {wp.summary ? (
+            <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{wp.summary}</p>
+          ) : null}
+        </div>
+        <span className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 mt-0.5">
+          {wp.type.replace(/_/g, " ")}
+        </span>
+      </Link>
+    </li>
   );
 }
 

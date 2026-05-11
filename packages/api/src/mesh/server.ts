@@ -125,6 +125,7 @@ export class MeshServer {
       targetAgentId: toAgentId,
       type: "mesh_ask",
       intent,
+      callerAgentId: fromAgentId,
     });
 
     return this.awaitResolver<AskResponse>(`${requestId}:asker`, DEFAULT_ASK_TIMEOUT_MS);
@@ -224,6 +225,7 @@ export class MeshServer {
       type: "mesh_negotiate",
       intent,
       sessionId: counterpartySid,
+      callerAgentId: fromAgentId,
     });
 
     return this.awaitResolver<NegotiateResponse | EscalatedSentinel>(
@@ -400,6 +402,7 @@ export class MeshServer {
       targetAgentId: parentAgentId,
       type: "blocker",
       intent,
+      callerAgentId: fromAgentId,
     });
   }
 
@@ -441,6 +444,8 @@ export class MeshServer {
     type: "mesh_ask" | "mesh_negotiate" | "blocker";
     intent: string;
     sessionId?: string;
+    /** Set so session.caller_agent_id is populated (Phase 10). */
+    callerAgentId?: string;
   }): Promise<void> {
     void this.deps.dispatchService
       .dispatchTask({
@@ -449,6 +454,7 @@ export class MeshServer {
         reason: { kind: "fresh" },
         type: opts.type,
         sessionIdOverride: opts.sessionId,
+        callerAgentId: opts.callerAgentId,
       })
       .catch((err: unknown) => {
         console.error(

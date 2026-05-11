@@ -32,4 +32,41 @@ export const queryKeys = {
     all: ["dashboard"] as const,
     summary: () => ["dashboard", "summary"] as const,
   },
+  me: {
+    all: ["me"] as const,
+    self: () => ["me", "self"] as const,
+    health: () => ["me", "health"] as const,
+  },
+  activity: {
+    all: ["activity"] as const,
+    feed: () => ["activity", "feed"] as const,
+  },
+  inbox: {
+    all: ["inbox"] as const,
+    list: () => ["inbox", "list"] as const,
+  },
+  agentNetwork: {
+    all: ["agent-network"] as const,
+    self: () => ["agent-network", "self"] as const,
+  },
+  workProducts: {
+    all: ["work-products"] as const,
+    detail: (id: string) => ["work-products", "detail", id] as const,
+  },
+  rooms: {
+    all: ["rooms"] as const,
+    list: () => ["rooms", "list"] as const,
+    detail: (id: string) => ["rooms", "detail", id] as const,
+  },
+  runtimes: {
+    all: ["runtimes"] as const,
+    list: () => ["runtimes", "list"] as const,
+  },
+  chat: {
+    all: ["chat"] as const,
+    /** Per-conversation history. `undefined` = the most recent conversation. */
+    history: (conversationId?: string) =>
+      ["chat", "history", conversationId ?? "<latest>"] as const,
+    conversations: () => ["chat", "conversations"] as const,
+  },
 } as const;

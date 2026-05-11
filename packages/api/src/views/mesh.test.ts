@@ -4,10 +4,11 @@
  * tests; these stay DB-free.
  *
  * Query order in the implementation:
- *   1) ASKS_SQL    → recent + in-flight negotiations
- *   2) NODES_SQL   → distinct involved agents
- *   3) EDGES_SQL   → aggregated initiator → counterparty pairs
- *   4) SUMMARY_SQL → total counts
+ *   1) NEGOTIATIONS_SQL   → recent + in-flight negotiations
+ *   2) MESH_SESSIONS_SQL  → mesh_ask + blocker session rows
+ *   3) NODES_SQL          → distinct involved agents
+ *   4) EDGES_SQL          → aggregated initiator → counterparty pairs
+ *   5) SUMMARY_SQL        → total counts
  */
 import { describe, it, expect } from "vitest";
 import { getMeshOverview } from "./mesh.js";
@@ -29,7 +30,7 @@ const baseAsk = {
 
 describe("getMeshOverview — asks", () => {
   it("returns empty arrays + zero summary when DB is empty", async () => {
-    const pool = makeMockPool([[], [], [], []]);
+    const pool = makeMockPool([[], [], [], [], []]);
     const overview = await getMeshOverview(pool);
     expect(overview.asks).toEqual([]);
     expect(overview.graph.nodes).toEqual([]);
@@ -40,6 +41,7 @@ describe("getMeshOverview — asks", () => {
   it("maps an active negotiation to in_flight + omits completed_at", async () => {
     const pool = makeMockPool([
       [{ ...baseAsk, status: "active" }],
+      [],
       [],
       [],
       [],
@@ -67,6 +69,7 @@ describe("getMeshOverview — asks", () => {
       [],
       [],
       [],
+      [],
     ]);
     const { asks } = await getMeshOverview(pool);
     const statusByid = Object.fromEntries(asks.map((a) => [a.id, a.status]));
@@ -85,6 +88,7 @@ describe("getMeshOverview — asks", () => {
       [],
       [],
       [],
+      [],
     ]);
     const { asks } = await getMeshOverview(pool);
     expect(asks[0]?.completed_at).toEqual(new Date("2026-04-30T11:30:00Z"));
@@ -96,15 +100,139 @@ describe("getMeshOverview — asks", () => {
       [],
       [],
       [],
+      [],
     ]);
     const { asks } = await getMeshOverview(pool);
     expect(asks[0]?.intent).toBe("(no message)");
   });
 });
 
+describe("getMeshOverview — mesh-ask + blocker sessions", () => {
+  it("maps a running mesh_ask session to type='ask' + extracts inner intent", async () => {
+    const pool = makeMockPool([
+      [],
+      [
+        {
+          id: "sess_ask01",
+          caller_id: "agt_a",
+          caller_label: "Alice",
+          target_id: "agt_b",
+          target_label: "Bob",
+          kind: "mesh_ask",
+          session_status: "running",
+          source_task_id: "task_1",
+          started_at: new Date("2026-04-30T12:00:00Z"),
+          completed_at: null,
+          intent:
+            '<mesh-ask request_id="req_1" from="agt_a">What is the SLA?</mesh-ask>',
+        },
+      ],
+      [],
+      [],
+      [],
+    ]);
+    const { asks } = await getMeshOverview(pool);
+    expect(asks).toHaveLength(1);
+    expect(asks[0]).toMatchObject({
+      type: "ask",
+      status: "in_flight",
+      caller_label: "Alice",
+      target_label: "Bob",
+      intent: "What is the SLA?",
+    });
+    expect(asks[0]?.completed_at).toBeUndefined();
+  });
+
+  it("maps a completed blocker session to type='blocker' + sets completed_at", async () => {
+    const pool = makeMockPool([
+      [],
+      [
+        {
+          id: "sess_blk01",
+          caller_id: "agt_c",
+          caller_label: "Charlie",
+          target_id: "agt_team",
+          target_label: "Team",
+          kind: "blocker",
+          session_status: "completed",
+          source_task_id: "task_42",
+          started_at: new Date("2026-04-30T13:00:00Z"),
+          completed_at: new Date("2026-04-30T13:10:00Z"),
+          intent:
+            '<mesh-blocker from="agt_c" task_id="task_42">\nDB credentials expired.\n</mesh-blocker>\n<context>...</context>',
+        },
+      ],
+      [],
+      [],
+      [],
+    ]);
+    const { asks } = await getMeshOverview(pool);
+    expect(asks).toHaveLength(1);
+    expect(asks[0]).toMatchObject({
+      type: "blocker",
+      status: "succeeded",
+      intent: "DB credentials expired.",
+    });
+    expect(asks[0]?.completed_at).toEqual(new Date("2026-04-30T13:10:00Z"));
+  });
+
+  it("drops session rows where caller_id failed to resolve to an agent", async () => {
+    const pool = makeMockPool([
+      [],
+      [
+        {
+          id: "sess_orphan",
+          caller_id: null,
+          caller_label: null,
+          target_id: "agt_b",
+          target_label: "Bob",
+          kind: "mesh_ask",
+          session_status: "running",
+          source_task_id: null,
+          started_at: new Date("2026-04-30T12:00:00Z"),
+          completed_at: null,
+          intent: "<mesh-ask>orphaned</mesh-ask>",
+        },
+      ],
+      [],
+      [],
+      [],
+    ]);
+    const { asks } = await getMeshOverview(pool);
+    expect(asks).toEqual([]);
+  });
+
+  it("merges negotiation + session asks sorted by started_at desc", async () => {
+    const pool = makeMockPool([
+      [{ ...baseAsk, id: "neg_old", status: "active", started_at: new Date("2026-04-30T10:00:00Z") }],
+      [
+        {
+          id: "sess_new",
+          caller_id: "agt_a",
+          caller_label: "Alice",
+          target_id: "agt_b",
+          target_label: "Bob",
+          kind: "mesh_ask",
+          session_status: "running",
+          source_task_id: null,
+          started_at: new Date("2026-04-30T14:00:00Z"),
+          completed_at: null,
+          intent: '<mesh-ask from="agt_a">newer ask</mesh-ask>',
+        },
+      ],
+      [],
+      [],
+      [],
+    ]);
+    const { asks } = await getMeshOverview(pool);
+    expect(asks.map((a) => a.id)).toEqual(["sess_new", "neg_old"]);
+  });
+});
+
 describe("getMeshOverview — nodes + edges + summary", () => {
   it("maps node rows preserving hierarchy and active state", async () => {
     const pool = makeMockPool([
+      [],
       [],
       [
         { id: "agt_a", label: "Alice", hier: "team", is_active: true },
@@ -124,6 +252,7 @@ describe("getMeshOverview — nodes + edges + summary", () => {
     const pool = makeMockPool([
       [],
       [],
+      [],
       [
         { from_id: "agt_a", to_id: "agt_b", count: 3, has_live: true },
         { from_id: "agt_a", to_id: "agt_c", count: 1, has_live: false },
@@ -139,6 +268,7 @@ describe("getMeshOverview — nodes + edges + summary", () => {
 
   it("forwards summary counts", async () => {
     const pool = makeMockPool([
+      [],
       [],
       [],
       [],

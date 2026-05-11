@@ -18,7 +18,9 @@
     "migrate:test": "node-pg-migrate --envPath .env -d DATABASE_URL_TEST",
     "install-skills": "tsx scripts/install-skills.ts",
     "bootstrap": "tsx scripts/init.ts",
-    "provision-user": "tsx scripts/provision-user.ts"
+    "provision-user": "tsx scripts/provision-user.ts",
+    "seed-demo": "tsx scripts/seed-demo.ts",
+    "daemon": "tsx packages/daemon/src/main.ts"
   },
   "devDependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",

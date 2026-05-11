@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
-import { HomeClient } from "./home-client";
+import { ChatClient } from "./chat/chat-client";
 
-export const metadata: Metadata = { title: "Home" };
+export const metadata: Metadata = { title: "Chat" };
+export const dynamic = "force-dynamic";
 
 export default function HomePage() {
-  return <HomeClient />;
+  return <ChatClient />;
 }

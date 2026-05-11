@@ -20,6 +20,7 @@ export {
   ONBOARDING_DIRECTIVES,
   composeIntent,
   composeSystemPromptAppend,
+  teamAgentRoutingDirective,
 } from "./spawn-prep.js";
 
 export interface AgentSessionDeps {
@@ -76,6 +77,19 @@ export interface AgentSessionRunInput {
    * (retry → hook → another postDispatchCheck → another retry → …).
    */
   skipOnComplete?: boolean;
+  /**
+   * Extra system-prompt content appended after the agent's baseline
+   * system_prompt_addition + memory briefing. Used to inject per-call
+   * directives (room conventions, chat-mode rules, etc.) without
+   * mutating the agent's persistent persona.
+   */
+  extraSystemPromptAppend?: string;
+  /**
+   * Stamp this session as belonging to a Room — events fan out via SSE
+   * to every room member rather than just the agent's owner, and
+   * mesh-spawned children inherit the same room_id.
+   */
+  roomId?: string;
 }
 
 /**
@@ -127,6 +141,7 @@ export class AgentSession {
         // default is 'pending' (every insert is explicit per Phase 4).
         status: "running",
         workspace_path: input.workspace.path,
+        ...(input.roomId ? { room_id: input.roomId } : {}),
         started_at: new Date(),
       });
     }
@@ -150,6 +165,7 @@ export class AgentSession {
     const system_prompt_append = composeSystemPromptAppend(
       agent.runtime_config.system_prompt_addition,
       briefing.systemPromptAppend,
+      input.extraSystemPromptAppend ? { extra: input.extraSystemPromptAppend } : {},
     );
     const intent = composeIntent(input.intent, briefing.userMessagePrefix);
 

@@ -6,6 +6,7 @@ export interface PersonRow {
   name: string;
   email: string | null;
   api_key: string | null;
+  password_hash: string | null;
   onboarding_completed_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -24,6 +25,7 @@ export interface AgentRow {
   max_mesh_sessions: number | null;
   max_negotiation_rounds: number | null;
   preferred_runtime_id: string | null;
+  archived_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -67,6 +69,8 @@ export interface SessionRow {
   runtime_id: string | null;
   spawn_mode: SessionSpawnMode;
   last_event_at: Date | null;
+  room_id: string | null;
+  caller_agent_id: string | null;
   started_at: Date | null;
   completed_at: Date | null;
   created_at: Date;

@@ -1,9 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, AlertTriangle, Bot } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft, AlertTriangle, Bot, Archive } from "lucide-react";
 import { useAgent } from "@/lib/hooks/use-agents";
 import { isApiConfigured } from "@/lib/api/config";
+import { api, type RuntimesListResponse } from "@/lib/api/client";
+import { queryKeys } from "@/lib/hooks/keys";
 import { Avatar } from "@/components/avatar";
 import { HierChip } from "@/components/hier-chip";
 import { CoreBlockCard } from "@/components/agents/core-block-card";
@@ -81,6 +86,17 @@ export function AgentDetailClient({ agentId }: { agentId: string }) {
 function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
   const initial = agent.display_name.charAt(0).toUpperCase();
   const presence = agent.metrics.sessions > 0 ? "idle" : "off";
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const archiveMutation = useMutation({
+    mutationFn: () => api.agents.archive(agent.id),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+      router.push("/agents");
+    },
+  });
+  const archived = Boolean(agent.archived_at);
 
   return (
     <DetailShell nav={<AgentsBackLink />}>
@@ -91,18 +107,48 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
             <div className="flex items-center gap-2 mb-1">
               <h1 className="text-xl font-semibold leading-tight">{agent.display_name}</h1>
               <HierChip hier={agent.hierarchy} />
+              {archived ? (
+                <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">
+                  archived
+                </span>
+              ) : null}
             </div>
             {agent.specialization ? (
               <p className="text-sm text-muted-foreground">{agent.specialization}</p>
             ) : null}
           </div>
-          <div className="shrink-0">
-            <button
-              type="button"
-              className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer"
-            >
-              Edit
-            </button>
+          <div className="shrink-0 flex items-center gap-2">
+            {!archived ? (
+              confirming ? (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setConfirming(false)}
+                    disabled={archiveMutation.isPending}
+                    className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => archiveMutation.mutate()}
+                    disabled={archiveMutation.isPending}
+                    className="h-8 px-3 rounded text-xs font-medium border border-destructive bg-destructive/10 text-destructive hover:bg-destructive/15 transition-colors cursor-pointer disabled:opacity-50"
+                  >
+                    {archiveMutation.isPending ? "Archiving…" : "Confirm archive"}
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setConfirming(true)}
+                  className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer inline-flex items-center gap-1"
+                >
+                  <Archive className="h-3 w-3" />
+                  Archive
+                </button>
+              )
+            ) : null}
           </div>
         </div>
 
@@ -154,6 +200,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         </div>
 
         <aside className="col-span-1 space-y-4">
+          <RuntimePicker agent={agent} />
           {agent.outgoing_mesh_hints.length ? (
             <section className="rounded-lg border border-border bg-card p-4">
               <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
@@ -182,6 +229,11 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         {agent.review_policy ? (
           <FooterField label="Review policy">{agent.review_policy}</FooterField>
         ) : null}
+        {agent.archived_at ? (
+          <FooterField label="Archived">
+            {new Date(agent.archived_at).toLocaleString()}
+          </FooterField>
+        ) : null}
       </footer>
     </DetailShell>
   );
@@ -200,5 +252,83 @@ function RecentSessionRow({ session }: { session: RecentSession }) {
       ) : null}
       <span className="text-xs text-muted-foreground tabular-nums shrink-0">{session.age}</span>
     </li>
+  );
+}
+
+function RuntimePicker({ agent }: { agent: AgentDetail }) {
+  const queryClient = useQueryClient();
+  const runtimesQuery = useQuery<RuntimesListResponse>({
+    queryKey: queryKeys.runtimes.list(),
+    queryFn: ({ signal }) => api.runtimes.list({ signal }),
+    staleTime: 30_000,
+  });
+  const mutation = useMutation({
+    mutationFn: (runtimeId: string | null) => api.agents.setRuntime(agent.id, runtimeId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+    },
+  });
+
+  const allRuntimes =
+    runtimesQuery.data?.daemons.flatMap((d) =>
+      d.runtimes.map((r) => ({
+        id: r.id,
+        cli: r.cli,
+        cli_version: r.cli_version,
+        online: r.online,
+        device: d.device_name ?? d.external_id,
+      })),
+    ) ?? [];
+
+  const value = agent.preferred_runtime_id ?? "";
+
+  return (
+    <section className="rounded-lg border border-border bg-card p-4">
+      <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
+        Runtime
+      </h3>
+      {runtimesQuery.isLoading ? (
+        <p className="text-xs text-muted-foreground italic">Loading runtimes…</p>
+      ) : allRuntimes.length === 0 ? (
+        <p className="text-xs text-muted-foreground">
+          No daemons registered yet.{" "}
+          <Link href="/runtimes" className="underline hover:text-foreground">
+            Set up a daemon
+          </Link>
+          .
+        </p>
+      ) : (
+        <>
+          <select
+            value={value}
+            disabled={mutation.isPending}
+            onChange={(e) => {
+              const next = e.target.value === "" ? null : e.target.value;
+              mutation.mutate(next);
+            }}
+            className="w-full text-sm rounded border border-border bg-background px-2 py-1.5 cursor-pointer disabled:opacity-50"
+          >
+            <option value="">— unbound —</option>
+            {allRuntimes.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.device} · {r.cli}
+                {r.cli_version ? ` ${r.cli_version}` : ""}
+                {r.online ? " (online)" : " (offline)"}
+              </option>
+            ))}
+          </select>
+          {mutation.isError ? (
+            <p className="text-xs text-destructive mt-1.5">
+              Couldn&apos;t update runtime.
+            </p>
+          ) : null}
+          <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+            The agent runs on this daemon&apos;s CLI. Unbinding makes task / chat
+            sessions sit pending until rebound; mesh asks fall back to the
+            server.
+          </p>
+        </>
+      )}
+    </section>
   );
 }

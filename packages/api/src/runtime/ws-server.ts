@@ -11,8 +11,7 @@
  * accurate against zombies behind dropped TCP.
  */
 
-import type { IncomingMessage } from "node:http";
-import type { Server } from "node:http";
+import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
 import type { LookupApiKeyDeps } from "@beevibe/core/auth";

@@ -7,7 +7,9 @@ import {
   PostgresMemoryFactRepository,
   PostgresNegotiationRepository,
   PostgresNegotiationRoundRepository,
+  PostgresAgentProvisionEventRepository,
   PostgresPersonRepository,
+  PostgresRoomRepository,
   PostgresRuntimeRepository,
   PostgresSessionEventRepository,
   PostgresSessionRepository,
@@ -30,6 +32,7 @@ import {
 import { TaskService } from "@beevibe/core/services/task-service";
 import { EscalationService } from "@beevibe/core/services/escalation-service";
 import { DispatchService } from "@beevibe/core/services/dispatch-service";
+import { DaemonOrphanReaper } from "@beevibe/core/services/orphan-reaper";
 import { MeshServer } from "./mesh/server.js";
 import { BeevibeApiServer } from "./server.js";
 import { SessionCache } from "./session-cache.js";
@@ -39,6 +42,11 @@ import { createEscalationRouter } from "./routes/escalation.js";
 import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
 import { createChatRouter } from "./routes/chat.js";
+import { createRuntimesRouter } from "./routes/runtimes.js";
+import { createSignupRouter } from "./routes/signup.js";
+import { createSigninRouter } from "./routes/signin.js";
+import { createMeRouter } from "./routes/me.js";
+import { createRoomRouter } from "./routes/room.js";
 import { createStreamAuthMiddleware } from "./auth/middleware.js";
 import { ChatResolver } from "./runtime/chat-resolver.js";
 import { DaemonHub } from "./runtime/hub.js";
@@ -76,6 +84,12 @@ export interface BootstrapConfig {
    * here into each agent's `<workspace>/.claude/skills/`.
    */
   skillsSourceDir?: string;
+  /**
+   * Extra cross-origin web origins to allow on top of the localhost
+   * defaults. Forwarded to the api server's CORS middleware. Hosted
+   * deployments typically pass `parseAllowedOrigins(process.env.BEEVIBE_CORS_ORIGINS)`.
+   */
+  corsAllowedOrigins?: readonly string[];
 }
 
 export interface BootstrapResult {
@@ -113,6 +127,8 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const negotiationRepo = new PostgresNegotiationRepository(pool);
   const negotiationRoundRepo = new PostgresNegotiationRoundRepository(pool);
   const escalationRepo = new PostgresEscalationRepository(pool);
+  const roomRepo = new PostgresRoomRepository(pool);
+  const agentProvisionEventRepo = new PostgresAgentProvisionEventRepository(pool);
 
   // External services (LLM + embeddings) for memory pipeline
   const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
@@ -154,6 +170,11 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
         daemonHub.notify(session.runtime_id, session.id);
       }
     },
+    // Mesh-typed dispatches whose preferred runtime isn't currently
+    // connected get demoted to server_fallback_mesh — the server-fallback
+    // worker picks them up with a restricted tool surface so cross-team
+    // asks don't silently break when the target's daemon is offline.
+    isRuntimeOnline: (runtimeId) => daemonHub.hasRuntime(runtimeId),
   });
 
   // M6.4 escalation service: DB-only writes for the resolution + dispatch
@@ -227,8 +248,9 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
 
   const server = new BeevibeApiServer({
     port: cfg.port ?? 3000,
-    socketTimeoutMs: cfg.socketTimeoutMs,
+    ...(cfg.socketTimeoutMs !== undefined ? { socketTimeoutMs: cfg.socketTimeoutMs } : {}),
     authDeps: { agentRepo, personRepo, daemonRepo },
+    ...(cfg.corsAllowedOrigins ? { corsAllowedOrigins: cfg.corsAllowedOrigins } : {}),
   });
 
   // Mount /mcp under the api server. Each call to createMcpRouter wires
@@ -238,6 +260,8 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     authMiddleware: server.getAuthMiddleware(),
     factStore,
     coreMemory,
+    coreMemoryRepo,
+    agentProvisionEventRepo,
     sessionCache,
     sessionRepo,
     agentRepo,
@@ -268,6 +292,26 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   });
   server.getApp().use("/escalation", escalationRouter);
 
+  // Phase 8 — self-serve signup. UNAUTHENTICATED. MUST be mounted
+  // BEFORE viewRouter (the read-only mount below has no path prefix
+  // and applies authMiddleware via `router.use`, so any request that
+  // reaches it without a Bearer token gets 401'd before its route
+  // matching runs). Set `BEEVIBE_SIGNUP_ENABLED=0` to disable.
+  const signupRouter = createSignupRouter({
+    agentRepo,
+    personRepo,
+    coreMemoryRepo,
+    enabled: process.env.BEEVIBE_SIGNUP_ENABLED !== "0",
+  });
+  server.getApp().use(signupRouter);
+
+  // POST /signin — credential exchange. Same gate as signup.
+  const signinRouter = createSigninRouter({
+    personRepo,
+    enabled: process.env.BEEVIBE_SIGNUP_ENABLED !== "0",
+  });
+  server.getApp().use(signinRouter);
+
   // M8.2 read-only view routes — bv_u_ only. Direct-to-pool composers in
   // src/views/* return UI-shaped DTOs; no core repos touched on the read
   // path so the agent-execution surface stays uncoupled from web display.
@@ -275,6 +319,8 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     authMiddleware: server.getAuthMiddleware(),
     pool,
     agentRepo,
+    runtimeRepo,
+    daemonRepo,
   });
   server.getApp().use(viewRouter);
 
@@ -327,6 +373,63 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   });
   server.getApp().use("/chat", chatRouter);
 
+  // Phase 5 Runtimes panel — bv_u_ surface for Settings → Runtimes.
+  // GET /runtimes lists daemons + runtimes (with hub-derived online
+  // status); POST /runtimes/:id/revoke revokes a daemon by id.
+  const runtimesRouter = createRuntimesRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    daemonRepo,
+    runtimeRepo,
+    hub: daemonHub,
+  });
+  server.getApp().use("/runtimes", runtimesRouter);
+
+  // Phase 8 — onboarding/identity surface (bv_u_).
+  // GET /me, POST /me/onboarding/complete, GET /health/runtime.
+  const meRouter = createMeRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    personRepo,
+    agentRepo,
+    runtimeRegistry,
+    embed,
+  });
+  server.getApp().use(meRouter);
+
+  // Phase 11 — rooms (bv_u_). Multi-tenant chat surface; @-mentioned
+  // agents run via AgentSession inline (server-side) — daemon-dispatch
+  // for room turns is a follow-up.
+  const roomRouter = createRoomRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    roomRepo,
+    agentRepo,
+    personRepo,
+    sessionRepo,
+    sessionEventRepo,
+    workspaceManager,
+    runtimeRegistry,
+    makeMemoryAgent,
+  });
+  server.getApp().use("/room", roomRouter);
+
+  // Phase 5 daemon-orphan reaper. Marks daemon-bound running sessions
+  // failed when both the session's last_event_at AND the runtime's
+  // last_heartbeat are stale. For task sessions, fires a crash_recovery
+  // dispatch pinned to the same runtime so it resumes when the daemon
+  // reconnects. For chat sessions, the onSessionReaped hook unblocks the
+  // awaiting POST /chat via the chat resolver.
+  const daemonOrphanReaper = new DaemonOrphanReaper({
+    sessionRepo,
+    taskRepo,
+    dispatchService,
+    onSessionReaped: (session) => {
+      if (session.type === "chat") {
+        chatResolver.resolve(session.id, session);
+      }
+      // Mesh waiters time out via their own awaitResolver; no fanout here.
+    },
+  });
+  void daemonOrphanReaper.start();
+
   // M8 final integration (#45): SSE live-updates flow.
   // Triggers in migration 1778300000000 emit on `bv_event`; SseListener
   // LISTENs on a dedicated pg.Client and fans out via SseManager;
@@ -347,6 +450,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
 
   const shutdown = async (): Promise<void> => {
     sessionCache.stopIdleSweep();
+    await daemonOrphanReaper.stop();
     await sseListener.stop();
     await runtimeWsServer.stop();
     await server.stop();

@@ -12,7 +12,9 @@ import {
 import type { McpCaller } from "../tools/assemble.js";
 import type { CoreMemory, FactStore, MemoryAgent } from "@beevibe/core/services/memory";
 import type {
+  AgentProvisionEventRepository,
   AgentRepository,
+  CoreMemoryBlockRepository,
   SessionRepository,
   TaskRepository,
   WorkProductRepository,
@@ -32,6 +34,10 @@ export interface McpRouterDeps {
   authMiddleware: RequestHandler;
   factStore: FactStore;
   coreMemory: CoreMemory;
+  /** Phase 9: backs `create_subordinate_agent` (seeds persona/domain blocks). */
+  coreMemoryRepo: CoreMemoryBlockRepository;
+  /** Phase 9: audit + per-parent daily cap on subordinate spawning. */
+  agentProvisionEventRepo: AgentProvisionEventRepository;
   sessionCache: SessionCache;
   sessionRepo: SessionRepository;
   agentRepo: AgentRepository;
@@ -207,11 +213,24 @@ async function handleMcpRequest(
   // the right agent's archival memory.
   const memoryAgent = deps.makeMemoryAgent(caller.agentId);
   const instructions = await buildInstructions(caller, memoryAgent);
+  // Look up the bound beevibe session so we can branch the tool surface for
+  // server-fallback-mesh spawns (restricted set; see assembleTools). Failure
+  // to load is non-fatal — we default to the full surface and the caller
+  // (the agent) wouldn't be able to hit a row it doesn't own anyway.
+  let spawnMode: import("@beevibe/core").SessionSpawnMode | undefined;
+  try {
+    const sess = await deps.sessionRepo.findById(beevibeSid);
+    spawnMode = sess?.spawn_mode;
+  } catch (err) {
+    console.warn(`[mcp] failed to load session ${beevibeSid} for spawn_mode:`, err);
+  }
   const tools = assembleTools(
-    { caller, beevibeSid },
+    { caller, beevibeSid, spawnMode },
     {
       factStore: deps.factStore,
       coreMemory: deps.coreMemory,
+      coreMemoryRepo: deps.coreMemoryRepo,
+      agentProvisionEventRepo: deps.agentProvisionEventRepo,
       agentRepo: deps.agentRepo,
       taskRepo: deps.taskRepo,
       workProductRepo: deps.workProductRepo,

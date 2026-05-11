@@ -25,6 +25,7 @@ import type { MemoryAgent } from "@beevibe/core/services/memory";
 import {
   composeIntent,
   composeSystemPromptAppend,
+  teamAgentRoutingDirective,
 } from "@beevibe/core/services/agent-session";
 import { requireDaemon, requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "./hub.js";
@@ -96,6 +97,15 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
     try {
       const { daemon, token, isNew } = await upsertDaemon(deps, req.caller!.personId, body);
       const runtimes = await upsertRuntimes(deps, daemon.id, body.runtimes);
+
+      // Convenience auto-bind: only on the first-ever registration for
+      // this daemon. After that, the caller's primary team agent is
+      // either already bound (skip the lookup) or intentionally unbound
+      // (don't re-bind on every heartbeat-style re-register).
+      if (isNew && runtimes.length > 0) {
+        await maybeAutoBindPrimaryAgent(deps, req.caller!.personId, runtimes[0]!.id);
+      }
+
       const response: RuntimeRegisterResponse = {
         daemon_id: daemon.id,
         daemon_token: token,
@@ -308,6 +318,35 @@ function isValidEvent(e: unknown): e is RuntimeEventInput {
   );
 }
 
+/**
+ * Best-effort auto-bind of the caller's primary team agent to a freshly
+ * registered runtime. Called only on a daemon's first register
+ * (`isNew`) so we don't pay the agent lookup on every re-register.
+ *
+ * Skips silently when the agent already has a binding so re-running
+ * setup on a different machine doesn't yank the user out from under
+ * the original daemon.
+ */
+async function maybeAutoBindPrimaryAgent(
+  deps: RuntimeRouterDeps,
+  ownerPersonId: string,
+  runtimeId: string,
+): Promise<void> {
+  try {
+    const primary = await deps.agentRepo.findTopLevelForOwner(ownerPersonId);
+    if (!primary || primary.preferred_runtime_id) return;
+    await deps.agentRepo.update(primary.id, { preferred_runtime_id: runtimeId });
+    console.log(
+      `[runtime/register] auto-bound agent ${primary.id} → runtime ${runtimeId}`,
+    );
+  } catch (err) {
+    console.warn(
+      "[runtime/register] auto-bind failed (non-fatal):",
+      err instanceof Error ? err.message : err,
+    );
+  }
+}
+
 async function upsertDaemon(
   deps: RuntimeRouterDeps,
   ownerPersonId: string,
@@ -371,26 +410,42 @@ async function composeDispatchPayload(
 
   const memoryAgent = deps.makeMemoryAgent(agent.id);
   const isChat = session.type === "chat";
-  // Briefing, prior-session, and (for chat) onboarding-state lookups are
-  // independent — overlap them so the resume-chain hot path doesn't pay
-  // all round-trips serially.
-  const [briefing, priorSession, owner] = await Promise.all([
+  const isTeamChat = isChat && agent.hierarchy_level === "team";
+  // Briefing, prior-session, (for chat) onboarding-state, and (for team
+  // chat) subordinate roster lookups are independent — overlap them so
+  // the resume-chain hot path doesn't pay all round-trips serially.
+  const [briefing, priorSession, owner, subordinates] = await Promise.all([
     memoryAgent.prepareBriefing(session.intent),
     session.prior_session_id
       ? deps.sessionRepo.findById(session.prior_session_id)
       : Promise.resolve(undefined),
     isChat ? deps.personRepo.findById(agent.owner_id) : Promise.resolve(undefined),
+    isTeamChat
+      ? deps.agentRepo.findSubordinates(agent.id)
+      : Promise.resolve([]),
   ]);
+  // Team-agent routing only fires post-onboarding (the onboarding
+  // directives drive the build-your-team conversation themselves) and
+  // only when there's at least one specialist to route to.
+  const isOnboarding = isChat && !owner?.onboarding_completed_at;
+  const teamRouting =
+    isTeamChat && !isOnboarding && subordinates.length > 0
+      ? teamAgentRoutingDirective(subordinates.map((s) => s.name))
+      : "";
 
-  // Persist briefing snapshot for the session detail page; best-effort.
-  void deps.sessionRepo
-    .update(session.id, { briefing: briefing.snapshot })
-    .catch((err: unknown) =>
-      console.warn(
-        "[runtime/claim] briefing snapshot persist failed:",
-        err instanceof Error ? err.message : String(err),
-      ),
+  // Persist briefing snapshot for the session detail page. Awaited (was
+  // fire-and-forget) so /runtime/claim can't return before the snapshot
+  // lands — eliminates a race where the session detail page would read
+  // the row before the persist completes, and the integration tests
+  // would see briefing undefined.
+  try {
+    await deps.sessionRepo.update(session.id, { briefing: briefing.snapshot });
+  } catch (err) {
+    console.warn(
+      "[runtime/claim] briefing snapshot persist failed:",
+      err instanceof Error ? err.message : String(err),
     );
+  }
 
   return {
     session_id: session.id,
@@ -403,7 +458,8 @@ async function composeDispatchPayload(
       briefing.systemPromptAppend,
       {
         appendChatDirectives: isChat,
-        appendOnboardingDirectives: isChat && !owner?.onboarding_completed_at,
+        appendOnboardingDirectives: isOnboarding,
+        extra: teamRouting,
       },
     ),
     resume_session_id: priorSession?.cli_session_id,

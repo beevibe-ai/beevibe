@@ -12,10 +12,15 @@
  *   3. Runs migrations (idempotent).
  *   4. Provisions an admin person (bv_u_ key) and a top-level team agent
  *      tied to them, IF none exist for the configured admin email.
- *   5. Writes the bv_u_ key into BOTH `.env` (so api/executor pick it up)
+ *   5. Binds the team agent to a registered daemon's matching runtime,
+ *      if one exists — required for chat to actually spawn through the
+ *      daemon path. Skipped silently if the daemon hasn't been
+ *      registered yet (Phase 7 will add agent-create gating that makes
+ *      this automatic at agent-creation time).
+ *   6. Writes the bv_u_ key into BOTH `.env` (so api/scheduler pick it up)
  *      AND `packages/web/.env.local` (Next.js doesn't read repo-root
  *      env files; without this the web shows "not connected").
- *   6. Tells the user to run `pnpm dev` — we don't spawn it ourselves so
+ *   7. Tells the user to run `pnpm dev` — we don't spawn it ourselves so
  *      the user retains stdout / Ctrl+C semantics.
  *
  * The script is named `bootstrap` because `pnpm init` and `pnpm setup`
@@ -24,7 +29,10 @@
  * any same-named workspace script.
  *
  * Idempotent: re-running on a populated .env / postgres / db just
- * reports state and exits with no changes.
+ * reports state and exits with no changes. Re-running AFTER a daemon
+ * has been registered binds any unbound team agents to its matching
+ * runtime — the intended flow is `bootstrap` → `pnpm dev` → daemon
+ * `setup` + `start` → `bootstrap` again to bind.
  */
 
 import { readFileSync, writeFileSync, existsSync } from "node:fs";
@@ -80,21 +88,67 @@ async function main(): Promise<void> {
   process.env.DATABASE_URL = env.DATABASE_URL;
   const userKey = await ensureAdminAndTeamAgent();
 
-  // ── Step 5: write NEXT_PUBLIC_BV_USER_KEY into .env ─────────────────────
-  step(5, "Web key wiring");
+  // ── Step 5: bind team agent → daemon runtime (if a daemon exists) ───────
+  step(5, "Daemon binding");
+  const bindResult = await bindTeamAgentToDaemonRuntime(env);
+
+  // ── Step 6: write NEXT_PUBLIC_BV_USER_KEY into .env ─────────────────────
+  step(6, "Web key wiring");
   writeWebUserKey(userKey);
 
-  // ── Step 6: next steps ───────────────────────────────────────────────────
-  step(6, "Ready to start");
+  // ── Step 7: next steps ───────────────────────────────────────────────────
+  step(7, "Ready to start");
+  printNextSteps({ userKey, env, bindResult });
+}
+
+function printNextSteps(opts: {
+  userKey: string;
+  env: EnvState;
+  bindResult: BindResult;
+}): void {
+  const { userKey, env, bindResult } = opts;
+  const apiUrl = env.NEXT_PUBLIC_BV_API_URL;
   console.log(`
   ${green("✓")} Setup complete. Start the stack:
 
-      ${cyan("pnpm dev")}
-      ${cyan("pnpm --filter @beevibe/web dev")}   ${dim("(in a second terminal)")}
-
-  Then open ${cyan("http://localhost:3001")} (Next picks the next free port).
-  Your bv_u_ key has been written to .env — keep it secret.
+      ${cyan("pnpm dev")}                              ${dim("# postgres + api + scheduler")}
+      ${cyan("pnpm --filter @beevibe/web dev")}        ${dim("# in a second terminal — :3001 (or next free port)")}
 `);
+
+  if (bindResult.kind === "no_daemon") {
+    console.log(
+      `  ${yellow("!")} No daemon registered yet — chat will fall back to a server-side spawn` +
+        `\n     (works, but bypasses the daemon path Phase 4 ships).`,
+    );
+    console.log(
+      `\n  To exercise the daemon path, in a third terminal after ${cyan("pnpm dev")} is up:` +
+        `\n` +
+        `\n      ${cyan(`pnpm tsx packages/daemon/src/main.ts setup --api ${apiUrl} --user-token ${userKey}`)}` +
+        `\n      ${cyan("pnpm tsx packages/daemon/src/main.ts start")}` +
+        `\n` +
+        `\n  Then re-run ${cyan("pnpm bootstrap")} to bind the team agent to the daemon's runtime.`,
+    );
+  } else if (bindResult.kind === "bound") {
+    console.log(
+      `  ${green("✓")} Team agent is bound to ${bindResult.deviceName} (${bindResult.cli})` +
+        ` — chat sends will route through the daemon.`,
+    );
+  } else if (bindResult.kind === "already_bound") {
+    console.log(
+      `  ${green("✓")} Team agent already bound — chat sends will route through the daemon.`,
+    );
+  } else if (bindResult.kind === "no_matching_cli") {
+    console.log(
+      `  ${yellow("!")} Daemon registered but it doesn't have a '${bindResult.cli}' runtime.` +
+        `\n     Make sure ${bindResult.cli} is on PATH where the daemon runs, then re-register:` +
+        `\n     ${cyan(`pnpm tsx packages/daemon/src/main.ts setup --api ${apiUrl} --user-token ${userKey}`)}`,
+    );
+  }
+
+  console.log(
+    `\n  Then open ${cyan("http://localhost:3001")} and head to ${cyan("/runtimes")} to confirm online status.`,
+  );
+  console.log(`  Your bv_u_ key has been written to .env — keep it secret.\n`);
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -301,7 +355,100 @@ async function ensureAdminAndTeamAgent(): Promise<string> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Step 5: write web key into .env
+// Step 5: bind team agent → daemon runtime (when a daemon exists)
+// ─────────────────────────────────────────────────────────────────────────
+
+type BindResult =
+  | { kind: "no_daemon" }
+  | { kind: "no_matching_cli"; cli: string; deviceName: string }
+  | { kind: "bound"; runtimeId: string; cli: string; deviceName: string }
+  | { kind: "already_bound" };
+
+async function bindTeamAgentToDaemonRuntime(env: EnvState): Promise<BindResult> {
+  const {
+    createPool,
+    PostgresPersonRepository,
+    PostgresAgentRepository,
+    PostgresDaemonRepository,
+    PostgresRuntimeRepository,
+  } = await import("../packages/core/src/adapters/postgres/index.js");
+
+  const pool = createPool({ connectionString: env.DATABASE_URL });
+  const personRepo = new PostgresPersonRepository(pool);
+  const agentRepo = new PostgresAgentRepository(pool);
+  const daemonRepo = new PostgresDaemonRepository(pool);
+  const runtimeRepo = new PostgresRuntimeRepository(pool);
+
+  try {
+    const person = await personRepo.findByEmail(ADMIN_EMAIL_DEFAULT);
+    if (!person) {
+      // Step 4 just provisioned this; would only hit on a logic bug.
+      info("Admin person not found — skipping daemon binding.");
+      return { kind: "no_daemon" };
+    }
+    const teamAgent = await agentRepo.findTopLevelForOwner(person.id);
+    if (!teamAgent) {
+      info("No team agent yet — skipping daemon binding.");
+      return { kind: "no_daemon" };
+    }
+
+    if (teamAgent.preferred_runtime_id) {
+      ok(
+        `Team agent already bound to runtime ${dim(teamAgent.preferred_runtime_id)}`,
+      );
+      return { kind: "already_bound" };
+    }
+
+    const daemons = await daemonRepo.listActiveByOwner(person.id);
+    if (daemons.length === 0) {
+      info(
+        "No daemon registered for this user yet — re-run bootstrap after `daemon setup` to bind.",
+      );
+      return { kind: "no_daemon" };
+    }
+
+    // The agent's runtime_config.type names the CLI it expects (defaults
+    // to "claude"). Find the first daemon that has a matching runtime.
+    const cli = readAgentCli(teamAgent.runtime_config);
+    for (const daemon of daemons) {
+      const runtimes = await runtimeRepo.listByDaemon(daemon.id);
+      const match = runtimes.find((r) => r.cli === cli);
+      if (match) {
+        await agentRepo.update(teamAgent.id, { preferred_runtime_id: match.id });
+        ok(
+          `Bound team agent → runtime ${dim(match.id)} on ${daemon.device_name} (${cli})`,
+        );
+        return {
+          kind: "bound",
+          runtimeId: match.id,
+          cli,
+          deviceName: daemon.device_name,
+        };
+      }
+    }
+    warn(
+      `Found ${daemons.length} daemon(s) but none has a '${cli}' runtime registered.`,
+    );
+    return {
+      kind: "no_matching_cli",
+      cli,
+      deviceName: daemons[0]!.device_name,
+    };
+  } finally {
+    await pool.end();
+  }
+}
+
+function readAgentCli(runtimeConfig: unknown): string {
+  if (runtimeConfig && typeof runtimeConfig === "object") {
+    const t = (runtimeConfig as { type?: unknown }).type;
+    if (typeof t === "string" && t.length > 0) return t;
+  }
+  return "claude";
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Step 6: write web key into .env
 // ─────────────────────────────────────────────────────────────────────────
 
 function writeWebUserKey(userKey: string): void {

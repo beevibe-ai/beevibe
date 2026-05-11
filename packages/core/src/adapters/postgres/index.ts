@@ -28,3 +28,5 @@ export {
   PostgresNegotiationRoundRepository,
 } from "./negotiation-repo.js";
 export { PostgresEscalationRepository } from "./escalation-repo.js";
+export { PostgresRoomRepository } from "./room-repo.js";
+export { PostgresAgentProvisionEventRepository } from "./agent-provision-event-repo.js";

@@ -126,6 +126,7 @@ export class PostgresAgentRepository implements AgentRepository {
       max_mesh_sessions: "max_mesh_sessions",
       max_negotiation_rounds: "max_negotiation_rounds",
       preferred_runtime_id: "preferred_runtime_id",
+      archived_at: "archived_at",
     });
 
     if (clause.fields.length === 0) {
@@ -163,6 +164,7 @@ function rowToAgent(row: AgentRow): Agent {
     max_mesh_sessions: row.max_mesh_sessions ?? undefined,
     max_negotiation_rounds: row.max_negotiation_rounds ?? undefined,
     preferred_runtime_id: row.preferred_runtime_id ?? undefined,
+    archived_at: row.archived_at ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

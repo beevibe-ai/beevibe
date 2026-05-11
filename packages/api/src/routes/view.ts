@@ -20,7 +20,13 @@
 
 import { Router, type RequestHandler } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import { MEMORY_SCOPES, type AgentRepository, type MemoryScope } from "@beevibe/core";
+import {
+  MEMORY_SCOPES,
+  type AgentRepository,
+  type DaemonRepository,
+  type MemoryScope,
+  type RuntimeRepository,
+} from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { listTasks, getTask, type TaskListFilter } from "../views/tasks.js";
 import {
@@ -33,11 +39,19 @@ import { listMemoryFacts } from "../views/memory.js";
 import { getDashboardSummary } from "../views/dashboard.js";
 import { getMeshOverview } from "../views/mesh.js";
 import { listPromotions } from "../views/promotions.js";
+import { listActivity } from "../views/activity.js";
+import { getWorkProduct } from "../views/work-product.js";
+import { listInbox } from "../views/inbox.js";
+import { getAgentNetwork } from "../views/agent-network.js";
 
 export interface ViewRoutesDeps {
   authMiddleware: RequestHandler;
   pool: Pool;
   agentRepo: AgentRepository;
+  /** Backs `POST /agent/:id/runtime` (validates runtime exists). */
+  runtimeRepo: RuntimeRepository;
+  /** Backs `POST /agent/:id/runtime` (cross-tenant guard). */
+  daemonRepo: DaemonRepository;
 }
 
 const LIFECYCLES = new Set<Lifecycle>(
@@ -108,10 +122,31 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
   router.get("/agent", async (req, res) => {
     if (!requireHuman(req, res)) return;
     try {
-      const agents = await listAgents(deps.pool);
+      // Scope to the caller's tree (their team agent + its IC subordinates).
+      // The list power-user feature ("show me everyone's agents") isn't
+      // wired today; scoping by default also closes the same multi-tenant
+      // leak the SSE filter closed in OwnerLookup.
+      const agents = await listAgents(deps.pool, req.caller.personId);
       res.json(agents);
     } catch (err) {
       handleError(err, res, "agent list");
+    }
+  });
+
+  // IMPORTANT: register `/agent/network` BEFORE `/agent/:id` so Express
+  // doesn't match "network" as a path param. Same reason `/agent` (the
+  // list) is fine — it's a different path entirely.
+  router.get("/agent/network", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      // Cross-owner read: caller's tree plus peer teams from rooms
+      // they share. Peer set is derived from room_member co-attendance,
+      // which is the explicit consent surface (you're in a room with
+      // them, so seeing their team agents isn't a leak).
+      const network = await getAgentNetwork(deps.pool, req.caller.personId);
+      res.json(network);
+    } catch (err) {
+      handleError(err, res, "agent network");
     }
   });
 
@@ -131,6 +166,97 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(agent);
     } catch (err) {
       handleError(err, res, "agent detail");
+    }
+  });
+
+  router.post("/agent/:id/runtime", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "missing_agent_id" });
+      return;
+    }
+    const body = req.body as { runtime_id?: string | null } | undefined;
+    // Allow explicit null to unbind, or a non-empty string to bind.
+    const runtimeId =
+      body?.runtime_id === null
+        ? null
+        : typeof body?.runtime_id === "string" && body.runtime_id
+          ? body.runtime_id
+          : undefined;
+    if (runtimeId === undefined) {
+      res.status(400).json({
+        error: "invalid_body",
+        message: "expected { runtime_id: string | null }",
+      });
+      return;
+    }
+    try {
+      const existing = await deps.agentRepo.findById(id);
+      if (!existing) {
+        res.status(404).json({ error: "agent_not_found" });
+        return;
+      }
+      if (existing.owner_id !== req.caller.personId) {
+        res.status(403).json({ error: "not_owner" });
+        return;
+      }
+      // Validate the runtime belongs to a daemon owned by the caller.
+      // Otherwise a user could re-target their agent at someone else's
+      // daemon (cross-tenant escalation).
+      if (runtimeId !== null) {
+        const runtime = await deps.runtimeRepo.findById(runtimeId);
+        if (!runtime) {
+          res.status(404).json({ error: "runtime_not_found" });
+          return;
+        }
+        const daemon = await deps.daemonRepo.findById(runtime.daemon_id);
+        if (!daemon || daemon.owner_person_id !== req.caller.personId) {
+          res.status(403).json({ error: "runtime_not_owned" });
+          return;
+        }
+      }
+      // Cast to allow null clearing — AgentPatch types preferred_runtime_id
+      // as string | undefined (Partial<Agent>) but the SQL adapter writes
+      // null verbatim. This is the only column where "explicitly clear"
+      // is a valid user action.
+      const updated = await deps.agentRepo.update(id, {
+        preferred_runtime_id: runtimeId as string | undefined,
+      });
+      res.json({
+        ok: true,
+        preferred_runtime_id: updated.preferred_runtime_id ?? null,
+      });
+    } catch (err) {
+      handleError(err, res, "agent runtime update");
+    }
+  });
+
+  router.post("/agent/:id/archive", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "missing_agent_id" });
+      return;
+    }
+    try {
+      const existing = await deps.agentRepo.findById(id);
+      if (!existing) {
+        res.status(404).json({ error: "agent_not_found" });
+        return;
+      }
+      if (existing.owner_id !== req.caller.personId) {
+        res.status(403).json({ error: "not_owner" });
+        return;
+      }
+      if (existing.archived_at) {
+        res.json({ ok: true, archived_at: existing.archived_at.toISOString() });
+        return;
+      }
+      const updated = await deps.agentRepo.update(id, { archived_at: new Date() });
+      res.json({ ok: true, archived_at: updated.archived_at!.toISOString() });
+    } catch (err) {
+      handleError(err, res, "agent archive");
     }
   });
 
@@ -210,6 +336,53 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(facts);
     } catch (err) {
       handleError(err, res, "memory fact list");
+    }
+  });
+
+  router.get("/work-product/:id", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "missing_work_product_id" });
+      return;
+    }
+    try {
+      const wp = await getWorkProduct(deps.pool, id);
+      if (!wp) {
+        res.status(404).json({ error: "work_product_not_found" });
+        return;
+      }
+      res.json(wp);
+    } catch (err) {
+      handleError(err, res, "work product detail");
+    }
+  });
+
+  router.get("/inbox", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      const limitParam = typeof req.query.limit === "string" ? Number(req.query.limit) : 50;
+      const limit = Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 200 ? limitParam : 50;
+      const items = await listInbox(deps.pool, req.caller.personId, { limit });
+      res.json(items);
+    } catch (err) {
+      handleError(err, res, "inbox");
+    }
+  });
+
+  router.get("/activity", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      const limitParam =
+        typeof req.query.limit === "string" ? Number(req.query.limit) : 20;
+      const limit =
+        Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 100
+          ? limitParam
+          : 20;
+      const entries = await listActivity(deps.pool, req.caller.personId, limit);
+      res.json(entries);
+    } catch (err) {
+      handleError(err, res, "activity feed");
     }
   });
 

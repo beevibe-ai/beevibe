@@ -16,7 +16,7 @@ vi.mock("@/lib/api/client", () => ({
   api: { dashboard: { summary: vi.fn() } },
 }));
 
-import { HomeClient } from "./home-client";
+import { DashboardClient } from "./dashboard-client";
 import { api } from "@/lib/api/client";
 
 const summaryMock = vi.mocked(api.dashboard.summary);
@@ -26,7 +26,7 @@ function renderHome() {
   function Wrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
   }
-  return render(<HomeClient />, { wrapper: Wrapper });
+  return render(<DashboardClient />, { wrapper: Wrapper });
 }
 
 const sample: DashboardSummary = {
@@ -62,7 +62,7 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("HomeClient", () => {
+describe("DashboardClient", () => {
   it("renders the not-configured empty state and never fetches", () => {
     apiState.isApiConfigured = false;
     renderHome();
@@ -76,11 +76,10 @@ describe("HomeClient", () => {
     expect(await screen.findByText("Couldn't load dashboard")).toBeInTheDocument();
   });
 
-  it("renders KPIs + breakdown + fleet + attention when data is loaded", async () => {
+  it("renders the Metrics header + KPIs + breakdown + fleet when data is loaded", async () => {
     summaryMock.mockResolvedValue(sample);
     renderHome();
     expect(await screen.findByText("Active sessions")).toBeInTheDocument();
-    expect(screen.getByText("Needs attention")).toBeInTheDocument();
-    expect(screen.getByText("needs key")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Metrics" })).toBeInTheDocument();
   });
 });

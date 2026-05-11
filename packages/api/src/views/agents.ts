@@ -25,6 +25,8 @@ interface AgentRow {
   hierarchy_level: HierarchyLevel;
   review_policy: string | null;
   runtime_config: Record<string, unknown>;
+  preferred_runtime_id: string | null;
+  archived_at: Date | null;
   created_at: Date;
   updated_at: Date;
   sessions_count: string;
@@ -34,7 +36,8 @@ interface AgentRow {
 const LIST_SQL = /* sql */ `
 SELECT
   a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
-  a.review_policy, a.runtime_config, a.created_at, a.updated_at,
+  a.review_policy, a.runtime_config, a.preferred_runtime_id, a.archived_at,
+  a.created_at, a.updated_at,
   COALESCE(sc.n, 0)::int  AS sessions_count,
   COALESCE(fc.n, 0)::int  AS facts_learned
 FROM agent a
@@ -48,6 +51,8 @@ LEFT JOIN (
   FROM memory_fact
   GROUP BY agent_id
 ) fc ON fc.agent_id = a.id
+WHERE ($1::text IS NULL OR a.owner_id = $1)
+  AND a.archived_at IS NULL
 ORDER BY
   CASE a.hierarchy_level WHEN 'org' THEN 0 WHEN 'team' THEN 1 ELSE 2 END,
   a.name ASC
@@ -69,18 +74,24 @@ function rowToAgentDisplay(row: AgentRow): AgentDisplay {
     facts_learned: Number(row.facts_learned),
     runtime,
     review_policy: row.review_policy ?? undefined,
+    preferred_runtime_id: row.preferred_runtime_id ?? undefined,
+    archived_at: row.archived_at ? row.archived_at.toISOString() : undefined,
   };
 }
 
-export async function listAgents(pool: Pool): Promise<AgentDisplay[]> {
-  const { rows } = await pool.query<AgentRow>(LIST_SQL);
+export async function listAgents(
+  pool: Pool,
+  ownerId?: string,
+): Promise<AgentDisplay[]> {
+  const { rows } = await pool.query<AgentRow>(LIST_SQL, [ownerId ?? null]);
   return rows.map(rowToAgentDisplay);
 }
 
 const DETAIL_SQL_AGENT = /* sql */ `
 SELECT
   a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
-  a.review_policy, a.runtime_config, a.created_at, a.updated_at,
+  a.review_policy, a.runtime_config, a.preferred_runtime_id, a.archived_at,
+  a.created_at, a.updated_at,
   (SELECT COUNT(*)::int FROM session       WHERE agent_id = a.id) AS sessions_count,
   (SELECT COUNT(*)::int FROM memory_fact   WHERE agent_id = a.id) AS facts_learned
 FROM agent a

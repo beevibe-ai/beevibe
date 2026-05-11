@@ -11,6 +11,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./domain": {
+      "types": "./dist/domain/index.d.ts",
+      "default": "./dist/domain/index.js"
+    },
     "./adapters/postgres": {
       "types": "./dist/adapters/postgres/index.d.ts",
       "default": "./dist/adapters/postgres/index.js"
@@ -55,6 +59,10 @@
       "types": "./dist/services/dispatch-service.d.ts",
       "default": "./dist/services/dispatch-service.js"
     },
+    "./services/orphan-reaper": {
+      "types": "./dist/services/orphan-reaper.d.ts",
+      "default": "./dist/services/orphan-reaper.js"
+    },
     "./services/skills": {
       "types": "./dist/services/skills/index.d.ts",
       "default": "./dist/services/skills/index.js"
@@ -62,6 +70,10 @@
     "./auth": {
       "types": "./dist/auth/index.d.ts",
       "default": "./dist/auth/index.js"
+    },
+    "./auth/constants": {
+      "types": "./dist/auth/constants.d.ts",
+      "default": "./dist/auth/constants.js"
     },
     "./test-helpers": {
       "types": "./dist/test-helpers.d.ts",

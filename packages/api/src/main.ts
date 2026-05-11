@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { config as loadEnv } from "dotenv";
 import { bootstrap } from "./bootstrap.js";
+import { parseAllowedOrigins } from "./cors.js";
 
 const REQUIRED_ENV = [
   "DATABASE_URL",
@@ -20,6 +21,7 @@ async function main(): Promise<void> {
   }
 
   const port = process.env.BEEVIBE_API_PORT ? Number(process.env.BEEVIBE_API_PORT) : 3000;
+  const corsAllowedOrigins = parseAllowedOrigins(process.env.BEEVIBE_CORS_ORIGINS);
   const { server, shutdown } = await bootstrap({
     databaseUrl: process.env.DATABASE_URL!,
     mcpServerUrl: process.env.BEEVIBE_MCP_SERVER_URL!,
@@ -27,6 +29,7 @@ async function main(): Promise<void> {
     anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
     workspaceRoot: process.env.WORKSPACE_ROOT,
     skillsSourceDir: process.env.BEEVIBE_SKILLS_DIR,
+    corsAllowedOrigins,
     port,
   });
 

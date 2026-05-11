@@ -20,19 +20,25 @@
  */
 
 import {
+  DEFAULT_RUNTIME_CONFIG,
   TASK_PRIORITIES,
   TASK_STATUSES,
   WORK_PRODUCT_TYPES,
+  agentId as makeAgentId,
+  agentProvisionEventId as makeApeId,
   taskId as makeTaskId,
   workProductId as makeWorkProductId,
   type Agent,
+  type AgentProvisionEventRepository,
   type AgentRepository,
+  type CoreMemoryBlockRepository,
   type HierarchyLevel,
   type Task,
   type TaskRepository,
   type TaskStatus,
   type WorkProductRepository,
 } from "@beevibe/core";
+import { provisionAgent } from "@beevibe/core/auth";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   type TaskService,
@@ -86,6 +92,19 @@ export interface HierarchyToolServices {
   dispatchService: DispatchService;
   /** M6.4: pg_notify on add_to_escalation for future M8 web subscribers. */
   pool: Pool;
+  /**
+   * Phase 9: backs `create_subordinate_agent`. Used by team/org agents
+   * to spawn IC specialists during onboarding (and any time later) —
+   * provisions the agent + seeds default core-memory blocks, then
+   * overwrites persona/domain with the briefing the parent supplies.
+   */
+  coreMemoryRepo: CoreMemoryBlockRepository;
+  /**
+   * Phase 9: audit log + per-parent daily cap on subordinate spawning.
+   * Each `create_subordinate_agent` invocation writes one row + reads
+   * the count for the current parent to enforce the cap.
+   */
+  agentProvisionEventRepo: AgentProvisionEventRepository;
 }
 
 export interface HierarchyToolContext {
@@ -964,6 +983,206 @@ function buildTeamOnlyTools(
   ];
 }
 
+// ── create_subordinate_agent (Phase 9) ───────────────────────────────────
+//
+// Lets a team/org agent spawn an IC specialist on demand. The intended
+// trigger is onboarding: the user names a codebase, the team agent reads
+// it, decides "I need a backend specialist + a frontend specialist", and
+// calls this tool once per role. The new agents inherit the parent's
+// owner_id and the parent's runtime model (so they all share the human's
+// claude login). persona/domain core-memory blocks are seeded with the
+// briefing text so the IC's very first turn already knows who it is.
+
+// Disallow control chars + newlines; otherwise let the LLM pick natural
+// names ("Web & Onboarding specialist", "Auth/SSO expert", etc.). 80-char
+// cap matches what survives in dropdowns.
+// eslint-disable-next-line no-control-regex -- intentional: we're explicitly rejecting these
+const PROVISION_NAME_INVALID_RE = /[\x00-\x1f\x7f]/;
+
+/**
+ * Per-parent daily limit on `create_subordinate_agent` invocations.
+ * 8 is generous — onboarding typically picks 2-3 specialists; the cap
+ * only bites on a runaway loop. Override at call site if a power user
+ * legitimately needs more.
+ */
+const SUBORDINATE_DAILY_CAP = 8;
+
+function createSubordinateAgentTool(
+  ctx: HierarchyToolContext,
+  services: HierarchyToolServices,
+): AgentTool {
+  return {
+    name: "create_subordinate_agent",
+    description:
+      "Spawn an IC specialist agent under you. Use this during onboarding " +
+      "(after the user describes their codebase / problem) to assemble a " +
+      "small team — typically 2–3 specialists chosen for the actual stack. " +
+      "Each new agent gets a persona block (who they are, how they work) " +
+      "and a domain block (what they know about the codebase / area). After " +
+      "creating them, use create_task to give each one a concrete first " +
+      "task. Returns the new agent_id so you can immediately reference it.",
+    schema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description:
+            "Short human-readable label, e.g. 'Backend specialist', 'Auth/SSO expert'.",
+        },
+        persona: {
+          type: "string",
+          description:
+            "Who this agent is and how they should work. Becomes the persona " +
+            "core-memory block. 1–4 sentences.",
+        },
+        domain: {
+          type: "string",
+          description:
+            "What this agent knows / owns: stack, files/dirs, conventions, " +
+            "constraints. Becomes the domain core-memory block. Be specific.",
+        },
+      },
+      required: ["name", "persona", "domain"],
+    },
+    handler: async (input) => {
+      try {
+        if (ctx.hierarchyLevel === "ic") {
+          return {
+            content: {
+              error: "ic_cannot_spawn",
+              message:
+                "Only team/org agents can spawn subordinates; you are an IC.",
+            },
+            isError: true,
+          };
+        }
+
+        const name = String(input.name ?? "").trim();
+        const persona = String(input.persona ?? "").trim();
+        const domain = String(input.domain ?? "").trim();
+        if (!name || !persona || !domain) {
+          return {
+            content: { error: "name, persona, and domain are all required" },
+            isError: true,
+          };
+        }
+        if (name.length > 80 || PROVISION_NAME_INVALID_RE.test(name)) {
+          return {
+            content: {
+              error: "invalid_name",
+              message: "name must be 1-80 chars and contain no control characters",
+            },
+            isError: true,
+          };
+        }
+
+        // Resolve the parent (caller) so we can inherit owner_id + runtime config.
+        const parent = await services.agentRepo.findById(ctx.agentId);
+        if (!parent) {
+          return {
+            content: { error: "parent_not_found", agent_id: ctx.agentId },
+            isError: true,
+          };
+        }
+
+        // Phase 9 per-parent daily cap. A runaway team agent could
+        // otherwise spawn dozens of specialists in a loop. The cap is
+        // intentionally generous; it bites only on pathological cases.
+        const recentSpawns = await services.agentProvisionEventRepo.countByParentSince(
+          parent.id,
+          24 * 60 * 60,
+        );
+        if (recentSpawns >= SUBORDINATE_DAILY_CAP) {
+          return {
+            content: {
+              error: "subordinate_daily_cap",
+              message:
+                `Parent '${parent.name}' has spawned ${recentSpawns} subordinates in the last 24h ` +
+                `(cap: ${SUBORDINATE_DAILY_CAP}). Reuse an existing specialist or wait for the window to expire.`,
+              cap: SUBORDINATE_DAILY_CAP,
+              count: recentSpawns,
+            },
+            isError: true,
+          };
+        }
+
+        // Inherit the parent's runtime so all the user's agents share the
+        // same Claude auth + model. Carry the user-supplied persona into
+        // the system prompt as a short addition (the heavyweight context
+        // lives in core memory, which the runtime injects on every turn).
+        const runtime_config = {
+          ...DEFAULT_RUNTIME_CONFIG,
+          ...parent.runtime_config,
+          system_prompt_addition: `You are ${name}. ${persona}`,
+        };
+
+        const { agent } = await provisionAgent(
+          {
+            agentRepo: services.agentRepo,
+            coreMemoryRepo: services.coreMemoryRepo,
+          },
+          {
+            id: makeAgentId(),
+            name,
+            owner_id: parent.owner_id,
+            parent_agent_id: parent.id,
+            hierarchy_level: "ic",
+            runtime_config,
+            // Same human, same machine — the child's CLI should run on
+            // the same daemon as its parent. The user can rebind via the
+            // agent detail page if they want it on a different runtime.
+            ...(parent.preferred_runtime_id
+              ? { preferred_runtime_id: parent.preferred_runtime_id }
+              : {}),
+          },
+        );
+
+        // Seed the IC's persona + domain blocks. provisionAgent's initDefaults
+        // creates them empty; overwrite with the briefing the parent supplied
+        // so the IC's first turn has its identity baked in.
+        await Promise.all([
+          services.coreMemoryRepo.updateContent(agent.id, "persona", persona),
+          services.coreMemoryRepo.updateContent(agent.id, "domain", domain),
+        ]);
+
+        // Phase 9 audit log row — backs the daily cap query above + the
+        // /agents/[id] audit panel ("spawned by X on D, persona was Y").
+        try {
+          await services.agentProvisionEventRepo.create({
+            id: makeApeId(),
+            parent_agent_id: parent.id,
+            child_agent_id: agent.id,
+            owner_person_id: parent.owner_id,
+            child_name: name,
+            persona,
+            domain,
+          });
+        } catch (err) {
+          // Don't fail the spawn if the audit row can't write; the
+          // agent + memory are the user-visible artifacts. Log loudly.
+          console.error(
+            `[create_subordinate_agent] audit row failed for child ${agent.id}:`,
+            err instanceof Error ? err.message : err,
+          );
+        }
+
+        return {
+          content: {
+            created: {
+              id: agent.id,
+              name: agent.name,
+              hierarchy_level: agent.hierarchy_level,
+              parent_agent_id: agent.parent_agent_id,
+            },
+          },
+        };
+      } catch (err) {
+        return asError(err);
+      }
+    },
+  };
+}
+
 /**
  * Build the full hierarchy/work-product/state-mgmt tool set for a caller.
  * Picks IC vs team set based on `ctx.hierarchyLevel`. Team and org both
@@ -971,10 +1190,11 @@ function buildTeamOnlyTools(
  *
  * M6.4 totals:
  *   IC tier:   8 shared tools.
- *   Team/org: 14 tools (8 shared + 6 team-only — find_subordinates,
+ *   Team/org: 15 tools (8 shared + 6 team-only — find_subordinates,
  *                       find_peers, create_task, check_work_status,
  *                       revise_task [parent unblock subordinate],
- *                       add_to_escalation [populate peer slot]).
+ *                       add_to_escalation [populate peer slot] —
+ *                       plus create_subordinate_agent (Phase 9)).
  */
 export function buildHierarchyTools(
   ctx: HierarchyToolContext,
@@ -984,6 +1204,10 @@ export function buildHierarchyTools(
   if (ctx.hierarchyLevel === "ic") {
     return shared;
   }
-  return [...shared, ...buildTeamOnlyTools(ctx, services)];
+  return [
+    ...shared,
+    ...buildTeamOnlyTools(ctx, services),
+    createSubordinateAgentTool(ctx, services),
+  ];
 }
 
