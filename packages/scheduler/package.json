@@ -3,6 +3,13 @@
   "version": "0.0.1",
   "private": true,
   "description": "Beevibe scheduler — claims null-runtime pending sessions as the in-process fallback claimant when no daemon is bound to the agent",
+  "license": "Apache-2.0",
+  "author": "Zhe Pang",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beevibe-ai/beevibe.git",
+    "directory": "packages/scheduler"
+  },
   "type": "module",
   "main": "./dist/main.js",
   "bin": {

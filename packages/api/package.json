@@ -3,6 +3,13 @@
   "version": "0.0.1",
   "private": true,
   "description": "Beevibe API server — MCP tool surface for agents + REST endpoints for humans + MeshServer broker",
+  "license": "Apache-2.0",
+  "author": "Zhe Pang",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beevibe-ai/beevibe.git",
+    "directory": "packages/api"
+  },
   "type": "module",
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",

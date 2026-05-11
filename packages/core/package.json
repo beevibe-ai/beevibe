@@ -3,6 +3,13 @@
   "version": "0.0.1",
   "private": true,
   "description": "Shared library: domain, ports, services, adapters, auth",
+  "license": "Apache-2.0",
+  "author": "Zhe Pang",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beevibe-ai/beevibe.git",
+    "directory": "packages/core"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

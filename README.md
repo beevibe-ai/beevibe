@@ -253,4 +253,16 @@ A few conventions worth knowing:
 
 ## License
 
-[Apache-2.0](./LICENSE)
+The Beevibe source code is licensed under the [Apache License 2.0](./LICENSE).
+
+The **Beevibe** name and logo are trademarks of the project — see
+[TRADEMARK.md](./TRADEMARK.md). Apache 2.0 grants rights to the source
+code; it does not grant rights to use the project's name or marks. Forks
+and derivative works are welcome under any name that is not "Beevibe."
+
+Contributing? See [CONTRIBUTING.md](./CONTRIBUTING.md). All commits must
+include a `Signed-off-by:` trailer (the [Developer Certificate of Origin
+v1.1](./CONTRIBUTING.md#developer-certificate-of-origin-v11)) — `git commit -s`.
+
+Copyright (c) 2026 Zhe Pang. Rights to be assigned to Beevibe Inc. upon
+its formation.
