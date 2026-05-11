@@ -71,6 +71,10 @@
       "types": "./dist/auth/index.d.ts",
       "default": "./dist/auth/index.js"
     },
+    "./auth/constants": {
+      "types": "./dist/auth/constants.d.ts",
+      "default": "./dist/auth/constants.js"
+    },
     "./test-helpers": {
       "types": "./dist/test-helpers.d.ts",
       "default": "./dist/test-helpers.js"

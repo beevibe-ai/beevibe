@@ -28,7 +28,7 @@
 
 import { Router, type Response } from "express";
 import type { PersonRepository } from "@beevibe/core";
-import { verifyPassword } from "@beevibe/core/auth";
+import { SIGNIN_NO_PASSWORD_SET, verifyPassword } from "@beevibe/core/auth";
 
 export interface SigninRoutesDeps {
   personRepo: PersonRepository;
@@ -82,7 +82,7 @@ export function createSigninRouter(deps: SigninRoutesDeps): Router {
       // legacy seed user could never recover their account.
       if (person && person.api_key && !person.password_hash) {
         res.status(409).json({
-          error: "no_password_set",
+          error: SIGNIN_NO_PASSWORD_SET,
           message:
             "This account predates passwords. Sign in with your bv_u_ key once, then set a password.",
         });

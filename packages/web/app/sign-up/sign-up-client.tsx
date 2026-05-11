@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Loader2, Sparkles, UserPlus } from "lucide-react";
+import { PASSWORD_MIN_LENGTH } from "@beevibe/core/auth/constants";
 import { api } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/http";
 import { getUserKey, isApiConfigured, setUserKey } from "@/lib/api/config";
@@ -43,8 +44,8 @@ export function SignUpClient() {
       setError("Web isn't configured to talk to an api server.");
       return;
     }
-    if (password.length < 8) {
-      setError("Password must be at least 8 characters.");
+    if (password.length < PASSWORD_MIN_LENGTH) {
+      setError(`Password must be at least ${PASSWORD_MIN_LENGTH} characters.`);
       return;
     }
     setError(null);
@@ -141,10 +142,10 @@ export function SignUpClient() {
           id="password"
           type="password"
           autoComplete="new-password"
-          minLength={8}
+          minLength={PASSWORD_MIN_LENGTH}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
-          placeholder="at least 8 characters"
+          placeholder={`at least ${PASSWORD_MIN_LENGTH} characters`}
           className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           disabled={submitting}
         />
@@ -162,7 +163,7 @@ export function SignUpClient() {
             submitting ||
             name.trim().length === 0 ||
             email.trim().length === 0 ||
-            password.length < 8
+            password.length < PASSWORD_MIN_LENGTH
           }
           className="mt-5 w-full inline-flex items-center justify-center gap-1.5 h-9 rounded text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >

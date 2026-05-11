@@ -11,15 +11,14 @@ import {
   AlertTriangle,
   ArrowRight,
   Check,
-  Copy,
   Cpu,
   Loader2,
   MessageSquare,
   Sparkles,
-  Terminal,
 } from "lucide-react";
 import { apiBaseUrl, getUserKey, isApiConfigured } from "@/lib/api/config";
 import { api, type RuntimesListResponse } from "@/lib/api/client";
+import { CommandBlock } from "@/components/command-block";
 import { queryKeys } from "@/lib/hooks/keys";
 import { useMe } from "@/lib/hooks/use-me";
 import { cn } from "@/lib/utils";
@@ -249,46 +248,6 @@ function InstallStep({ onDaemonReady }: { onDaemonReady: () => void }) {
   );
 }
 
-function CommandBlock({ label, command }: { label: string; command: string }) {
-  const [copied, setCopied] = useState(false);
-  const copy = async () => {
-    if (typeof navigator === "undefined" || !navigator.clipboard) return;
-    await navigator.clipboard.writeText(command);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1500);
-  };
-  return (
-    <div className="rounded-md border border-border bg-card overflow-hidden">
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-border/60 bg-secondary/30">
-        <Terminal className="h-3 w-3 text-muted-foreground" />
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
-          {label}
-        </span>
-        <button
-          type="button"
-          onClick={copy}
-          className="ml-auto inline-flex items-center gap-1 h-5 px-1.5 rounded text-[10px] text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors cursor-pointer"
-        >
-          {copied ? (
-            <>
-              <Check className="h-3 w-3 text-status-done" />
-              copied
-            </>
-          ) : (
-            <>
-              <Copy className="h-3 w-3" />
-              copy
-            </>
-          )}
-        </button>
-      </div>
-      <code className="block px-3 py-2.5 text-xs font-mono text-foreground/85 overflow-x-auto whitespace-pre">
-        {command}
-      </code>
-    </div>
-  );
-}
-
 // ── Step 3: pick which runtime to bind to the team agent ──────────────
 
 function PickRuntimeStep({
@@ -299,10 +258,14 @@ function PickRuntimeStep({
   onPicked: (runtimeId: string) => void;
 }) {
   const queryClient = useQueryClient();
+  // Same refetch cadence as InstallStep — both use the shared
+  // queryKeys.runtimes.list() key so React Query dedupes the in-flight
+  // request, but mismatched intervals would still cause refetch thrash
+  // on step transition.
   const query = useQuery<RuntimesListResponse>({
     queryKey: queryKeys.runtimes.list(),
     queryFn: ({ signal }) => api.runtimes.list({ signal }),
-    refetchInterval: 5_000,
+    refetchInterval: 3_000,
   });
 
   const allRuntimes = useMemo(

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, KeyRound, Loader2, LogIn } from "lucide-react";
+import { SIGNIN_NO_PASSWORD_SET } from "@beevibe/core/auth/constants";
 import { api } from "@/lib/api/client";
 import { ApiError } from "@/lib/api/http";
 import {
@@ -69,7 +70,7 @@ export function SignInClient() {
         err instanceof ApiError ? (err.body as { error?: string; message?: string } | undefined) : undefined;
       // Friendly fallback for legacy users whose accounts predate
       // passwords — push them to the paste-key path.
-      if (status === 409 && body?.error === "no_password_set") {
+      if (status === 409 && body?.error === SIGNIN_NO_PASSWORD_SET) {
         setMode("key");
         setError(
           body.message ??

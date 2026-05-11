@@ -98,30 +98,12 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
       const { daemon, token, isNew } = await upsertDaemon(deps, req.caller!.personId, body);
       const runtimes = await upsertRuntimes(deps, daemon.id, body.runtimes);
 
-      // Convenience auto-bind: if the caller's primary team agent has no
-      // preferred_runtime_id yet, bind it to the first registered runtime.
-      // Removes one click from fresh-user setup; users with multiple
-      // runtimes can rebind from /agents/[id] later. Fire-and-forget;
-      // never let a binding hiccup fail registration.
-      if (runtimes.length > 0) {
-        try {
-          const primary = await deps.agentRepo.findTopLevelForOwner(
-            req.caller!.personId,
-          );
-          if (primary && !primary.preferred_runtime_id) {
-            await deps.agentRepo.update(primary.id, {
-              preferred_runtime_id: runtimes[0]!.id,
-            });
-            console.log(
-              `[runtime/register] auto-bound agent ${primary.id} → runtime ${runtimes[0]!.id}`,
-            );
-          }
-        } catch (err) {
-          console.warn(
-            "[runtime/register] auto-bind failed (non-fatal):",
-            err instanceof Error ? err.message : err,
-          );
-        }
+      // Convenience auto-bind: only on the first-ever registration for
+      // this daemon. After that, the caller's primary team agent is
+      // either already bound (skip the lookup) or intentionally unbound
+      // (don't re-bind on every heartbeat-style re-register).
+      if (isNew && runtimes.length > 0) {
+        await maybeAutoBindPrimaryAgent(deps, req.caller!.personId, runtimes[0]!.id);
       }
 
       const response: RuntimeRegisterResponse = {
@@ -334,6 +316,35 @@ function isValidEvent(e: unknown): e is RuntimeEventInput {
     typeof r.content === "string" &&
     (r.tool_name === undefined || typeof r.tool_name === "string")
   );
+}
+
+/**
+ * Best-effort auto-bind of the caller's primary team agent to a freshly
+ * registered runtime. Called only on a daemon's first register
+ * (`isNew`) so we don't pay the agent lookup on every re-register.
+ *
+ * Skips silently when the agent already has a binding so re-running
+ * setup on a different machine doesn't yank the user out from under
+ * the original daemon.
+ */
+async function maybeAutoBindPrimaryAgent(
+  deps: RuntimeRouterDeps,
+  ownerPersonId: string,
+  runtimeId: string,
+): Promise<void> {
+  try {
+    const primary = await deps.agentRepo.findTopLevelForOwner(ownerPersonId);
+    if (!primary || primary.preferred_runtime_id) return;
+    await deps.agentRepo.update(primary.id, { preferred_runtime_id: runtimeId });
+    console.log(
+      `[runtime/register] auto-bound agent ${primary.id} → runtime ${runtimeId}`,
+    );
+  } catch (err) {
+    console.warn(
+      "[runtime/register] auto-bind failed (non-fatal):",
+      err instanceof Error ? err.message : err,
+    );
+  }
 }
 
 async function upsertDaemon(

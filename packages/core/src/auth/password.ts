@@ -38,8 +38,10 @@ const SALT_BYTES = 16;
 // headroom + a constant for OS overhead.
 const SCRYPT_MAXMEM = 128 * SCRYPT_N * SCRYPT_R * 2;
 
-export const PASSWORD_MIN_LENGTH = 8;
-export const PASSWORD_MAX_LENGTH = 200;
+// PASSWORD_MIN_LENGTH / PASSWORD_MAX_LENGTH / SIGNIN_NO_PASSWORD_SET
+// live in ./constants.ts so the web bundle can import them without
+// pulling in node:crypto. Re-exported via the barrel for convenience.
+import { PASSWORD_MIN_LENGTH, PASSWORD_MAX_LENGTH } from "./constants.js";
 
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(SALT_BYTES);
