@@ -176,12 +176,106 @@ function IntroStep({ onNext }: { onNext: () => void }) {
 
 // ── Step 2: install daemon — show command, poll until it appears ──────
 
+type InstallChannel = "brew" | "npx" | "direct";
+
+interface InstallOption {
+  id: InstallChannel;
+  label: string;
+  /** Short subtitle shown under the label in the tab strip. */
+  hint: string;
+}
+
+const INSTALL_OPTIONS: readonly InstallOption[] = [
+  { id: "brew", label: "Homebrew", hint: "macOS" },
+  { id: "npx", label: "npx", hint: "any platform with Node" },
+  { id: "direct", label: "Direct download", hint: "advanced" },
+];
+
+const RELEASES_URL = "https://github.com/beevibe-ai/beevibe/releases/latest";
+const NPX_BIN = "npx -y @beevibe/daemon@latest";
+const LOCAL_BIN = "beevibe-daemon";
+
+interface InstallStepSpec {
+  /** Short imperative — number is prepended at render time. */
+  label: string;
+  command: string;
+}
+
+interface InstallBundle {
+  /** Optional helper text rendered before the command list. */
+  prelude?: React.ReactNode;
+  steps: readonly InstallStepSpec[];
+}
+
+function buildInstallBundle(channel: InstallChannel, setupArgs: string): InstallBundle {
+  switch (channel) {
+    case "brew":
+      return {
+        steps: [
+          { label: "Install via Homebrew", command: "brew install beevibe-ai/tap/beevibe-daemon" },
+          { label: "Register", command: `${LOCAL_BIN} ${setupArgs}` },
+          { label: "Start (long-running)", command: `${LOCAL_BIN} start` },
+        ],
+      };
+    case "npx":
+      return {
+        steps: [
+          {
+            label: "Register (downloads daemon on first run)",
+            command: `${NPX_BIN} ${setupArgs}`,
+          },
+          { label: "Start (long-running)", command: `${NPX_BIN} start` },
+        ],
+      };
+    case "direct":
+      return {
+        prelude: (
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Pick the binary that matches your platform from{" "}
+            <a
+              href={RELEASES_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline hover:text-foreground"
+            >
+              the latest GitHub release
+            </a>
+            {" "}— darwin-arm64, darwin-x64, linux-x64, or linux-arm64. Then:
+          </p>
+        ),
+        steps: [
+          {
+            label: "Download (substitute your platform)",
+            command:
+              `curl -fsSL -o ~/.local/bin/${LOCAL_BIN} \\\n` +
+              `  "${RELEASES_URL}/download/${LOCAL_BIN}-darwin-arm64" \\\n` +
+              `  && chmod +x ~/.local/bin/${LOCAL_BIN}`,
+          },
+          { label: "Register", command: `${LOCAL_BIN} ${setupArgs}` },
+          { label: "Start (long-running)", command: `${LOCAL_BIN} start` },
+        ],
+      };
+  }
+}
+
+/**
+ * Detect the user's OS from navigator.userAgent so we default the tab
+ * to whatever is most natural for them. Falls back to `npx` (universal).
+ * Runs once on mount — userAgent doesn't change for the page lifetime.
+ */
+function detectDefaultChannel(): InstallChannel {
+  if (typeof navigator === "undefined") return "npx";
+  if (/Mac OS X|Macintosh/i.test(navigator.userAgent)) return "brew";
+  return "npx";
+}
+
 function InstallStep({ onDaemonReady }: { onDaemonReady: () => void }) {
   const userKey = typeof window !== "undefined" ? getUserKey() : null;
   const apiUrl = apiBaseUrl ?? "http://localhost:3000";
+  const keyOrPlaceholder = userKey ?? "<your-key>";
+  const setupArgs = `setup --api ${apiUrl} --user-token ${keyOrPlaceholder}`;
 
-  const setupCmd = `pnpm daemon setup --api ${apiUrl} --user-token ${userKey ?? "<your-key>"}`;
-  const startCmd = `pnpm daemon start`;
+  const [channel, setChannel] = useState<InstallChannel>(() => detectDefaultChannel());
 
   // Poll /runtimes every 3s until at least one daemon shows up.
   const query = useQuery<RuntimesListResponse>({
@@ -199,13 +293,31 @@ function InstallStep({ onDaemonReady }: { onDaemonReady: () => void }) {
         <h2 className="text-xl font-semibold">Install the daemon</h2>
         <p className="text-sm text-muted-foreground max-w-prose mx-auto">
           The daemon spawns your agents&apos; CLI subprocesses on your machine.
-          Run these two commands in a new terminal:
+          Pick the install path that fits your setup:
         </p>
       </div>
 
-      <div className="space-y-3 max-w-xl mx-auto">
-        <CommandBlock label="1. Register" command={setupCmd} />
-        <CommandBlock label="2. Start (long-running)" command={startCmd} />
+      <div className="max-w-xl mx-auto space-y-3">
+        <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
+          {INSTALL_OPTIONS.map((opt) => (
+            <button
+              key={opt.id}
+              type="button"
+              onClick={() => setChannel(opt.id)}
+              className={cn(
+                "flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
+                channel === opt.id
+                  ? "bg-primary text-primary-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              <div>{opt.label}</div>
+              <div className="text-[10px] font-normal opacity-80 mt-0.5">{opt.hint}</div>
+            </button>
+          ))}
+        </div>
+
+        <InstallStepList bundle={buildInstallBundle(channel, setupArgs)} />
       </div>
 
       <div
@@ -244,6 +356,17 @@ function InstallStep({ onDaemonReady }: { onDaemonReady: () => void }) {
         (<span className="font-mono">npm i -g @anthropic/claude-code</span>) and
         run <span className="font-mono">claude login</span>.
       </p>
+    </div>
+  );
+}
+
+function InstallStepList({ bundle }: { bundle: InstallBundle }) {
+  return (
+    <div className="space-y-2">
+      {bundle.prelude}
+      {bundle.steps.map((step, i) => (
+        <CommandBlock key={i} label={`${i + 1}. ${step.label}`} command={step.command} />
+      ))}
     </div>
   );
 }
