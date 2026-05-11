@@ -130,9 +130,10 @@ jobs:
       # 11.5.0+. Node 20's bundled npm is 10.x; upgrade explicitly so
       # `npm publish --provenance` exchanges the GitHub OIDC token for
       # an npm publish token instead of looking for a static token in
-      # ~/.npmrc.
+      # ~/.npmrc. Pinned to ^11.5 (not @latest) for reproducibility;
+      # bump when npm publish API changes.
       - name: Upgrade npm to a Trusted-Publishing-capable version
-        run: npm install -g npm@latest
+        run: npm install -g 'npm@^11.5'
 
       - name: npm publish
         working-directory: ./publish-dist
@@ -145,6 +146,7 @@ jobs:
         # pulls the latest stable. The dist-tag becomes `latest` for
         # any tag without a hyphen.
         run: |
+          set -euo pipefail
           if [[ "$TAG_NAME" == *-* ]]; then
             npm publish --access=public --provenance --tag next
           else
