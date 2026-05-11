@@ -20,7 +20,12 @@ REPO_ROOT="$(cd "$DAEMON_DIR/../.." && pwd)"
 # Build core first — bun --compile resolves @beevibe/core via its package
 # manifest's main field, which points at dist/.
 cd "$REPO_ROOT"
-pnpm --filter @beevibe/core build >/dev/null
+# Idempotent core build — skip if dist is fresh enough. Ad-hoc local
+# runs hit the cold case; the release workflow pre-builds once and the
+# sibling prepare-publish.sh reuses the result.
+if [ ! -f packages/core/dist/index.js ]; then
+  pnpm --filter @beevibe/core build >/dev/null
+fi
 
 cd "$DAEMON_DIR"
 OUTDIR="dist-bin"

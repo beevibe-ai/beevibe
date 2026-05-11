@@ -19,7 +19,11 @@ DAEMON_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_ROOT="$(cd "$DAEMON_DIR/../.." && pwd)"
 
 cd "$REPO_ROOT"
-pnpm --filter @beevibe/core build >/dev/null
+# Idempotent core build — skip if dist exists. The release workflow
+# pre-builds via build-binaries.sh, and ad-hoc runs handle the cold case.
+if [ ! -f packages/core/dist/index.js ]; then
+  pnpm --filter @beevibe/core build >/dev/null
+fi
 
 cd "$DAEMON_DIR"
 OUTDIR="publish-dist"
@@ -45,14 +49,16 @@ chmod +x "$OUTDIR/dist/main.js"
 node <<JS
 const fs = require("node:fs");
 const pkg = JSON.parse(fs.readFileSync("package.json", "utf8"));
+const wsVersion = pkg.dependencies && pkg.dependencies.ws;
+if (!wsVersion) throw new Error("Expected 'ws' in dependencies — package.json drifted from publish script");
 delete pkg.private;
 delete pkg.devDependencies;
 delete pkg.scripts;
+delete pkg.types;
 pkg.publishConfig = { access: "public", registry: "https://registry.npmjs.org/" };
-pkg.dependencies = { ws: pkg.dependencies.ws };
+pkg.dependencies = { ws: wsVersion };
 pkg.files = ["dist", "README.md"];
 pkg.main = "./dist/main.js";
-pkg.types = undefined;
 pkg.bin = { "beevibe-daemon": "./dist/main.js" };
 fs.writeFileSync("${OUTDIR}/package.json", JSON.stringify(pkg, null, 2) + "\n");
 JS

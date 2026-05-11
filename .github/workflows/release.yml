@@ -91,8 +91,6 @@ jobs:
     needs: build-binaries
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-
       - uses: actions/download-artifact@v4
         with:
           name: daemon-binaries
@@ -108,6 +106,11 @@ jobs:
   npm-publish:
     needs: build-binaries
     runs-on: ubuntu-latest
+    # Required for npm provenance attestation via GitHub Actions OIDC —
+    # buyers downstream can verify the package was built by this repo.
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -121,7 +124,7 @@ jobs:
 
       - name: npm publish
         working-directory: ./publish-dist
-        run: npm publish --access=public
+        run: npm publish --access=public --provenance
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
