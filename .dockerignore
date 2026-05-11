@@ -1,0 +1,35 @@
+# Heavy / dev-only / sensitive paths excluded from Docker build contexts.
+node_modules
+**/node_modules
+.next
+**/.next
+dist
+**/dist
+.turbo
+**/.turbo
+*.tsbuildinfo
+
+# Secrets / local-only state
+.env
+.env.*
+!.env.example
+.beevibe
+~/.beevibe
+
+# VCS + tooling
+.git
+.github
+.vscode
+.idea
+
+# Tests + scripts not needed in runtime image
+scripts/m*-e2e.ts
+scripts/probe-*.ts
+scripts/provision-demo.ts
+mocks
+**/*.test.ts
+**/*.spec.ts
+
+# OS / editor cruft
+.DS_Store
+*.log

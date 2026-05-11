@@ -1,0 +1,34 @@
+# Beevibe Web service — Dockerfile for Railway / self-host deploys.
+#
+# Next.js bakes `NEXT_PUBLIC_*` envs into the client bundle at build time,
+# so the api URL must be passed as a build arg (Railway: under Variables →
+# Build Args → NEXT_PUBLIC_BV_API_URL).
+FROM node:20-slim
+
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+
+WORKDIR /app
+
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json tsconfig.base.json ./
+COPY packages/core/package.json packages/core/
+COPY packages/api/package.json packages/api/
+COPY packages/scheduler/package.json packages/scheduler/
+COPY packages/daemon/package.json packages/daemon/
+COPY packages/web/package.json packages/web/
+
+# --filter scopes install to web + its workspace deps (api, core), skipping
+# scheduler / daemon trees.
+RUN pnpm install --frozen-lockfile --filter @beevibe/web...
+
+COPY . .
+
+# Build-time arg → env → next build bakes it into the client bundle.
+ARG NEXT_PUBLIC_BV_API_URL
+ENV NEXT_PUBLIC_BV_API_URL=$NEXT_PUBLIC_BV_API_URL
+
+RUN pnpm --filter @beevibe/web... build
+
+ENV NODE_ENV=production
+# Next.js reads PORT directly; Railway injects it.
+EXPOSE 3000
+CMD ["pnpm", "--filter", "@beevibe/web", "start"]

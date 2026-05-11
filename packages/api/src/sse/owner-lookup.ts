@@ -16,6 +16,7 @@
  * separate handler when rooms ship.
  */
 
+import { readPositiveInt } from "@beevibe/core";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { BvEvent } from "./manager.js";
 
@@ -204,8 +205,3 @@ export class OwnerLookup {
   }
 }
 
-function readPositiveInt(raw: string | undefined, fallback: number): number {
-  if (raw === undefined || raw === "") return fallback;
-  const n = Number.parseInt(raw, 10);
-  return Number.isFinite(n) && n > 0 ? n : fallback;
-}

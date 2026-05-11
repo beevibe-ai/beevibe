@@ -1,0 +1,29 @@
+# Beevibe Scheduler service — Dockerfile for Railway / self-host deploys.
+#
+# The scheduler is a background worker (no public port). It claims
+# null-runtime pending sessions as the in-process fallback claimant when
+# no daemon is bound to the agent, and runs the daemon-orphan reaper.
+FROM node:20-slim
+
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+
+WORKDIR /app
+
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json tsconfig.base.json ./
+COPY packages/core/package.json packages/core/
+COPY packages/api/package.json packages/api/
+COPY packages/scheduler/package.json packages/scheduler/
+COPY packages/daemon/package.json packages/daemon/
+COPY packages/web/package.json packages/web/
+
+# --filter scopes install to scheduler + its workspace deps (core), skipping
+# web / daemon / api trees so the image stays minimal.
+RUN pnpm install --frozen-lockfile --filter @beevibe/scheduler...
+
+COPY . .
+RUN pnpm --filter @beevibe/scheduler... build
+
+ENV NODE_ENV=production
+ENV BEEVIBE_SKILLS_DIR=/app/skills
+
+CMD ["node", "packages/scheduler/dist/main.js"]

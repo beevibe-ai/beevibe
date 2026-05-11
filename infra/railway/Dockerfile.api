@@ -1,0 +1,36 @@
+# Beevibe API service — Dockerfile for Railway / self-host deploys.
+#
+# Build: docker build -f infra/railway/Dockerfile.api -t beevibe-api .
+# Run:   docker run -p 3000:3000 --env-file .env beevibe-api
+#
+# Required env vars at runtime: DATABASE_URL, BEEVIBE_MCP_SERVER_URL,
+# OPENAI_API_KEY, ANTHROPIC_API_KEY. Optional: BEEVIBE_CORS_ORIGINS,
+# BEEVIBE_SKILLS_DIR (defaults to /app/skills baked in).
+FROM node:20-slim
+
+RUN corepack enable && corepack prepare pnpm@9.12.0 --activate
+
+WORKDIR /app
+
+# Copy lockfile + workspace manifests first so the pnpm install layer caches
+# independently of source changes.
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json turbo.json tsconfig.base.json ./
+COPY packages/core/package.json packages/core/
+COPY packages/api/package.json packages/api/
+COPY packages/scheduler/package.json packages/scheduler/
+COPY packages/daemon/package.json packages/daemon/
+COPY packages/web/package.json packages/web/
+
+# --filter scopes install to api + its workspace deps (core), skipping web /
+# daemon trees so the image stays free of Next.js / React.
+RUN pnpm install --frozen-lockfile --filter @beevibe/api...
+
+# Copy the rest of the repo + build api (and its transitive workspace deps).
+COPY . .
+RUN pnpm --filter @beevibe/api... build
+
+ENV NODE_ENV=production
+ENV BEEVIBE_SKILLS_DIR=/app/skills
+
+EXPOSE 3000
+CMD ["node", "packages/api/dist/main.js"]
