@@ -12,7 +12,6 @@ import {
   PanelLeftOpen,
   Users,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { useAgents } from "@/lib/hooks/use-agents";
 import { useCollapsible } from "@/lib/hooks/use-collapsible";
 import { Avatar } from "./avatar";

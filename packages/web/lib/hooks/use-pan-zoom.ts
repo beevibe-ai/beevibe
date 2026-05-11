@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 export interface PanZoomTransform {
   x: number;
@@ -50,11 +50,16 @@ export interface PanZoomController {
 export function usePanZoom(opts: PanZoomOptions = {}): PanZoomController {
   const minScale = opts.minScale ?? 0.4;
   const maxScale = opts.maxScale ?? 2.5;
-  const initial: PanZoomTransform = {
-    x: opts.initial?.x ?? 0,
-    y: opts.initial?.y ?? 0,
-    scale: opts.initial?.scale ?? 1,
-  };
+  // Memoized so `reset`'s useCallback dep stays stable across renders;
+  // otherwise reset's identity churns and consumers re-bind handlers.
+  const initial = useMemo<PanZoomTransform>(
+    () => ({
+      x: opts.initial?.x ?? 0,
+      y: opts.initial?.y ?? 0,
+      scale: opts.initial?.scale ?? 1,
+    }),
+    [opts.initial?.x, opts.initial?.y, opts.initial?.scale],
+  );
 
   const containerRef = useRef<HTMLDivElement>(null);
   const [transform, setTransform] = useState<PanZoomTransform>(initial);
@@ -161,7 +166,7 @@ export function usePanZoom(opts: PanZoomOptions = {}): PanZoomController {
     };
   }, []);
 
-  const reset = useCallback(() => setTransform(initial), [initial.x, initial.y, initial.scale]);
+  const reset = useCallback(() => setTransform(initial), [initial]);
 
   const zoomBy = useCallback(
     (factor: number) => {

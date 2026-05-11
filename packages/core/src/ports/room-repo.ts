@@ -1,4 +1,4 @@
-import type { Room, RoomMember, RoomMessage, RoomMessageKind } from "../domain/room.js";
+import type { Room, RoomMember, RoomMessage } from "../domain/room.js";
 
 export type NewRoom = Omit<Room, "created_at" | "updated_at">;
 
@@ -34,5 +34,3 @@ export interface RoomRepository {
   appendMessage(input: NewRoomMessage): Promise<RoomMessage>;
   listMessages(roomId: string, limit?: number): Promise<RoomMessage[]>;
 }
-
-export type { RoomMessageKind };

@@ -1,7 +1,6 @@
 import type {
   Session,
   SessionBriefingSnapshot,
-  SessionSpawnMode,
   SessionStatus,
   SessionType,
   SessionUsage,

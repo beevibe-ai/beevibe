@@ -996,6 +996,7 @@ function buildTeamOnlyTools(
 // Disallow control chars + newlines; otherwise let the LLM pick natural
 // names ("Web & Onboarding specialist", "Auth/SSO expert", etc.). 80-char
 // cap matches what survives in dropdowns.
+// eslint-disable-next-line no-control-regex -- intentional: we're explicitly rejecting these
 const PROVISION_NAME_INVALID_RE = /[\x00-\x1f\x7f]/;
 
 /**

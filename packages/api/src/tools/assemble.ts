@@ -1,9 +1,9 @@
 import type { ResolvedCaller } from "@beevibe/core/auth";
-import type { SessionSpawnMode } from "@beevibe/core";
 import type {
   AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
+  SessionSpawnMode,
   TaskRepository,
   WorkProductRepository,
 } from "@beevibe/core";
