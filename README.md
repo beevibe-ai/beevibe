@@ -10,7 +10,7 @@ It's open source under the Apache-2.0 license. Everything is self-hosted: your P
 
 One-click cloud deploy:
 
-[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?repo=https://github.com/beevibe-ai/beevibe)
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/beevibe)
 
 This brings up `api` + `scheduler` + `web` services and a managed Postgres in one click. After the deploy finishes, set `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` in the project's Variables tab, then visit the web service's public URL to sign up. You'll be prompted to install the local daemon as part of the welcome flow.
 
