@@ -106,6 +106,26 @@ jobs:
           # don't get badged as "Latest release" on the repo page.
           prerelease: ${{ contains(github.ref_name, '-') }}
 
+  update-release-branch:
+    # `release` is a movable pointer to the latest stable tag's commit —
+    # the Railway template pins services to this branch instead of a
+    # specific tag, so new template clickers always get the freshest
+    # release at click time without us needing to re-publish the template.
+    # Existing Railway deploys are unaffected because the template's
+    # auto-deploy is off; users manually redeploy to pick up changes.
+    needs: build-binaries
+    if: "!contains(github.ref_name, '-')"
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 1
+      - name: Force-update release branch to this tag's commit
+        run: git push --force origin "${{ github.sha }}:refs/heads/release"
+
   npm-publish:
     needs: build-binaries
     runs-on: ubuntu-latest
