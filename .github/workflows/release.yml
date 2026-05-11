@@ -1,0 +1,203 @@
+# Release workflow — fires when a tag matching v* is pushed.
+#
+# Produces:
+#   1. GitHub release at https://github.com/beevibe-ai/beevibe/releases/<tag>
+#      with 4 native daemon binaries (darwin-arm64, darwin-x64,
+#      linux-x64, linux-arm64) + a companion .sha256 file per binary
+#      (used by the daemon's `update` command for integrity verification).
+#   2. npm package @beevibe/daemon@<version> on the public registry
+#      (single-file bundle with workspace deps inlined).
+#   3. Commit to beevibe-ai/homebrew-tap that bumps the formula's
+#      version + SHA256s. Requires a HOMEBREW_TAP_TOKEN secret with
+#      contents:write access to that repo.
+#
+# Cutting a release:
+#   git tag v0.1.0 && git push origin v0.1.0
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write   # for GitHub release creation
+
+jobs:
+  build-binaries:
+    runs-on: macos-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Determine version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: pnpm
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: "1.3.11"
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Sync package.json version to tag
+        run: |
+          node -e "
+            const fs = require('node:fs');
+            const path = 'packages/daemon/package.json';
+            const pkg = JSON.parse(fs.readFileSync(path, 'utf8'));
+            pkg.version = '${{ steps.version.outputs.version }}';
+            fs.writeFileSync(path, JSON.stringify(pkg, null, 2) + '\n');
+          "
+
+      - name: Build native daemon binaries (4 platforms)
+        run: bash packages/daemon/scripts/build-binaries.sh
+
+      - name: Generate SHA256 companion files
+        working-directory: packages/daemon/dist-bin
+        run: |
+          for f in beevibe-daemon-*; do
+            shasum -a 256 "$f" > "$f.sha256"
+          done
+          ls -la
+
+      - name: Upload binaries as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: daemon-binaries
+          path: packages/daemon/dist-bin/*
+
+      - name: Prepare npm publish bundle
+        run: bash packages/daemon/scripts/prepare-publish.sh
+
+      - name: Upload npm publish artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: daemon-publish-dist
+          path: packages/daemon/publish-dist/
+
+  github-release:
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: daemon-binaries
+          path: ./release-assets
+
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./release-assets/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+  npm-publish:
+    needs: build-binaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: daemon-publish-dist
+          path: ./publish-dist
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          registry-url: "https://registry.npmjs.org/"
+
+      - name: npm publish
+        working-directory: ./publish-dist
+        run: npm publish --access=public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+  update-homebrew-tap:
+    needs: [build-binaries, github-release]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: daemon-binaries
+          path: ./release-assets
+
+      - name: Checkout homebrew-tap
+        uses: actions/checkout@v4
+        with:
+          repository: beevibe-ai/homebrew-tap
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Update formula
+        env:
+          VERSION: ${{ needs.build-binaries.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd release-assets
+          SHA_DARWIN_ARM64=$(cut -d' ' -f1 beevibe-daemon-darwin-arm64.sha256)
+          SHA_DARWIN_X64=$(cut -d' ' -f1 beevibe-daemon-darwin-x64.sha256)
+          SHA_LINUX_X64=$(cut -d' ' -f1 beevibe-daemon-linux-x64.sha256)
+          SHA_LINUX_ARM64=$(cut -d' ' -f1 beevibe-daemon-linux-arm64.sha256)
+
+          cd ../homebrew-tap
+          mkdir -p Formula
+
+          cat > Formula/beevibe-daemon.rb <<EOF
+          class BeevibeDaemon < Formula
+            desc "Beevibe daemon — runs agent CLIs locally on your machine"
+            homepage "https://github.com/beevibe-ai/beevibe"
+            version "${VERSION}"
+            license "Apache-2.0"
+
+            on_macos do
+              on_arm do
+                url "https://github.com/beevibe-ai/beevibe/releases/download/v${VERSION}/beevibe-daemon-darwin-arm64"
+                sha256 "${SHA_DARWIN_ARM64}"
+              end
+              on_intel do
+                url "https://github.com/beevibe-ai/beevibe/releases/download/v${VERSION}/beevibe-daemon-darwin-x64"
+                sha256 "${SHA_DARWIN_X64}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "https://github.com/beevibe-ai/beevibe/releases/download/v${VERSION}/beevibe-daemon-linux-x64"
+                sha256 "${SHA_LINUX_X64}"
+              end
+              on_arm do
+                url "https://github.com/beevibe-ai/beevibe/releases/download/v${VERSION}/beevibe-daemon-linux-arm64"
+                sha256 "${SHA_LINUX_ARM64}"
+              end
+            end
+
+            def install
+              # The URL above points at a single binary (not an archive);
+              # brew downloads it raw into the build dir. Rename into bin/.
+              bin.install Dir["*"].first => "beevibe-daemon"
+            end
+
+            test do
+              system "#{bin}/beevibe-daemon", "--help"
+            end
+          end
+          EOF
+
+          git config user.email "actions@github.com"
+          git config user.name "beevibe-release-bot"
+          git add Formula/beevibe-daemon.rb
+          git commit -m "beevibe-daemon ${VERSION}" || echo "no changes"
+          git push
