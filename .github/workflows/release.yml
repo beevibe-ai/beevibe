@@ -102,6 +102,9 @@ jobs:
           files: ./release-assets/*
           generate_release_notes: true
           fail_on_unmatched_files: true
+          # Mark v*-rc*, v*-beta*, v*-alpha* tags as pre-releases so they
+          # don't get badged as "Latest release" on the repo page.
+          prerelease: ${{ contains(github.ref_name, '-') }}
 
   npm-publish:
     needs: build-binaries
@@ -123,9 +126,30 @@ jobs:
           node-version: "20"
           registry-url: "https://registry.npmjs.org/"
 
+      # Trusted Publishing (OIDC-based npm publish) requires npm CLI
+      # 11.5.0+. Node 20's bundled npm is 10.x; upgrade explicitly so
+      # `npm publish --provenance` exchanges the GitHub OIDC token for
+      # an npm publish token instead of looking for a static token in
+      # ~/.npmrc.
+      - name: Upgrade npm to a Trusted-Publishing-capable version
+        run: npm install -g npm@latest
+
       - name: npm publish
         working-directory: ./publish-dist
-        run: npm publish --access=public --provenance
+        env:
+          # Passed via env (not inline `${{ }}`) to avoid command-injection
+          # risk and shellcheck false positive on the pattern match.
+          TAG_NAME: ${{ github.ref_name }}
+        # Pre-release tags (v0.0.1-rc1, v0.1.0-beta.2, etc.) ship under
+        # the `next` dist-tag so `npm install @beevibe/daemon` still
+        # pulls the latest stable. The dist-tag becomes `latest` for
+        # any tag without a hyphen.
+        run: |
+          if [[ "$TAG_NAME" == *-* ]]; then
+            npm publish --access=public --provenance --tag next
+          else
+            npm publish --access=public --provenance
+          fi
 
   update-homebrew-tap:
     needs: [build-binaries, github-release]
