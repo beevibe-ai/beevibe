@@ -1,11 +1,11 @@
 #!/usr/bin/env node
 import { config as loadEnv } from "dotenv";
+import { readPositiveInt, resolveMcpServerUrl } from "@beevibe/core";
 import { bootstrap } from "./bootstrap.js";
 import { parseAllowedOrigins } from "./cors.js";
 
 const REQUIRED_ENV = [
   "DATABASE_URL",
-  "BEEVIBE_MCP_SERVER_URL",
   "OPENAI_API_KEY",
   "ANTHROPIC_API_KEY",
 ] as const;
@@ -13,15 +13,10 @@ const REQUIRED_ENV = [
 async function main(): Promise<void> {
   loadEnv();
 
-  // Railway-style PaaS injects RAILWAY_PUBLIC_DOMAIN for each service. If
-  // the operator hasn't supplied BEEVIBE_MCP_SERVER_URL explicitly, derive
-  // it from the public domain so daemons (and the agent CLIs they spawn)
-  // hit this api's /mcp route without manual config.
-  if (!process.env.BEEVIBE_MCP_SERVER_URL && process.env.RAILWAY_PUBLIC_DOMAIN) {
-    process.env.BEEVIBE_MCP_SERVER_URL = `https://${process.env.RAILWAY_PUBLIC_DOMAIN}/mcp`;
-  }
+  const mcpServerUrl = resolveMcpServerUrl(process.env);
 
-  const missing = REQUIRED_ENV.filter((k) => !process.env[k]);
+  const missing: string[] = REQUIRED_ENV.filter((k) => !process.env[k]);
+  if (!mcpServerUrl) missing.push("BEEVIBE_MCP_SERVER_URL");
   if (missing.length > 0) {
     throw new Error(
       `Missing required env vars: ${missing.join(", ")}. See .env.example for the full set.`,
@@ -30,11 +25,11 @@ async function main(): Promise<void> {
 
   // Railway / Heroku-style PaaS injects PORT; honor it before falling back
   // to BEEVIBE_API_PORT (local dev) and then to 3000.
-  const port = Number(process.env.PORT ?? process.env.BEEVIBE_API_PORT ?? 3000);
+  const port = readPositiveInt(process.env.PORT ?? process.env.BEEVIBE_API_PORT, 3000);
   const corsAllowedOrigins = parseAllowedOrigins(process.env.BEEVIBE_CORS_ORIGINS);
   const { server, shutdown } = await bootstrap({
     databaseUrl: process.env.DATABASE_URL!,
-    mcpServerUrl: process.env.BEEVIBE_MCP_SERVER_URL!,
+    mcpServerUrl: mcpServerUrl!,
     openaiApiKey: process.env.OPENAI_API_KEY!,
     anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
     workspaceRoot: process.env.WORKSPACE_ROOT,
