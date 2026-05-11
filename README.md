@@ -6,6 +6,21 @@ beevibe lets you run a small organization of Claude Code agents that delegate to
 
 It's open source under the Apache-2.0 license. Everything is self-hosted: your Postgres, your `claude` CLI binaries, your filesystem.
 
+## Deploy
+
+One-click cloud deploy:
+
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/new/template?repo=https://github.com/beevibe-ai/beevibe)
+
+This brings up `api` + `scheduler` + `web` services and a managed Postgres in one click. After the deploy finishes, set `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` in the project's Variables tab, then visit the web service's public URL to sign up. You'll be prompted to install the local daemon as part of the welcome flow.
+
+Self-host options:
+
+- **Docker / docker-compose** — `git clone && docker compose up` against a tagged release (see [Self-hosting](#self-hosting) below).
+- **Manual** — `pnpm install && pnpm build && pnpm start` per service against your own Postgres.
+
+The repo and its tagged releases are the source of truth. The Railway button is a convenience layer; you can deploy the same code to Fly, Render, Coolify, k8s, or any container host.
+
 ## What's inside
 
 ```
@@ -13,7 +28,8 @@ beevibe/
 ├── packages/
 │   ├── core/         shared library (domain, ports, services, adapters, auth)
 │   ├── api/          MCP tool surface for agents + REST for humans + mesh broker
-│   ├── executor/     polls Postgres → spawns Claude Code sessions
+│   ├── scheduler/    fallback claimant for null-runtime sessions + orphan reaper
+│   ├── daemon/       runs on each user's machine; claims sessions and spawns CLIs locally
 │   └── web/          Next.js dashboard with live updates over SSE
 │
 ├── skills/           Anthropic Agent Skills (markdown behavioral protocols)
@@ -26,7 +42,8 @@ Each package has its own README with details:
 
 - [packages/core](./packages/core/README.md) — the library
 - [packages/api](./packages/api/README.md) — the agent + human API server
-- [packages/executor](./packages/executor/README.md) — the task dispatcher
+- [packages/scheduler](./packages/scheduler/README.md) — server-fallback claimant + orphan reaper
+- [packages/daemon](./packages/daemon/README.md) — local-runtime daemon (one per user machine)
 - [packages/web](./packages/web/README.md) — the dashboard
 
 ## Concepts in 60 seconds
@@ -58,14 +75,14 @@ cp .env.example .env
 
 docker compose up -d                  # postgres + pgvector
 pnpm migrate up                       # apply migrations to dev DB
-pnpm dev                              # postgres + api + executor (+ tunnel if cloudflared is on PATH)
+pnpm dev                              # postgres + api + scheduler (+ tunnel if cloudflared is on PATH)
 ```
 
 `pnpm dev` runs [`scripts/dev.sh`](./scripts/dev.sh), which:
 
 - starts Postgres if it isn't already running
 - applies migrations
-- spawns `@beevibe/api` (port 3000) and `@beevibe/executor` (health on 3001) in watch mode with `[api]` / `[exec]` log prefixes
+- spawns `@beevibe/api` (port 3000) and `@beevibe/scheduler` (health on 3001) in watch mode with `[api]` / `[exec]` log prefixes
 - if `cloudflared` is on PATH, exposes the api at a `*.trycloudflare.com` URL and prints a paste-ready `mcp.json` snippet for remote `claude` CLI access (pass `--no-tunnel` to disable)
 
 `Ctrl+C` tears the whole tree down.
@@ -77,7 +94,7 @@ pnpm --filter @beevibe/web dev -- -p 3030
 # then visit http://localhost:3030
 ```
 
-(The web app needs `NEXT_PUBLIC_BV_USER_KEY` set — see [its README](./packages/web/README.md). Mint a key with `pnpm tsx scripts/provision-demo.ts`.)
+The web app reads `NEXT_PUBLIC_BV_API_URL` (origin of the api server). For a working demo flow, run `pnpm seed-demo` to provision demo users (each with a password) — then sign in at `/sign-in`. The welcome wizard guides daemon setup.
 
 ## Try it from your own Claude CLI
 
@@ -124,7 +141,7 @@ pnpm tsx scripts/provision-demo.ts --clean  # wipe demo rows (no reseed)
 
 ## Skills
 
-beevibe ships agent behavioral skills as `SKILL.md` files in [`/skills/`](./skills) — Anthropic's [Agent Skills open standard](https://agentskills.io/specification). The api and executor sync them into each agent's workspace at dispatch time automatically; agent-spawned sessions get them for free.
+beevibe ships agent behavioral skills as `SKILL.md` files in [`/skills/`](./skills) — Anthropic's [Agent Skills open standard](https://agentskills.io/specification). The api and daemons sync them into each agent's workspace at dispatch time automatically; agent-spawned sessions get them for free.
 
 For human users running `claude` locally and acting *as* a beevibe agent (the manual-smoke path above), install them once into your local Claude Code skill discovery dir:
 
@@ -136,6 +153,73 @@ The install is idempotent — re-run after `git pull` to refresh. Only dirs name
 
 > **Reserved namespace**: the `beevibe-` prefix in `~/.claude/skills/` is reserved for skills shipped by this repo. If you author your own personal skills, use a different prefix (e.g., `mybeevibe-foo`) — anything not matching `beevibe-*` is invisible to the install command.
 
+## Self-hosting
+
+Beyond the Railway one-click button, the same code runs anywhere that can run a container or Node 20+.
+
+### Option 1: Docker
+
+Each service has a Dockerfile under [`infra/railway/`](./infra/railway). To run the full stack via Docker:
+
+```bash
+git clone https://github.com/beevibe-ai/beevibe.git
+cd beevibe
+# Optional: pin to a tagged release for reproducible builds
+#   git checkout v0.1.0
+
+# 1. Build the three service images
+docker build -f infra/railway/Dockerfile.api       -t beevibe-api .
+docker build -f infra/railway/Dockerfile.scheduler -t beevibe-scheduler .
+docker build -f infra/railway/Dockerfile.web \
+  --build-arg NEXT_PUBLIC_BV_API_URL=http://localhost:3000 \
+  -t beevibe-web .
+
+# 2. Start Postgres
+docker compose up -d postgres
+
+# 3. Run migrations once
+docker run --rm --network host \
+  -e DATABASE_URL=postgresql://beevibe:beevibe@localhost:5433/beevibe \
+  beevibe-api pnpm migrate:deploy up
+
+# 4. Run the services (each in its own terminal or via your orchestrator)
+docker run -p 3000:3000 --network host --env-file .env beevibe-api
+docker run --network host --env-file .env beevibe-scheduler
+docker run -p 8080:3000 --env-file .env beevibe-web
+```
+
+Then visit `http://localhost:8080` to sign up.
+
+### Option 2: Bare Node
+
+If you'd rather not use Docker:
+
+```bash
+git clone https://github.com/beevibe-ai/beevibe.git
+cd beevibe
+# Optional: pin to a tagged release
+#   git checkout v0.1.0
+
+pnpm install --frozen-lockfile
+pnpm build
+pnpm migrate:deploy up
+
+# Start each service in its own process (use systemd, pm2, or your service manager)
+node packages/api/dist/main.js          # api on $PORT (default 3000)
+node packages/scheduler/dist/main.js    # scheduler (background worker)
+pnpm --filter @beevibe/web start        # web (next start, port from $PORT)
+```
+
+Required env vars are listed in [`.env.example`](./.env.example). The api needs `DATABASE_URL`, `BEEVIBE_MCP_SERVER_URL`, `ANTHROPIC_API_KEY`, and `OPENAI_API_KEY` at minimum.
+
+### Notes for production self-hosting
+
+- **Single api replica** for v1 (see [v1 single-instance API constraint](#v1-single-instance-api-constraint) below).
+- **Postgres 16+** with `pgvector` extension. The included `docker-compose.yml` uses `pgvector/pgvector:pg16`.
+- **Reverse proxy** in front of the api (nginx / Caddy / Cloudflare) must support WebSockets (`/runtime/ws`) and long-held HTTP responses (mesh negotiate held connections, up to 5 minutes idle).
+- **CORS**: set `BEEVIBE_CORS_ORIGINS` to the public URL of the web service. Localhost variants are always allowed in addition.
+- **Daemon distribution**: end users still install the [`beevibe-daemon`](./packages/daemon) on their own machines to run agent CLIs locally. The hosted api never spawns user CLIs.
+
 ## Architecture
 
 The dependency direction across packages is one-way and ESLint-enforced:
@@ -146,18 +230,20 @@ core/ports      → domain
 core/services   → domain + ports     (NEVER adapters)
 core/adapters   → ports it implements + domain
 api/            → core (composition root)
-executor/       → core (composition root)
+scheduler/      → core (composition root)
+daemon/         → core (workspace + runtime adapters, direct imports)
 web/            → core (types only) + api (HTTP)
 ```
 
-The api and executor are independent processes. They never talk to each other over HTTP — both use Postgres as the integration point:
+The api, scheduler, and per-user daemons are independent processes. The api never talks to the scheduler or daemons over HTTP for task dispatch — Postgres is the integration point:
 
-- The api writes task lifecycle changes (created, approved, revised, cancelled).
-- The executor polls for work, runs sessions, writes results back.
-- Cancellation: api `UPDATE`s the row + `pg_notify('cancel_task', task_id)`; executor's dedicated `LISTEN` client aborts the in-flight session in <200ms.
+- The api writes task lifecycle changes (created, approved, revised, cancelled) and inserts `session` rows with `status='pending'`.
+- A daemon claims sessions whose `preferred_runtime_id` matches its registered runtime and spawns the CLI locally on the user's machine.
+- The scheduler claims null-runtime sessions (server-fallback for offline-target mesh asks) and runs the daemon-orphan reaper.
+- Cancellation: api `UPDATE`s the row + `pg_notify('cancel_task', task_id)`; the active claimant (daemon or scheduler) aborts the in-flight session in <200ms.
 - Live updates: every state-changing INSERT/UPDATE fires a `pg_notify`; api's `/api/stream` SSE endpoint relays them to the dashboard.
 
-That decoupling means you can scale the executor horizontally (run as many replicas as you want — task claims are atomic) and restart either side independently.
+That decoupling means each component scales independently — many daemons (one per user machine), one or a few schedulers, a single api replica per region (see [v1 single-instance API constraint](#v1-single-instance-api-constraint) below).
 
 ### v1 single-instance API constraint
 
@@ -169,8 +255,8 @@ round-trip must hit the same API process** for v1; a multi-instance API
 fronted by a load balancer can drop responses on the floor when the two
 HTTP requests land on different replicas. Documented in code; tracked
 for cross-instance federation via `pg_notify` as a follow-up. **Self-hosters
-should run a single API replica until that ships.** The executor (and
-the local-runtime daemon when it lands) can scale horizontally either way.
+should run a single API replica until that ships.** The scheduler and
+per-user daemons scale horizontally either way.
 
 ## Common commands
 
@@ -179,7 +265,7 @@ pnpm build              # tsc across all packages (turbo-cached)
 pnpm typecheck          # types only
 pnpm lint               # eslint
 pnpm test               # vitest (unit + integration)
-pnpm dev                # full local stack (postgres + api + executor + tunnel)
+pnpm dev                # full local stack (postgres + api + scheduler + tunnel)
 pnpm migrate up         # apply migrations to DATABASE_URL
 pnpm migrate:test up    # apply migrations to DATABASE_URL_TEST
 pnpm install-skills     # install beevibe skills into ~/.claude/skills/
@@ -200,13 +286,13 @@ pnpm install-skills     # install beevibe skills into ~/.claude/skills/
 Live integration tests against real Postgres + LLM APIs. Each is gated by an env flag.
 
 ```bash
-# In-process smoke — api + executor bootstrapped in the same VM
+# In-process smoke — api + scheduler bootstrapped in the same VM
 RUN_M6_E2E=1 \
   DATABASE_URL_TEST=postgresql://beevibe:beevibe@localhost:5433/beevibe_test \
   OPENAI_API_KEY=... ANTHROPIC_API_KEY=... \
   pnpm tsx scripts/m6-e2e.ts
 
-# Multi-process smoke — api + executor as actual `node dist/main.js`
+# Multi-process smoke — api + scheduler as actual `node dist/main.js`
 # subprocesses; verifies cross-process IPC, signal propagation, no orphans
 RUN_M7_E2E=1 \
   DATABASE_URL_TEST=postgresql://beevibe:beevibe@localhost:5433/beevibe_test \

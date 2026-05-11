@@ -22,6 +22,7 @@
     "test": "turbo test --concurrency=1 && vitest run scripts/",
     "clean": "turbo clean && rm -rf node_modules",
     "migrate": "node-pg-migrate --envPath .env",
+    "migrate:deploy": "node-pg-migrate",
     "migrate:test": "node-pg-migrate --envPath .env -d DATABASE_URL_TEST",
     "install-skills": "tsx scripts/install-skills.ts",
     "bootstrap": "tsx scripts/init.ts",
