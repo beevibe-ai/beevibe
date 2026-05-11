@@ -106,8 +106,13 @@ jobs:
   npm-publish:
     needs: build-binaries
     runs-on: ubuntu-latest
-    # Required for npm provenance attestation via GitHub Actions OIDC —
-    # buyers downstream can verify the package was built by this repo.
+    # `id-token: write` is what makes npm Trusted Publishing work — the
+    # GitHub Actions runner mints a short-lived OIDC token, npm verifies
+    # the token's `repository` + `workflow` claims against the trusted
+    # publisher configured for @beevibe/daemon, and authenticates the
+    # publish without any long-lived token in our secrets. Same token
+    # is used for the provenance attestation that ships with the
+    # published tarball.
     permissions:
       contents: read
       id-token: write
@@ -125,8 +130,6 @@ jobs:
       - name: npm publish
         working-directory: ./publish-dist
         run: npm publish --access=public --provenance
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
   update-homebrew-tap:
     needs: [build-binaries, github-release]

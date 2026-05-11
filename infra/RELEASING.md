@@ -11,15 +11,31 @@ fires on tag push (`v*`) and produces three artifacts:
 
 These pieces have to exist before the first tag push:
 
-### 1. `NPM_TOKEN` secret
+### 1. npm Trusted Publisher (no token needed)
 
-1. Log into [npmjs.com](https://npmjs.com) as a user with publish access to
-   the `@beevibe` org. (If the org doesn't exist, create it first.)
-2. Account → Access Tokens → Generate Token → Automation token (or Classic
-   Granular).
-3. Copy the token.
-4. In this repo: Settings → Secrets and variables → Actions → New repository
-   secret. Name: `NPM_TOKEN`, value: the token.
+The release workflow authenticates to npm via GitHub Actions OIDC —
+no long-lived secret in this repo's GitHub Secrets. Setup is one-time
+via npm's web UI:
+
+1. Log into [npmjs.com](https://npmjs.com) as an owner of the `@beevibe`
+   org. (If the org doesn't exist, create it first at
+   [npmjs.com/org/create](https://www.npmjs.com/org/create) — free
+   plan is fine for public packages.)
+2. Navigate to the `@beevibe/daemon` package settings. The package
+   doesn't exist yet, but npm supports pre-configuring a Trusted
+   Publisher for new packages:
+   - Org page → Packages → "Add Trusted Publisher" (or similar)
+   - OR direct URL pattern: `npmjs.com/package/@beevibe/daemon/access` once
+     the package exists; for pre-publish config, use the org settings
+3. Add the trusted publisher with:
+   - **Publisher**: GitHub Actions
+   - **Repository owner**: `beevibe-ai`
+   - **Repository name**: `beevibe`
+   - **Workflow filename**: `release.yml`
+   - **Environment**: (leave blank)
+
+That's it — no token to generate, no secret to add. The release workflow
+authenticates via OIDC on every run.
 
 ### 2. `HOMEBREW_TAP_TOKEN` secret + tap repo
 
