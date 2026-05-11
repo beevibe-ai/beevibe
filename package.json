@@ -3,6 +3,13 @@
   "version": "0.0.1",
   "private": true,
   "description": "Beevibe core — modular monolith for agent runtime (MCP server + scheduler + daemon + shared library)",
+  "license": "Apache-2.0",
+  "author": "Zhe Pang",
+  "homepage": "https://github.com/beevibe-ai/beevibe",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beevibe-ai/beevibe.git"
+  },
   "packageManager": "pnpm@9.12.0",
   "engines": {
     "node": ">=20.0.0"

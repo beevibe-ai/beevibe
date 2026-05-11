@@ -3,6 +3,13 @@
   "version": "0.0.1",
   "private": true,
   "description": "Beevibe daemon — runs on each user's machine, claims pending sessions and spawns the CLI locally",
+  "license": "Apache-2.0",
+  "author": "Zhe Pang",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beevibe-ai/beevibe.git",
+    "directory": "packages/daemon"
+  },
   "type": "module",
   "main": "./dist/main.js",
   "types": "./dist/main.d.ts",

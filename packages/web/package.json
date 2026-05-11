@@ -3,6 +3,13 @@
   "version": "0.0.1",
   "private": true,
   "description": "Beevibe web — Next.js app (UI pages + API routes co-located)",
+  "license": "Apache-2.0",
+  "author": "Zhe Pang",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beevibe-ai/beevibe.git",
+    "directory": "packages/web"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",

@@ -1,0 +1,46 @@
+name: DCO
+
+# Verify every commit on a PR carries a Signed-off-by trailer matching
+# the Developer Certificate of Origin v1.1. See CONTRIBUTING.md.
+#
+# Lightweight grep-based check: catches the common case ("forgot to add
+# -s") without requiring a third-party action.
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  dco:
+    name: Sign-off check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Verify every commit is signed off
+        run: |
+          set -e
+          base="${{ github.event.pull_request.base.sha }}"
+          head="${{ github.event.pull_request.head.sha }}"
+          missing=0
+          while IFS= read -r sha; do
+            [ -z "$sha" ] && continue
+            author_name=$(git log -1 --format='%an' "$sha")
+            author_email=$(git log -1 --format='%ae' "$sha")
+            if ! git log -1 --format='%B' "$sha" | grep -qE "^Signed-off-by: .+ <.+@.+>$"; then
+              echo "::error::Commit $sha by $author_name <$author_email> is missing a Signed-off-by trailer."
+              missing=$((missing + 1))
+            fi
+          done < <(git rev-list "$base..$head")
+
+          if [ "$missing" -gt 0 ]; then
+            echo ""
+            echo "Add the trailer to your commits with 'git commit -s' (or"
+            echo "rebase: 'git rebase --signoff $base && git push --force-with-lease')."
+            echo "See CONTRIBUTING.md for details."
+            exit 1
+          fi
+          echo "All commits signed off."
