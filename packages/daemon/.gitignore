@@ -1,4 +1,6 @@
 tsbuildinfo
 dist
+dist-bin
+publish-dist
 .turbo
 node_modules

@@ -38,14 +38,14 @@ async function main(): Promise<void> {
   await cancelListener.start();
   await worker.start();
   await healthServer.start();
-  console.error("[executor] ready");
+  console.error("[scheduler] ready");
 
   const stop = async (signal: string): Promise<void> => {
-    console.error(`[executor] ${signal} received, shutting down`);
+    console.error(`[scheduler] ${signal} received, shutting down`);
     try {
       await shutdown();
     } catch (err) {
-      console.error("[executor] shutdown error:", err);
+      console.error("[scheduler] shutdown error:", err);
     }
     process.exit(0);
   };
@@ -59,6 +59,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  console.error("[executor] fatal:", err);
+  console.error("[scheduler] fatal:", err);
   process.exit(1);
 });

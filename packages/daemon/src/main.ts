@@ -1,12 +1,14 @@
 #!/usr/bin/env node
 /**
- * `beevibe-daemon` CLI entry. Two subcommands:
+ * `beevibe-daemon` CLI entry. Three subcommands:
  *   - setup --api <url> --user-token <bv_u_…> [--device-name <name>]
  *   - start
+ *   - update [--yes]
  */
 
 import { runSetup } from "./setup.js";
 import { runStart } from "./start.js";
+import { runUpdate } from "./update.js";
 
 interface Flags {
   api?: string;
@@ -45,12 +47,16 @@ function printHelp(): void {
       "Commands:",
       "  setup    Register this machine with a beevibe api server.",
       "  start    Run the daemon: claim pending sessions and spawn the CLI.",
+      "  update   Check for and install a newer daemon binary (brew/curl installs).",
       "",
       "setup flags:",
       "  --api, -a <url>            beevibe api base URL (e.g. http://localhost:3000)",
       "  --user-token, -t <bv_u_…>  human bv_u_ token (one-time, used to mint a bv_d_)",
       "  --device-name <name>       optional friendly name (defaults to user@hostname)",
       "  --external-id <id>         optional stable per-machine id (defaults to hostname)",
+      "",
+      "update flags:",
+      "  --yes, -y                  skip the install-this-update prompt",
     ].join("\n"),
   );
 }
@@ -83,6 +89,12 @@ async function main(): Promise<void> {
 
   if (command === "start") {
     await runStart();
+    return;
+  }
+
+  if (command === "update") {
+    const skipPrompt = rest.includes("--yes") || rest.includes("-y");
+    await runUpdate({ skipPrompt });
     return;
   }
 

@@ -18,12 +18,13 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "build:binaries": "bash scripts/build-binaries.sh",
     "start": "node dist/main.js",
     "dev": "tsx watch src/main.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "lint": "eslint src",
     "test": "vitest run --passWithNoTests",
-    "clean": "rm -rf dist .turbo *.tsbuildinfo"
+    "clean": "rm -rf dist dist-bin .turbo *.tsbuildinfo"
   },
   "dependencies": {
     "@beevibe/core": "workspace:*",
