@@ -103,61 +103,6 @@ jobs:
           generate_release_notes: true
           fail_on_unmatched_files: true
 
-  docker-images:
-    # Build + push the three service images to ghcr.io so self-hosters
-    # (and Railway / Render / Fly templates) can `docker pull` instead
-    # of rebuilding from source on every deploy.
-    #
-    # Web is built with a placeholder NEXT_PUBLIC_BV_API_URL — Next.js
-    # bakes that env var into the client bundle at build time, so the
-    # published web image is only useful as-is for evaluation. Production
-    # self-hosters rebuild web with their actual api URL.
-    needs: build-binaries
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      packages: write   # ghcr.io push
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - service: api
-            dockerfile: infra/railway/Dockerfile.api
-            build_args: ""
-          - service: scheduler
-            dockerfile: infra/railway/Dockerfile.scheduler
-            build_args: ""
-          - service: web
-            dockerfile: infra/railway/Dockerfile.web
-            build_args: |
-              NEXT_PUBLIC_BV_API_URL=http://localhost:3000
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: docker/setup-buildx-action@v3
-
-      - uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build + push ${{ matrix.service }} image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ${{ matrix.dockerfile }}
-          push: true
-          tags: |
-            ghcr.io/beevibe-ai/beevibe-${{ matrix.service }}:${{ needs.build-binaries.outputs.version }}
-            ghcr.io/beevibe-ai/beevibe-${{ matrix.service }}:latest
-          build-args: ${{ matrix.build_args }}
-          # Layer cache reuses across releases. ghcr.io supports cache
-          # exports as mode=max so subsequent runs of the same Dockerfile
-          # only rebuild changed layers.
-          cache-from: type=registry,ref=ghcr.io/beevibe-ai/beevibe-${{ matrix.service }}:buildcache
-          cache-to: type=registry,ref=ghcr.io/beevibe-ai/beevibe-${{ matrix.service }}:buildcache,mode=max
-
   npm-publish:
     needs: build-binaries
     runs-on: ubuntu-latest

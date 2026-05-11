@@ -157,42 +157,9 @@ The install is idempotent — re-run after `git pull` to refresh. Only dirs name
 
 Beyond the Railway one-click button, the same code runs anywhere that can run a container or Node 20+.
 
-### Option 1: Pre-built Docker images (fastest)
+### Option 1: Docker
 
-Every release publishes the three service images to GitHub Container Registry. To run the full stack:
-
-```bash
-# Pin to the version you want — see https://github.com/beevibe-ai/beevibe/releases
-VERSION=v0.1.0
-
-# 1. Pull the three service images
-docker pull ghcr.io/beevibe-ai/beevibe-api:$VERSION
-docker pull ghcr.io/beevibe-ai/beevibe-scheduler:$VERSION
-docker pull ghcr.io/beevibe-ai/beevibe-web:$VERSION
-
-# 2. Start Postgres (uses the included docker-compose.yml)
-docker compose up -d postgres
-
-# 3. Run migrations once
-docker run --rm \
-  -e DATABASE_URL='postgresql://beevibe:beevibe@host.docker.internal:5433/beevibe' \
-  ghcr.io/beevibe-ai/beevibe-api:$VERSION pnpm migrate:deploy up
-
-# 4. Run the services (each in its own terminal or via your orchestrator)
-docker run --rm -p 3000:3000 --env-file .env \
-  -e DATABASE_URL='postgresql://beevibe:beevibe@host.docker.internal:5433/beevibe' \
-  ghcr.io/beevibe-ai/beevibe-api:$VERSION
-docker run --rm --env-file .env \
-  -e DATABASE_URL='postgresql://beevibe:beevibe@host.docker.internal:5433/beevibe' \
-  ghcr.io/beevibe-ai/beevibe-scheduler:$VERSION
-docker run --rm -p 8080:3000 ghcr.io/beevibe-ai/beevibe-web:$VERSION
-```
-
-Then visit `http://localhost:8080` to sign up.
-
-> **Note on the web image**: it's built with `NEXT_PUBLIC_BV_API_URL=http://localhost:3000` baked into the client bundle. If your api lives at a different URL (the usual production case), rebuild web from source (Option 2 below) with `--build-arg NEXT_PUBLIC_BV_API_URL=https://your-api-host`. This is a Next.js limitation — `NEXT_PUBLIC_*` envs are compile-time, not runtime.
-
-### Option 2: Build from source
+Each service has a Dockerfile under [`infra/railway/`](./infra/railway). To run the full stack via Docker:
 
 ```bash
 git clone https://github.com/beevibe-ai/beevibe.git
@@ -200,17 +167,30 @@ cd beevibe
 # Optional: pin to a tagged release for reproducible builds
 #   git checkout v0.1.0
 
-# 1. Build the three service images locally
+# 1. Build the three service images
 docker build -f infra/railway/Dockerfile.api       -t beevibe-api .
 docker build -f infra/railway/Dockerfile.scheduler -t beevibe-scheduler .
 docker build -f infra/railway/Dockerfile.web \
-  --build-arg NEXT_PUBLIC_BV_API_URL=https://your-api-host \
+  --build-arg NEXT_PUBLIC_BV_API_URL=http://localhost:3000 \
   -t beevibe-web .
 
-# Then run as in Option 1 (substituting your local image tags for the ghcr.io paths).
+# 2. Start Postgres
+docker compose up -d postgres
+
+# 3. Run migrations once
+docker run --rm --network host \
+  -e DATABASE_URL=postgresql://beevibe:beevibe@localhost:5433/beevibe \
+  beevibe-api pnpm migrate:deploy up
+
+# 4. Run the services (each in its own terminal or via your orchestrator)
+docker run -p 3000:3000 --network host --env-file .env beevibe-api
+docker run --network host --env-file .env beevibe-scheduler
+docker run -p 8080:3000 --env-file .env beevibe-web
 ```
 
-### Option 3: Bare Node
+Then visit `http://localhost:8080` to sign up.
+
+### Option 2: Bare Node
 
 If you'd rather not use Docker:
 
