@@ -191,6 +191,73 @@ const INSTALL_OPTIONS: readonly InstallOption[] = [
   { id: "direct", label: "Direct download", hint: "advanced" },
 ];
 
+const RELEASES_URL = "https://github.com/beevibe-ai/beevibe/releases/latest";
+const NPX_BIN = "npx -y @beevibe/daemon@latest";
+const LOCAL_BIN = "beevibe-daemon";
+
+interface InstallStepSpec {
+  /** Short imperative — number is prepended at render time. */
+  label: string;
+  command: string;
+}
+
+interface InstallBundle {
+  /** Optional helper text rendered before the command list. */
+  prelude?: React.ReactNode;
+  steps: readonly InstallStepSpec[];
+}
+
+function buildInstallBundle(channel: InstallChannel, setupArgs: string): InstallBundle {
+  switch (channel) {
+    case "brew":
+      return {
+        steps: [
+          { label: "Install via Homebrew", command: "brew install beevibe-ai/tap/beevibe-daemon" },
+          { label: "Register", command: `${LOCAL_BIN} ${setupArgs}` },
+          { label: "Start (long-running)", command: `${LOCAL_BIN} start` },
+        ],
+      };
+    case "npx":
+      return {
+        steps: [
+          {
+            label: "Register (downloads daemon on first run)",
+            command: `${NPX_BIN} ${setupArgs}`,
+          },
+          { label: "Start (long-running)", command: `${NPX_BIN} start` },
+        ],
+      };
+    case "direct":
+      return {
+        prelude: (
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Pick the binary that matches your platform from{" "}
+            <a
+              href={RELEASES_URL}
+              target="_blank"
+              rel="noreferrer noopener"
+              className="underline hover:text-foreground"
+            >
+              the latest GitHub release
+            </a>
+            {" "}— darwin-arm64, darwin-x64, linux-x64, or linux-arm64. Then:
+          </p>
+        ),
+        steps: [
+          {
+            label: "Download (substitute your platform)",
+            command:
+              `curl -fsSL -o ~/.local/bin/${LOCAL_BIN} \\\n` +
+              `  "${RELEASES_URL}/download/${LOCAL_BIN}-darwin-arm64" \\\n` +
+              `  && chmod +x ~/.local/bin/${LOCAL_BIN}`,
+          },
+          { label: "Register", command: `${LOCAL_BIN} ${setupArgs}` },
+          { label: "Start (long-running)", command: `${LOCAL_BIN} start` },
+        ],
+      };
+  }
+}
+
 /**
  * Detect the user's OS from navigator.userAgent so we default the tab
  * to whatever is most natural for them. Falls back to `npx` (universal).
@@ -198,8 +265,7 @@ const INSTALL_OPTIONS: readonly InstallOption[] = [
  */
 function detectDefaultChannel(): InstallChannel {
   if (typeof navigator === "undefined") return "npx";
-  const ua = navigator.userAgent;
-  if (/Mac OS X|Macintosh/i.test(ua)) return "brew";
+  if (/Mac OS X|Macintosh/i.test(navigator.userAgent)) return "brew";
   return "npx";
 }
 
@@ -251,56 +317,7 @@ function InstallStep({ onDaemonReady }: { onDaemonReady: () => void }) {
           ))}
         </div>
 
-        {channel === "brew" ? (
-          <div className="space-y-2">
-            <CommandBlock
-              label="1. Install via Homebrew"
-              command="brew install beevibe-ai/tap/beevibe-daemon"
-            />
-            <CommandBlock label="2. Register" command={`beevibe-daemon ${setupArgs}`} />
-            <CommandBlock label="3. Start (long-running)" command="beevibe-daemon start" />
-          </div>
-        ) : null}
-
-        {channel === "npx" ? (
-          <div className="space-y-2">
-            <CommandBlock
-              label="1. Register (downloads daemon on first run)"
-              command={`npx -y @beevibe/daemon@latest ${setupArgs}`}
-            />
-            <CommandBlock
-              label="2. Start (long-running)"
-              command="npx -y @beevibe/daemon@latest start"
-            />
-          </div>
-        ) : null}
-
-        {channel === "direct" ? (
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Pick the binary that matches your platform from{" "}
-              <a
-                href="https://github.com/beevibe-ai/beevibe/releases/latest"
-                target="_blank"
-                rel="noreferrer noopener"
-                className="underline hover:text-foreground"
-              >
-                the latest GitHub release
-              </a>
-              {" "}— darwin-arm64, darwin-x64, linux-x64, or linux-arm64. Then:
-            </p>
-            <CommandBlock
-              label="1. Download (substitute your platform)"
-              command={
-                'curl -fsSL -o ~/.local/bin/beevibe-daemon \\\n' +
-                '  "https://github.com/beevibe-ai/beevibe/releases/latest/download/beevibe-daemon-darwin-arm64" \\\n' +
-                '  && chmod +x ~/.local/bin/beevibe-daemon'
-              }
-            />
-            <CommandBlock label="2. Register" command={`beevibe-daemon ${setupArgs}`} />
-            <CommandBlock label="3. Start (long-running)" command="beevibe-daemon start" />
-          </div>
-        ) : null}
+        <InstallStepList bundle={buildInstallBundle(channel, setupArgs)} />
       </div>
 
       <div
@@ -339,6 +356,17 @@ function InstallStep({ onDaemonReady }: { onDaemonReady: () => void }) {
         (<span className="font-mono">npm i -g @anthropic/claude-code</span>) and
         run <span className="font-mono">claude login</span>.
       </p>
+    </div>
+  );
+}
+
+function InstallStepList({ bundle }: { bundle: InstallBundle }) {
+  return (
+    <div className="space-y-2">
+      {bundle.prelude}
+      {bundle.steps.map((step, i) => (
+        <CommandBlock key={i} label={`${i + 1}. ${step.label}`} command={step.command} />
+      ))}
     </div>
   );
 }
