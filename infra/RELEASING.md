@@ -1,11 +1,13 @@
 # Cutting a release
 
 The release workflow ([.github/workflows/release.yml](../.github/workflows/release.yml))
-fires on tag push (`v*`) and produces three artifacts:
+fires on tag push (`v*`) and produces four artifacts:
 
 1. **GitHub release** with 4 native daemon binaries + `.sha256` companion files
 2. **npm package** `@beevibe/daemon@<version>` (bundled, no workspace deps)
 3. **Homebrew formula update** in [`beevibe-ai/homebrew-tap`](https://github.com/beevibe-ai/homebrew-tap)
+4. **Docker images** pushed to GitHub Container Registry:
+   `ghcr.io/beevibe-ai/beevibe-{api,scheduler,web}:<version>` and `:latest`
 
 ## One-time setup
 
@@ -36,7 +38,23 @@ These pieces have to exist before the first tag push:
    - Permissions: Contents (read + write)
 4. In this repo's secrets: name `HOMEBREW_TAP_TOKEN`, value: the PAT.
 
-### 3. Verify `pnpm`, `node`, and `bun` versions are pinned
+### 3. ghcr.io publishing
+
+GitHub Container Registry is enabled automatically for the `beevibe-ai` org's
+public repos — no secret needed. The first release pushes the three service
+images; subsequent releases reuse layer cache stored at
+`ghcr.io/beevibe-ai/beevibe-<service>:buildcache`.
+
+To make pulled images public (so self-hosters don't need to authenticate):
+
+1. Go to https://github.com/orgs/beevibe-ai/packages
+2. For each of `beevibe-api`, `beevibe-scheduler`, `beevibe-web`:
+   → Package settings → Change visibility → Public.
+
+(GitHub forces this to be a one-time per-package opt-in for ghcr.io —
+there's no org-wide default.)
+
+### 4. Verify `pnpm`, `node`, and `bun` versions are pinned
 
 The workflow pins:
 - pnpm `9.12.0` (matches root `package.json#packageManager`)
@@ -67,6 +85,8 @@ That's it. The workflow handles:
 - Creating the GitHub release with all assets
 - Bundling and publishing `@beevibe/daemon@${VERSION}` to npm
 - Generating + committing `Formula/beevibe-daemon.rb` to the tap repo
+- Building + pushing the three service images
+  (`api`, `scheduler`, `web`) to `ghcr.io/beevibe-ai/beevibe-*`
 
 Watch the workflow run: https://github.com/beevibe-ai/beevibe/actions/workflows/release.yml
 
@@ -87,7 +107,12 @@ curl -fsSL -o /tmp/beevibe-daemon \
 chmod +x /tmp/beevibe-daemon
 /tmp/beevibe-daemon --help
 
-# 4. Auto-update path: install an older version, then run `update`
+# 4. Docker image pulls
+docker pull ghcr.io/beevibe-ai/beevibe-api:${VERSION}
+docker pull ghcr.io/beevibe-ai/beevibe-scheduler:${VERSION}
+docker pull ghcr.io/beevibe-ai/beevibe-web:${VERSION}
+
+# 5. Auto-update path: install an older version, then run `update`
 beevibe-daemon update
 # (no-op if you're already on latest)
 ```
