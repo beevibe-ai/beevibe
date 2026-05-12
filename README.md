@@ -12,9 +12,30 @@ One-click cloud deploy:
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/beevibe)
 
-This brings up `api` + `scheduler` + `web` services and a managed Postgres in one click. After the deploy finishes, set `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` in the project's Variables tab, then visit the web service's public URL to sign up. You'll be prompted to install the local daemon as part of the welcome flow.
+This brings up `api` + `scheduler` + `web` services and a managed Postgres in one click.
 
-Self-host options:
+### Post-deploy setup (required)
+
+Railway templates don't currently propagate per-service "config-as-code file path" through the clone, so each of the three services starts off using Railpack auto-detection and fails to build the monorepo. After the initial deploy, do this **once per service**:
+
+1. Open the project on Railway
+2. Click into the service → **Settings**
+3. Scroll to **Config-as-code → Railway Config File** → click **Add File Path**
+4. Enter the path for that service and save:
+
+| Service | Config file path |
+|---|---|
+| `api` | `infra/railway/api.railway.json` |
+| `scheduler` | `infra/railway/scheduler.railway.json` |
+| `web` | `infra/railway/web.railway.json` |
+
+Saving triggers a redeploy. Each service now builds via its Dockerfile (instead of Railpack auto-detection) and comes up green in ~5 minutes.
+
+Then set `ANTHROPIC_API_KEY` and `OPENAI_API_KEY` in the api + scheduler **Variables** tab (replace the `sk-replace-with-your-*-key` placeholders), redeploy those two services, and visit the web service's public URL to sign up. You'll be prompted to install the local daemon as part of the welcome flow.
+
+> If Railway later propagates config-as-code path through template clones, this manual step will go away. Tracked in [#88](https://github.com/beevibe-ai/beevibe/issues/88).
+
+### Self-host options
 
 - **Docker / docker-compose** — `git clone && docker compose up` against a tagged release (see [Self-hosting](#self-hosting) below).
 - **Manual** — `pnpm install && pnpm build && pnpm start` per service against your own Postgres.
