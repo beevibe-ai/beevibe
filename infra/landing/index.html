@@ -279,6 +279,53 @@
           Star on GitHub
         </a>
       </div>
+
+      <!-- For teams / companies — disclosure → form -->
+      <div class="mt-12 max-w-md mx-auto">
+        <button
+          type="button"
+          id="contact-toggle"
+          class="text-sm text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+        >
+          Running this for a team or company? Talk to us →
+        </button>
+
+        <form id="contact-form" class="hidden mt-6 space-y-3 text-left" novalidate>
+          <input type="text" name="website" tabindex="-1" autocomplete="off" aria-hidden="true" class="hidden" />
+          <input
+            type="email"
+            name="email"
+            required
+            placeholder="you@company.com"
+            autocomplete="email"
+            class="w-full h-10 px-3 rounded bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <input
+            type="text"
+            name="company"
+            required
+            placeholder="Company"
+            autocomplete="organization"
+            class="w-full h-10 px-3 rounded bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+          />
+          <textarea
+            name="context"
+            required
+            placeholder="One line about your team and what custom support you're after."
+            rows="3"
+            class="w-full px-3 py-2 rounded bg-secondary border border-border text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-ring resize-none"
+          ></textarea>
+          <button
+            type="submit"
+            id="contact-submit"
+            class="w-full h-10 rounded bg-primary text-primary-foreground text-sm font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            Send
+          </button>
+        </form>
+
+        <p id="contact-result" class="hidden mt-4 text-sm text-center" role="status" aria-live="polite"></p>
+      </div>
     </div>
   </section>
 
@@ -299,6 +346,58 @@
 
   <script>
     lucide.createIcons();
+
+    // Contact form — disclosure + POST to /api/contact
+    const toggle = document.getElementById('contact-toggle');
+    const form = document.getElementById('contact-form');
+    const submit = document.getElementById('contact-submit');
+    const result = document.getElementById('contact-result');
+
+    toggle?.addEventListener('click', () => {
+      toggle.classList.add('hidden');
+      form.classList.remove('hidden');
+      form.querySelector('input[name="email"]')?.focus();
+    });
+
+    form?.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(form);
+      const payload = {
+        email: String(fd.get('email') || '').trim(),
+        company: String(fd.get('company') || '').trim(),
+        context: String(fd.get('context') || '').trim(),
+        website: String(fd.get('website') || '').trim(),
+      };
+
+      submit.disabled = true;
+      submit.textContent = 'Sending…';
+      result.classList.add('hidden');
+      result.removeAttribute('style');
+
+      try {
+        const r = await fetch('/api/contact', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        const body = await r.json().catch(() => ({}));
+
+        if (r.ok && body.ok) {
+          form.classList.add('hidden');
+          result.classList.remove('hidden');
+          result.style.color = 'hsl(160 84% 45%)';
+          result.textContent = "Got it — we'll be in touch.";
+        } else {
+          throw new Error(body.error || 'send_failed');
+        }
+      } catch (err) {
+        submit.disabled = false;
+        submit.textContent = 'Send';
+        result.classList.remove('hidden');
+        result.style.color = 'hsl(0 84% 65%)';
+        result.textContent = "Couldn't send. Try again, or email hello@beevibe.ai.";
+      }
+    });
   </script>
 </body>
 </html>
