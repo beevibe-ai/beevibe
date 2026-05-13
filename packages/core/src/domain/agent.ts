@@ -21,7 +21,10 @@ export interface RuntimeConfig {
 
 export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   type: "claude",
-  model: "opus",
+  // `model` intentionally omitted so the CLI uses its user-configured
+  // default (`~/.claude/config`). Per-agent overrides land via the
+  // agent settings UI; nothing here should force a specific model on
+  // every new agent.
 };
 
 export interface Agent {
