@@ -178,7 +178,7 @@ ORDER BY days.d ASC
  * inflate the network transfer for a list nobody reads.
  *
  * Index dependency: `idx_session_usage_completed` (partial,
- * `WHERE usage IS NOT NULL`) — migration 1780400000000.
+ * `WHERE usage IS NOT NULL`) — migration 1780500000000.
  */
 const USAGE_WINDOW_SQL = /* sql */ `
 WITH bucketed AS (
