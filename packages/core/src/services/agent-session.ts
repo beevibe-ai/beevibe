@@ -14,7 +14,8 @@ import type { MemoryAgent } from "./memory/memory-agent.js";
 import { composeIntent, composeSystemPromptAppend } from "./spawn-prep.js";
 
 export {
-  BEEVIBE_LIFECYCLE_REMINDER,
+  BEEVIBE_LIFECYCLE_REMINDER_TASK,
+  BEEVIBE_LIFECYCLE_REMINDER_CHAT,
   BEEVIBE_MEMORY_REMINDER,
   CHAT_DIRECTIVES,
   ONBOARDING_DIRECTIVES,

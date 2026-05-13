@@ -146,7 +146,7 @@ describe("AgentSession.run", () => {
     expect(memoryAgent.prepareBriefing).toHaveBeenCalledWith("Reply with 'ok'.");
     const ctx = vi.mocked(runtime.execute).mock.calls[0]![0];
     // System prompt has FOUR pieces, in cache-stable order:
-    //   1. BEEVIBE_LIFECYCLE_REMINDER (always-on; M9.5+ empirical fix)
+    //   1. BEEVIBE_LIFECYCLE_REMINDER_TASK (always-on; M9.5+ empirical fix)
     //   2. BEEVIBE_MEMORY_REMINDER (always-on; Letta pattern for active
     //      mid-session memory management)
     //   3. agent.runtime_config.system_prompt_addition (per-agent baseline)

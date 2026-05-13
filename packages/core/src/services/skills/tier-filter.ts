@@ -24,7 +24,7 @@ export const TEAM_ONLY_SKILLS = ["beevibe-team-mesh-negotiation"] as const;
 // the agent has DECIDED to do it (e.g., git workspace setup, multi-round
 // negotiation protocol).
 //
-//   - `beevibe` (umbrella) + `beevibe-task-completion` → BEEVIBE_LIFECYCLE_REMINDER
+//   - `beevibe` (umbrella) + `beevibe-task-completion` → BEEVIBE_LIFECYCLE_REMINDER_TASK
 //     (always call update_progress; leaf-vs-parent rule; deliverable handling)
 //   - `beevibe-memory-management` → BEEVIBE_MEMORY_REMINDER (active
 //     mid-session memory writeback)
@@ -37,7 +37,7 @@ export const TEAM_ONLY_SKILLS = ["beevibe-team-mesh-negotiation"] as const;
 //     prior tool calls; no re-orientation skill needed). Empirically validated
 //     in m9-e2e scenario 14: zero session-resume invocations, worktree reused
 //     correctly on revision dispatch.
-//   - `beevibe-work-product-decision` → BEEVIBE_LIFECYCLE_REMINDER (call
+//   - `beevibe-work-product-decision` → BEEVIBE_LIFECYCLE_REMINDER_TASK (call
 //     list_work_products first to dedupe) + work-product MCP tool descriptions
 //   - `beevibe-team-mesh-tool-choice` → coverage by tool descriptions (each
 //     mesh tool's description already says when to use it vs alternatives)

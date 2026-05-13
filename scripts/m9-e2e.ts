@@ -404,7 +404,7 @@ async function scenarioSix_oneSessionPerTask(
     result.rows.length === 1,
     `expected 1 session per leaf task; got ${result.rows.length} (M7 footgun?)`,
   );
-  log("  ✓ exactly one session — BEEVIBE_LIFECYCLE_REMINDER reliably triggers update_progress");
+  log("  ✓ exactly one session — BEEVIBE_LIFECYCLE_REMINDER_TASK reliably triggers update_progress");
   return result.rows;
 }
 
@@ -641,12 +641,12 @@ async function main(): Promise<void> {
     );
     log(`  ✓ pre-task-setup auto-fired (${ptsCount}x); worktree(s): ${codeWorktrees.join(", ")}`);
 
-    // ── Scenario 11: deliverable handling via BEEVIBE_LIFECYCLE_REMINDER §4 ──
+    // ── Scenario 11: deliverable handling via BEEVIBE_LIFECYCLE_REMINDER_TASK §4 ──
     // Self-contained analysis task — no repo / file deps. Exercises:
     //   - list_work_products(task_id) first (dedup check)
     //   - create_work_product with type='analysis'
     // (work-product-decision skill was removed post-M9; guidance lives in
-    // BEEVIBE_LIFECYCLE_REMINDER §4 + the work-product MCP tool descriptions.)
+    // BEEVIBE_LIFECYCLE_REMINDER_TASK §4 + the work-product MCP tool descriptions.)
     log("→ Scenario 11: deliverable-shaped task; expect list_work_products + create_work_product");
     const wpTask = await dispatchTask(
       deps,
