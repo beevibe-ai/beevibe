@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -201,6 +201,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
 
         <aside className="col-span-1 space-y-4">
           <RuntimePicker agent={agent} />
+          <ModelPicker agent={agent} />
           {agent.outgoing_mesh_hints.length ? (
             <section className="rounded-lg border border-border bg-card p-4">
               <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
@@ -253,6 +254,113 @@ function RecentSessionRow({ session }: { session: RecentSession }) {
       ) : null}
       <span className="text-xs text-muted-foreground tabular-nums shrink-0">{session.age}</span>
     </li>
+  );
+}
+
+// Common Claude model aliases the CLI accepts. Users can also pick "Other"
+// to type a pinned model ID (e.g. claude-opus-4-7). The empty-string sentinel
+// represents "CLI default" — clears `runtime_config.model` server-side.
+const MODEL_PRESETS: ReadonlyArray<{ value: string; label: string }> = [
+  { value: "", label: "CLI default (recommended)" },
+  { value: "opus", label: "opus" },
+  { value: "sonnet", label: "sonnet" },
+  { value: "haiku", label: "haiku" },
+];
+
+function ModelPicker({ agent }: { agent: AgentDetail }) {
+  const queryClient = useQueryClient();
+  const current = agent.model ?? "";
+  const isPreset = MODEL_PRESETS.some((p) => p.value === current);
+  // Lazy initializers so we don't recompute MODEL_PRESETS.some on every
+  // render — useState only consumes the seed on mount.
+  const [customMode, setCustomMode] = useState(() => !isPreset && current !== "");
+  const [customValue, setCustomValue] = useState(() => (isPreset ? "" : current));
+
+  // Resync local state when agent.model changes underneath us (SSE refresh,
+  // user navigates to a different agent without unmounting, etc.). Without
+  // this, the custom-input field would show stale text after an external
+  // update.
+  useEffect(() => {
+    const nextIsPreset = MODEL_PRESETS.some((p) => p.value === current);
+    setCustomMode(!nextIsPreset && current !== "");
+    setCustomValue(nextIsPreset ? "" : current);
+  }, [current]);
+
+  const mutation = useMutation({
+    mutationFn: (model: string | null) => api.agents.setModel(agent.id, model),
+    onSuccess: () => {
+      // Targeted invalidation — only this agent's detail. Was previously
+      // queryKeys.agents.all which refetches every agent list across the
+      // app, which is unnecessary for a per-agent model change.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.agents.detail(agent.id),
+      });
+    },
+  });
+
+  return (
+    <section className="rounded-lg border border-border bg-card p-4">
+      <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
+        Model
+      </h3>
+      <select
+        value={customMode ? "__custom" : current}
+        disabled={mutation.isPending}
+        onChange={(e) => {
+          const v = e.target.value;
+          if (v === "__custom") {
+            setCustomMode(true);
+            return;
+          }
+          setCustomMode(false);
+          // "" means CLI default → null clears the field server-side.
+          mutation.mutate(v === "" ? null : v);
+        }}
+        className="w-full text-sm rounded border border-border bg-background px-2 py-1.5 cursor-pointer disabled:opacity-50"
+      >
+        {MODEL_PRESETS.map((p) => (
+          <option key={p.value || "__default"} value={p.value}>
+            {p.label}
+          </option>
+        ))}
+        <option value="__custom">Other (pinned model ID)…</option>
+      </select>
+      {customMode ? (
+        <form
+          className="mt-2 flex gap-1"
+          onSubmit={(e) => {
+            e.preventDefault();
+            const v = customValue.trim();
+            if (v) mutation.mutate(v);
+          }}
+        >
+          <input
+            type="text"
+            value={customValue}
+            onChange={(e) => setCustomValue(e.target.value)}
+            placeholder="e.g. claude-opus-4-7"
+            className="flex-1 text-sm rounded border border-border bg-background px-2 py-1.5"
+          />
+          <button
+            type="submit"
+            disabled={mutation.isPending || !customValue.trim()}
+            className="h-7 px-3 rounded text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+          >
+            Set
+          </button>
+        </form>
+      ) : null}
+      {mutation.isError ? (
+        <p className="text-xs text-destructive mt-1.5">
+          Couldn&apos;t update model.
+        </p>
+      ) : null}
+      <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+        Model alias passed to the CLI via <span className="font-mono">--model</span>.
+        Leave on &quot;CLI default&quot; to inherit whatever you&apos;ve
+        configured in <span className="font-mono">~/.claude</span>.
+      </p>
+    </section>
   );
 }
 
