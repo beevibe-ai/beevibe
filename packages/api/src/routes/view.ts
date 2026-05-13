@@ -232,6 +232,59 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     }
   });
 
+  router.post("/agent/:id/model", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "missing_agent_id" });
+      return;
+    }
+    const body = req.body as { model?: string | null } | undefined;
+    // null clears (agent uses CLI default), non-empty string sets.
+    const model =
+      body?.model === null
+        ? null
+        : typeof body?.model === "string" && body.model
+          ? body.model
+          : undefined;
+    if (model === undefined) {
+      res.status(400).json({
+        error: "invalid_body",
+        message: "expected { model: string | null }",
+      });
+      return;
+    }
+    try {
+      const existing = await deps.agentRepo.findById(id);
+      if (!existing) {
+        res.status(404).json({ error: "agent_not_found" });
+        return;
+      }
+      if (existing.owner_id !== req.caller.personId) {
+        res.status(403).json({ error: "not_owner" });
+        return;
+      }
+      // Build the next runtime_config: keep the existing fields, override
+      // (or remove) just the `model` key. Don't replace the whole config
+      // wholesale — type / max_turns / etc. should survive.
+      const nextRuntimeConfig = { ...existing.runtime_config };
+      if (model === null) {
+        delete nextRuntimeConfig.model;
+      } else {
+        nextRuntimeConfig.model = model;
+      }
+      const updated = await deps.agentRepo.update(id, {
+        runtime_config: nextRuntimeConfig,
+      });
+      res.json({
+        ok: true,
+        model: updated.runtime_config.model ?? null,
+      });
+    } catch (err) {
+      handleError(err, res, "agent model update");
+    }
+  });
+
   router.post("/agent/:id/archive", async (req, res) => {
     if (!requireHuman(req, res)) return;
     const id = req.params.id;
