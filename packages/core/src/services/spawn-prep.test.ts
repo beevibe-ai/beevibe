@@ -36,7 +36,7 @@ describe("composeSystemPromptAppend with extra", () => {
   it("threads the team-routing directive at the tail (most-volatile slot)", () => {
     const teamRouting = teamAgentRoutingDirective(["frontend", "backend"]);
     const out = composeSystemPromptAppend(undefined, "<core_memory/>", {
-      appendChatDirectives: true,
+      sessionKind: "chat",
       extra: teamRouting,
     });
     // Cache-friendly order: most-stable first. Lifecycle reminder leads.
@@ -51,7 +51,7 @@ describe("composeSystemPromptAppend with extra", () => {
 
   it("omits the team-routing block entirely when specialists is empty", () => {
     const out = composeSystemPromptAppend(undefined, "<core_memory/>", {
-      appendChatDirectives: true,
+      sessionKind: "chat",
       extra: teamAgentRoutingDirective([]),
     });
     expect(out).not.toContain("team_agent_routing");
@@ -65,15 +65,15 @@ describe("composeSystemPromptAppend lifecycle branching", () => {
   // chat intents have no <task> block. The agent was told to do
   // something impossible. Branching the reminder by surface fixes it.
 
-  it("uses the task variant by default (no appendChatDirectives)", () => {
+  it("uses the task variant by default (no sessionKind)", () => {
     const out = composeSystemPromptAppend(undefined, "<core_memory/>");
     expect(out).toContain(BEEVIBE_LIFECYCLE_REMINDER_TASK);
     expect(out).not.toContain(BEEVIBE_LIFECYCLE_REMINDER_CHAT);
   });
 
-  it("uses the chat variant when appendChatDirectives is true", () => {
+  it("uses the chat variant when sessionKind is 'chat'", () => {
     const out = composeSystemPromptAppend(undefined, "<core_memory/>", {
-      appendChatDirectives: true,
+      sessionKind: "chat",
     });
     expect(out).toContain(BEEVIBE_LIFECYCLE_REMINDER_CHAT);
     expect(out).not.toContain(BEEVIBE_LIFECYCLE_REMINDER_TASK);

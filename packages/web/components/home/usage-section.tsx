@@ -3,27 +3,18 @@ import { cn } from "@/lib/utils";
 import {
   formatCost,
   formatTokens,
-} from "@/components/sessions/usage-panel";
+  statusToneClass,
+  type StatusTone,
+} from "@/lib/usage-format";
 import type {
   UsageAgentBreakdown,
   UsageSummaryData,
 } from "@/lib/types/dashboard";
 
 /**
- * Dashboard "Usage" section — surfaces the cost + token rollup the
- * backend ships in `dashboard.usage_summary`. Designed to slot into
- * the home page alongside the existing KPI tiles + status / fleet /
- * trend blocks; visual language matches `KpiTile` (label on top,
- * large tabular value below, small meta line).
- *
- * Layout:
- *   - Section heading "Usage" with a window-length subtitle.
- *   - 4-up tile row: cost (with delta arrow), tokens, cache hit,
- *     sessions. Cost delta tone is inverted relative to "good": an
- *     INCREASE in cost is bad (red), a decrease is good (green).
- *   - Per-agent breakdown bars below — horizontal bars where width
- *     is proportional to the top spender's cost. Shows top 5; if
- *     more exist, surfaces a "+N more" footer.
+ * Dashboard "Usage" section. 4-up KPI tile row + per-agent cost bars.
+ * Visual language matches `KpiTile` so the section reads as part of
+ * the same dashboard family.
  */
 export function DashboardUsageSection({
   summary,
@@ -59,10 +50,11 @@ export function DashboardUsageSection({
         />
         <CacheHitTile
           ratio={summary.cache_hit_ratio}
-          totalInput={
+          hasInput={
             summary.total_input_tokens +
-            summary.total_cache_creation_tokens +
-            summary.total_cache_read_tokens
+              summary.total_cache_creation_tokens +
+              summary.total_cache_read_tokens >
+            0
           }
         />
         <SessionsTile count={summary.total_sessions} />
@@ -79,8 +71,6 @@ export function DashboardUsageSection({
   );
 }
 
-// ── tiles ─────────────────────────────────────────────────────────────
-
 function TileLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="text-[10px] uppercase tracking-wider text-muted-foreground mb-1.5">
@@ -94,23 +84,13 @@ function TileValue({
   tone,
 }: {
   children: React.ReactNode;
-  tone?: "done" | "review" | "failed" | "muted";
+  tone?: StatusTone;
 }) {
-  const toneClass =
-    tone === "done"
-      ? "text-status-done"
-      : tone === "review"
-        ? "text-status-review"
-        : tone === "failed"
-          ? "text-status-failed"
-          : tone === "muted"
-            ? "text-muted-foreground"
-            : "";
   return (
     <div
       className={cn(
         "text-3xl font-semibold tabular-nums leading-none",
-        toneClass,
+        tone ? statusToneClass(tone) : undefined,
       )}
     >
       {children}
@@ -122,6 +102,24 @@ function TileMeta({ children }: { children: React.ReactNode }) {
   return <div className="mt-2 text-xs text-muted-foreground">{children}</div>;
 }
 
+/**
+ * Cost delta semantics, inverted vs the "good" convention: an INCREASE
+ * in cost is bad (red), a decrease is good (green). Zero-prior-zero-
+ * current is a flat em-dash so we don't paint a false-positive green
+ * on an empty window.
+ */
+function costDelta(
+  priorCost: number,
+  cost: number,
+  deltaPercent: number,
+): { tone: StatusTone; arrow: "up" | "down" | null; flat: boolean } {
+  const flat = priorCost === 0 && cost === 0;
+  if (flat) return { tone: "muted", arrow: null, flat: true };
+  if (deltaPercent > 0) return { tone: "failed", arrow: "up", flat: false };
+  if (deltaPercent < 0) return { tone: "done", arrow: "down", flat: false };
+  return { tone: "muted", arrow: null, flat: false };
+}
+
 function CostTile({
   cost,
   deltaPercent,
@@ -131,18 +129,7 @@ function CostTile({
   deltaPercent: number;
   priorCost: number;
 }) {
-  // Inverted tone: cost UP is bad, cost DOWN is good. Zero-prior-zero
-  // current renders as a flat "—" so we don't paint a false-positive
-  // green "down" on an empty window.
-  const flat = priorCost === 0 && cost === 0;
-  const arrow = flat ? null : deltaPercent > 0 ? "up" : deltaPercent < 0 ? "down" : null;
-  const tone: "failed" | "done" | "muted" = flat
-    ? "muted"
-    : deltaPercent > 0
-      ? "failed"
-      : deltaPercent < 0
-        ? "done"
-        : "muted";
+  const { tone, arrow, flat } = costDelta(priorCost, cost, deltaPercent);
   return (
     <div>
       <TileLabel>cost (usd)</TileLabel>
@@ -151,7 +138,7 @@ function CostTile({
         {flat ? (
           "—"
         ) : (
-          <span className={cn("inline-flex items-center gap-0.5", toneClassFor(tone))}>
+          <span className={cn("inline-flex items-center gap-0.5", statusToneClass(tone))}>
             {arrow === "up" ? <ArrowUp className="h-3 w-3" /> : null}
             {arrow === "down" ? <ArrowDown className="h-3 w-3" /> : null}
             <span className="tabular-nums">{Math.abs(deltaPercent)}%</span>
@@ -174,14 +161,10 @@ function TokensTile({
   cacheCreation: number;
   cacheRead: number;
 }) {
-  // Headline: input + output (the billed-bytes-shaped pair). Meta:
-  // breakdown of the cache slices so the absolute cost picture is
-  // visible without opening individual sessions.
-  const billed = input + output;
   return (
     <div>
       <TileLabel>tokens</TileLabel>
-      <TileValue>{formatTokens(billed)}</TileValue>
+      <TileValue>{formatTokens(input + output)}</TileValue>
       <TileMeta>
         <span className="tabular-nums">{formatTokens(input)}</span> in ·{" "}
         <span className="tabular-nums">{formatTokens(output)}</span> out
@@ -193,14 +176,8 @@ function TokensTile({
   );
 }
 
-function CacheHitTile({
-  ratio,
-  totalInput,
-}: {
-  ratio: number;
-  totalInput: number;
-}) {
-  if (totalInput === 0) {
+function CacheHitTile({ ratio, hasInput }: { ratio: number; hasInput: boolean }) {
+  if (!hasInput) {
     return (
       <div>
         <TileLabel>cache hit</TileLabel>
@@ -209,13 +186,11 @@ function CacheHitTile({
       </div>
     );
   }
-  const pct = Math.round(ratio * 100);
-  const tone: "done" | "review" | "failed" =
-    ratio >= 0.7 ? "done" : ratio >= 0.4 ? "review" : "failed";
+  const tone: StatusTone = ratio >= 0.7 ? "done" : ratio >= 0.4 ? "review" : "failed";
   return (
     <div>
       <TileLabel>cache hit</TileLabel>
-      <TileValue tone={tone}>{pct}%</TileValue>
+      <TileValue tone={tone}>{Math.round(ratio * 100)}%</TileValue>
       <TileMeta>target &gt; 70% on warm sessions</TileMeta>
     </div>
   );
@@ -231,15 +206,6 @@ function SessionsTile({ count }: { count: number }) {
   );
 }
 
-function toneClassFor(tone: "done" | "review" | "failed" | "muted"): string {
-  if (tone === "done") return "text-status-done";
-  if (tone === "review") return "text-status-review";
-  if (tone === "failed") return "text-status-failed";
-  return "text-muted-foreground";
-}
-
-// ── per-agent breakdown ──────────────────────────────────────────────
-
 const TOP_AGENTS = 5;
 
 function AgentBreakdown({
@@ -251,11 +217,8 @@ function AgentBreakdown({
 }) {
   const top = agents.slice(0, TOP_AGENTS);
   const overflow = agents.length - top.length;
-  // Bar width proportional to the highest-cost agent — visually scaled
-  // for the bar group, not for the dashboard at large. With only one
-  // agent (or all-zero), every bar shows full-width which still reads
-  // as a single dominant entry.
-  const max = top.reduce((m, a) => Math.max(m, a.cost_usd), 0);
+  // SQL pre-sorts ORDER BY cost DESC, so the head row is the max.
+  const max = top[0]?.cost_usd ?? 0;
   return (
     <div>
       <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-3">

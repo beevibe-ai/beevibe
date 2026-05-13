@@ -189,7 +189,7 @@ describe("getDashboardSummary", () => {
     });
   });
 
-  it("fires all 7 queries in parallel (single Promise.all)", async () => {
+  it("fires all 6 queries in parallel (single Promise.all)", async () => {
     const calls: number[] = [];
     let next = 0;
     const query = vi.fn(async (sql: unknown) => {
@@ -203,22 +203,50 @@ describe("getDashboardSummary", () => {
       if (sqlText.includes("FROM days")) return { rows: makeTrendRows() };
       if (sqlText.includes("FROM agent")) return { rows: [] };
       if (sqlText.includes("blocked', 'failed'")) return { rows: [] };
-      // Usage current + prior — empty rows are fine for this dispatch test.
       if (sqlText.includes("usage IS NOT NULL")) return { rows: [] };
       return { rows: [] };
     });
     const pool = { query } as unknown as Pool;
     await getDashboardSummary(pool);
-    expect(calls).toEqual([0, 1, 2, 3, 4, 5, 6]); // dispatched in order, all together
-    expect(query).toHaveBeenCalledTimes(7);
+    expect(calls).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(query).toHaveBeenCalledTimes(6);
   });
 });
 
+// Helper: build a UsageWindowRow with sensible defaults so test bodies
+// stay focused on the field that's actually being exercised.
+function row(
+  bucket: "current" | "prior",
+  overrides: Partial<{
+    agent_id: string;
+    agent_label: string;
+    cost: string;
+    input_tokens: string;
+    output_tokens: string;
+    cache_creation: string;
+    cache_read: string;
+    sessions: string;
+  }> = {},
+) {
+  return {
+    agent_id: "agt_x",
+    agent_label: "x",
+    bucket,
+    cost: "0",
+    input_tokens: "0",
+    output_tokens: "0",
+    cache_creation: "0",
+    cache_read: "0",
+    sessions: "1",
+    ...overrides,
+  };
+}
+
 describe("buildUsageSummary", () => {
-  it("aggregates per-agent rows into window totals + per_agent list", () => {
+  it("splits rows by bucket: current → totals + per_agent, prior → cost only", () => {
     const summary = buildUsageSummary(
       [
-        {
+        row("current", {
           agent_id: "agt_alice",
           agent_label: "alice",
           cost: "0.50",
@@ -227,19 +255,17 @@ describe("buildUsageSummary", () => {
           cache_creation: "200",
           cache_read: "1700",
           sessions: "5",
-        },
-        {
+        }),
+        row("current", {
           agent_id: "agt_bob",
           agent_label: "bob",
           cost: "0.10",
           input_tokens: "10",
           output_tokens: "50",
-          cache_creation: "0",
           cache_read: "100",
-          sessions: "1",
-        },
+        }),
+        row("prior", { cost: "0.40" }),
       ],
-      [{ prior_cost: "0.40" }],
       7,
     );
 
@@ -250,107 +276,73 @@ describe("buildUsageSummary", () => {
     expect(summary.total_cache_creation_tokens).toBe(200);
     expect(summary.total_cache_read_tokens).toBe(1800);
     expect(summary.total_sessions).toBe(6);
+    expect(summary.prior_cost_usd).toBeCloseTo(0.4, 5);
     expect(summary.per_agent).toHaveLength(2);
-    // SQL pre-sorts by cost desc; the builder preserves order.
+    // SQL pre-sorts current by cost desc; the builder preserves order.
     expect(summary.per_agent[0]!.agent_label).toBe("alice");
     expect(summary.per_agent[0]!.cost_usd).toBeCloseTo(0.5, 5);
   });
 
-  it("computes cache_hit_ratio against total_input (input + creation + read), not just fresh input", () => {
-    // 1700 cache_read / (100 + 200 + 1700) = 1700/2000 = 0.85
+  it("sums multiple prior rows into prior_cost_usd", () => {
+    // Prior can span multiple agents — the SQL groups by (agent, bucket).
+    const summary = buildUsageSummary(
+      [row("prior", { cost: "0.30" }), row("prior", { cost: "0.10" })],
+      7,
+    );
+    expect(summary.prior_cost_usd).toBeCloseTo(0.4, 5);
+  });
+
+  it("computes cache_hit_ratio against total_input via the shared helper", () => {
+    // 1700 cache_read / (100 + 200 + 1700) = 0.85
     const summary = buildUsageSummary(
       [
-        {
-          agent_id: "agt_x",
-          agent_label: "x",
-          cost: "0.10",
+        row("current", {
           input_tokens: "100",
           output_tokens: "50",
           cache_creation: "200",
           cache_read: "1700",
-          sessions: "1",
-        },
+        }),
       ],
-      [{ prior_cost: "0" }],
       7,
     );
     expect(summary.cache_hit_ratio).toBeCloseTo(0.85, 5);
   });
 
   it("guards cache_hit_ratio against divide-by-zero (no input in window)", () => {
-    const summary = buildUsageSummary([], [{ prior_cost: "0" }], 7);
+    const summary = buildUsageSummary([], 7);
     expect(summary.cache_hit_ratio).toBe(0);
     expect(Number.isFinite(summary.cache_hit_ratio)).toBe(true);
   });
 
-  it("computes cost_change_percent vs prior window (rounded int)", () => {
-    // current 1.50, prior 1.00 → +50%
+  it("computes cost_change_percent vs prior window (rounded int, both directions)", () => {
     const up = buildUsageSummary(
-      [
-        {
-          agent_id: "agt_x",
-          agent_label: "x",
-          cost: "1.50",
-          input_tokens: "0",
-          output_tokens: "0",
-          cache_creation: "0",
-          cache_read: "0",
-          sessions: "1",
-        },
-      ],
-      [{ prior_cost: "1.00" }],
+      [row("current", { cost: "1.50" }), row("prior", { cost: "1.00" })],
       7,
     );
     expect(up.cost_change_percent).toBe(50);
 
-    // current 0.50, prior 1.00 → -50%
     const down = buildUsageSummary(
-      [
-        {
-          agent_id: "agt_x",
-          agent_label: "x",
-          cost: "0.50",
-          input_tokens: "0",
-          output_tokens: "0",
-          cache_creation: "0",
-          cache_read: "0",
-          sessions: "1",
-        },
-      ],
-      [{ prior_cost: "1.00" }],
+      [row("current", { cost: "0.50" }), row("prior", { cost: "1.00" })],
       7,
     );
     expect(down.cost_change_percent).toBe(-50);
   });
 
   it("saturates cost_change_percent at +100 when prior was zero and current is non-zero", () => {
-    const summary = buildUsageSummary(
-      [
-        {
-          agent_id: "agt_x",
-          agent_label: "x",
-          cost: "0.05",
-          input_tokens: "0",
-          output_tokens: "0",
-          cache_creation: "0",
-          cache_read: "0",
-          sessions: "1",
-        },
-      ],
-      [{ prior_cost: "0" }],
-      7,
-    );
+    const summary = buildUsageSummary([row("current", { cost: "0.05" })], 7);
     expect(summary.cost_change_percent).toBe(100);
   });
 
   it("returns cost_change_percent = 0 when both windows are zero", () => {
-    const summary = buildUsageSummary([], [{ prior_cost: "0" }], 7);
+    const summary = buildUsageSummary([], 7);
     expect(summary.cost_change_percent).toBe(0);
   });
 
-  it("handles missing prior row (defaults prior_cost to 0)", () => {
-    const summary = buildUsageSummary([], [], 7);
-    expect(summary.prior_cost_usd).toBe(0);
-    expect(summary.cost_change_percent).toBe(0);
+  it("handles a row set with only prior bucket (no current sessions)", () => {
+    const summary = buildUsageSummary([row("prior", { cost: "0.50" })], 7);
+    expect(summary.prior_cost_usd).toBeCloseTo(0.5, 5);
+    expect(summary.total_cost_usd).toBe(0);
+    expect(summary.per_agent).toEqual([]);
+    expect(summary.cost_change_percent).toBe(-100); // 0.50 → 0 prior→current
   });
 });

@@ -24,7 +24,11 @@ import type {
   SessionType,
   SessionUsage,
 } from "@beevibe/core";
-import { deriveShortId, formatDurationLabel } from "./format.js";
+import {
+  computeCacheHitRatio,
+  deriveShortId,
+  formatDurationLabel,
+} from "./format.js";
 import type {
   SessionDisplay,
   SessionBriefing,
@@ -197,18 +201,19 @@ export function toSessionUsageDisplay(
   const output_tokens = raw.output_tokens ?? 0;
   const cache_creation_tokens = raw.cache_creation_input_tokens ?? 0;
   const cache_read_tokens = raw.cache_read_input_tokens ?? 0;
-  const total_input_tokens =
-    input_tokens + cache_creation_tokens + cache_read_tokens;
-  const cache_hit_ratio =
-    total_input_tokens > 0 ? cache_read_tokens / total_input_tokens : 0;
   return {
     cost_usd: raw.cost_usd ?? 0,
-    cache_hit_ratio,
+    cache_hit_ratio: computeCacheHitRatio({
+      input: input_tokens,
+      cacheCreation: cache_creation_tokens,
+      cacheRead: cache_read_tokens,
+    }),
     input_tokens,
     output_tokens,
     cache_creation_tokens,
     cache_read_tokens,
-    total_input_tokens,
+    total_input_tokens:
+      input_tokens + cache_creation_tokens + cache_read_tokens,
     model: raw.model && raw.model.length > 0 ? raw.model : "unknown",
   };
 }

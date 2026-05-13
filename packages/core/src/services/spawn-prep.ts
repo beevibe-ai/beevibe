@@ -324,25 +324,32 @@ Clarifying questions are fine and encouraged — but ask them in service of *rou
  * `appendOnboardingDirectives: true` adds the one-time wizard directives
  * after CHAT_DIRECTIVES.
  */
+export type SessionSurfaceKind = "task" | "chat";
+
 export function composeSystemPromptAppend(
   agentSystemPromptAddition: string | undefined,
   briefingSystemPromptAppend: string,
   options: {
     /**
-     * True when the spawn is the chat surface. Drives two things:
-     *   1. `CHAT_DIRECTIVES` (display-token guidance) is appended.
-     *   2. The chat-variant lifecycle reminder is used in place of the
-     *      task variant — task-only directives like `update_progress`
-     *      and `work_product` would tell the agent to call APIs that
-     *      can't succeed without a `task_id`.
+     * Which session surface is being spawned. Drives both the
+     * lifecycle reminder variant AND whether CHAT_DIRECTIVES is
+     * appended — the two are coupled by definition (chat surface
+     * implies chat lifecycle and display tokens; task surface implies
+     * task lifecycle and no display tokens). Defaults to "task" so
+     * existing task-side callers don't need to pass the flag.
+     *
+     * When mesh-ask / blocker-response sessions eventually need their
+     * own surface treatment, extend this union — don't reintroduce
+     * orthogonal flags.
      */
-    appendChatDirectives?: boolean;
+    sessionKind?: SessionSurfaceKind;
     appendOnboardingDirectives?: boolean;
     /** Free-form text appended at the very end (e.g., room directives). */
     extra?: string;
   } = {},
 ): string {
-  const lifecycleReminder = options.appendChatDirectives
+  const isChat = options.sessionKind === "chat";
+  const lifecycleReminder = isChat
     ? BEEVIBE_LIFECYCLE_REMINDER_CHAT
     : BEEVIBE_LIFECYCLE_REMINDER_TASK;
   return [
@@ -350,7 +357,7 @@ export function composeSystemPromptAppend(
     BEEVIBE_MEMORY_REMINDER,
     agentSystemPromptAddition ?? "",
     briefingSystemPromptAppend,
-    options.appendChatDirectives ? CHAT_DIRECTIVES : "",
+    isChat ? CHAT_DIRECTIVES : "",
     options.appendOnboardingDirectives ? ONBOARDING_DIRECTIVES : "",
     options.extra ?? "",
   ]

@@ -33,6 +33,23 @@ export function formatRelativeShort(date: Date, now: Date = new Date()): string 
 }
 
 /**
+ * Cache hit ratio against total input. Total input is the sum of all
+ * three input slices per the `SessionUsage` contract — measuring
+ * `cache_read / (input + cache_creation + cache_read)` is the correct
+ * denominator (`cache_read / input` would always read >1× on a warm
+ * second-onward session). Returns 0 when there's no input to score
+ * against — caller decides whether to render that as 0% or N/A.
+ */
+export function computeCacheHitRatio(parts: {
+  input: number;
+  cacheCreation: number;
+  cacheRead: number;
+}): number {
+  const total = parts.input + parts.cacheCreation + parts.cacheRead;
+  return total > 0 ? parts.cacheRead / total : 0;
+}
+
+/**
  * Duration label between started_at and completed_at (or now if running).
  * Returns "—" if no start. Format: "2m", "1h 4m", "3d 2h", etc.
  */

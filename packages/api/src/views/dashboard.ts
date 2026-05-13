@@ -8,6 +8,7 @@
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { HierarchyLevel, TaskStatus } from "@beevibe/core";
+import { computeCacheHitRatio } from "./format.js";
 import type {
   DashboardSummary,
   KpiData,
@@ -53,24 +54,20 @@ interface KpiTrendRow {
 }
 
 /**
- * Per-agent row from the current-window usage aggregate. All numeric
- * fields are numeric strings from pg (driver doesn't coerce SUM /
- * COUNT to JS Number to preserve precision for large values); the
- * builder converts them with Number(...).
+ * Per-agent per-bucket row from `USAGE_WINDOW_SQL`. Numeric fields
+ * arrive as strings from pg (driver doesn't coerce SUM / COUNT to JS
+ * Number to preserve precision); the builder converts with `Number()`.
  */
-interface UsageAgentRow {
+interface UsageWindowRow {
   agent_id: string;
   agent_label: string;
+  bucket: "current" | "prior";
   cost: string;
   input_tokens: string;
   output_tokens: string;
   cache_creation: string;
   cache_read: string;
   sessions: string;
-}
-
-interface UsagePriorRow {
-  prior_cost: string;
 }
 
 const STATUS_COUNT_SQL = /* sql */ `
@@ -167,51 +164,53 @@ ORDER BY days.d ASC
 `;
 
 /**
- * Per-agent cost + token rollup for the current usage window. Filters
- * out rows where `usage` is null (older sessions captured before M9.8
- * have no usage record) so they don't contribute zero rows that
- * dilute the per-agent ordering.
+ * Per-agent cost + token rollup spanning the current AND prior windows
+ * in one round-trip. Each row carries a `bucket` discriminator so the
+ * builder can split between the current-window per-agent breakdown and
+ * the prior-window cost total used for the delta arrow.
  *
- * Window length comes from $1 as days. Driver passes interval via
- * `make_interval` so we don't string-concatenate (parameterized).
+ * Window length is $1 days. Both windows are equally sized; prior is
+ * [now - 2*days, now - days), current is [now - days, now]. The single
+ * WHERE clause covers both via `>= NOW() - make_interval(days => $1::int * 2)`.
  *
- * `cost` is cast to `numeric` to preserve cent-level precision; the
- * driver returns it as a string and the builder converts with
- * `Number()` (safe for sub-million-dollar totals).
+ * LIMIT bounds payload — far past the dashboard's top-N render, but
+ * defensive against bursts of one-off agents that would otherwise
+ * inflate the network transfer for a list nobody reads.
+ *
+ * Index dependency: `idx_session_usage_completed` (partial,
+ * `WHERE usage IS NOT NULL`) — migration 1780400000000.
  */
-const USAGE_CURRENT_SQL = /* sql */ `
+const USAGE_WINDOW_SQL = /* sql */ `
+WITH bucketed AS (
+  SELECT
+    s.agent_id,
+    a.name AS agent_label,
+    s.usage,
+    CASE
+      WHEN s.completed_at >= NOW() - make_interval(days => $1::int) THEN 'current'
+      ELSE 'prior'
+    END AS bucket
+  FROM session s
+  JOIN agent a ON a.id = s.agent_id
+  WHERE s.usage IS NOT NULL
+    AND s.completed_at >= NOW() - make_interval(days => $1::int * 2)
+)
 SELECT
-  s.agent_id,
-  a.name AS agent_label,
-  COALESCE(SUM((s.usage->>'cost_usd')::numeric), 0)::text AS cost,
-  COALESCE(SUM((s.usage->>'input_tokens')::int), 0)::text AS input_tokens,
-  COALESCE(SUM((s.usage->>'output_tokens')::int), 0)::text AS output_tokens,
-  COALESCE(SUM((s.usage->>'cache_creation_input_tokens')::int), 0)::text AS cache_creation,
-  COALESCE(SUM((s.usage->>'cache_read_input_tokens')::int), 0)::text AS cache_read,
+  agent_id,
+  agent_label,
+  bucket,
+  COALESCE(SUM((usage->>'cost_usd')::numeric), 0)::text AS cost,
+  COALESCE(SUM((usage->>'input_tokens')::int), 0)::text AS input_tokens,
+  COALESCE(SUM((usage->>'output_tokens')::int), 0)::text AS output_tokens,
+  COALESCE(SUM((usage->>'cache_creation_input_tokens')::int), 0)::text AS cache_creation,
+  COALESCE(SUM((usage->>'cache_read_input_tokens')::int), 0)::text AS cache_read,
   COUNT(*)::text AS sessions
-FROM session s
-JOIN agent a ON a.id = s.agent_id
-WHERE s.usage IS NOT NULL
-  AND s.completed_at >= NOW() - make_interval(days => $1::int)
-GROUP BY s.agent_id, a.name
-ORDER BY SUM((s.usage->>'cost_usd')::numeric) DESC NULLS LAST
-`;
-
-/**
- * Prior-window total cost only, used for the cost_change_percent
- * delta. No per-agent breakdown needed for prior — the UI only shows
- * the top-line "vs prior" arrow, not "agent X spent more last week."
- *
- * Prior window = [now - 2*days, now - days), an equally-sized window
- * immediately preceding the current one.
- */
-const USAGE_PRIOR_SQL = /* sql */ `
-SELECT
-  COALESCE(SUM((s.usage->>'cost_usd')::numeric), 0)::text AS prior_cost
-FROM session s
-WHERE s.usage IS NOT NULL
-  AND s.completed_at >= NOW() - make_interval(days => $1::int * 2)
-  AND s.completed_at <  NOW() - make_interval(days => $1::int)
+FROM bucketed
+GROUP BY agent_id, agent_label, bucket
+ORDER BY
+  CASE bucket WHEN 'current' THEN 0 ELSE 1 END,
+  SUM((usage->>'cost_usd')::numeric) DESC NULLS LAST
+LIMIT 100
 `;
 
 const TREND_WINDOW_DAYS = 7;
@@ -246,16 +245,14 @@ export async function getDashboardSummary(pool: Pool): Promise<DashboardSummary>
     trendResult,
     attentionResult,
     kpiTrendResult,
-    usageCurrentResult,
-    usagePriorResult,
+    usageResult,
   ] = await Promise.all([
     pool.query<StatusCountRow>(STATUS_COUNT_SQL),
     pool.query<FleetCountRow>(FLEET_SQL),
     pool.query<TrendRow>(TREND_SQL, [TREND_WINDOW_DAYS * 2]),
     pool.query<AttentionRow>(ATTENTION_SQL, [ATTENTION_LIMIT]),
     pool.query<KpiTrendRow>(KPI_TREND_SQL, [TREND_WINDOW_DAYS]),
-    pool.query<UsageAgentRow>(USAGE_CURRENT_SQL, [TREND_WINDOW_DAYS]),
-    pool.query<UsagePriorRow>(USAGE_PRIOR_SQL, [TREND_WINDOW_DAYS]),
+    pool.query<UsageWindowRow>(USAGE_WINDOW_SQL, [TREND_WINDOW_DAYS]),
   ]);
 
   const status_total = statusResult.rows.reduce((s, r) => s + Number(r.count), 0);
@@ -314,8 +311,7 @@ export async function getDashboardSummary(pool: Pool): Promise<DashboardSummary>
   const kpis: KpiData[] = buildKpis(kpiTrendResult.rows, statusResult.rows, fleet_active);
 
   const usage_summary: UsageSummaryData = buildUsageSummary(
-    usageCurrentResult.rows,
-    usagePriorResult.rows,
+    usageResult.rows,
     TREND_WINDOW_DAYS,
   );
 
@@ -376,22 +372,21 @@ function buildKpis(
 }
 
 /**
- * Aggregate the per-agent + prior-window rows into the wire-shape
- * UsageSummaryData. Pure function so the SQL stays narrow and the
- * shape contract is testable without a database.
+ * Aggregate per-agent per-bucket rows into the wire-shape
+ * UsageSummaryData. Pure function — testable without a database.
  *
  * Delta semantics match the trend block above:
  *   - prior > 0  → round((current - prior) / prior * 100)
  *   - prior == 0 and current > 0 → +100 (saturate, don't divide by 0)
  *   - prior == 0 and current == 0 → 0 (no signal)
  *
- * Weighted cache_hit_ratio: total_cache_read / total_input across the
- * whole window. NOT a simple mean of per-session ratios — those would
- * over-weight tiny sessions. Zero when total_input is zero.
+ * Per-agent is built from `bucket === 'current'` rows; SQL pre-sorts
+ * those by cost DESC so the array is render-ready. Prior rows are
+ * summed for the cost-delta total only (no per-agent — UI doesn't
+ * surface "agent X spent more last week").
  */
 export function buildUsageSummary(
-  currentRows: UsageAgentRow[],
-  priorRows: UsagePriorRow[],
+  rows: UsageWindowRow[],
   windowDays: number,
 ): UsageSummaryData {
   let total_cost_usd = 0;
@@ -400,10 +395,15 @@ export function buildUsageSummary(
   let total_cache_creation_tokens = 0;
   let total_cache_read_tokens = 0;
   let total_sessions = 0;
+  let prior_cost_usd = 0;
   const per_agent: UsageAgentBreakdown[] = [];
 
-  for (const r of currentRows) {
+  for (const r of rows) {
     const cost = Number(r.cost);
+    if (r.bucket === "prior") {
+      prior_cost_usd += cost;
+      continue;
+    }
     const input = Number(r.input_tokens);
     const output = Number(r.output_tokens);
     const cacheCreation = Number(r.cache_creation);
@@ -423,17 +423,12 @@ export function buildUsageSummary(
     });
   }
 
-  // total_input_tokens is the union of fresh + cache_creation + cache_read
-  // (the same denominator used in SessionUsageDisplay). Without summing
-  // all three, we'd compute cache_hit_ratio against only the fresh slice.
-  const total_input_for_ratio =
-    total_input_tokens + total_cache_creation_tokens + total_cache_read_tokens;
-  const cache_hit_ratio =
-    total_input_for_ratio > 0
-      ? total_cache_read_tokens / total_input_for_ratio
-      : 0;
+  const cache_hit_ratio = computeCacheHitRatio({
+    input: total_input_tokens,
+    cacheCreation: total_cache_creation_tokens,
+    cacheRead: total_cache_read_tokens,
+  });
 
-  const prior_cost_usd = Number(priorRows[0]?.prior_cost ?? 0);
   const cost_change_percent =
     prior_cost_usd === 0
       ? total_cost_usd === 0

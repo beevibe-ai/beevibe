@@ -457,7 +457,7 @@ async function composeDispatchPayload(
       agent.runtime_config.system_prompt_addition,
       briefing.systemPromptAppend,
       {
-        appendChatDirectives: isChat,
+        sessionKind: isChat ? "chat" : "task",
         appendOnboardingDirectives: isOnboarding,
         extra: teamRouting,
       },

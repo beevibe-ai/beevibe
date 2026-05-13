@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import { render, screen } from "@testing-library/react";
 import type { SessionUsageDisplay } from "@/lib/types/sessions";
 import {
-  UsagePanel,
   cacheHitTone,
   formatCacheHit,
   formatCost,
   formatTokens,
-} from "./usage-panel";
+} from "@/lib/usage-format";
+import { UsagePanel } from "./usage-panel";
 
 function mkUsage(
   overrides: Partial<SessionUsageDisplay> = {},
