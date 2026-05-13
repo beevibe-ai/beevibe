@@ -66,9 +66,42 @@ describe("provisionAgent", () => {
     expect(out.blocks).toHaveLength(5);
 
     expect(agentRepo.create).toHaveBeenCalledWith(
-      expect.objectContaining({ id: "agent_1", api_key: out.apiKey }),
+      expect.objectContaining({
+        id: "agent_1",
+        api_key: out.apiKey,
+        // Default for newly-provisioned agents: tasks they declare done
+        // close immediately. Users can flip to 'require_human' later.
+        review_policy: "auto_done",
+      }),
     );
     expect(coreMemoryRepo.initDefaults).toHaveBeenCalledWith("agent_1", "ic");
+  });
+
+  it("preserves an explicit review_policy override", async () => {
+    vi.mocked(agentRepo.create).mockImplementation(async (input) =>
+      ({
+        ...input,
+        created_at: new Date(),
+        updated_at: new Date(),
+      }) as Agent,
+    );
+    vi.mocked(coreMemoryRepo.initDefaults).mockResolvedValue([]);
+
+    await provisionAgent(
+      { agentRepo, coreMemoryRepo },
+      {
+        id: "agent_2",
+        name: "GatedSpecialist",
+        owner_id: "person_1",
+        hierarchy_level: "ic",
+        runtime_config: { type: "claude" },
+        review_policy: "require_human",
+      },
+    );
+
+    expect(agentRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ review_policy: "require_human" }),
+    );
   });
 
   it("propagates errors from initDefaults (documented non-transactional limitation)", async () => {

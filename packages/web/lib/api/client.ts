@@ -386,6 +386,17 @@ export const api = {
         `/agent/${encodeURIComponent(id)}/model`,
         { method: "POST", body: { model } },
       ),
+    /**
+     * Toggle the agent's review policy. `auto_done` (default for new agents)
+     * lets the agent close its own tasks; `require_human` routes `done`
+     * declarations through `review` so the user signs off before a task
+     * is truly closed.
+     */
+    setReviewPolicy: (id: string, policy: "auto_done" | "require_human") =>
+      fetchJson<{ ok: true; review_policy: "auto_done" | "require_human" }>(
+        `/agent/${encodeURIComponent(id)}/review-policy`,
+        { method: "POST", body: { review_policy: policy } },
+      ),
   },
   runtimes: {
     list: (opts: ReadOptions = {}) =>

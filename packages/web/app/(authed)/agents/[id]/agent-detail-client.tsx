@@ -202,6 +202,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         <aside className="col-span-1 space-y-4">
           <RuntimePicker agent={agent} />
           <ModelPicker agent={agent} />
+          <ReviewPolicyPicker agent={agent} />
           {agent.outgoing_mesh_hints.length ? (
             <section className="rounded-lg border border-border bg-card p-4">
               <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
@@ -228,9 +229,6 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         <FooterField label="Hierarchy">{agent.hierarchy}</FooterField>
         {agent.runtime ? <FooterField label="Runtime">{agent.runtime}</FooterField> : null}
         <FooterField label="Model">{agent.model ?? "CLI default"}</FooterField>
-        {agent.review_policy ? (
-          <FooterField label="Review policy">{agent.review_policy}</FooterField>
-        ) : null}
         {agent.archived_at ? (
           <FooterField label="Archived">
             {new Date(agent.archived_at).toLocaleString()}
@@ -359,6 +357,52 @@ function ModelPicker({ agent }: { agent: AgentDetail }) {
         Model alias passed to the CLI via <span className="font-mono">--model</span>.
         Leave on &quot;CLI default&quot; to inherit whatever you&apos;ve
         configured in <span className="font-mono">~/.claude</span>.
+      </p>
+    </section>
+  );
+}
+
+type ReviewPolicyValue = "auto_done" | "require_human";
+
+function ReviewPolicyPicker({ agent }: { agent: AgentDetail }) {
+  const queryClient = useQueryClient();
+  // Legacy agents (provisioned before this column had a default) carry
+  // review_policy=null; behaviorally that's identical to 'auto_done' in
+  // TaskService, so render it that way too.
+  const current: ReviewPolicyValue =
+    agent.review_policy === "require_human" ? "require_human" : "auto_done";
+  const mutation = useMutation({
+    mutationFn: (policy: ReviewPolicyValue) => api.agents.setReviewPolicy(agent.id, policy),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.agents.detail(agent.id),
+      });
+    },
+  });
+
+  return (
+    <section className="rounded-lg border border-border bg-card p-4">
+      <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
+        Review policy
+      </h3>
+      <select
+        value={current}
+        disabled={mutation.isPending}
+        onChange={(e) => mutation.mutate(e.target.value as ReviewPolicyValue)}
+        className="w-full text-sm rounded border border-border bg-background px-2 py-1.5 cursor-pointer disabled:opacity-50"
+      >
+        <option value="auto_done">Auto-done (default)</option>
+        <option value="require_human">Require human review</option>
+      </select>
+      {mutation.isError ? (
+        <p className="text-xs text-destructive mt-1.5">
+          Couldn&apos;t update review policy.
+        </p>
+      ) : null}
+      <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+        When the agent declares a task <span className="font-mono">done</span>,
+        auto-done closes it. Require-human routes it through{" "}
+        <span className="font-mono">review</span> so you sign off first.
       </p>
     </section>
   );

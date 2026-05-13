@@ -25,8 +25,11 @@ import {
   type AgentRepository,
   type DaemonRepository,
   type MemoryScope,
+  type ReviewPolicy,
   type RuntimeRepository,
 } from "@beevibe/core";
+
+const REVIEW_POLICIES: readonly ReviewPolicy[] = ["auto_done", "require_human"] as const;
 import { requireHuman } from "../auth/middleware.js";
 import { listTasks, getTask, type TaskListFilter } from "../views/tasks.js";
 import {
@@ -282,6 +285,41 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       });
     } catch (err) {
       handleError(err, res, "agent model update");
+    }
+  });
+
+  router.post("/agent/:id/review-policy", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "missing_agent_id" });
+      return;
+    }
+    const body = req.body as { review_policy?: unknown } | undefined;
+    const policy = body?.review_policy;
+    if (typeof policy !== "string" || !REVIEW_POLICIES.includes(policy as ReviewPolicy)) {
+      res.status(400).json({
+        error: "invalid_body",
+        message: `expected { review_policy: ${REVIEW_POLICIES.map((p) => `"${p}"`).join(" | ")} }`,
+      });
+      return;
+    }
+    try {
+      const existing = await deps.agentRepo.findById(id);
+      if (!existing) {
+        res.status(404).json({ error: "agent_not_found" });
+        return;
+      }
+      if (existing.owner_id !== req.caller.personId) {
+        res.status(403).json({ error: "not_owner" });
+        return;
+      }
+      const updated = await deps.agentRepo.update(id, {
+        review_policy: policy as ReviewPolicy,
+      });
+      res.json({ ok: true, review_policy: updated.review_policy });
+    } catch (err) {
+      handleError(err, res, "agent review_policy update");
     }
   });
 

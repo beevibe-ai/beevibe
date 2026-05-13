@@ -34,7 +34,14 @@ export async function provisionAgent(
   input: ProvisionAgentInput,
 ): Promise<ProvisionAgentResult> {
   const apiKey = generateAgentApiKey();
-  const agent = await deps.agentRepo.create({ ...input, api_key: apiKey });
+  // Default review_policy to 'auto_done' so updateProgress(done) closes
+  // tasks without a human-review hop. Users can flip to 'require_human'
+  // per-agent via POST /agent/:id/review-policy when they want a gate.
+  const agent = await deps.agentRepo.create({
+    ...input,
+    review_policy: input.review_policy ?? "auto_done",
+    api_key: apiKey,
+  });
   const blocks = await deps.coreMemoryRepo.initDefaults(
     agent.id,
     agent.hierarchy_level,
