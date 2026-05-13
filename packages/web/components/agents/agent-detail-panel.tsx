@@ -11,6 +11,7 @@ import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
 import { isApiConfigured } from "@/lib/api/config";
 import { useAgent } from "@/lib/hooks/use-agents";
+import { useMe } from "@/lib/hooks/use-me";
 import { cn } from "@/lib/utils";
 import type { AgentDetail } from "@/lib/api/types";
 import type { RecentSession } from "@/lib/types/agents";
@@ -147,6 +148,8 @@ function PanelBody({ agentId }: { agentId: string }) {
 }
 
 function PanelLoaded({ agent }: { agent: AgentDetail }) {
+  const me = useMe();
+  const isOwner = me.data?.person.id === agent.owner_id;
   const initial = agent.display_name.charAt(0).toUpperCase();
   const presence = agent.metrics.sessions > 0 ? "idle" : "off";
 
@@ -193,7 +196,7 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
         {agent.core_blocks.length > 0 ? (
           <div className="space-y-2.5">
             {agent.core_blocks.map((b) => (
-              <CoreBlockCard key={b.id} block={b} />
+              <CoreBlockCard key={b.id} block={b} editable={isOwner} />
             ))}
           </div>
         ) : null}

@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, AlertTriangle, Bot, Archive } from "lucide-react";
 import { useAgent } from "@/lib/hooks/use-agents";
+import { useMe } from "@/lib/hooks/use-me";
 import { isApiConfigured } from "@/lib/api/config";
 import { api, type RuntimesListResponse } from "@/lib/api/client";
 import { queryKeys } from "@/lib/hooks/keys";
@@ -98,6 +99,13 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
     },
   });
   const archived = Boolean(agent.archived_at);
+  // Cross-user discovery is allowed (GET /agent/:id ungated for mesh
+  // visibility), but every mutation route checks owner_id. Reflect that
+  // in the UI: hide pickers + archive when the caller doesn't own the
+  // agent. The footer still surfaces runtime/model/review-policy as
+  // read-only metadata.
+  const me = useMe();
+  const isOwner = me.data?.person.id === agent.owner_id;
 
   return (
     <DetailShell nav={<AgentsBackLink />}>
@@ -119,7 +127,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
             ) : null}
           </div>
           <div className="shrink-0 flex items-center gap-2">
-            {!archived ? (
+            {!archived && isOwner ? (
               confirming ? (
                 <>
                   <button
@@ -175,7 +183,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
             ) : (
               <div className="space-y-3">
                 {agent.core_blocks.map((b) => (
-                  <CoreBlockCard key={b.id} block={b} />
+                  <CoreBlockCard key={b.id} block={b} editable={isOwner} />
                 ))}
               </div>
             )}
@@ -201,9 +209,13 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         </div>
 
         <aside className="col-span-1 space-y-4">
-          <RuntimePicker agent={agent} />
-          <ModelPicker agent={agent} />
-          <ReviewPolicyPicker agent={agent} />
+          {isOwner ? (
+            <>
+              <RuntimePicker agent={agent} />
+              <ModelPicker agent={agent} />
+              <ReviewPolicyPicker agent={agent} />
+            </>
+          ) : null}
           {agent.outgoing_mesh_hints.length ? (
             <section className="rounded-lg border border-border bg-card p-4">
               <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
@@ -230,6 +242,9 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         <FooterField label="Hierarchy">{agent.hierarchy}</FooterField>
         {agent.runtime ? <FooterField label="Runtime">{agent.runtime}</FooterField> : null}
         <FooterField label="Model">{agent.model ?? "CLI default"}</FooterField>
+        <FooterField label="Review policy">
+          {agent.review_policy === "require_human" ? "require human" : "auto-done"}
+        </FooterField>
         {agent.archived_at ? (
           <FooterField label="Archived">
             {new Date(agent.archived_at).toLocaleString()}

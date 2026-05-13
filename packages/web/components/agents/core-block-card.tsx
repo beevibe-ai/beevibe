@@ -16,16 +16,27 @@ import type { CoreBlockDisplay } from "@/lib/types/core-memory-blocks";
  * treatment it deserves; anything we don't recognize falls back to a
  * markdown-rendered prose block. Never a wall of unparsed asterisks.
  */
-export function CoreBlockCard({ block }: { block: CoreBlockDisplay }) {
+/**
+ * `editable` gates the inline Edit pencil. False for non-owner viewers
+ * (the backend would reject the eventual `update_core_memory` call
+ * anyway; the UI surface just hides the affordance up front).
+ */
+export function CoreBlockCard({
+  block,
+  editable = true,
+}: {
+  block: CoreBlockDisplay;
+  editable?: boolean;
+}) {
   switch (block.block_name) {
     case "persona":
-      return <PersonaBlock block={block} />;
+      return <PersonaBlock block={block} editable={editable} />;
     case "active_work":
-      return <ActiveWorkBlock block={block} />;
+      return <ActiveWorkBlock block={block} editable={editable} />;
     case "team_members":
-      return <TeamMembersBlock block={block} />;
+      return <TeamMembersBlock block={block} editable={editable} />;
     default:
-      return <ProseBlock block={block} />;
+      return <ProseBlock block={block} editable={editable} />;
   }
 }
 
@@ -53,9 +64,11 @@ function BlockShell({
 function BlockHeader({
   block,
   kindLabel,
+  editable,
 }: {
   block: CoreBlockDisplay;
   kindLabel?: string;
+  editable: boolean;
 }) {
   // The kind label is the human-readable name ("Identity", "Active
   // work"); the raw `block_name` (persona, active_work) sits next to
@@ -78,12 +91,14 @@ function BlockHeader({
         <span className="text-[10px] text-muted-foreground/50 tabular-nums opacity-0 group-hover:opacity-100 transition-opacity">
           {formatCount(block.char_count)} / {formatCount(block.char_limit)}
         </span>
-        <button
-          aria-label={`Edit ${block.block_name} block`}
-          className="h-5 w-5 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 transition-opacity"
-        >
-          <Pencil className="h-3 w-3" />
-        </button>
+        {editable ? (
+          <button
+            aria-label={`Edit ${block.block_name} block`}
+            className="h-5 w-5 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 transition-opacity"
+          >
+            <Pencil className="h-3 w-3" />
+          </button>
+        ) : null}
       </div>
     </div>
   );
@@ -96,13 +111,13 @@ function formatCount(n: number): string {
 
 // ── Persona — identity prose ─────────────────────────────────────────
 
-function PersonaBlock({ block }: { block: CoreBlockDisplay }) {
+function PersonaBlock({ block, editable }: { block: CoreBlockDisplay; editable: boolean }) {
   // Persona is short by nature (~400 chars), so no collapse — show the
   // whole identity statement at once. Primary left accent stripe makes
   // it read as a quote / mission-statement instead of a config field.
   return (
     <BlockShell accent="primary">
-      <BlockHeader block={block} kindLabel="Identity" />
+      <BlockHeader block={block} kindLabel="Identity" editable={editable} />
       <div className="text-sm text-foreground/85 italic">
         <ChatMarkdown content={block.content} />
       </div>
@@ -117,7 +132,7 @@ interface ActiveWorkUpdate {
   content: string;
 }
 
-function ActiveWorkBlock({ block }: { block: CoreBlockDisplay }) {
+function ActiveWorkBlock({ block, editable }: { block: CoreBlockDisplay; editable: boolean }) {
   const { current, updates } = parseActiveWork(block.content);
   const [showAll, setShowAll] = useState(false);
 
@@ -127,7 +142,7 @@ function ActiveWorkBlock({ block }: { block: CoreBlockDisplay }) {
 
   return (
     <BlockShell>
-      <BlockHeader block={block} kindLabel="Active work" />
+      <BlockHeader block={block} kindLabel="Active work" editable={editable} />
 
       {current ? (
         <div className="text-sm text-foreground/90">
@@ -220,16 +235,16 @@ interface TeamMember {
   description: string;
 }
 
-function TeamMembersBlock({ block }: { block: CoreBlockDisplay }) {
+function TeamMembersBlock({ block, editable }: { block: CoreBlockDisplay; editable: boolean }) {
   const members = parseTeamMembers(block.content);
   if (members.length === 0) {
     // Parsing fell apart — don't lose the data, render as prose so
     // the user still sees what's there.
-    return <ProseBlock block={block} kindLabel="Team members" />;
+    return <ProseBlock block={block} kindLabel="Team members" editable={editable} />;
   }
   return (
     <BlockShell>
-      <BlockHeader block={block} kindLabel="Team members" />
+      <BlockHeader block={block} kindLabel="Team members" editable={editable} />
       <ul className="space-y-2.5">
         {members.map((m) => (
           <TeamMemberRow key={m.agentId} member={m} />
@@ -296,9 +311,11 @@ const COLLAPSE_THRESHOLD = 400;
 function ProseBlock({
   block,
   kindLabel,
+  editable,
 }: {
   block: CoreBlockDisplay;
   kindLabel?: string;
+  editable: boolean;
 }) {
   const long = block.content.length > COLLAPSE_THRESHOLD;
   const [expanded, setExpanded] = useState(!long);
@@ -308,7 +325,7 @@ function ProseBlock({
       : block.content;
   return (
     <BlockShell>
-      <BlockHeader block={block} kindLabel={kindLabel} />
+      <BlockHeader block={block} kindLabel={kindLabel} editable={editable} />
       <div className="text-sm text-foreground/85">
         <ChatMarkdown content={visible} />
       </div>
