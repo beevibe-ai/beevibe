@@ -73,6 +73,13 @@ export interface DashboardDisplay {
   trend_total: number;
   trend_change_percent: number;
   attention: AttentionItem[];
+  /**
+   * Pure-data pass-through. Usage rendering (cost formatting, color
+   * bands, per-agent bars) lives in the dashboard component since
+   * UsageSummaryData is already in scalar form — no URL/label/sparkline
+   * derivation needed at the transformer layer.
+   */
+  usage_summary: UsageSummaryData;
 }
 
 // ── Re-export the backend data DTO ─────────────────────────────────────────
@@ -87,4 +94,8 @@ export type {
   FleetBarData,
   TrendDayData,
   AttentionData,
+  UsageSummaryData,
+  UsageAgentBreakdown,
 } from "@beevibe/api/views/types";
+
+import type { UsageSummaryData } from "@beevibe/api/views/types";

@@ -37,6 +37,10 @@ export function summaryToDisplay(summary: DashboardSummary): DashboardDisplay {
     trend_total: summary.trend_total,
     trend_change_percent: summary.trend_change_percent,
     attention: summary.attention.map(attentionToDisplay),
+    // Pure pass-through — usage rendering is component-local (see
+    // DashboardUsageSection). Keeps the transformer focused on the
+    // shapes that actually need URL/label/sparkline derivation.
+    usage_summary: summary.usage_summary,
   };
 }
 

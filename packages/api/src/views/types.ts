@@ -347,6 +347,45 @@ export interface AttentionData {
   created_at: Date;
 }
 
+/**
+ * Per-agent slice of the dashboard usage aggregate. Sorted by `cost_usd`
+ * descending so the UI can render top-N spenders without re-sorting.
+ */
+export interface UsageAgentBreakdown {
+  agent_id: string;
+  agent_label: string;
+  cost_usd: number;
+  sessions: number;
+}
+
+/**
+ * Window-scoped cost + token rollup for the dashboard's Usage section.
+ * `cost_change_percent` compares the current window to the prior window
+ * of the same length — same convention as the existing `trend` block
+ * (round to int percent; ±100% when prior was zero and current > 0).
+ *
+ * `cache_hit_ratio` is the weighted ratio across all sessions in the
+ * window: total_cache_read / total_input. Range [0, 1]. Zero when no
+ * input was processed in the window.
+ */
+export interface UsageSummaryData {
+  /** Window length in days (matches TREND_WINDOW_DAYS). */
+  window_days: number;
+  total_cost_usd: number;
+  prior_cost_usd: number;
+  /** Round int percent vs. prior window. ±100% when prior was 0. */
+  cost_change_percent: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cache_creation_tokens: number;
+  total_cache_read_tokens: number;
+  /** Weighted across the whole window. */
+  cache_hit_ratio: number;
+  total_sessions: number;
+  /** Sorted by cost_usd descending. */
+  per_agent: UsageAgentBreakdown[];
+}
+
 export interface DashboardSummary {
   kpis: KpiData[];
   status_breakdown: StatusBreakdownData[];
@@ -360,6 +399,8 @@ export interface DashboardSummary {
   trend_total: number;
   trend_change_percent: number;
   attention: AttentionData[];
+  /** Cost + token aggregate over the current window. M9.8+. */
+  usage_summary: UsageSummaryData;
 }
 
 // ── Mesh ────────────────────────────────────────────────────────────────────
