@@ -10,6 +10,7 @@ import { KpiTile } from "@/components/home/kpi-tile";
 import { FleetBars } from "@/components/home/fleet-bars";
 import { StatusBreakdownBar } from "@/components/home/status-breakdown";
 import { TrendChart } from "@/components/home/trend-chart";
+import { DashboardUsageSection } from "@/components/home/usage-section";
 import type { DashboardDisplay } from "@/lib/types/dashboard";
 
 export function DashboardClient() {
@@ -115,6 +116,8 @@ function Body({
           changePercent={data.trend_change_percent}
         />
       </div>
+
+      <DashboardUsageSection summary={data.usage_summary} />
     </div>
   );
 }

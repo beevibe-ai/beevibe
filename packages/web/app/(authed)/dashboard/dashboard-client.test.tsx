@@ -51,6 +51,19 @@ const sample: DashboardSummary = {
       created_at: new Date("2026-04-30T10:00:00Z"),
     },
   ],
+  usage_summary: {
+    window_days: 7,
+    total_cost_usd: 0,
+    prior_cost_usd: 0,
+    cost_change_percent: 0,
+    total_input_tokens: 0,
+    total_output_tokens: 0,
+    total_cache_creation_tokens: 0,
+    total_cache_read_tokens: 0,
+    cache_hit_ratio: 0,
+    total_sessions: 0,
+    per_agent: [],
+  },
 };
 
 beforeEach(() => {

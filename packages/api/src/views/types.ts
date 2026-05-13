@@ -181,6 +181,38 @@ export interface AskThread {
   tone: "running" | "neutral";
 }
 
+/**
+ * Per-session usage telemetry exposed to the UI. Derived from the
+ * `SessionUsage` JSONB column on `session`. All numeric fields default
+ * to 0 (older sessions captured before M9.8 have null `usage`, in which
+ * case the whole object is absent from `SessionDisplay`).
+ *
+ * `cache_hit_ratio` is precomputed server-side so every consumer agrees
+ * on the formula:
+ *   cache_hit_ratio = cache_read_tokens / total_input_tokens
+ *   total_input_tokens = input_tokens + cache_creation_tokens + cache_read_tokens
+ *
+ * Range [0, 1]; 0 when no input was processed.
+ */
+export interface SessionUsageDisplay {
+  /** Total cost in USD for this session, summed across all assistant turns. */
+  cost_usd: number;
+  /** Cache hit ratio in [0, 1]. Target >0.7 on a warm second-onward session. */
+  cache_hit_ratio: number;
+  /** Fresh input tokens (not served from cache). */
+  input_tokens: number;
+  /** Output tokens generated. */
+  output_tokens: number;
+  /** Tokens written to cache (charged at ~1.25× base input rate). */
+  cache_creation_tokens: number;
+  /** Tokens read from cache (charged at ~0.1× base input rate). */
+  cache_read_tokens: number;
+  /** Sum of input + cache_creation + cache_read. Convenience for UI. */
+  total_input_tokens: number;
+  /** Model used. Falls back to "unknown" if the runtime didn't report one. */
+  model: string;
+}
+
 export interface SessionDisplay {
   id: string;
   short_id: string;
@@ -214,6 +246,14 @@ export interface SessionDisplay {
   runtime_cli_version?: string;
   /** Joined from daemon → device_name. Renders as "Ran on <X>". */
   daemon_device_name?: string;
+  /**
+   * Per-session cost + token usage. Absent when the underlying
+   * `session.usage` JSONB column is null (older sessions captured
+   * before M9.8 stamped usage onto every completion). See
+   * {@link SessionUsageDisplay} for field semantics + cache-hit ratio
+   * formula.
+   */
+  usage?: SessionUsageDisplay;
 }
 
 export interface SessionBriefing {
@@ -313,6 +353,45 @@ export interface AttentionData {
   created_at: Date;
 }
 
+/**
+ * Per-agent slice of the dashboard usage aggregate. Sorted by `cost_usd`
+ * descending so the UI can render top-N spenders without re-sorting.
+ */
+export interface UsageAgentBreakdown {
+  agent_id: string;
+  agent_label: string;
+  cost_usd: number;
+  sessions: number;
+}
+
+/**
+ * Window-scoped cost + token rollup for the dashboard's Usage section.
+ * `cost_change_percent` compares the current window to the prior window
+ * of the same length — same convention as the existing `trend` block
+ * (round to int percent; ±100% when prior was zero and current > 0).
+ *
+ * `cache_hit_ratio` is the weighted ratio across all sessions in the
+ * window: total_cache_read / total_input. Range [0, 1]. Zero when no
+ * input was processed in the window.
+ */
+export interface UsageSummaryData {
+  /** Window length in days (matches TREND_WINDOW_DAYS). */
+  window_days: number;
+  total_cost_usd: number;
+  prior_cost_usd: number;
+  /** Round int percent vs. prior window. ±100% when prior was 0. */
+  cost_change_percent: number;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cache_creation_tokens: number;
+  total_cache_read_tokens: number;
+  /** Weighted across the whole window. */
+  cache_hit_ratio: number;
+  total_sessions: number;
+  /** Sorted by cost_usd descending. */
+  per_agent: UsageAgentBreakdown[];
+}
+
 export interface DashboardSummary {
   kpis: KpiData[];
   status_breakdown: StatusBreakdownData[];
@@ -326,6 +405,8 @@ export interface DashboardSummary {
   trend_total: number;
   trend_change_percent: number;
   attention: AttentionData[];
+  /** Cost + token aggregate over the current window. M9.8+. */
+  usage_summary: UsageSummaryData;
 }
 
 // ── Mesh ────────────────────────────────────────────────────────────────────

@@ -8,6 +8,7 @@
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { HierarchyLevel, TaskStatus } from "@beevibe/core";
+import { computeCacheHitRatio } from "./format.js";
 import type {
   DashboardSummary,
   KpiData,
@@ -17,6 +18,8 @@ import type {
   TrendDayData,
   AttentionData,
   LegendBucket,
+  UsageAgentBreakdown,
+  UsageSummaryData,
 } from "./types.js";
 
 interface StatusCountRow {
@@ -48,6 +51,23 @@ interface KpiTrendRow {
   in_review: string;
   completed_today: string;
   blocked: string;
+}
+
+/**
+ * Per-agent per-bucket row from `USAGE_WINDOW_SQL`. Numeric fields
+ * arrive as strings from pg (driver doesn't coerce SUM / COUNT to JS
+ * Number to preserve precision); the builder converts with `Number()`.
+ */
+interface UsageWindowRow {
+  agent_id: string;
+  agent_label: string;
+  bucket: "current" | "prior";
+  cost: string;
+  input_tokens: string;
+  output_tokens: string;
+  cache_creation: string;
+  cache_read: string;
+  sessions: string;
 }
 
 const STATUS_COUNT_SQL = /* sql */ `
@@ -143,6 +163,56 @@ LEFT JOIN blocked_per_day  b ON b.day = days.d
 ORDER BY days.d ASC
 `;
 
+/**
+ * Per-agent cost + token rollup spanning the current AND prior windows
+ * in one round-trip. Each row carries a `bucket` discriminator so the
+ * builder can split between the current-window per-agent breakdown and
+ * the prior-window cost total used for the delta arrow.
+ *
+ * Window length is $1 days. Both windows are equally sized; prior is
+ * [now - 2*days, now - days), current is [now - days, now]. The single
+ * WHERE clause covers both via `>= NOW() - make_interval(days => $1::int * 2)`.
+ *
+ * LIMIT bounds payload — far past the dashboard's top-N render, but
+ * defensive against bursts of one-off agents that would otherwise
+ * inflate the network transfer for a list nobody reads.
+ *
+ * Index dependency: `idx_session_usage_completed` (partial,
+ * `WHERE usage IS NOT NULL`) — migration 1780400000000.
+ */
+const USAGE_WINDOW_SQL = /* sql */ `
+WITH bucketed AS (
+  SELECT
+    s.agent_id,
+    a.name AS agent_label,
+    s.usage,
+    CASE
+      WHEN s.completed_at >= NOW() - make_interval(days => $1::int) THEN 'current'
+      ELSE 'prior'
+    END AS bucket
+  FROM session s
+  JOIN agent a ON a.id = s.agent_id
+  WHERE s.usage IS NOT NULL
+    AND s.completed_at >= NOW() - make_interval(days => $1::int * 2)
+)
+SELECT
+  agent_id,
+  agent_label,
+  bucket,
+  COALESCE(SUM((usage->>'cost_usd')::numeric), 0)::text AS cost,
+  COALESCE(SUM((usage->>'input_tokens')::int), 0)::text AS input_tokens,
+  COALESCE(SUM((usage->>'output_tokens')::int), 0)::text AS output_tokens,
+  COALESCE(SUM((usage->>'cache_creation_input_tokens')::int), 0)::text AS cache_creation,
+  COALESCE(SUM((usage->>'cache_read_input_tokens')::int), 0)::text AS cache_read,
+  COUNT(*)::text AS sessions
+FROM bucketed
+GROUP BY agent_id, agent_label, bucket
+ORDER BY
+  CASE bucket WHEN 'current' THEN 0 ELSE 1 END,
+  SUM((usage->>'cost_usd')::numeric) DESC NULLS LAST
+LIMIT 100
+`;
+
 const TREND_WINDOW_DAYS = 7;
 const ATTENTION_LIMIT = 8;
 
@@ -169,14 +239,21 @@ function legendBucket(status: TaskStatus): LegendBucket {
 }
 
 export async function getDashboardSummary(pool: Pool): Promise<DashboardSummary> {
-  const [statusResult, fleetResult, trendResult, attentionResult, kpiTrendResult] =
-    await Promise.all([
-      pool.query<StatusCountRow>(STATUS_COUNT_SQL),
-      pool.query<FleetCountRow>(FLEET_SQL),
-      pool.query<TrendRow>(TREND_SQL, [TREND_WINDOW_DAYS * 2]),
-      pool.query<AttentionRow>(ATTENTION_SQL, [ATTENTION_LIMIT]),
-      pool.query<KpiTrendRow>(KPI_TREND_SQL, [TREND_WINDOW_DAYS]),
-    ]);
+  const [
+    statusResult,
+    fleetResult,
+    trendResult,
+    attentionResult,
+    kpiTrendResult,
+    usageResult,
+  ] = await Promise.all([
+    pool.query<StatusCountRow>(STATUS_COUNT_SQL),
+    pool.query<FleetCountRow>(FLEET_SQL),
+    pool.query<TrendRow>(TREND_SQL, [TREND_WINDOW_DAYS * 2]),
+    pool.query<AttentionRow>(ATTENTION_SQL, [ATTENTION_LIMIT]),
+    pool.query<KpiTrendRow>(KPI_TREND_SQL, [TREND_WINDOW_DAYS]),
+    pool.query<UsageWindowRow>(USAGE_WINDOW_SQL, [TREND_WINDOW_DAYS]),
+  ]);
 
   const status_total = statusResult.rows.reduce((s, r) => s + Number(r.count), 0);
   const status_breakdown: StatusBreakdownData[] = statusResult.rows
@@ -233,6 +310,11 @@ export async function getDashboardSummary(pool: Pool): Promise<DashboardSummary>
 
   const kpis: KpiData[] = buildKpis(kpiTrendResult.rows, statusResult.rows, fleet_active);
 
+  const usage_summary: UsageSummaryData = buildUsageSummary(
+    usageResult.rows,
+    TREND_WINDOW_DAYS,
+  );
+
   return {
     kpis,
     status_breakdown,
@@ -246,6 +328,7 @@ export async function getDashboardSummary(pool: Pool): Promise<DashboardSummary>
     trend_total,
     trend_change_percent,
     attention,
+    usage_summary,
   };
 }
 
@@ -286,4 +369,86 @@ function buildKpis(
       trend: trend("blocked"),
     },
   ];
+}
+
+/**
+ * Aggregate per-agent per-bucket rows into the wire-shape
+ * UsageSummaryData. Pure function — testable without a database.
+ *
+ * Delta semantics match the trend block above:
+ *   - prior > 0  → round((current - prior) / prior * 100)
+ *   - prior == 0 and current > 0 → +100 (saturate, don't divide by 0)
+ *   - prior == 0 and current == 0 → 0 (no signal)
+ *
+ * Per-agent is built from `bucket === 'current'` rows; SQL pre-sorts
+ * those by cost DESC so the array is render-ready. Prior rows are
+ * summed for the cost-delta total only (no per-agent — UI doesn't
+ * surface "agent X spent more last week").
+ */
+export function buildUsageSummary(
+  rows: UsageWindowRow[],
+  windowDays: number,
+): UsageSummaryData {
+  let total_cost_usd = 0;
+  let total_input_tokens = 0;
+  let total_output_tokens = 0;
+  let total_cache_creation_tokens = 0;
+  let total_cache_read_tokens = 0;
+  let total_sessions = 0;
+  let prior_cost_usd = 0;
+  const per_agent: UsageAgentBreakdown[] = [];
+
+  for (const r of rows) {
+    const cost = Number(r.cost);
+    if (r.bucket === "prior") {
+      prior_cost_usd += cost;
+      continue;
+    }
+    const input = Number(r.input_tokens);
+    const output = Number(r.output_tokens);
+    const cacheCreation = Number(r.cache_creation);
+    const cacheRead = Number(r.cache_read);
+    const sessions = Number(r.sessions);
+    total_cost_usd += cost;
+    total_input_tokens += input;
+    total_output_tokens += output;
+    total_cache_creation_tokens += cacheCreation;
+    total_cache_read_tokens += cacheRead;
+    total_sessions += sessions;
+    per_agent.push({
+      agent_id: r.agent_id,
+      agent_label: r.agent_label,
+      cost_usd: cost,
+      sessions,
+    });
+  }
+
+  const cache_hit_ratio = computeCacheHitRatio({
+    input: total_input_tokens,
+    cacheCreation: total_cache_creation_tokens,
+    cacheRead: total_cache_read_tokens,
+  });
+
+  const cost_change_percent =
+    prior_cost_usd === 0
+      ? total_cost_usd === 0
+        ? 0
+        : 100
+      : Math.round(
+          ((total_cost_usd - prior_cost_usd) / prior_cost_usd) * 100,
+        );
+
+  return {
+    window_days: windowDays,
+    total_cost_usd,
+    prior_cost_usd,
+    cost_change_percent,
+    total_input_tokens,
+    total_output_tokens,
+    total_cache_creation_tokens,
+    total_cache_read_tokens,
+    cache_hit_ratio,
+    total_sessions,
+    per_agent,
+  };
 }

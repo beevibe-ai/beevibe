@@ -23,7 +23,18 @@
  * Cache-stable: identical text for every agent. ~500 tokens combined;
  * once cached (≥4096 tokens for Opus 4.7), reads at 0.1× rate.
  */
-export const BEEVIBE_LIFECYCLE_REMINDER = `<beevibe_lifecycle>
+/**
+ * Lifecycle reminder for **task** sessions (intent has a `<task id="..."/>`
+ * block; the agent is expected to drive the task to a terminal state via
+ * `update_progress` and record deliverables as `work_product` rows).
+ *
+ * Chat sessions get the {@link BEEVIBE_LIFECYCLE_REMINDER_CHAT} variant
+ * instead — selected by `composeSystemPromptAppend` based on the
+ * `appendChatDirectives` flag. Mesh-ask / blocker-response sessions
+ * currently fall through to the task variant; those are still
+ * task-anchored (the answering agent is responding inside a task lifecycle).
+ */
+export const BEEVIBE_LIFECYCLE_REMINDER_TASK = `<beevibe_lifecycle>
 You are a beevibe agent (BEEVIBE_AGENT_ID env identifies you). Critical
 behavioral rules for every task session:
 
@@ -55,6 +66,49 @@ behavioral rules for every task session:
 5. For multi-step protocols (mesh negotiation, git workspace setup), the
    relevant beevibe-* skill in .claude/skills/ has the deep guidance —
    invoke via Skill tool when their description matches your situation.
+</beevibe_lifecycle>`;
+
+/**
+ * Lifecycle reminder for **chat** sessions (one-shot conversational turns
+ * in the chat surface; no `<task id>` block in the intent).
+ *
+ * Distinct from {@link BEEVIBE_LIFECYCLE_REMINDER_TASK} because the
+ * task-tracking guidance (`update_progress`, `work_product`,
+ * leaf-vs-parent rule) would tell the agent to call APIs that can't
+ * succeed without a `task_id` — actively misleading. The chat reminder
+ * is deliberately short: respond, don't pretend to be in a task,
+ * optionally `create_task` if the user describes a discrete unit of work.
+ *
+ * Cache-stable: identical text for every chat-mode spawn. Lives in the
+ * cache prefix alongside the task variant; the prefix swap is per-session
+ * so neither path pollutes the other's cache.
+ */
+export const BEEVIBE_LIFECYCLE_REMINDER_CHAT = `<beevibe_lifecycle>
+You are a beevibe agent (BEEVIBE_AGENT_ID env identifies you) responding
+in a 1:1 chat with the user. This session is conversational — there is
+NO <task id="..."/> block in your intent, NO update_progress to call, NO
+work_product to record.
+
+1. Respond directly and concretely to the user's message. Don't pad,
+   don't summarize what they just said back at them, don't open with a
+   meta-acknowledgement of the question.
+
+2. If the user describes a discrete unit of work (a deliverable, a fix,
+   a research goal) and you are team or org tier, you may call
+   mcp__beevibe__create_task to spawn it as a tracked task — to a
+   subordinate (call mcp__beevibe__find_subordinates first to pick a
+   matching specialty) when the domain fits them, or to yourself when
+   it is your specialty.
+
+3. Memory management (see <beevibe_memory>) is especially valuable in
+   chat. Preferences, decisions, and durable context surface here first;
+   save them so the next chat and the next task inherit them.
+
+4. For multi-step protocols whose triggers match your situation (mesh
+   negotiation, etc.) the relevant beevibe-* skill in .claude/skills/
+   has the deep guidance — invoke via the Skill tool. Note that
+   beevibe-pre-task-setup is git-workspace setup for tasks; it does NOT
+   apply here.
 </beevibe_lifecycle>`;
 
 export const BEEVIBE_MEMORY_REMINDER = `<beevibe_memory>
@@ -305,22 +359,40 @@ Clarifying questions are fine and encouraged — but ask them in service of *rou
  * `appendOnboardingDirectives: true` adds the one-time wizard directives
  * after CHAT_DIRECTIVES.
  */
+export type SessionSurfaceKind = "task" | "chat";
+
 export function composeSystemPromptAppend(
   agentSystemPromptAddition: string | undefined,
   briefingSystemPromptAppend: string,
   options: {
-    appendChatDirectives?: boolean;
+    /**
+     * Which session surface is being spawned. Drives both the
+     * lifecycle reminder variant AND whether CHAT_DIRECTIVES is
+     * appended — the two are coupled by definition (chat surface
+     * implies chat lifecycle and display tokens; task surface implies
+     * task lifecycle and no display tokens). Defaults to "task" so
+     * existing task-side callers don't need to pass the flag.
+     *
+     * When mesh-ask / blocker-response sessions eventually need their
+     * own surface treatment, extend this union — don't reintroduce
+     * orthogonal flags.
+     */
+    sessionKind?: SessionSurfaceKind;
     appendOnboardingDirectives?: boolean;
     /** Free-form text appended at the very end (e.g., room directives). */
     extra?: string;
   } = {},
 ): string {
+  const isChat = options.sessionKind === "chat";
+  const lifecycleReminder = isChat
+    ? BEEVIBE_LIFECYCLE_REMINDER_CHAT
+    : BEEVIBE_LIFECYCLE_REMINDER_TASK;
   return [
-    BEEVIBE_LIFECYCLE_REMINDER,
+    lifecycleReminder,
     BEEVIBE_MEMORY_REMINDER,
     agentSystemPromptAddition ?? "",
     briefingSystemPromptAppend,
-    options.appendChatDirectives ? CHAT_DIRECTIVES : "",
+    isChat ? CHAT_DIRECTIVES : "",
     options.appendOnboardingDirectives ? ONBOARDING_DIRECTIVES : "",
     options.extra ?? "",
   ]

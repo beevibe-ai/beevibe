@@ -10,7 +10,7 @@
  *     session bound to the agent's preferred_runtime_id.
  *   - Daemon claims via /runtime/claim (NOT the in-process executor).
  *   - Real claude spawns with --append-system-prompt carrying
- *     BEEVIBE_LIFECYCLE_REMINDER + briefing → agent calls
+ *     BEEVIBE_LIFECYCLE_REMINDER_TASK + briefing → agent calls
  *     update_progress on exit.
  *   - The pre-task-setup skill auto-fires on a code task (repo_url
  *     drives the trigger phrase) — proves daemon-side

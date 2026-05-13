@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import Link from "next/link";
 import { Network } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { cn } from "@/lib/utils";
@@ -91,19 +92,39 @@ function countByType(asks: MeshAsk[]): Record<MeshAsk["type"], number> {
 }
 
 function AskRow({ ask }: { ask: MeshAsk }) {
+  const inner = (
+    <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+      <span className="text-foreground/85">{ask.caller}</span>
+      <span>→</span>
+      <span className="text-foreground/85">{ask.target}</span>
+      {ask.type !== "negotiate" ? (
+        <span className="px-1.5 py-0.5 rounded bg-secondary/60 text-foreground/70 text-[10px] uppercase tracking-wider">
+          {ask.type}
+        </span>
+      ) : null}
+      <span className="ml-auto tabular-nums">{ask.duration_label}</span>
+    </div>
+  );
+
+  // Each mesh ask is anchored to the source task that initiated it; the
+  // task detail page is the canonical surface for the full conversation
+  // (intent + response + provenance). Defensive fallback to unlinked
+  // when source_task_short_id is missing — currently the backend always
+  // populates it, but the type marks it optional.
+  if (!ask.source_task_short_id) {
+    return (
+      <li className="rounded-lg border border-border bg-card p-3 text-sm">{inner}</li>
+    );
+  }
+
   return (
-    <li className="rounded-lg border border-border bg-card p-3 text-sm">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
-        <span className="text-foreground/85">{ask.caller}</span>
-        <span>→</span>
-        <span className="text-foreground/85">{ask.target}</span>
-        {ask.type !== "negotiate" ? (
-          <span className="px-1.5 py-0.5 rounded bg-secondary/60 text-foreground/70 text-[10px] uppercase tracking-wider">
-            {ask.type}
-          </span>
-        ) : null}
-        <span className="ml-auto tabular-nums">{ask.duration_label}</span>
-      </div>
+    <li>
+      <Link
+        href={`/tasks/${ask.source_task_short_id}`}
+        className="block rounded-lg border border-border bg-card p-3 text-sm hover:bg-secondary/50 hover:border-border/80 transition-colors cursor-pointer"
+      >
+        {inner}
+      </Link>
     </li>
   );
 }
