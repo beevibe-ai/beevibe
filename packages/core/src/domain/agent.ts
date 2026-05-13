@@ -4,6 +4,11 @@ export const HIERARCHY_LEVELS: readonly HierarchyLevel[] = ["ic", "team", "org"]
 
 export type ReviewPolicy = "require_human" | "auto_done";
 
+export const REVIEW_POLICIES: readonly ReviewPolicy[] = [
+  "auto_done",
+  "require_human",
+] as const;
+
 export interface RuntimeConfig {
   type: "claude";
   /**

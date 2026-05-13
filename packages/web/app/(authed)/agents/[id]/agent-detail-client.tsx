@@ -21,6 +21,7 @@ import { Metric } from "@/components/detail/metric";
 import { cn } from "@/lib/utils";
 import type { AgentDetail } from "@/lib/api/types";
 import type { RecentSession } from "@/lib/types/agents";
+import type { ReviewPolicy } from "@beevibe/core";
 
 const RECENT_SESSION_DOT: Record<RecentSession["status"], string> = {
   running: "bg-status-running animate-pulse-breathe",
@@ -362,21 +363,21 @@ function ModelPicker({ agent }: { agent: AgentDetail }) {
   );
 }
 
-type ReviewPolicyValue = "auto_done" | "require_human";
-
 function ReviewPolicyPicker({ agent }: { agent: AgentDetail }) {
   const queryClient = useQueryClient();
   // Legacy agents (provisioned before this column had a default) carry
   // review_policy=null; behaviorally that's identical to 'auto_done' in
   // TaskService, so render it that way too.
-  const current: ReviewPolicyValue =
+  const current: ReviewPolicy =
     agent.review_policy === "require_human" ? "require_human" : "auto_done";
   const mutation = useMutation({
-    mutationFn: (policy: ReviewPolicyValue) => api.agents.setReviewPolicy(agent.id, policy),
+    mutationFn: (policy: ReviewPolicy) => api.agents.setReviewPolicy(agent.id, policy),
+    // Invalidate all agent queries: the list view's AgentDisplay also
+    // carries review_policy, so a single agent's flip can affect
+    // /agents cards + the peek panel, not just this detail page.
+    // Mirrors RuntimePicker's invalidation scope.
     onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.agents.detail(agent.id),
-      });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
     },
   });
 
@@ -388,7 +389,7 @@ function ReviewPolicyPicker({ agent }: { agent: AgentDetail }) {
       <select
         value={current}
         disabled={mutation.isPending}
-        onChange={(e) => mutation.mutate(e.target.value as ReviewPolicyValue)}
+        onChange={(e) => mutation.mutate(e.target.value as ReviewPolicy)}
         className="w-full text-sm rounded border border-border bg-background px-2 py-1.5 cursor-pointer disabled:opacity-50"
       >
         <option value="auto_done">Auto-done (default)</option>

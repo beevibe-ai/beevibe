@@ -22,14 +22,13 @@ import { Router, type RequestHandler } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   MEMORY_SCOPES,
+  REVIEW_POLICIES,
   type AgentRepository,
   type DaemonRepository,
   type MemoryScope,
   type ReviewPolicy,
   type RuntimeRepository,
 } from "@beevibe/core";
-
-const REVIEW_POLICIES: readonly ReviewPolicy[] = ["auto_done", "require_human"] as const;
 import { requireHuman } from "../auth/middleware.js";
 import { listTasks, getTask, type TaskListFilter } from "../views/tasks.js";
 import {
@@ -62,6 +61,10 @@ const LIFECYCLES = new Set<Lifecycle>(
 );
 const VIEWS = new Set<TaskListFilter["view"]>(["all", "mine", "sprint", "timeline"]);
 const SCOPES = new Set<MemoryScope>(MEMORY_SCOPES);
+
+function isReviewPolicy(v: unknown): v is ReviewPolicy {
+  return typeof v === "string" && (REVIEW_POLICIES as readonly string[]).includes(v);
+}
 
 export function createViewRouter(deps: ViewRoutesDeps): Router {
   const router = Router();
@@ -297,7 +300,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     }
     const body = req.body as { review_policy?: unknown } | undefined;
     const policy = body?.review_policy;
-    if (typeof policy !== "string" || !REVIEW_POLICIES.includes(policy as ReviewPolicy)) {
+    if (!isReviewPolicy(policy)) {
       res.status(400).json({
         error: "invalid_body",
         message: `expected { review_policy: ${REVIEW_POLICIES.map((p) => `"${p}"`).join(" | ")} }`,
@@ -314,9 +317,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
         res.status(403).json({ error: "not_owner" });
         return;
       }
-      const updated = await deps.agentRepo.update(id, {
-        review_policy: policy as ReviewPolicy,
-      });
+      const updated = await deps.agentRepo.update(id, { review_policy: policy });
       res.json({ ok: true, review_policy: updated.review_policy });
     } catch (err) {
       handleError(err, res, "agent review_policy update");
