@@ -190,8 +190,15 @@ function composeBriefing(
   const blockSnapshots: SessionBriefingSnapshot["blocks"] = [];
   let charTotal = 0;
   for (const b of blocks) {
+    // Description attribute is first-person guidance the agent reads
+    // to decide WHAT belongs in this block. Surfaced alongside content
+    // so the agent sees scope right next to the data it's about to
+    // (potentially) edit. See packages/core/src/domain/core-memory.ts.
+    const descAttr = b.description
+      ? ` description="${escapeAttr(b.description)}"`
+      : "";
     blockLines.push(
-      `  <block name="${escapeAttr(b.block_name)}">${escapeText(b.content)}</block>`,
+      `  <block name="${escapeAttr(b.block_name)}"${descAttr}>${escapeText(b.content)}</block>`,
     );
     blockSnapshots.push({
       name: b.block_name,

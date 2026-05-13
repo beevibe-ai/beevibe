@@ -21,7 +21,7 @@ function fakeCoreMemory(): { coreMemory: CoreMemory; calls: Array<{ args: unknow
 describe("update_core_memory tool", () => {
   it("delegates an append operation to coreMemory.applyUpdate", async () => {
     const { coreMemory, calls } = fakeCoreMemory();
-    const tool = createUpdateCoreMemoryTool({ agentId: "agent_a" }, { coreMemory });
+    const tool = createUpdateCoreMemoryTool({ agentId: "agent_a", hierarchyLevel: "ic" }, { coreMemory });
 
     const result = await tool.handler({
       block_name: "persona",
@@ -43,7 +43,7 @@ describe("update_core_memory tool", () => {
 
   it("delegates a replace operation with old_content", async () => {
     const { coreMemory, calls } = fakeCoreMemory();
-    const tool = createUpdateCoreMemoryTool({ agentId: "agent_a" }, { coreMemory });
+    const tool = createUpdateCoreMemoryTool({ agentId: "agent_a", hierarchyLevel: "ic" }, { coreMemory });
 
     const result = await tool.handler({
       block_name: "domain",
@@ -64,7 +64,7 @@ describe("update_core_memory tool", () => {
 
   it("rejects replace without old_content", async () => {
     const { coreMemory, calls } = fakeCoreMemory();
-    const tool = createUpdateCoreMemoryTool({ agentId: "agent_a" }, { coreMemory });
+    const tool = createUpdateCoreMemoryTool({ agentId: "agent_a", hierarchyLevel: "ic" }, { coreMemory });
 
     const result = await tool.handler({
       block_name: "domain",
@@ -79,7 +79,7 @@ describe("update_core_memory tool", () => {
 
   it("rejects unknown operation", async () => {
     const { coreMemory, calls } = fakeCoreMemory();
-    const tool = createUpdateCoreMemoryTool({ agentId: "agent_a" }, { coreMemory });
+    const tool = createUpdateCoreMemoryTool({ agentId: "agent_a", hierarchyLevel: "ic" }, { coreMemory });
 
     const result = await tool.handler({
       block_name: "persona",
@@ -95,13 +95,13 @@ describe("update_core_memory tool", () => {
   it("surfaces service errors as isError responses", async () => {
     const coreMemory = {
       applyUpdate: vi.fn(async () => {
-        throw new Error("Block \"unknown\" not found for agent agent_a — initDefaults first");
+        throw new Error("Block \"persona\" not found for agent agent_a — initDefaults first");
       }),
     } as unknown as CoreMemory;
-    const tool = createUpdateCoreMemoryTool({ agentId: "agent_a" }, { coreMemory });
+    const tool = createUpdateCoreMemoryTool({ agentId: "agent_a", hierarchyLevel: "ic" }, { coreMemory });
 
     const result = await tool.handler({
-      block_name: "unknown",
+      block_name: "persona",
       operation: "append",
       content: "x",
     });
@@ -111,9 +111,21 @@ describe("update_core_memory tool", () => {
     expect(String((result.content as { message: string }).message)).toMatch(/not found/);
   });
 
+  it("rejects block_name not in the agent's tier template", async () => {
+    const { coreMemory } = fakeCoreMemory();
+    const tool = createUpdateCoreMemoryTool({ agentId: "agent_a", hierarchyLevel: "ic" }, { coreMemory });
+    const result = await tool.handler({
+      block_name: "team_members",
+      operation: "append",
+      content: "x",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({ error: "unknown_block" });
+  });
+
   it("tool descriptor exposes JSON schema with required fields", () => {
     const { coreMemory } = fakeCoreMemory();
-    const tool = createUpdateCoreMemoryTool({ agentId: "agent_a" }, { coreMemory });
+    const tool = createUpdateCoreMemoryTool({ agentId: "agent_a", hierarchyLevel: "ic" }, { coreMemory });
     expect(tool.name).toBe("update_core_memory");
     expect(tool.schema.required).toEqual(["block_name", "operation", "content"]);
   });

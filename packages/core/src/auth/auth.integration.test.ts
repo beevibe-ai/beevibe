@@ -77,13 +77,13 @@ describe("auth — integration", () => {
     expect(fetched?.id).toBe(alice.person.id);
   });
 
-  it("provisionAgent mints a bv_a_ key, stores it, and seeds 4 default blocks", async () => {
+  it("provisionAgent mints a bv_a_ key, stores it, and seeds 5 default blocks", async () => {
     const alice = await makeAlice();
     const team = await makeTeamAgentFor(alice.person.id);
 
     expect(team.apiKey).toMatch(/^bv_a_[0-9A-Za-z]{24}$/);
     expect(team.agent.api_key).toBe(team.apiKey);
-    expect(team.blocks).toHaveLength(4);
+    expect(team.blocks).toHaveLength(5);
 
     const fetched = await agentRepo.findByApiKey(team.apiKey);
     expect(fetched?.id).toBe(team.agent.id);
