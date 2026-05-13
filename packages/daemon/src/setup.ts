@@ -10,6 +10,7 @@
 
 import { hostname, userInfo } from "node:os";
 import { spawnSync } from "node:child_process";
+import { KNOWN_CLIS } from "@beevibe/core";
 import { saveConfig, type DaemonConfig } from "./config.js";
 
 export interface SetupOptions {
@@ -26,8 +27,6 @@ export interface SetupOptions {
    */
   detectedClis?: Array<{ cli: string; cli_version?: string }>;
 }
-
-export const KNOWN_CLIS = ["claude", "codex", "opencode"] as const;
 
 export async function runSetup(options: SetupOptions): Promise<DaemonConfig> {
   if (!/^https?:\/\//.test(options.apiUrl)) {

@@ -23,10 +23,13 @@ import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   MEMORY_SCOPES,
   REVIEW_POLICIES,
+  isKnownCli,
   type AgentRepository,
   type DaemonRepository,
+  type KnownCli,
   type MemoryScope,
   type ReviewPolicy,
+  type RuntimeConfig,
   type RuntimeRepository,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
@@ -210,6 +213,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       // Validate the runtime belongs to a daemon owned by the caller.
       // Otherwise a user could re-target their agent at someone else's
       // daemon (cross-tenant escalation).
+      let cliToSync: KnownCli | undefined;
       if (runtimeId !== null) {
         const runtime = await deps.runtimeRepo.findById(runtimeId);
         if (!runtime) {
@@ -221,17 +225,33 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
           res.status(403).json({ error: "runtime_not_owned" });
           return;
         }
+        // Daemon registration filters to KNOWN_CLIS, so this should always
+        // pass — defensive check guards against drift in older daemons.
+        if (!isKnownCli(runtime.cli)) {
+          res.status(409).json({
+            error: "unknown_runtime_cli",
+            message: `Runtime advertises CLI '${runtime.cli}' which beevibe does not support yet.`,
+          });
+          return;
+        }
+        cliToSync = runtime.cli;
       }
-      // Cast to allow null clearing — AgentPatch types preferred_runtime_id
-      // as string | undefined (Partial<Agent>) but the SQL adapter writes
-      // null verbatim. This is the only column where "explicitly clear"
-      // is a valid user action.
-      const updated = await deps.agentRepo.update(id, {
+      // Sync runtime_config.type with the bound runtime's CLI so the
+      // registry lookup (LocalWorkspaceManager / room mesh-spawn) hits the
+      // right adapter. Preserve every other field (model, max_turns, …).
+      // Unbind (runtimeId=null) leaves the type alone — the agent's CLI
+      // preference doesn't change just because no daemon is pinned.
+      const patch: { preferred_runtime_id: string | undefined; runtime_config?: RuntimeConfig } = {
         preferred_runtime_id: runtimeId as string | undefined,
-      });
+      };
+      if (cliToSync && existing.runtime_config.type !== cliToSync) {
+        patch.runtime_config = { ...existing.runtime_config, type: cliToSync };
+      }
+      const updated = await deps.agentRepo.update(id, patch);
       res.json({
         ok: true,
         preferred_runtime_id: updated.preferred_runtime_id ?? null,
+        runtime_config_type: updated.runtime_config.type,
       });
     } catch (err) {
       handleError(err, res, "agent runtime update");

@@ -5,6 +5,14 @@
  * collide on the same machine.
  */
 
+export const KNOWN_CLIS = ["claude", "codex", "opencode"] as const;
+
+export type KnownCli = (typeof KNOWN_CLIS)[number];
+
+export function isKnownCli(v: unknown): v is KnownCli {
+  return typeof v === "string" && (KNOWN_CLIS as readonly string[]).includes(v);
+}
+
 export interface Runtime {
   id: string;
   daemon_id: string;
