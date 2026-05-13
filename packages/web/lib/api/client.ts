@@ -376,6 +376,16 @@ export const api = {
         `/agent/${encodeURIComponent(id)}/runtime`,
         { method: "POST", body: { runtime_id: runtimeId } },
       ),
+    /**
+     * Override the LLM model the CLI uses for this agent. Pass null to clear
+     * (agent then uses the CLI's user-configured default model). Non-empty
+     * string sets a specific model (e.g. "opus", "sonnet", "claude-opus-4-7").
+     */
+    setModel: (id: string, model: string | null) =>
+      fetchJson<{ ok: true; model: string | null }>(
+        `/agent/${encodeURIComponent(id)}/model`,
+        { method: "POST", body: { model } },
+      ),
   },
   runtimes: {
     list: (opts: ReadOptions = {}) =>
