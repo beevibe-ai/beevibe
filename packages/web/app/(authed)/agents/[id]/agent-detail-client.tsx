@@ -240,8 +240,8 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
 }
 
 function RecentSessionRow({ session }: { session: RecentSession }) {
-  return (
-    <li className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+  const rowInner = (
+    <>
       <span
         className={cn("h-1.5 w-1.5 rounded-full", RECENT_SESSION_DOT[session.status])}
         aria-hidden
@@ -251,6 +251,28 @@ function RecentSessionRow({ session }: { session: RecentSession }) {
         <span className="font-mono text-xs text-muted-foreground">{session.short_id}</span>
       ) : null}
       <span className="text-xs text-muted-foreground tabular-nums shrink-0">{session.age}</span>
+    </>
+  );
+
+  // Without a short_id we can't route anywhere — render unlinked so we
+  // don't ship a dead <Link>. RecentSession.short_id is currently always
+  // populated in practice; this is defensive against future shapes.
+  if (!session.short_id) {
+    return (
+      <li className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
+        {rowInner}
+      </li>
+    );
+  }
+
+  return (
+    <li>
+      <Link
+        href={`/sessions/${session.short_id}`}
+        className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm hover:bg-secondary/50 hover:border-border/80 transition-colors cursor-pointer"
+      >
+        {rowInner}
+      </Link>
     </li>
   );
 }
