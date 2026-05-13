@@ -55,6 +55,17 @@ export default async function handler(request) {
   }
 
   // 2. Send notification email — the actual signal we care about.
+  //    Both `from` and `to` are env-configurable so deliverability can
+  //    improve once the beevibe.ai domain is verified in Resend:
+  //      RESEND_FROM_EMAIL=Beevibe <hello@beevibe.ai>
+  //      RESEND_NOTIFY_TO=ws2694@columbia.edu
+  //    Until then, Resend's free-tier sandbox forbids sending from
+  //    onboarding@resend.dev to anything but the account-holder's own
+  //    address — which is the gmail the Resend account was registered
+  //    with, not the columbia address.
+  const fromEmail = process.env.RESEND_FROM_EMAIL || 'Beevibe <onboarding@resend.dev>';
+  const notifyTo = process.env.RESEND_NOTIFY_TO || 'songweijia2001@gmail.com';
+
   const sendRes = await fetch('https://api.resend.com/emails', {
     method: 'POST',
     headers: {
@@ -62,8 +73,8 @@ export default async function handler(request) {
       Authorization: `Bearer ${apiKey}`,
     },
     body: JSON.stringify({
-      from: 'Beevibe <hello@beevibe.ai>',
-      to: ['ws2694@columbia.edu'],
+      from: fromEmail,
+      to: [notifyTo],
       reply_to: email,
       subject: `New B2B lead — ${company}`,
       html: renderEmail({ email, company, context }),
@@ -71,6 +82,8 @@ export default async function handler(request) {
   });
 
   if (!sendRes.ok) {
+    const errText = await sendRes.text().catch(() => '');
+    console.error('resend_send_failed', sendRes.status, errText);
     return json({ ok: false, error: 'send_failed' }, 500);
   }
 
