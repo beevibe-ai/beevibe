@@ -1141,13 +1141,13 @@ function createSubordinateAgentTool(
         }
 
         // Inherit the parent's runtime so all the user's agents share the
-        // same Claude auth + model. Carry the user-supplied persona into
-        // the system prompt as a short addition (the heavyweight context
-        // lives in core memory, which the runtime injects on every turn).
+        // same Claude auth + model. `system_prompt_addition` carries the
+        // name only — the persona description lives in core memory (seeded
+        // below) and shouldn't be duplicated into the system prompt.
         const runtime_config = {
           ...DEFAULT_RUNTIME_CONFIG,
           ...parent.runtime_config,
-          system_prompt_addition: `You are ${name}. ${persona}`,
+          system_prompt_addition: `You are ${name}.`,
         };
 
         const { agent } = await provisionAgent(
@@ -1177,6 +1177,8 @@ function createSubordinateAgentTool(
         // baked in. Optional blocks (active_context, constraints) only
         // get written if the parent provided content — empty blocks
         // stay empty and the IC can fill them in as it works.
+        // The agent's name lives in runtime_config.system_prompt_addition
+        // ("You are X."); persona block is the description only.
         const seeds: Promise<unknown>[] = [
           services.coreMemoryRepo.updateContent(agent.id, "tag_line", tagLine),
           services.coreMemoryRepo.updateContent(agent.id, "persona", persona),
