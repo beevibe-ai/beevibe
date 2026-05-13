@@ -1,3 +1,5 @@
+import type { KnownCli } from "./runtime.js";
+
 export type HierarchyLevel = "ic" | "team" | "org";
 
 export const HIERARCHY_LEVELS: readonly HierarchyLevel[] = ["ic", "team", "org"] as const;
@@ -10,7 +12,13 @@ export const REVIEW_POLICIES: readonly ReviewPolicy[] = [
 ] as const;
 
 export interface RuntimeConfig {
-  type: "claude";
+  /**
+   * CLI tool the agent runs on. Must match a known CLI ({@link KnownCli}).
+   * Kept in sync with the bound `runtime.cli` whenever the user changes
+   * the agent's `preferred_runtime_id` via POST /agent/:id/runtime — see
+   * the runtime.ts doc for why this lookup matters.
+   */
+  type: KnownCli;
   /**
    * Model alias passed to the CLI via `--model`. Optional: when unset, the
    * CLI uses its own default. Claude Code CLI accepts short aliases (`opus`,

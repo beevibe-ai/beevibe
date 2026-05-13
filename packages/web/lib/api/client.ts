@@ -14,6 +14,7 @@ import type { PromotionEvent } from "@/lib/types/promotion-events";
 import type { InboxItem } from "@/lib/types/inbox";
 import type {
   HierarchyLevel,
+  KnownCli,
   MemoryScope,
   ReviewPolicy,
   SessionStatus,
@@ -373,7 +374,12 @@ export const api = {
      * worker).
      */
     setRuntime: (id: string, runtimeId: string | null) =>
-      fetchJson<{ ok: true; preferred_runtime_id: string | null }>(
+      fetchJson<{
+        ok: true;
+        preferred_runtime_id: string | null;
+        /** runtime_config.type after the server's CLI-sync — surfaces when a bind flips the agent's CLI. */
+        runtime_config_type: KnownCli;
+      }>(
         `/agent/${encodeURIComponent(id)}/runtime`,
         { method: "POST", body: { runtime_id: runtimeId } },
       ),
