@@ -175,6 +175,38 @@ export interface AskThread {
   tone: "running" | "neutral";
 }
 
+/**
+ * Per-session usage telemetry exposed to the UI. Derived from the
+ * `SessionUsage` JSONB column on `session`. All numeric fields default
+ * to 0 (older sessions captured before M9.8 have null `usage`, in which
+ * case the whole object is absent from `SessionDisplay`).
+ *
+ * `cache_hit_ratio` is precomputed server-side so every consumer agrees
+ * on the formula:
+ *   cache_hit_ratio = cache_read_tokens / total_input_tokens
+ *   total_input_tokens = input_tokens + cache_creation_tokens + cache_read_tokens
+ *
+ * Range [0, 1]; 0 when no input was processed.
+ */
+export interface SessionUsageDisplay {
+  /** Total cost in USD for this session, summed across all assistant turns. */
+  cost_usd: number;
+  /** Cache hit ratio in [0, 1]. Target >0.7 on a warm second-onward session. */
+  cache_hit_ratio: number;
+  /** Fresh input tokens (not served from cache). */
+  input_tokens: number;
+  /** Output tokens generated. */
+  output_tokens: number;
+  /** Tokens written to cache (charged at ~1.25× base input rate). */
+  cache_creation_tokens: number;
+  /** Tokens read from cache (charged at ~0.1× base input rate). */
+  cache_read_tokens: number;
+  /** Sum of input + cache_creation + cache_read. Convenience for UI. */
+  total_input_tokens: number;
+  /** Model used. Falls back to "unknown" if the runtime didn't report one. */
+  model: string;
+}
+
 export interface SessionDisplay {
   id: string;
   short_id: string;
@@ -208,6 +240,14 @@ export interface SessionDisplay {
   runtime_cli_version?: string;
   /** Joined from daemon → device_name. Renders as "Ran on <X>". */
   daemon_device_name?: string;
+  /**
+   * Per-session cost + token usage. Absent when the underlying
+   * `session.usage` JSONB column is null (older sessions captured
+   * before M9.8 stamped usage onto every completion). See
+   * {@link SessionUsageDisplay} for field semantics + cache-hit ratio
+   * formula.
+   */
+  usage?: SessionUsageDisplay;
 }
 
 export interface SessionBriefing {

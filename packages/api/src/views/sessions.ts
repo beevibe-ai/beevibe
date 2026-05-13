@@ -22,9 +22,15 @@ import type {
   SessionSpawnMode,
   SessionStatus,
   SessionType,
+  SessionUsage,
 } from "@beevibe/core";
 import { deriveShortId, formatDurationLabel } from "./format.js";
-import type { SessionDisplay, SessionBriefing, TranscriptEntry } from "./types.js";
+import type {
+  SessionDisplay,
+  SessionBriefing,
+  SessionUsageDisplay,
+  TranscriptEntry,
+} from "./types.js";
 
 interface SessionDetailRow {
   id: string;
@@ -47,6 +53,7 @@ interface SessionDetailRow {
   runtime_cli: string | null;
   runtime_cli_version: string | null;
   daemon_device_name: string | null;
+  usage: SessionUsage | null;
 }
 
 interface TranscriptEventRow {
@@ -61,7 +68,7 @@ const SESSION_BY_ID_PREFIX_SQL = /* sql */ `
 SELECT
   s.id, s.agent_id, s.task_id, s.type, s.status, s.intent,
   s.workspace_path, s.cli_session_id, s.started_at, s.completed_at,
-  s.briefing, s.spawn_mode, s.runtime_id,
+  s.briefing, s.spawn_mode, s.runtime_id, s.usage,
   a.name              AS agent_label,
   a.hierarchy_level   AS agent_hier,
   t.title             AS task_title,
@@ -158,6 +165,7 @@ function rowToSessionDisplay(row: SessionDetailRow): SessionDisplay {
     runtime_cli: row.runtime_cli ?? undefined,
     runtime_cli_version: row.runtime_cli_version ?? undefined,
     daemon_device_name: row.daemon_device_name ?? undefined,
+    usage: toSessionUsageDisplay(row.usage),
   };
 }
 
@@ -167,5 +175,40 @@ function toTranscriptEntry(row: TranscriptEventRow): TranscriptEntry {
     timestamp: row.timestamp,
     content: row.content,
     ...(row.tool_name ? { tool_name: row.tool_name } : {}),
+  };
+}
+
+/**
+ * Map the raw `SessionUsage` JSONB shape (all fields optional) to the
+ * display shape (all fields populated, cache_hit_ratio precomputed).
+ * Returns undefined when the row's usage is null so the UI can hide
+ * the panel for older sessions captured before M9.8.
+ *
+ * The cache hit ratio is computed here (not in the UI) so every
+ * consumer agrees on the formula and we don't ship "almost correct"
+ * derivations across surfaces. Denominator is `total_input` — the sum
+ * of all three input slices, per `SessionUsage`'s own contract.
+ */
+export function toSessionUsageDisplay(
+  raw: SessionUsage | null | undefined,
+): SessionUsageDisplay | undefined {
+  if (!raw) return undefined;
+  const input_tokens = raw.input_tokens ?? 0;
+  const output_tokens = raw.output_tokens ?? 0;
+  const cache_creation_tokens = raw.cache_creation_input_tokens ?? 0;
+  const cache_read_tokens = raw.cache_read_input_tokens ?? 0;
+  const total_input_tokens =
+    input_tokens + cache_creation_tokens + cache_read_tokens;
+  const cache_hit_ratio =
+    total_input_tokens > 0 ? cache_read_tokens / total_input_tokens : 0;
+  return {
+    cost_usd: raw.cost_usd ?? 0,
+    cache_hit_ratio,
+    input_tokens,
+    output_tokens,
+    cache_creation_tokens,
+    cache_read_tokens,
+    total_input_tokens,
+    model: raw.model && raw.model.length > 0 ? raw.model : "unknown",
   };
 }
