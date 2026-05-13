@@ -35,15 +35,24 @@ export class PostgresCoreMemoryRepository implements CoreMemoryBlockRepository {
   async upsert(input: NewCoreMemoryBlock): Promise<CoreMemoryBlock> {
     const { rows } = await this.pool.query<CoreMemoryBlockRow>(
       `INSERT INTO core_memory_block (
-         id, agent_id, block_name, content, char_limit, is_system
-       ) VALUES ($1, $2, $3, $4, $5, $6)
+         id, agent_id, block_name, content, char_limit, is_system, description
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (agent_id, block_name) DO UPDATE SET
-         content    = EXCLUDED.content,
-         char_limit = EXCLUDED.char_limit,
-         is_system  = EXCLUDED.is_system,
-         updated_at = NOW()
+         content     = EXCLUDED.content,
+         char_limit  = EXCLUDED.char_limit,
+         is_system   = EXCLUDED.is_system,
+         description = EXCLUDED.description,
+         updated_at  = NOW()
        RETURNING *`,
-      [input.id, input.agent_id, input.block_name, input.content, input.char_limit, input.is_system],
+      [
+        input.id,
+        input.agent_id,
+        input.block_name,
+        input.content,
+        input.char_limit,
+        input.is_system,
+        input.description ?? "",
+      ],
     );
     return rowToBlock(rows[0]!);
   }
@@ -86,7 +95,7 @@ export class PostgresCoreMemoryRepository implements CoreMemoryBlockRepository {
     const values: unknown[] = [];
     let i = 1;
     for (const tmpl of templates) {
-      tuples.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
+      tuples.push(`($${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++}, $${i++})`);
       values.push(
         blockId(),
         agentId,
@@ -94,15 +103,20 @@ export class PostgresCoreMemoryRepository implements CoreMemoryBlockRepository {
         tmpl.initial_content,
         tmpl.char_limit,
         tmpl.is_system,
+        tmpl.description,
       );
     }
 
+    // ON CONFLICT updates `description` so re-running initDefaults on an
+    // existing agent (e.g. after a template description was tightened in
+    // code) refreshes the agent-facing guidance. Content is preserved.
     const { rows } = await this.pool.query<CoreMemoryBlockRow>(
       `INSERT INTO core_memory_block (
-         id, agent_id, block_name, content, char_limit, is_system
+         id, agent_id, block_name, content, char_limit, is_system, description
        ) VALUES ${tuples.join(", ")}
        ON CONFLICT (agent_id, block_name) DO UPDATE SET
-         updated_at = NOW()
+         description = EXCLUDED.description,
+         updated_at  = NOW()
        RETURNING *`,
       values,
     );
@@ -118,6 +132,7 @@ function rowToBlock(row: CoreMemoryBlockRow): CoreMemoryBlock {
     content: row.content,
     char_limit: row.char_limit,
     is_system: row.is_system,
+    description: row.description ?? "",
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

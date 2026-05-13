@@ -111,7 +111,10 @@ export function assembleTools(
       { factStore: services.factStore },
     ),
     createUpdateCoreMemoryTool(
-      { agentId: ctx.caller.agentId },
+      {
+        agentId: ctx.caller.agentId,
+        hierarchyLevel: ctx.caller.hierarchyLevel,
+      },
       { coreMemory: services.coreMemory },
     ),
   ];

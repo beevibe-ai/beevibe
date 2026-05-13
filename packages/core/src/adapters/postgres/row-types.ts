@@ -83,6 +83,7 @@ export interface CoreMemoryBlockRow {
   content: string;
   char_limit: number;
   is_system: boolean;
+  description: string;
   created_at: Date;
   updated_at: Date;
 }

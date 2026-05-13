@@ -13,13 +13,14 @@ import {
 } from "./test-fakes.js";
 
 function makeBlocks(agentId: string): CoreMemoryBlock[] {
-  return ["persona", "domain", "active_context", "constraints"].map((name) => ({
+  return ["tag_line", "persona", "domain", "active_context", "constraints"].map((name) => ({
     id: `block_${name}`,
     agent_id: agentId,
     block_name: name,
     content: "",
-    char_limit: 2000,
+    char_limit: name === "tag_line" ? 100 : 2000,
     is_system: true,
+    description: "",
     created_at: new Date(),
     updated_at: new Date(),
   }));
@@ -62,7 +63,7 @@ describe("provisionAgent", () => {
     expect(out.apiKey).toMatch(/^bv_a_[0-9A-Za-z]{24}$/);
     expect(out.agent.api_key).toBe(out.apiKey);
     expect(out.agent.id).toBe("agent_1");
-    expect(out.blocks).toHaveLength(4);
+    expect(out.blocks).toHaveLength(5);
 
     expect(agentRepo.create).toHaveBeenCalledWith(
       expect.objectContaining({ id: "agent_1", api_key: out.apiKey }),

@@ -31,6 +31,8 @@ interface AgentRow {
   updated_at: Date;
   sessions_count: string;
   facts_learned: string;
+  tag_line: string | null;
+  domain_content: string | null;
 }
 
 const LIST_SQL = /* sql */ `
@@ -39,7 +41,9 @@ SELECT
   a.review_policy, a.runtime_config, a.preferred_runtime_id, a.archived_at,
   a.created_at, a.updated_at,
   COALESCE(sc.n, 0)::int  AS sessions_count,
-  COALESCE(fc.n, 0)::int  AS facts_learned
+  COALESCE(fc.n, 0)::int  AS facts_learned,
+  tl.content              AS tag_line,
+  dm.content              AS domain_content
 FROM agent a
 LEFT JOIN (
   SELECT agent_id, COUNT(*)::int AS n
@@ -51,6 +55,8 @@ LEFT JOIN (
   FROM memory_fact
   GROUP BY agent_id
 ) fc ON fc.agent_id = a.id
+LEFT JOIN core_memory_block tl ON tl.agent_id = a.id AND tl.block_name = 'tag_line'
+LEFT JOIN core_memory_block dm ON dm.agent_id = a.id AND dm.block_name = 'domain'
 WHERE ($1::text IS NULL OR a.owner_id = $1)
   AND a.archived_at IS NULL
 ORDER BY
@@ -61,10 +67,13 @@ ORDER BY
 function rowToAgentDisplay(row: AgentRow): AgentDisplay {
   // `runtime` is the CLI tool name; `model` is the LLM alias passed to it.
   // Previously this view returned `runtime_config.model` under the `runtime`
-  // key, conflating the two — see https://github.com/beevibe-ai/beevibe/issues
-  // for the diagnosis. Now they're separate fields.
+  // key, conflating the two — PR #96 split them. PR #99 adds specialization,
+  // sourced from the `tag_line` core memory block (≤100 chars), falling
+  // back to the first non-empty line of `domain` for legacy agents whose
+  // tag_line is still empty.
   const runtime = (row.runtime_config?.type as string | undefined) ?? "claude";
   const model = row.runtime_config?.model as string | undefined;
+  const specialization = firstNonEmptyLine(row.tag_line) ?? firstNonEmptyLine(row.domain_content);
   return {
     id: row.id,
     name: row.name,
@@ -79,10 +88,20 @@ function rowToAgentDisplay(row: AgentRow): AgentDisplay {
     facts_learned: Number(row.facts_learned),
     runtime,
     model,
+    specialization,
     review_policy: row.review_policy ?? undefined,
     preferred_runtime_id: row.preferred_runtime_id ?? undefined,
     archived_at: row.archived_at ? row.archived_at.toISOString() : undefined,
   };
+}
+
+function firstNonEmptyLine(content: string | null | undefined): string | undefined {
+  if (!content) return undefined;
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
 }
 
 export async function listAgents(
@@ -99,7 +118,11 @@ SELECT
   a.review_policy, a.runtime_config, a.preferred_runtime_id, a.archived_at,
   a.created_at, a.updated_at,
   (SELECT COUNT(*)::int FROM session       WHERE agent_id = a.id) AS sessions_count,
-  (SELECT COUNT(*)::int FROM memory_fact   WHERE agent_id = a.id) AS facts_learned
+  (SELECT COUNT(*)::int FROM memory_fact   WHERE agent_id = a.id) AS facts_learned,
+  (SELECT content FROM core_memory_block
+    WHERE agent_id = a.id AND block_name = 'tag_line' LIMIT 1) AS tag_line,
+  (SELECT content FROM core_memory_block
+    WHERE agent_id = a.id AND block_name = 'domain'   LIMIT 1) AS domain_content
 FROM agent a
 WHERE a.id = $1
 LIMIT 1

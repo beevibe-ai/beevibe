@@ -22,6 +22,7 @@
 import {
   DEFAULT_RUNTIME_CONFIG,
   TASK_PRIORITIES,
+  DEFAULT_BLOCK_TEMPLATES,
   TASK_STATUSES,
   WORK_PRODUCT_TYPES,
   agentId as makeAgentId,
@@ -1011,16 +1012,23 @@ function createSubordinateAgentTool(
   ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
+  // Pull field descriptions from the IC tier's block templates so the
+  // tool's per-field guidance and the agent-facing <core_memory> block
+  // descriptions stay in lockstep. Same source of truth.
+  const icBlocks = new Map(
+    DEFAULT_BLOCK_TEMPLATES.ic.map((t) => [t.block_name, t.description]),
+  );
+
   return {
     name: "create_subordinate_agent",
     description:
       "Spawn an IC specialist agent under you. Use this during onboarding " +
       "(after the user describes their codebase / problem) to assemble a " +
       "small team — typically 2–3 specialists chosen for the actual stack. " +
-      "Each new agent gets a persona block (who they are, how they work) " +
-      "and a domain block (what they know about the codebase / area). After " +
-      "creating them, use create_task to give each one a concrete first " +
-      "task. Returns the new agent_id so you can immediately reference it.",
+      "Each field below becomes the correspondingly-named core memory " +
+      "block on the new agent. After creating them, use create_task to " +
+      "give each one a concrete first task. Returns the new agent_id so " +
+      "you can immediately reference it.",
     schema: {
       type: "object",
       properties: {
@@ -1029,20 +1037,28 @@ function createSubordinateAgentTool(
           description:
             "Short human-readable label, e.g. 'Backend specialist', 'Auth/SSO expert'.",
         },
+        tag_line: {
+          type: "string",
+          description: icBlocks.get("tag_line") ?? "",
+        },
         persona: {
           type: "string",
-          description:
-            "Who this agent is and how they should work. Becomes the persona " +
-            "core-memory block. 1–4 sentences.",
+          description: icBlocks.get("persona") ?? "",
         },
         domain: {
           type: "string",
-          description:
-            "What this agent knows / owns: stack, files/dirs, conventions, " +
-            "constraints. Becomes the domain core-memory block. Be specific.",
+          description: icBlocks.get("domain") ?? "",
+        },
+        active_context: {
+          type: "string",
+          description: icBlocks.get("active_context") ?? "",
+        },
+        constraints: {
+          type: "string",
+          description: icBlocks.get("constraints") ?? "",
         },
       },
-      required: ["name", "persona", "domain"],
+      required: ["name", "tag_line", "persona", "domain"],
     },
     handler: async (input) => {
       try {
@@ -1058,11 +1074,29 @@ function createSubordinateAgentTool(
         }
 
         const name = String(input.name ?? "").trim();
+        const tagLine = String(input.tag_line ?? "").trim();
         const persona = String(input.persona ?? "").trim();
         const domain = String(input.domain ?? "").trim();
-        if (!name || !persona || !domain) {
+        const activeContext = String(input.active_context ?? "").trim();
+        const constraints = String(input.constraints ?? "").trim();
+        if (!name || !tagLine || !persona || !domain) {
           return {
-            content: { error: "name, persona, and domain are all required" },
+            content: {
+              error: "missing_required_fields",
+              message: "name, tag_line, persona, and domain are all required",
+            },
+            isError: true,
+          };
+        }
+        // Soft-enforce the tag_line limit so the UI's agent card line stays
+        // legible. Hard limit is the column char_limit.
+        if (tagLine.length > 100) {
+          return {
+            content: {
+              error: "tag_line_too_long",
+              message: "tag_line must be ≤100 chars",
+              actual: tagLine.length,
+            },
             isError: true,
           };
         }
@@ -1137,13 +1171,28 @@ function createSubordinateAgentTool(
           },
         );
 
-        // Seed the IC's persona + domain blocks. provisionAgent's initDefaults
-        // creates them empty; overwrite with the briefing the parent supplied
-        // so the IC's first turn has its identity baked in.
-        await Promise.all([
+        // Seed the IC's identity-bearing blocks. provisionAgent's
+        // initDefaults creates them empty; overwrite with the briefing
+        // the parent supplied so the IC's first turn has its identity
+        // baked in. Optional blocks (active_context, constraints) only
+        // get written if the parent provided content — empty blocks
+        // stay empty and the IC can fill them in as it works.
+        const seeds: Promise<unknown>[] = [
+          services.coreMemoryRepo.updateContent(agent.id, "tag_line", tagLine),
           services.coreMemoryRepo.updateContent(agent.id, "persona", persona),
           services.coreMemoryRepo.updateContent(agent.id, "domain", domain),
-        ]);
+        ];
+        if (activeContext) {
+          seeds.push(
+            services.coreMemoryRepo.updateContent(agent.id, "active_context", activeContext),
+          );
+        }
+        if (constraints) {
+          seeds.push(
+            services.coreMemoryRepo.updateContent(agent.id, "constraints", constraints),
+          );
+        }
+        await Promise.all(seeds);
 
         // Phase 9 audit log row — backs the daily cap query above + the
         // /agents/[id] audit panel ("spawned by X on D, persona was Y").
