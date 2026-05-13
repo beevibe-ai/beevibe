@@ -15,6 +15,7 @@ import type { InboxItem } from "@/lib/types/inbox";
 import type {
   HierarchyLevel,
   MemoryScope,
+  ReviewPolicy,
   SessionStatus,
   SessionType,
   Task,
@@ -385,6 +386,17 @@ export const api = {
       fetchJson<{ ok: true; model: string | null }>(
         `/agent/${encodeURIComponent(id)}/model`,
         { method: "POST", body: { model } },
+      ),
+    /**
+     * Toggle the agent's review policy. `auto_done` (default for new agents)
+     * lets the agent close its own tasks; `require_human` routes `done`
+     * declarations through `review` so the user signs off before a task
+     * is truly closed.
+     */
+    setReviewPolicy: (id: string, policy: ReviewPolicy) =>
+      fetchJson<{ ok: true; review_policy: ReviewPolicy }>(
+        `/agent/${encodeURIComponent(id)}/review-policy`,
+        { method: "POST", body: { review_policy: policy } },
       ),
   },
   runtimes: {
