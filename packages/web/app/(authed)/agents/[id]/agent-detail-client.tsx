@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -271,13 +271,30 @@ function ModelPicker({ agent }: { agent: AgentDetail }) {
   const queryClient = useQueryClient();
   const current = agent.model ?? "";
   const isPreset = MODEL_PRESETS.some((p) => p.value === current);
-  const [customMode, setCustomMode] = useState(!isPreset && current !== "");
-  const [customValue, setCustomValue] = useState(isPreset ? "" : current);
+  // Lazy initializers so we don't recompute MODEL_PRESETS.some on every
+  // render — useState only consumes the seed on mount.
+  const [customMode, setCustomMode] = useState(() => !isPreset && current !== "");
+  const [customValue, setCustomValue] = useState(() => (isPreset ? "" : current));
+
+  // Resync local state when agent.model changes underneath us (SSE refresh,
+  // user navigates to a different agent without unmounting, etc.). Without
+  // this, the custom-input field would show stale text after an external
+  // update.
+  useEffect(() => {
+    const nextIsPreset = MODEL_PRESETS.some((p) => p.value === current);
+    setCustomMode(!nextIsPreset && current !== "");
+    setCustomValue(nextIsPreset ? "" : current);
+  }, [current]);
 
   const mutation = useMutation({
     mutationFn: (model: string | null) => api.agents.setModel(agent.id, model),
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+      // Targeted invalidation — only this agent's detail. Was previously
+      // queryKeys.agents.all which refetches every agent list across the
+      // app, which is unnecessary for a per-agent model change.
+      void queryClient.invalidateQueries({
+        queryKey: queryKeys.agents.detail(agent.id),
+      });
     },
   });
 
