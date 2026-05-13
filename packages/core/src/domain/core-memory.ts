@@ -52,6 +52,15 @@ export interface BlockTemplate {
  * stable identity (persona, domain, tag_line) survives across every
  * project they touch. Project context (active_context, active_work) is
  * transient and gets rewritten when the agent shifts to a new codebase.
+ *
+ * THIS CONSTANT IS THE SOURCE OF TRUTH for block descriptions. New
+ * agents inherit descriptions via `coreMemoryRepo.initDefaults` (which
+ * reads this constant). To propagate description edits to EXISTING
+ * agents, run `pnpm sync-core-memory` — that script re-runs initDefaults
+ * per agent, and `ON CONFLICT` updates the description column to the
+ * latest template value. The migration's initial backfill is a snapshot
+ * that may drift if the template is edited later; the sync script is
+ * how we reconcile.
  */
 export const DEFAULT_BLOCK_TEMPLATES: Record<HierarchyLevel, readonly BlockTemplate[]> = {
   ic: [
