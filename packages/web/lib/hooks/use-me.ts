@@ -19,6 +19,18 @@ export function useMe() {
   });
 }
 
+/**
+ * Tri-state ownership check: `true`/`false` once `useMe` resolves, `null`
+ * while loading. Callers gate edit affordances on `=== true` so the
+ * loading state shows neither owner UI nor read-only UI — avoids the
+ * flicker of owners briefly seeing the read-only layout on cold mount.
+ */
+export function useIsOwner(ownerId: string | undefined): boolean | null {
+  const me = useMe();
+  if (!me.data) return null;
+  return me.data.person.id === ownerId;
+}
+
 export function useLlmHealth(enabled = true) {
   return useQuery<HealthResponse>({
     queryKey: queryKeys.me.health(),

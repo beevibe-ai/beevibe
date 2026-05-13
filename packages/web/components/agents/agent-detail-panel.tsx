@@ -11,7 +11,8 @@ import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
 import { isApiConfigured } from "@/lib/api/config";
 import { useAgent } from "@/lib/hooks/use-agents";
-import { useMe } from "@/lib/hooks/use-me";
+import { useIsOwner } from "@/lib/hooks/use-me";
+import { formatReviewPolicy } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { AgentDetail } from "@/lib/api/types";
 import type { RecentSession } from "@/lib/types/agents";
@@ -148,8 +149,7 @@ function PanelBody({ agentId }: { agentId: string }) {
 }
 
 function PanelLoaded({ agent }: { agent: AgentDetail }) {
-  const me = useMe();
-  const isOwner = me.data?.person.id === agent.owner_id;
+  const isOwner = useIsOwner(agent.owner_id);
   const initial = agent.display_name.charAt(0).toUpperCase();
   const presence = agent.metrics.sessions > 0 ? "idle" : "off";
 
@@ -196,7 +196,7 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
         {agent.core_blocks.length > 0 ? (
           <div className="space-y-2.5">
             {agent.core_blocks.map((b) => (
-              <CoreBlockCard key={b.id} block={b} editable={isOwner} />
+              <CoreBlockCard key={b.id} block={b} editable={isOwner === true} />
             ))}
           </div>
         ) : null}
@@ -240,9 +240,9 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
         {agent.runtime ? (
           <PanelFooterField label="Runtime">{agent.runtime}</PanelFooterField>
         ) : null}
-        {agent.review_policy ? (
-          <PanelFooterField label="Review">{agent.review_policy}</PanelFooterField>
-        ) : null}
+        <PanelFooterField label="Review">
+          {formatReviewPolicy(agent.review_policy)}
+        </PanelFooterField>
       </footer>
     </div>
   );

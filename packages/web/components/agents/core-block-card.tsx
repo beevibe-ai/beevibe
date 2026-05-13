@@ -19,14 +19,15 @@ import type { CoreBlockDisplay } from "@/lib/types/core-memory-blocks";
 /**
  * `editable` gates the inline Edit pencil. False for non-owner viewers
  * (the backend would reject the eventual `update_core_memory` call
- * anyway; the UI surface just hides the affordance up front).
+ * anyway; the UI surface just hides the affordance up front). Required
+ * so every callsite has to think about ownership — no fail-open default.
  */
 export function CoreBlockCard({
   block,
-  editable = true,
+  editable,
 }: {
   block: CoreBlockDisplay;
-  editable?: boolean;
+  editable: boolean;
 }) {
   switch (block.block_name) {
     case "persona":
