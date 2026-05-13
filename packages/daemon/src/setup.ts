@@ -13,8 +13,6 @@ import { spawnSync } from "node:child_process";
 import { KNOWN_CLIS } from "@beevibe/core";
 import { saveConfig, type DaemonConfig } from "./config.js";
 
-export { KNOWN_CLIS };
-
 export interface SetupOptions {
   apiUrl: string;
   /** bv_u_ token of the user the daemon represents. */
