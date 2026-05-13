@@ -13,6 +13,7 @@ import { FooterField } from "@/components/detail/footer-field";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { HierChip } from "@/components/hier-chip";
 import { Avatar } from "@/components/avatar";
+import { UsagePanel } from "@/components/sessions/usage-panel";
 import type { SessionDisplay, TranscriptEntry } from "@/lib/types/sessions";
 import { cn } from "@/lib/utils";
 
@@ -175,6 +176,8 @@ function ChatSessionBody({ session }: { session: SessionDisplay }) {
           <ToolTranscript entries={toolSteps} />
         </section>
       ) : null}
+
+      {session.usage ? <UsagePanel usage={session.usage} /> : null}
 
       <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
         <FooterField label="Session ID">
