@@ -95,7 +95,13 @@ export interface AgentDisplay
   merge_events?: number;
   specialization?: string;
   themes?: string[];
+  /** CLI tool the agent uses — derived from `runtime_config.type`. */
   runtime?: string;
+  /**
+   * Model alias passed to the CLI (e.g. "opus", "sonnet"). Undefined when
+   * the agent uses the CLI's user-configured default model.
+   */
+  model?: string;
   review_policy?: string;
   /**
    * The agent's pinned `runtime` row id. The Runtimes panel uses this to

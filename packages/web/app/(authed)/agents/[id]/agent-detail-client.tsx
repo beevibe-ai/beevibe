@@ -226,6 +226,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         </FooterField>
         <FooterField label="Hierarchy">{agent.hierarchy}</FooterField>
         {agent.runtime ? <FooterField label="Runtime">{agent.runtime}</FooterField> : null}
+        <FooterField label="Model">{agent.model ?? "CLI default"}</FooterField>
         {agent.review_policy ? (
           <FooterField label="Review policy">{agent.review_policy}</FooterField>
         ) : null}
