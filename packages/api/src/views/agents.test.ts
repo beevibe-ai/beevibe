@@ -27,7 +27,31 @@ describe("listAgents", () => {
     expect(agents[0]?.hierarchy).toBe("org");
     expect(agents[0]?.sessions_count).toBe(12);
     expect(agents[0]?.facts_learned).toBe(4);
-    expect(agents[0]?.runtime).toBe("opus");
+    expect(agents[0]?.runtime).toBe("claude");
+    expect(agents[0]?.model).toBe("opus");
+  });
+
+  it("returns undefined model when runtime_config has no model set", async () => {
+    const pool = makeMockPool([
+      [
+        {
+          id: "agt_x",
+          name: "NoModel",
+          owner_id: "per_w",
+          parent_agent_id: null,
+          hierarchy_level: "ic",
+          review_policy: null,
+          runtime_config: { type: "claude" },
+          created_at: new Date(),
+          updated_at: new Date(),
+          sessions_count: 0,
+          facts_learned: 0,
+        },
+      ],
+    ]);
+    const agents = await listAgents(pool);
+    expect(agents[0]?.runtime).toBe("claude");
+    expect(agents[0]?.model).toBeUndefined();
   });
 });
 

@@ -59,7 +59,12 @@ ORDER BY
 `;
 
 function rowToAgentDisplay(row: AgentRow): AgentDisplay {
-  const runtime = (row.runtime_config?.model as string | undefined) ?? "claude";
+  // `runtime` is the CLI tool name; `model` is the LLM alias passed to it.
+  // Previously this view returned `runtime_config.model` under the `runtime`
+  // key, conflating the two — see https://github.com/beevibe-ai/beevibe/issues
+  // for the diagnosis. Now they're separate fields.
+  const runtime = (row.runtime_config?.type as string | undefined) ?? "claude";
+  const model = row.runtime_config?.model as string | undefined;
   return {
     id: row.id,
     name: row.name,
@@ -73,6 +78,7 @@ function rowToAgentDisplay(row: AgentRow): AgentDisplay {
     sessions_count: Number(row.sessions_count),
     facts_learned: Number(row.facts_learned),
     runtime,
+    model,
     review_policy: row.review_policy ?? undefined,
     preferred_runtime_id: row.preferred_runtime_id ?? undefined,
     archived_at: row.archived_at ? row.archived_at.toISOString() : undefined,
