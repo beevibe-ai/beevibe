@@ -24,6 +24,7 @@
     "migrate": "node-pg-migrate --envPath .env",
     "migrate:deploy": "node-pg-migrate",
     "migrate:test": "node-pg-migrate --envPath .env -d DATABASE_URL_TEST",
+    "db:reset": "docker compose down -v && docker compose up -d --wait postgres && pnpm migrate up && pnpm seed-demo",
     "install-skills": "tsx scripts/install-skills.ts",
     "bootstrap": "tsx scripts/init.ts",
     "provision-user": "tsx scripts/provision-user.ts",
