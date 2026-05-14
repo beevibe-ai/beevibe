@@ -36,7 +36,17 @@ const eventInvalidations: Record<string, InvalidationKey[]> = {
     queryKeys.activity.all,
     queryKeys.agentNetwork.all,
   ],
-  "session.updated": [queryKeys.sessions.all, queryKeys.tasks.all, queryKeys.activity.all],
+  "session.updated": [
+    queryKeys.sessions.all,
+    queryKeys.tasks.all,
+    queryKeys.activity.all,
+    // Chat history is keyed by conversation; a pending chat session
+    // completing (daemon reconnect after agent_offline, or normal turn
+    // settle) flips it from "user message only" → "user + agent reply".
+    // Invalidating the chat tree here is how the UI auto-recovers
+    // without a manual refresh.
+    queryKeys.chat.all,
+  ],
   "memory.fact.created": [queryKeys.memory.all],
   "promotion.created": [queryKeys.promotions.all, queryKeys.memory.all],
   "mesh.activity": [queryKeys.mesh.all, queryKeys.activity.all, queryKeys.inbox.all],

@@ -10,6 +10,7 @@ import {
   type SuggestedAction,
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
+import { ApiError } from "@/lib/api/http";
 import { queryKeys } from "./keys";
 
 export interface ChatMessage {
@@ -187,8 +188,18 @@ export function useChat(opts: UseChatOptions = {}) {
         queryKey: queryKeys.chat.history(undefined),
       });
     },
-    onError: () => {
-      // Roll back the optimistic user turn so the input doesn't look
+    onError: (err) => {
+      // agent_offline (503) is special: the api persisted the session row
+      // before rejecting, so the turn is queued, not lost. Keep the user
+      // message visible — refresh would show it anyway from the server,
+      // and rolling back here just creates a flicker of "vanished, then
+      // back on refresh". When the daemon reconnects and the session
+      // completes, session.updated SSE invalidates chat queries and the
+      // response auto-appears.
+      if (err instanceof ApiError && err.errorCode === "agent_offline") return;
+
+      // Other errors (429 rate limit, 400 validation, etc.) reject the
+      // turn before persistence — roll back so the input doesn't look
       // sent-and-stuck.
       queryClient.setQueryData<ChatHistoryResponse>(queryKey, (prev) => {
         if (!prev) return prev;
