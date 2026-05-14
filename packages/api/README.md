@@ -175,7 +175,7 @@ When a mesh `ask` / `negotiate` target's daemon is offline at dispatch, the api 
 
 ### Live updates
 
-`GET /api/stream` opens a long-lived SSE connection. Internally it's PG `LISTEN bv_event` — a single channel on which DB triggers `pg_notify` events whose names match a fixed registry. Currently emits 11 event types: `task.created`, `task.updated`, `agent.updated`, `session.updated`, `session.event`, `session.step`, `memory.fact.created`, `memory.fact.deleted`, `promotion.created`, `mesh.activity`, `runtime.updated`, `room.message`.
+`GET /api/stream` opens a long-lived SSE connection. Internally it's PG `LISTEN bv_event` — a single channel on which DB triggers `pg_notify` events whose names match a fixed registry. Currently emits 12 event types: `task.created`, `task.updated`, `agent.updated`, `session.updated`, `session.event`, `session.step`, `memory.fact.created`, `memory.fact.deleted`, `promotion.created`, `mesh.activity`, `runtime.updated`, `room.message`.
 
 `session.step` carries inline data (tool name, content preview ≤512 chars) so the chat live panel can render without a refetch; every other event is `{event, id}`-only — the browser invalidates the matching React Query keys via `web/lib/sse.ts:eventInvalidations` and refetches the read endpoints above.
 
