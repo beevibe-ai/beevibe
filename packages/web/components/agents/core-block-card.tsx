@@ -2,8 +2,11 @@
 
 import { useState } from "react";
 import { Pencil } from "lucide-react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Avatar } from "@/components/avatar";
 import { ChatMarkdown } from "@/components/chat/markdown";
+import { api } from "@/lib/api/client";
+import { queryKeys } from "@/lib/hooks/keys";
 import { cn } from "@/lib/utils";
 import type { CoreBlockDisplay } from "@/lib/types/core-memory-blocks";
 
@@ -18,27 +21,115 @@ import type { CoreBlockDisplay } from "@/lib/types/core-memory-blocks";
  */
 /**
  * `editable` gates the inline Edit pencil. False for non-owner viewers
- * (the backend would reject the eventual `update_core_memory` call
- * anyway; the UI surface just hides the affordance up front). Required
- * so every callsite has to think about ownership — no fail-open default.
+ * (the backend would reject anyway; UI just hides the affordance). The
+ * agent's own append/replace-substring is via the `update_core_memory`
+ * MCP tool; this UI is the human owner's full-block overwrite path.
+ * `agentId` lets the editor call POST /agent/:id/core-memory/:block.
  */
 export function CoreBlockCard({
+  agentId,
   block,
   editable,
 }: {
+  agentId: string;
   block: CoreBlockDisplay;
   editable: boolean;
 }) {
+  const [editing, setEditing] = useState(false);
+  if (editing) {
+    return (
+      <BlockShell accent={blockAccent(block.block_name)}>
+        <BlockEditor
+          agentId={agentId}
+          block={block}
+          onDone={() => setEditing(false)}
+        />
+      </BlockShell>
+    );
+  }
+  const onEdit = editable ? () => setEditing(true) : undefined;
   switch (block.block_name) {
     case "persona":
-      return <PersonaBlock block={block} editable={editable} />;
+      return <PersonaBlock block={block} onEdit={onEdit} />;
     case "active_work":
-      return <ActiveWorkBlock block={block} editable={editable} />;
+      return <ActiveWorkBlock block={block} onEdit={onEdit} />;
     case "team_members":
-      return <TeamMembersBlock block={block} editable={editable} />;
+      return <TeamMembersBlock block={block} onEdit={onEdit} />;
     default:
-      return <ProseBlock block={block} editable={editable} />;
+      return <ProseBlock block={block} onEdit={onEdit} />;
   }
+}
+
+function BlockEditor({
+  agentId,
+  block,
+  onDone,
+}: {
+  agentId: string;
+  block: CoreBlockDisplay;
+  onDone: () => void;
+}) {
+  const [value, setValue] = useState(block.content);
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: (content: string) => api.agents.setCoreBlock(agentId, block.block_name, content),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.detail(agentId) });
+      onDone();
+    },
+  });
+  const tooLong = value.length > block.char_limit;
+  const unchanged = value === block.content;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-baseline gap-2">
+        <span className="text-[10px] uppercase tracking-wider font-semibold text-foreground/85">
+          Editing
+        </span>
+        <span className="font-mono text-[10px] text-muted-foreground/80">
+          {block.block_name}
+        </span>
+        <span
+          className={cn(
+            "ml-auto text-[10px] tabular-nums",
+            tooLong ? "text-destructive" : "text-muted-foreground/70",
+          )}
+        >
+          {value.length} / {block.char_limit}
+        </span>
+      </div>
+      <textarea
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        disabled={mutation.isPending}
+        rows={Math.min(16, Math.max(4, value.split("\n").length + 1))}
+        className="w-full text-sm rounded border border-border bg-background px-2 py-1.5 font-mono disabled:opacity-50"
+      />
+      <div className="flex items-center gap-2 justify-end">
+        {mutation.isError ? (
+          <span className="mr-auto text-xs text-destructive">
+            {mutation.error?.message ?? "Save failed"}
+          </span>
+        ) : null}
+        <button
+          type="button"
+          onClick={onDone}
+          disabled={mutation.isPending}
+          className="h-7 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => mutation.mutate(value)}
+          disabled={mutation.isPending || tooLong || unchanged}
+          className="h-7 px-3 rounded text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
+        >
+          {mutation.isPending ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
+  );
 }
 
 // ── Shared chrome ────────────────────────────────────────────────────
@@ -65,11 +156,12 @@ function BlockShell({
 function BlockHeader({
   block,
   kindLabel,
-  editable,
+  onEdit,
 }: {
   block: CoreBlockDisplay;
   kindLabel?: string;
-  editable: boolean;
+  /** Click handler for the inline edit pencil. Omit to hide it (non-owner). */
+  onEdit?: () => void;
 }) {
   // The kind label is the human-readable name ("Identity", "Active
   // work"); the raw `block_name` (persona, active_work) sits next to
@@ -92,10 +184,12 @@ function BlockHeader({
         <span className="text-[10px] text-muted-foreground/50 tabular-nums opacity-0 group-hover:opacity-100 transition-opacity">
           {formatCount(block.char_count)} / {formatCount(block.char_limit)}
         </span>
-        {editable ? (
+        {onEdit ? (
           <button
+            type="button"
+            onClick={onEdit}
             aria-label={`Edit ${block.block_name} block`}
-            className="h-5 w-5 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 transition-opacity"
+            className="h-5 w-5 rounded inline-flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-secondary opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
           >
             <Pencil className="h-3 w-3" />
           </button>
@@ -112,13 +206,22 @@ function formatCount(n: number): string {
 
 // ── Persona — identity prose ─────────────────────────────────────────
 
-function PersonaBlock({ block, editable }: { block: CoreBlockDisplay; editable: boolean }) {
+/**
+ * Map a block_name to its visual accent. Persona gets the primary left
+ * stripe to read as a quote / mission-statement; others use the default
+ * border. Centralised so the edit-mode shell (CoreBlockCard) and the
+ * view-mode block components don't drift.
+ */
+function blockAccent(blockName: string): "primary" | undefined {
+  return blockName === "persona" ? "primary" : undefined;
+}
+
+function PersonaBlock({ block, onEdit }: { block: CoreBlockDisplay; onEdit?: () => void }) {
   // Persona is short by nature (~400 chars), so no collapse — show the
-  // whole identity statement at once. Primary left accent stripe makes
-  // it read as a quote / mission-statement instead of a config field.
+  // whole identity statement at once.
   return (
-    <BlockShell accent="primary">
-      <BlockHeader block={block} kindLabel="Identity" editable={editable} />
+    <BlockShell accent={blockAccent(block.block_name)}>
+      <BlockHeader block={block} kindLabel="Identity" onEdit={onEdit} />
       <div className="text-sm text-foreground/85 italic">
         <ChatMarkdown content={block.content} />
       </div>
@@ -133,7 +236,7 @@ interface ActiveWorkUpdate {
   content: string;
 }
 
-function ActiveWorkBlock({ block, editable }: { block: CoreBlockDisplay; editable: boolean }) {
+function ActiveWorkBlock({ block, onEdit }: { block: CoreBlockDisplay; onEdit?: () => void }) {
   const { current, updates } = parseActiveWork(block.content);
   const [showAll, setShowAll] = useState(false);
 
@@ -143,7 +246,7 @@ function ActiveWorkBlock({ block, editable }: { block: CoreBlockDisplay; editabl
 
   return (
     <BlockShell>
-      <BlockHeader block={block} kindLabel="Active work" editable={editable} />
+      <BlockHeader block={block} kindLabel="Active work" onEdit={onEdit} />
 
       {current ? (
         <div className="text-sm text-foreground/90">
@@ -236,16 +339,16 @@ interface TeamMember {
   description: string;
 }
 
-function TeamMembersBlock({ block, editable }: { block: CoreBlockDisplay; editable: boolean }) {
+function TeamMembersBlock({ block, onEdit }: { block: CoreBlockDisplay; onEdit?: () => void }) {
   const members = parseTeamMembers(block.content);
   if (members.length === 0) {
     // Parsing fell apart — don't lose the data, render as prose so
     // the user still sees what's there.
-    return <ProseBlock block={block} kindLabel="Team members" editable={editable} />;
+    return <ProseBlock block={block} kindLabel="Team members" onEdit={onEdit} />;
   }
   return (
     <BlockShell>
-      <BlockHeader block={block} kindLabel="Team members" editable={editable} />
+      <BlockHeader block={block} kindLabel="Team members" onEdit={onEdit} />
       <ul className="space-y-2.5">
         {members.map((m) => (
           <TeamMemberRow key={m.agentId} member={m} />
@@ -312,11 +415,11 @@ const COLLAPSE_THRESHOLD = 400;
 function ProseBlock({
   block,
   kindLabel,
-  editable,
+  onEdit,
 }: {
   block: CoreBlockDisplay;
   kindLabel?: string;
-  editable: boolean;
+  onEdit?: () => void;
 }) {
   const long = block.content.length > COLLAPSE_THRESHOLD;
   const [expanded, setExpanded] = useState(!long);
@@ -326,7 +429,7 @@ function ProseBlock({
       : block.content;
   return (
     <BlockShell>
-      <BlockHeader block={block} kindLabel={kindLabel} editable={editable} />
+      <BlockHeader block={block} kindLabel={kindLabel} onEdit={onEdit} />
       <div className="text-sm text-foreground/85">
         <ChatMarkdown content={visible} />
       </div>

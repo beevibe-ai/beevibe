@@ -33,6 +33,11 @@ import {
   type RuntimeRepository,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
+import {
+  BlockCharLimitExceededError,
+  BlockNotFoundError,
+  type CoreMemory,
+} from "@beevibe/core/services/memory";
 import { listTasks, getTask, type TaskListFilter } from "../views/tasks.js";
 import {
   TASK_STATUSES_BY_LIFECYCLE,
@@ -57,6 +62,8 @@ export interface ViewRoutesDeps {
   runtimeRepo: RuntimeRepository;
   /** Backs `POST /agent/:id/runtime` (cross-tenant guard). */
   daemonRepo: DaemonRepository;
+  /** Backs `POST /agent/:id/core-memory/:blockName` (owner block edits). */
+  coreMemory: CoreMemory;
 }
 
 const LIFECYCLES = new Set<Lifecycle>(
@@ -341,6 +348,47 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json({ ok: true, review_policy: updated.review_policy });
     } catch (err) {
       handleError(err, res, "agent review_policy update");
+    }
+  });
+
+  router.post("/agent/:id/core-memory/:blockName", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    const blockName = req.params.blockName;
+    if (!id || !blockName) {
+      res.status(400).json({ error: "missing_param" });
+      return;
+    }
+    const body = req.body as { content?: unknown } | undefined;
+    if (typeof body?.content !== "string") {
+      res.status(400).json({
+        error: "invalid_body",
+        message: "expected { content: string }",
+      });
+      return;
+    }
+    try {
+      const existing = await deps.agentRepo.findById(id);
+      if (!existing) {
+        res.status(404).json({ error: "agent_not_found" });
+        return;
+      }
+      if (existing.owner_id !== req.caller.personId) {
+        res.status(403).json({ error: "not_owner" });
+        return;
+      }
+      await deps.coreMemory.setContent(id, blockName, body.content);
+      res.json({ ok: true });
+    } catch (err) {
+      if (err instanceof BlockNotFoundError) {
+        res.status(404).json({ error: "block_not_found", message: err.message });
+        return;
+      }
+      if (err instanceof BlockCharLimitExceededError) {
+        res.status(400).json({ error: "char_limit_exceeded", message: err.message });
+        return;
+      }
+      handleError(err, res, "agent core_memory update");
     }
   });
 

@@ -196,7 +196,12 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
         {agent.core_blocks.length > 0 ? (
           <div className="space-y-2.5">
             {agent.core_blocks.map((b) => (
-              <CoreBlockCard key={b.id} block={b} editable={isOwner === true} />
+              <CoreBlockCard
+                key={b.id}
+                agentId={agent.id}
+                block={b}
+                editable={isOwner === true}
+              />
             ))}
           </div>
         ) : null}

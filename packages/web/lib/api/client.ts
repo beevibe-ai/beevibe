@@ -404,6 +404,20 @@ export const api = {
         `/agent/${encodeURIComponent(id)}/review-policy`,
         { method: "POST", body: { review_policy: policy } },
       ),
+    /**
+     * Owner-only full-block overwrite. The agent's own `update_core_memory`
+     * MCP tool handles append/replace-substring; this is the human's
+     * "rewrite the whole block" path. Server-side guards: block must
+     * exist for the agent and content.length ≤ block.char_limit. Caller
+     * invalidates `queryKeys.agents.detail(id)` on success to pick up
+     * the new content + updated_at — no fields need to flow through the
+     * response, matching the `setReviewPolicy` / `setModel` minimalism.
+     */
+    setCoreBlock: (id: string, blockName: string, content: string) =>
+      fetchJson<{ ok: true }>(
+        `/agent/${encodeURIComponent(id)}/core-memory/${encodeURIComponent(blockName)}`,
+        { method: "POST", body: { content } },
+      ),
   },
   runtimes: {
     list: (opts: ReadOptions = {}) =>

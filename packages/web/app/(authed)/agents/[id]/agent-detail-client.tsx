@@ -187,7 +187,12 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
             ) : (
               <div className="space-y-3">
                 {agent.core_blocks.map((b) => (
-                  <CoreBlockCard key={b.id} block={b} editable={isOwner === true} />
+                  <CoreBlockCard
+                    key={b.id}
+                    agentId={agent.id}
+                    block={b}
+                    editable={isOwner === true}
+                  />
                 ))}
               </div>
             )}
