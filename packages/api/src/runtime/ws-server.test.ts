@@ -113,12 +113,23 @@ describe("RuntimeWsServer", () => {
 
   it("upgrades a valid daemon caller and registers it on the hub", async () => {
     const fx = await setupFixture();
+    expect((await runtimeRepo.findById(fx.runtimeId))?.last_heartbeat).toBeUndefined();
+
     const { ws } = await connect(`/runtime/ws?runtime_ids=${fx.runtimeId}`, {
       Authorization: `Bearer ${fx.daemonToken}`,
     });
     expect(ws).toBeDefined();
     expect(hub.size()).toBe(1);
     expect(hub.hasRuntime(fx.runtimeId)).toBe(true);
+
+    // Connect-time heartbeat is fire-and-forget, so poll until the row
+    // reflects it. Bump on WS connect feeds the DB trigger that fires
+    // `runtime.updated` SSE — without it the web waits for the next HTTP
+    // heartbeat (~30s) to flip the online dot.
+    const heartbeatAt = await waitFor(
+      async () => (await runtimeRepo.findById(fx.runtimeId))?.last_heartbeat,
+    );
+    expect(heartbeatAt).toBeInstanceOf(Date);
 
     // Notify reaches the live socket.
     const received = new Promise<string>((resolve) => ws!.once("message", (data) => {
@@ -192,3 +203,16 @@ describe("RuntimeWsServer", () => {
   });
 
 });
+
+async function waitFor<T>(
+  check: () => Promise<T | undefined>,
+  { timeoutMs = 500, intervalMs = 10 }: { timeoutMs?: number; intervalMs?: number } = {},
+): Promise<T | undefined> {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const v = await check();
+    if (v !== undefined) return v;
+    await new Promise((r) => setTimeout(r, intervalMs));
+  }
+  return check();
+}
