@@ -147,7 +147,7 @@ For the deeper version, see the package docs:
 
 - **Database:** Postgres 16 + `pgvector`
 - **Runtime:** Node.js 20, TypeScript, pnpm workspaces, Turborepo
-- **Agents:** Claude Code CLI + Model Context Protocol
+- **Agents:** Claude Code CLI, OpenCode, Codex detection, Model Context Protocol
 - **Memory:** OpenAI embeddings + Anthropic/OpenAI LLM providers
 - **Web:** Next.js, React Query, Tailwind CSS, Server-Sent Events
 
