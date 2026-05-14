@@ -6,6 +6,7 @@ import { AlertTriangle, Bot, ExternalLink, X } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { CoreBlockCard } from "@/components/agents/core-block-card";
+import { RecentSessionRow } from "@/components/agents/recent-session-row";
 import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
@@ -13,15 +14,7 @@ import { isApiConfigured } from "@/lib/api/config";
 import { useAgent } from "@/lib/hooks/use-agents";
 import { useIsOwner } from "@/lib/hooks/use-me";
 import { formatReviewPolicy } from "@/lib/format";
-import { cn } from "@/lib/utils";
 import type { AgentDetail } from "@/lib/api/types";
-import type { RecentSession } from "@/lib/types/agents";
-
-const RECENT_SESSION_DOT: Record<RecentSession["status"], string> = {
-  running: "bg-status-running animate-pulse-breathe",
-  review: "bg-status-review",
-  succeeded: "bg-status-done",
-};
 
 /**
  * Notion-style peek panel for an agent. Anchored to the right of the
@@ -215,7 +208,7 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
         {agent.recent_sessions.length > 0 ? (
           <ul className="space-y-1.5">
             {agent.recent_sessions.map((s, i) => (
-              <RecentSessionRow key={s.short_id ?? i} session={s} />
+              <RecentSessionRow key={s.short_id ?? i} session={s} variant="compact" />
             ))}
           </ul>
         ) : null}
@@ -308,45 +301,3 @@ function PanelFooterField({
   );
 }
 
-function RecentSessionRow({ session }: { session: RecentSession }) {
-  const rowInner = (
-    <>
-      <span
-        className={cn("h-1.5 w-1.5 rounded-full shrink-0", RECENT_SESSION_DOT[session.status])}
-        aria-hidden
-      />
-      <span className="flex-1 min-w-0 truncate">{session.title}</span>
-      {session.short_id ? (
-        <span className="font-mono text-[10px] text-muted-foreground shrink-0">
-          {session.short_id}
-        </span>
-      ) : null}
-      <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
-        {session.age}
-      </span>
-    </>
-  );
-
-  const rowClassName =
-    "flex items-center gap-2 rounded-md border border-border/70 bg-background/40 px-2.5 py-1.5 text-xs";
-
-  // Without a short_id we can't route — render unlinked. Matches the
-  // full /agents/[id] page's defensive handling.
-  if (!session.short_id) {
-    return <li className={rowClassName}>{rowInner}</li>;
-  }
-
-  return (
-    <li>
-      <Link
-        href={`/sessions/${session.short_id}`}
-        className={cn(
-          rowClassName,
-          "hover:bg-secondary/50 hover:border-border transition-colors cursor-pointer",
-        )}
-      >
-        {rowInner}
-      </Link>
-    </li>
-  );
-}
