@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, AlertTriangle, Bot, Archive } from "lucide-react";
 import { useAgent } from "@/lib/hooks/use-agents";
+import { useIsOwner } from "@/lib/hooks/use-me";
 import { isApiConfigured } from "@/lib/api/config";
+import { formatReviewPolicy } from "@/lib/format";
 import { api, type RuntimesListResponse } from "@/lib/api/client";
 import { queryKeys } from "@/lib/hooks/keys";
 import { Avatar } from "@/components/avatar";
@@ -98,6 +100,16 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
     },
   });
   const archived = Boolean(agent.archived_at);
+  // Cross-user discovery is allowed (GET /agent/:id ungated for mesh
+  // visibility), but every mutation route checks owner_id. Hide pickers
+  // + archive when the caller doesn't own the agent. Tri-state — `null`
+  // while /me loads so the cold-mount render doesn't briefly hide owner
+  // controls before resolving.
+  const isOwner = useIsOwner(agent.owner_id);
+  // Aside only renders when it has content. For non-owners with no
+  // outgoing mesh, we'd otherwise reserve 1/3 of the grid for an empty
+  // column — main expands to full width in that case.
+  const showAside = isOwner === true || agent.outgoing_mesh_hints.length > 0;
 
   return (
     <DetailShell nav={<AgentsBackLink />}>
@@ -119,7 +131,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
             ) : null}
           </div>
           <div className="shrink-0 flex items-center gap-2">
-            {!archived ? (
+            {!archived && isOwner === true ? (
               confirming ? (
                 <>
                   <button
@@ -161,8 +173,8 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         </div>
       </header>
 
-      <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 space-y-5">
+      <div className={cn("grid gap-6", showAside ? "grid-cols-3" : "grid-cols-1")}>
+        <div className={cn("space-y-5", showAside ? "col-span-2" : "col-span-1")}>
           <section>
             <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
               Core memory{" "}
@@ -175,7 +187,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
             ) : (
               <div className="space-y-3">
                 {agent.core_blocks.map((b) => (
-                  <CoreBlockCard key={b.id} block={b} />
+                  <CoreBlockCard key={b.id} block={b} editable={isOwner === true} />
                 ))}
               </div>
             )}
@@ -200,27 +212,33 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
           </section>
         </div>
 
-        <aside className="col-span-1 space-y-4">
-          <RuntimePicker agent={agent} />
-          <ModelPicker agent={agent} />
-          <ReviewPolicyPicker agent={agent} />
-          {agent.outgoing_mesh_hints.length ? (
-            <section className="rounded-lg border border-border bg-card p-4">
-              <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
-                Outgoing mesh
-              </h3>
-              <ul className="space-y-2">
-                {agent.outgoing_mesh_hints.map((hint, i) => (
-                  <li key={i} className="text-xs">
-                    <span className="text-foreground/85">{hint.target}</span>{" "}
-                    <span className="text-muted-foreground/70">· {hint.age}</span>
-                    <p className="text-muted-foreground line-clamp-1">{hint.intent}</p>
-                  </li>
-                ))}
-              </ul>
-            </section>
-          ) : null}
-        </aside>
+        {showAside ? (
+          <aside className="col-span-1 space-y-4">
+            {isOwner === true ? (
+              <>
+                <RuntimePicker agent={agent} />
+                <ModelPicker agent={agent} />
+                <ReviewPolicyPicker agent={agent} />
+              </>
+            ) : null}
+            {agent.outgoing_mesh_hints.length ? (
+              <section className="rounded-lg border border-border bg-card p-4">
+                <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
+                  Outgoing mesh
+                </h3>
+                <ul className="space-y-2">
+                  {agent.outgoing_mesh_hints.map((hint, i) => (
+                    <li key={i} className="text-xs">
+                      <span className="text-foreground/85">{hint.target}</span>{" "}
+                      <span className="text-muted-foreground/70">· {hint.age}</span>
+                      <p className="text-muted-foreground line-clamp-1">{hint.intent}</p>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ) : null}
+          </aside>
+        ) : null}
       </div>
 
       <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
@@ -230,6 +248,9 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         <FooterField label="Hierarchy">{agent.hierarchy}</FooterField>
         {agent.runtime ? <FooterField label="Runtime">{agent.runtime}</FooterField> : null}
         <FooterField label="Model">{agent.model ?? "CLI default"}</FooterField>
+        <FooterField label="Review policy">
+          {formatReviewPolicy(agent.review_policy)}
+        </FooterField>
         {agent.archived_at ? (
           <FooterField label="Archived">
             {new Date(agent.archived_at).toLocaleString()}

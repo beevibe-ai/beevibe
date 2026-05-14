@@ -83,3 +83,14 @@ export function formatDurationLabel(
   const hrs = hr % 24;
   return hrs ? `${days}d ${hrs}h` : `${days}d`;
 }
+
+/**
+ * Display label for an agent's `review_policy`. Anything other than the
+ * `require_human` sentinel renders as "auto-done" — covers null/undefined
+ * legacy agents (pre-PR #102) AND the explicit "auto_done" value. The
+ * input is widened to `string | null | undefined` because the AgentDisplay
+ * view shape stringifies the column for JSON serialization.
+ */
+export function formatReviewPolicy(policy: string | null | undefined): string {
+  return policy === "require_human" ? "require human" : "auto-done";
+}
