@@ -71,3 +71,18 @@ export function formatDurationLabel(
   const hrs = hr % 24;
   return hrs ? `${days}d ${hrs}h` : `${days}d`;
 }
+
+/**
+ * First non-empty line of a multi-line block content. Used to derive a
+ * one-liner UI headline (e.g. `specialization` from a core-memory
+ * tag_line block) from text that might be empty / whitespace-only /
+ * multi-line. Returns undefined when there is nothing renderable.
+ */
+export function firstNonEmptyLine(content: string | null | undefined): string | undefined {
+  if (!content) return undefined;
+  for (const line of content.split("\n")) {
+    const trimmed = line.trim();
+    if (trimmed) return trimmed;
+  }
+  return undefined;
+}

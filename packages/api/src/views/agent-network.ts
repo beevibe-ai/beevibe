@@ -19,6 +19,7 @@
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { RuntimeConfig } from "@beevibe/core";
+import { firstNonEmptyLine } from "./format.js";
 import type { AgentDisplay, AgentNetwork, AgentPeerOwner } from "./types.js";
 
 // Defensive cap on the peer fetch. The agent graph is one orbit per
@@ -33,12 +34,14 @@ SELECT
   a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
   a.review_policy, a.runtime_config, a.created_at, a.updated_at,
   COALESCE(sc.n, 0)::int  AS sessions_count,
-  COALESCE(fc.n, 0)::int  AS facts_learned
+  COALESCE(fc.n, 0)::int  AS facts_learned,
+  tl.content              AS tag_line
 FROM agent a
 LEFT JOIN (SELECT agent_id, COUNT(*)::int AS n FROM session GROUP BY agent_id) sc
   ON sc.agent_id = a.id
 LEFT JOIN (SELECT agent_id, COUNT(*)::int AS n FROM memory_fact GROUP BY agent_id) fc
   ON fc.agent_id = a.id
+LEFT JOIN core_memory_block tl ON tl.agent_id = a.id AND tl.block_name = 'tag_line'
 WHERE a.owner_id = $1
   AND a.archived_at IS NULL
 ORDER BY
@@ -57,13 +60,15 @@ SELECT
   a.review_policy, a.runtime_config, a.created_at, a.updated_at,
   p.name AS owner_label,
   COALESCE(sc.n, 0)::int  AS sessions_count,
-  COALESCE(fc.n, 0)::int  AS facts_learned
+  COALESCE(fc.n, 0)::int  AS facts_learned,
+  tl.content              AS tag_line
 FROM agent a
 JOIN person p ON p.id = a.owner_id
 LEFT JOIN (SELECT agent_id, COUNT(*)::int AS n FROM session GROUP BY agent_id) sc
   ON sc.agent_id = a.id
 LEFT JOIN (SELECT agent_id, COUNT(*)::int AS n FROM memory_fact GROUP BY agent_id) fc
   ON fc.agent_id = a.id
+LEFT JOIN core_memory_block tl ON tl.agent_id = a.id AND tl.block_name = 'tag_line'
 WHERE a.owner_id <> $1
   AND a.archived_at IS NULL
 ORDER BY a.owner_id,
@@ -84,6 +89,7 @@ interface AgentRow {
   updated_at: Date;
   sessions_count: string | number;
   facts_learned: string | number;
+  tag_line: string | null;
 }
 
 interface PeerRow extends AgentRow {
@@ -91,12 +97,12 @@ interface PeerRow extends AgentRow {
 }
 
 function rowToAgentDisplay(row: AgentRow): AgentDisplay {
-  // PR #96 split runtime (CLI tool) from model (LLM alias). This view
-  // was previously surfacing `runtime_config.model` as `runtime` — same
-  // conflation. Match `agents.ts` so the network UI shows "claude" not
-  // "claude-opus-4-7" under the Runtime label.
+  // PR #96 split runtime (CLI tool) from model (LLM alias). Match `agents.ts`
+  // so the network UI shows "claude" not "claude-opus-4-7" under the Runtime
+  // label.
   const runtime = row.runtime_config.type ?? "claude";
   const model = row.runtime_config.model;
+  const specialization = firstNonEmptyLine(row.tag_line);
   return {
     id: row.id,
     name: row.name,
@@ -111,6 +117,7 @@ function rowToAgentDisplay(row: AgentRow): AgentDisplay {
     facts_learned: Number(row.facts_learned),
     runtime,
     model,
+    specialization,
     review_policy: (row.review_policy ?? undefined) as AgentDisplay["review_policy"],
   };
 }
