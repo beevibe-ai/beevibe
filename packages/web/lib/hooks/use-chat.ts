@@ -219,6 +219,17 @@ export function useChat(opts: UseChatOptions = {}) {
     [mutation],
   );
 
+  // Clear the prior turn's error banner once the auto-recovery path
+  // settles: when SSE invalidation fans an agent reply into the cache
+  // (the queued session finally completed), `messages.at(-1)` flips to
+  // an "agent" role. Without this reset, the chat UI shows the new
+  // reply AND a stale "Couldn't reach the agent" banner side-by-side.
+  const lastRole = messages.at(-1)?.role;
+  const { isError: mutationIsError, reset: resetMutation } = mutation;
+  useEffect(() => {
+    if (mutationIsError && lastRole === "agent") resetMutation();
+  }, [mutationIsError, lastRole, resetMutation]);
+
   return {
     messages,
     send,
