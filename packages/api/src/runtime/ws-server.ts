@@ -120,11 +120,9 @@ export class RuntimeWsServer {
       },
     };
     this.options.hub.register(client);
-    // Bump last_heartbeat for every runtime this client just subscribed to.
-    // The DB trigger on `runtime.last_heartbeat` fires `runtime.updated` SSE,
-    // which invalidates the web's `/runtimes` cache so the online dot
-    // updates immediately instead of waiting up to ~30s for the next HTTP
-    // heartbeat or the staleTime to expire.
+    // Bump last_heartbeat so the DB trigger fires `runtime.updated` SSE and
+    // the web's online dot flips immediately, not after the next ~30s HTTP
+    // heartbeat / React Query staleTime window.
     void this.touchHeartbeats(runtimeIds);
     ws.on("pong", () => {
       client.alive = true;
