@@ -12,8 +12,8 @@ Beevibe is a shared workspace where a team's people and AI agents work side by
 side. Agents hold lasting roles, build bounded domain memory, ask the right
 teammate when their context runs out, and escalate blockers back to humans.
 
-[Quick Start](#quick-start) | [Architecture](#architecture) |
-[Deployment](./DEPLOYMENT.md)
+[beevibe.ai](https://beevibe.ai) | [Quick Start](#quick-start) |
+[Architecture](#architecture) | [Deployment](./DEPLOYMENT.md)
 
 </div>
 
@@ -58,10 +58,11 @@ pnpm dev
 In a second terminal, start the dashboard:
 
 ```bash
-pnpm --filter @beevibe/web dev -- -p 3030
+PORT=3030 pnpm --filter @beevibe/web dev
 ```
 
-Open `http://localhost:3030`.
+Open `http://localhost:3030`. (Port `3001` is taken by the scheduler health
+endpoint, so pick another — `3030` is just a convention.)
 
 `pnpm bootstrap` creates `.env`, starts local Postgres, runs migrations, and
 provisions an admin user plus a team agent. `pnpm dev` starts the API,
