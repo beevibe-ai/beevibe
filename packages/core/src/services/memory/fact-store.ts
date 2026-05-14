@@ -33,23 +33,31 @@ export class FactStore {
 
   /**
    * Embed the new content; if its nearest neighbor (same fact_type, same
-   * agent, scope=ic) is above SIMILARITY_MERGE_THRESHOLD, LLM-merge the two
-   * and update the existing row with the merged content, re-embed, and the
-   * union of source_session_ids. Otherwise insert a new fact.
+   * agent, same scope) is above SIMILARITY_MERGE_THRESHOLD, LLM-merge the
+   * two and update the existing row with the merged content, re-embed, and
+   * the union of source_session_ids. Otherwise insert a new fact.
    *
-   * Facts are always created at scope="ic"; promotion to team/org happens
-   * post-session via FactPromoter.
+   * `scope` reflects the saving agent's tier: an IC agent's facts start at
+   * `ic`, a team agent's at `team`, an org agent's at `org`. Promotion
+   * UPWARD (e.g. `team` → `org`) still happens post-session via
+   * FactPromoter when a fact recurs across enough sessions.
+   *
+   * Dedup-merge is scoped: a team agent saving something near-identical to
+   * an existing `ic` fact creates a fresh `team` row rather than merging
+   * across scopes — the two facts live in different conceptual universes
+   * (one is IC-private, the other is team-wide knowledge).
    */
   async addOrMerge(
     agentId: string,
     sessionId: string,
     content: string,
     fact_type: FactType,
+    scope: MemoryScope,
   ): Promise<MemoryFact> {
     const embedding = await this.deps.embed.embed(content);
     const [neighbor] = await this.deps.repo.searchByVector({
       agent_id: agentId,
-      scope: "ic",
+      scope,
       embedding,
       limit: 1,
       min_similarity: SIMILARITY_MERGE_THRESHOLD,
@@ -60,7 +68,7 @@ export class FactStore {
       return this.deps.repo.create({
         id: factId(),
         agent_id: agentId,
-        scope: "ic",
+        scope,
         fact_type,
         content,
         embedding,

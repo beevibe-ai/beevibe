@@ -1,5 +1,11 @@
 import type { FactStore } from "@beevibe/core/services/memory";
-import { FACT_TYPES, FACT_TYPE_DESCRIPTIONS, type FactType } from "@beevibe/core";
+import {
+  FACT_TYPES,
+  FACT_TYPE_DESCRIPTIONS,
+  hierarchyToScope,
+  type FactType,
+  type HierarchyLevel,
+} from "@beevibe/core";
 import type { AgentTool } from "./types.js";
 
 /**
@@ -47,6 +53,8 @@ export interface SaveMemoryContext {
   agentId: string;
   /** Beevibe session id for `source_session_ids` provenance. */
   sessionId: string;
+  /** Saver's tier — converted to the fact's scope via `hierarchyToScope`. */
+  hierarchyLevel: HierarchyLevel;
 }
 
 /**
@@ -93,9 +101,13 @@ export function createSaveMemoryTool(
         ctx.sessionId,
         content,
         factType as FactType,
+        hierarchyToScope(ctx.hierarchyLevel),
       );
+      // Echo `scope` because the agent didn't supply it — it was derived
+      // from the caller's tier. Surfaces the resulting visibility so the
+      // agent knows whether a fact is IC-private or team-/org-visible.
       return {
-        content: { saved: true, fact_id: fact.id, fact_type: factType },
+        content: { saved: true, fact_id: fact.id, fact_type: factType, scope: fact.scope },
       };
     },
   };

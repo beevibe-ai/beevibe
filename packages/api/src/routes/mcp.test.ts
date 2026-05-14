@@ -219,9 +219,10 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
       });
       expect(result.isError).toBeFalsy();
 
-      // addOrMerge writes facts at scope='ic' initially; promotion to team/org
-      // happens later via FactPromoter.onTaskComplete (not exercised here).
-      const facts = await factRepo.listByAgentScope(team.agent.id, "ic");
+      // addOrMerge stamps the fact's scope from the saver's hierarchy_level.
+      // The caller here is a team-tier human, so the fact lands at scope='team'.
+      // FactPromoter.onTaskComplete can elevate to 'org' later if it recurs.
+      const facts = await factRepo.listByAgentScope(team.agent.id, "team");
       expect(facts).toHaveLength(1);
       expect(facts[0]?.content).toContain("green");
       expect(facts[0]?.fact_type).toBe("preference");
