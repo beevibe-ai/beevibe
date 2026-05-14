@@ -245,6 +245,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         <FooterField label="ID">
           <ClickToCopyId id={agent.id} />
         </FooterField>
+        <FooterField label="Owner">{agent.owner_label ?? "—"}</FooterField>
         <FooterField label="Hierarchy">{agent.hierarchy}</FooterField>
         {agent.runtime ? <FooterField label="Runtime">{agent.runtime}</FooterField> : null}
         <FooterField label="Model">{agent.model ?? "CLI default"}</FooterField>

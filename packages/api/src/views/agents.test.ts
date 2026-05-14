@@ -10,6 +10,7 @@ describe("listAgents", () => {
           id: "agt_org",
           name: "Atlas",
           owner_id: "per_w",
+          owner_label: "Wendy",
           parent_agent_id: null,
           hierarchy_level: "org",
           review_policy: null,
@@ -29,6 +30,7 @@ describe("listAgents", () => {
     expect(agents[0]?.facts_learned).toBe(4);
     expect(agents[0]?.runtime).toBe("claude");
     expect(agents[0]?.model).toBe("opus");
+    expect(agents[0]?.owner_label).toBe("Wendy");
   });
 
   it("returns undefined model when runtime_config has no model set", async () => {
@@ -38,6 +40,7 @@ describe("listAgents", () => {
           id: "agt_x",
           name: "NoModel",
           owner_id: "per_w",
+          owner_label: "Wendy",
           parent_agent_id: null,
           hierarchy_level: "ic",
           review_policy: null,
@@ -68,6 +71,7 @@ describe("getAgent", () => {
           id: "agt_team",
           name: "Beta",
           owner_id: "per_w",
+          owner_label: "Wendy",
           parent_agent_id: "agt_org",
           hierarchy_level: "team",
           review_policy: "auto_done",
@@ -123,5 +127,6 @@ describe("getAgent", () => {
     expect(detail?.recent_sessions[0]?.title).toBe("Bill rewrite");
     expect(detail?.outgoing_mesh_hints).toHaveLength(1);
     expect(detail?.outgoing_mesh_hints[0]?.target).toBe("Charlie");
+    expect(detail?.owner_label).toBe("Wendy");
   });
 });
