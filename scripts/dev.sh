@@ -154,7 +154,8 @@ pnpm --filter @beevibe/scheduler dev 2>&1 \
   fi
 
   # Idempotent: links the team agent to the daemon's claude runtime.
-  pnpm tsx scripts/bind-daemon.ts 2>&1 | sed -u 's/^/[daemon-bind] /'
+  # || true so a bind failure doesn't block the daemon from starting.
+  pnpm tsx scripts/bind-daemon.ts 2>&1 | sed -u 's/^/[daemon-bind] /' || true
 
   pnpm tsx packages/daemon/src/main.ts start 2>&1 | sed -u 's/^/[daemon] /'
 ) &
