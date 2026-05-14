@@ -309,8 +309,8 @@ function PanelFooterField({
 }
 
 function RecentSessionRow({ session }: { session: RecentSession }) {
-  return (
-    <li className="flex items-center gap-2 rounded-md border border-border/70 bg-background/40 px-2.5 py-1.5 text-xs">
+  const rowInner = (
+    <>
       <span
         className={cn("h-1.5 w-1.5 rounded-full shrink-0", RECENT_SESSION_DOT[session.status])}
         aria-hidden
@@ -324,6 +324,29 @@ function RecentSessionRow({ session }: { session: RecentSession }) {
       <span className="text-[10px] text-muted-foreground tabular-nums shrink-0">
         {session.age}
       </span>
+    </>
+  );
+
+  const rowClassName =
+    "flex items-center gap-2 rounded-md border border-border/70 bg-background/40 px-2.5 py-1.5 text-xs";
+
+  // Without a short_id we can't route — render unlinked. Matches the
+  // full /agents/[id] page's defensive handling.
+  if (!session.short_id) {
+    return <li className={rowClassName}>{rowInner}</li>;
+  }
+
+  return (
+    <li>
+      <Link
+        href={`/sessions/${session.short_id}`}
+        className={cn(
+          rowClassName,
+          "hover:bg-secondary/50 hover:border-border transition-colors cursor-pointer",
+        )}
+      >
+        {rowInner}
+      </Link>
     </li>
   );
 }
