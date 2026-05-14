@@ -168,7 +168,7 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
                 {agent.specialization}
               </p>
             ) : (
-              <p className="text-xs text-muted-foreground/60 italic">No domain set</p>
+              <p className="text-xs text-muted-foreground/60 italic">No tagline yet</p>
             )}
           </div>
         </div>

@@ -33,7 +33,6 @@ interface AgentRow {
   sessions_count: string;
   facts_learned: string;
   tag_line: string | null;
-  domain_content: string | null;
 }
 
 const LIST_SQL = /* sql */ `
@@ -44,8 +43,7 @@ SELECT
   p.name                  AS owner_label,
   COALESCE(sc.n, 0)::int  AS sessions_count,
   COALESCE(fc.n, 0)::int  AS facts_learned,
-  tl.content              AS tag_line,
-  dm.content              AS domain_content
+  tl.content              AS tag_line
 FROM agent a
 LEFT JOIN person p ON p.id = a.owner_id
 LEFT JOIN (
@@ -59,7 +57,6 @@ LEFT JOIN (
   GROUP BY agent_id
 ) fc ON fc.agent_id = a.id
 LEFT JOIN core_memory_block tl ON tl.agent_id = a.id AND tl.block_name = 'tag_line'
-LEFT JOIN core_memory_block dm ON dm.agent_id = a.id AND dm.block_name = 'domain'
 WHERE ($1::text IS NULL OR a.owner_id = $1)
   AND a.archived_at IS NULL
 ORDER BY
@@ -69,14 +66,14 @@ ORDER BY
 
 function rowToAgentDisplay(row: AgentRow): AgentDisplay {
   // `runtime` is the CLI tool name; `model` is the LLM alias passed to it.
-  // Previously this view returned `runtime_config.model` under the `runtime`
-  // key, conflating the two — PR #96 split them. PR #99 adds specialization,
-  // sourced from the `tag_line` core memory block (≤100 chars), falling
-  // back to the first non-empty line of `domain` for legacy agents whose
-  // tag_line is still empty.
+  // PR #96 split them. `specialization` is the first non-empty line of the
+  // `tag_line` core memory block (≤100 chars by template). No fallback to
+  // `domain` — that block is for the agent's enduring expertise prose, not
+  // a UI headline; mixing the two confused agents with set tag_lines whose
+  // cards still showed the domain text.
   const runtime = (row.runtime_config?.type as string | undefined) ?? "claude";
   const model = row.runtime_config?.model as string | undefined;
-  const specialization = firstNonEmptyLine(row.tag_line) ?? firstNonEmptyLine(row.domain_content);
+  const specialization = firstNonEmptyLine(row.tag_line);
   return {
     id: row.id,
     name: row.name,
@@ -125,9 +122,7 @@ SELECT
   (SELECT COUNT(*)::int FROM session       WHERE agent_id = a.id) AS sessions_count,
   (SELECT COUNT(*)::int FROM memory_fact   WHERE agent_id = a.id) AS facts_learned,
   (SELECT content FROM core_memory_block
-    WHERE agent_id = a.id AND block_name = 'tag_line' LIMIT 1) AS tag_line,
-  (SELECT content FROM core_memory_block
-    WHERE agent_id = a.id AND block_name = 'domain'   LIMIT 1) AS domain_content
+    WHERE agent_id = a.id AND block_name = 'tag_line' LIMIT 1) AS tag_line
 FROM agent a
 LEFT JOIN person p ON p.id = a.owner_id
 WHERE a.id = $1

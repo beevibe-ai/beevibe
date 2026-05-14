@@ -291,7 +291,7 @@ function SpecialistCard({
               agent.specialization ? "text-muted-foreground" : "text-muted-foreground/60 italic",
             )}
           >
-            {agent.specialization ?? "No domain set"}
+            {agent.specialization ?? "No tagline yet"}
           </p>
         ) : null}
       </div>
