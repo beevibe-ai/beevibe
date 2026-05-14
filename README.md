@@ -185,10 +185,6 @@ packages/
 +-- web/         Next.js dashboard
 ```
 
-Live end-to-end smokes live in [scripts](./scripts). Most are gated with
-environment variables such as `RUN_M7_E2E=1` because they use real Postgres,
-provider APIs, and CLI processes.
-
 ## Contributing
 
 Issues and PRs are welcome. For larger changes, open an issue first so the

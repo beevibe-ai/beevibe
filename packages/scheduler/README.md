@@ -84,9 +84,7 @@ src/
 ## Build / test
 
 ```bash
-pnpm --filter @beevibe/executor build
-pnpm --filter @beevibe/executor typecheck
-pnpm --filter @beevibe/executor test
+pnpm --filter @beevibe/scheduler build
+pnpm --filter @beevibe/scheduler typecheck
+pnpm --filter @beevibe/scheduler test
 ```
-
-End-to-end coverage for the dispatch path lives in [`/scripts/m5-e2e.ts`](../../scripts/m5-e2e.ts) (in-process) and [`/scripts/m7-e2e.ts`](../../scripts/m7-e2e.ts) (multi-process). The latter spawns this binary as an actual `node dist/main.js` subprocess and verifies signal propagation + no orphan `claude` processes after `SIGTERM`.

@@ -66,7 +66,7 @@ const step = (n: number, msg: string) => console.log(`\n${bold(`Step ${n}.`)} ${
 
 async function main(): Promise<void> {
   console.log(`${bold("beevibe bootstrap")} — first-run setup\n`);
-  console.log(dim("This will set up a local-only stack: postgres + api + executor + web."));
+  console.log(dim("This will set up a local-only stack: postgres + api + scheduler + web."));
   console.log(dim("Re-running is safe; existing setup is detected and skipped.\n"));
 
   // ── Step 1: .env ─────────────────────────────────────────────────────────
@@ -452,7 +452,7 @@ function readAgentCli(runtimeConfig: unknown): string {
 // ─────────────────────────────────────────────────────────────────────────
 
 function writeWebUserKey(userKey: string): void {
-  // Root .env: api/executor read this. Keep it in sync so anything that
+  // Root .env: api/scheduler read this. Keep it in sync so anything that
   // shells out can pick up the user key too.
   const env = readEnv(ENV_PATH);
   if (env.NEXT_PUBLIC_BV_USER_KEY !== userKey) {

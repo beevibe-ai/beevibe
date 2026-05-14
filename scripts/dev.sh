@@ -121,7 +121,7 @@ pnpm --filter @beevibe/api dev 2>&1 \
   | sed -u 's/^/[api] /' &
 
 pnpm --filter @beevibe/scheduler dev 2>&1 \
-  | sed -u 's/^/[exec] /' &
+  | sed -u 's/^/[sched] /' &
 
 if [ "$TUNNEL_ENABLED" = "1" ]; then
   # Spawn cloudflared. Capture the trycloudflare URL from its stderr and
