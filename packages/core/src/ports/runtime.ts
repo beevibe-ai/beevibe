@@ -32,6 +32,14 @@ export interface AgentRuntime {
    * sync the tier-filtered SKILL.md files.
    */
   skillsDir(workspace: Workspace): string;
+
+  /**
+   * Optional runtime-specific workspace provisioning hook. Called after the
+   * generic workspace + Claude-compatible mcp-config.json are present and
+   * before skills are synced. Runtimes use this for config files that must
+   * live in the workspace root, for example OpenCode's `opencode.json`.
+   */
+  prepareWorkspace?(context: RuntimeWorkspaceContext): Promise<void> | void;
 }
 
 /**
@@ -42,6 +50,12 @@ export interface AgentRuntime {
 export interface Workspace {
   /** Absolute path to the agent's home dir. E.g. "~/.beevibe/workspaces/agent_XXX/". */
   path: string;
+}
+
+export interface RuntimeWorkspaceContext {
+  workspace: Workspace;
+  agentApiKey: string;
+  mcpServerUrl: string;
 }
 
 /**

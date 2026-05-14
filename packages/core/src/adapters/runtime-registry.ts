@@ -1,5 +1,6 @@
 import type { RuntimeRegistry } from "../ports/runtime.js";
 import { ClaudeCodeRuntime } from "./claude-code/runtime.js";
+import { OpenCodeRuntime } from "./opencode/runtime.js";
 
 /**
  * Default registry with all production runtimes wired.
@@ -18,5 +19,6 @@ import { ClaudeCodeRuntime } from "./claude-code/runtime.js";
 export function createDefaultRuntimeRegistry(): RuntimeRegistry {
   return {
     claude: new ClaudeCodeRuntime({}),
+    opencode: new OpenCodeRuntime({}),
   };
 }

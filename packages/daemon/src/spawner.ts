@@ -9,8 +9,15 @@
  * `<workspace>/.claude/skills/`).
  */
 
-import { ClaudeCodeRuntime } from "@beevibe/core/adapters/claude-code";
-import type { Agent, RuntimeStep, RuntimeResult, TerminalSessionStatus } from "@beevibe/core";
+import { createDefaultRuntimeRegistry } from "@beevibe/core/adapters/runtime-registry";
+import type {
+  Agent,
+  KnownCli,
+  RuntimeRegistry,
+  RuntimeStep,
+  RuntimeResult,
+  TerminalSessionStatus,
+} from "@beevibe/core";
 import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
 
@@ -19,6 +26,7 @@ export interface DispatchPayload {
   agent_id: string;
   agent_api_key: string;
   agent_hierarchy_level: "ic" | "team" | "org";
+  runtime_type: KnownCli;
   intent: string;
   system_prompt_append: string;
   resume_session_id?: string;
@@ -32,8 +40,8 @@ export interface DispatchPayload {
 export interface SpawnDeps {
   api: ApiClient;
   workspaceManager: LocalWorkspaceManager;
-  /** Default ClaudeCodeRuntime; tests inject a fake. */
-  runtime?: ClaudeCodeRuntime;
+  /** Default registry; tests inject fakes. */
+  runtimeRegistry?: RuntimeRegistry;
 }
 
 /**
@@ -54,11 +62,15 @@ export async function runDispatch(
     id: payload.agent_id,
     api_key: payload.agent_api_key,
     hierarchy_level: payload.agent_hierarchy_level,
-    runtime_config: { type: "claude" as const },
+    runtime_config: { type: payload.runtime_type },
   } as unknown as Agent;
   const ws = await deps.workspaceManager.ensureWorkspace({ agent: syntheticAgent });
 
-  const runtime = deps.runtime ?? new ClaudeCodeRuntime();
+  const registry = deps.runtimeRegistry ?? createDefaultRuntimeRegistry();
+  const runtime = registry[payload.runtime_type];
+  if (!runtime) {
+    throw new Error(`No runtime registered for dispatch payload type '${payload.runtime_type}'`);
+  }
 
   // Buffer events so the daemon doesn't fire one POST per token. Flushed
   // every BATCH_INTERVAL_MS or when the buffer hits BATCH_MAX. Final
