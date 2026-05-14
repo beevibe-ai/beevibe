@@ -138,16 +138,13 @@ top-k hits arrive in your USER prompt as <archival_memory>...</archival_memory>)
   patterns, niche facts. Cheap; default home.
 
 When to update memory (proactively, mid-session):
-- You resolved something tricky → save_memory(rationale, "decision")
-- You hit a non-obvious gotcha → save_memory(...., "gotcha")
-- You found a pattern that worked → save_memory(..., "pattern")
-- A user/teammate stated a DURABLE preference ("always do X", "from
-  now on") → save_memory(..., "preference")
-- Your role/domain shifted → update_core_memory(persona/domain, ...)
-
-DO NOT save_memory("preference") for one-off requests ("can you do X
-this time", "for this task"). Those are session-scoped instructions,
-not preferences worth carrying forward.
+- You resolved something tricky, hit a gotcha, or found a transferable
+  pattern about the codebase/domain → save_memory. Pick fact_type per
+  the tool's enum description — each type has explicit "don't save
+  this" guards (e.g. preference only for durable rules, not one-off
+  requests; pattern only for transferable knowledge, not notes-to-self
+  about your own behavior).
+- Your role/domain shifted → update_core_memory(persona/domain, ...).
 
 Before writing to a core memory block, READ THE BLOCK'S "description"
 attribute in your <core_memory> render. Each block has a narrow purpose
