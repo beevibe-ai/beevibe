@@ -123,6 +123,42 @@ pnpm --filter @beevibe/api dev 2>&1 \
 pnpm --filter @beevibe/scheduler dev 2>&1 \
   | sed -u 's/^/[exec] /' &
 
+# ─────────────────── daemon ───────────────────
+# Local dev auto-registers + starts the daemon so the user never sees
+# the "Install the daemon" wizard. Production users connecting from
+# another machine still go through that wizard against the hosted api.
+(
+  # Wait for api to accept requests before /runtime/register.
+  for i in $(seq 1 60); do
+    if curl -fsS "http://localhost:${BEEVIBE_API_PORT}/health" >/dev/null 2>&1; then
+      break
+    fi
+    if [ "$i" = "60" ]; then
+      echo "[daemon] api didn't come up in 60s — daemon not started"
+      exit 0
+    fi
+    sleep 1
+  done
+
+  CONFIG="$HOME/.beevibe/config.json"
+  if [ ! -f "$CONFIG" ]; then
+    if [ -z "${NEXT_PUBLIC_BV_USER_KEY:-}" ]; then
+      echo "[daemon] NEXT_PUBLIC_BV_USER_KEY missing — run \`pnpm bootstrap\` first"
+      exit 0
+    fi
+    echo "[daemon] registering with api…"
+    pnpm tsx packages/daemon/src/main.ts setup \
+      --api "http://localhost:${BEEVIBE_API_PORT}" \
+      --user-token "$NEXT_PUBLIC_BV_USER_KEY" 2>&1 \
+      | sed -u 's/^/[daemon-setup] /'
+  fi
+
+  # Idempotent: links the team agent to the daemon's claude runtime.
+  pnpm tsx scripts/bind-daemon.ts 2>&1 | sed -u 's/^/[daemon-bind] /'
+
+  pnpm tsx packages/daemon/src/main.ts start 2>&1 | sed -u 's/^/[daemon] /'
+) &
+
 if [ "$TUNNEL_ENABLED" = "1" ]; then
   # Spawn cloudflared. Capture the trycloudflare URL from its stderr and
   # print a paste-ready mcp-config snippet for any remote human users.

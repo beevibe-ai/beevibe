@@ -117,16 +117,7 @@ function printNextSteps(opts: {
 
   if (bindResult.kind === "no_daemon") {
     console.log(
-      `  ${yellow("!")} No daemon registered yet — chat will fall back to a server-side spawn` +
-        `\n     (works, but bypasses the daemon path Phase 4 ships).`,
-    );
-    console.log(
-      `\n  To exercise the daemon path, in a third terminal after ${cyan("pnpm dev")} is up:` +
-        `\n` +
-        `\n      ${cyan(`pnpm tsx packages/daemon/src/main.ts setup --api ${apiUrl} --user-token ${userKey}`)}` +
-        `\n      ${cyan("pnpm tsx packages/daemon/src/main.ts start")}` +
-        `\n` +
-        `\n  Then re-run ${cyan("pnpm bootstrap")} to bind the team agent to the daemon's runtime.`,
+      `  ${green("✓")} Daemon will auto-register on first ${cyan("pnpm dev")} run — no extra steps.`,
     );
   } else if (bindResult.kind === "bound") {
     console.log(

@@ -66,8 +66,8 @@ endpoint, so pick another — `3030` is just a convention.)
 
 `pnpm bootstrap` creates `.env`, starts local Postgres, runs migrations, and
 provisions an admin user plus a team agent. `pnpm dev` starts the API,
-scheduler, Postgres, and an optional Cloudflare tunnel when `cloudflared` is
-installed.
+scheduler, the local daemon (auto-registered on first run), and an optional
+Cloudflare tunnel when `cloudflared` is installed.
 
 ## The Bet
 
