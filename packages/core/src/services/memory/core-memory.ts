@@ -72,4 +72,30 @@ export class CoreMemory {
 
     return this.deps.repo.updateContent(agentId, blockName, nextContent);
   }
+
+  /**
+   * Owner-driven full-block overwrite. Where `applyUpdate` is the agent's
+   * append/replace-substring path, this is the human's "rewrite the whole
+   * block" path — used by the agent detail page's Edit affordance. Same
+   * char_limit + block-existence guards.
+   */
+  async setContent(
+    agentId: string,
+    blockName: string,
+    content: string,
+  ): Promise<CoreMemoryBlock> {
+    const block = await this.deps.repo.findOne(agentId, blockName);
+    if (!block) {
+      throw new Error(
+        `Block "${blockName}" not found for agent ${agentId} — initDefaults first`,
+      );
+    }
+    if (content.length > block.char_limit) {
+      throw new Error(
+        `Block "${blockName}" would exceed char_limit ${block.char_limit} ` +
+          `(new length ${content.length})`,
+      );
+    }
+    return this.deps.repo.updateContent(agentId, blockName, content);
+  }
 }

@@ -404,6 +404,23 @@ export const api = {
         `/agent/${encodeURIComponent(id)}/review-policy`,
         { method: "POST", body: { review_policy: policy } },
       ),
+    /**
+     * Owner-only full-block overwrite. The agent's own `update_core_memory`
+     * MCP tool handles append/replace-substring; this is the human's
+     * "rewrite the whole block" path. Server-side guards: block must
+     * exist for the agent and content.length ≤ block.char_limit.
+     */
+    setCoreBlock: (id: string, blockName: string, content: string) =>
+      fetchJson<{
+        ok: true;
+        block_name: string;
+        char_count: number;
+        char_limit: number;
+        updated_at: string;
+      }>(
+        `/agent/${encodeURIComponent(id)}/core-memory/${encodeURIComponent(blockName)}`,
+        { method: "POST", body: { content } },
+      ),
   },
   runtimes: {
     list: (opts: ReadOptions = {}) =>
