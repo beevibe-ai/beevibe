@@ -11,7 +11,7 @@ function fakeFactStore(): { factStore: FactStore; calls: Array<{ args: unknown[]
       return {
         id: "fact_minted",
         agent_id: args[0],
-        scope: "ic",
+        scope: args[4],
         category: "archival",
         fact_type: args[3],
         content: args[2],
@@ -26,7 +26,7 @@ describe("save_memory tool", () => {
   it("delegates to factStore.addOrMerge with caller agentId + sessionId from context", async () => {
     const { factStore, calls } = fakeFactStore();
     const tool = createSaveMemoryTool(
-      { agentId: "agent_a", sessionId: "sess_1" },
+      { agentId: "agent_a", sessionId: "sess_1", hierarchyLevel: "ic" },
       { factStore },
     );
 
@@ -41,19 +41,37 @@ describe("save_memory tool", () => {
       "sess_1",
       "Prefers pnpm over npm.",
       "preference",
+      "ic",
     ]);
     expect(result.isError).toBeFalsy();
     expect(result.content).toMatchObject({
       saved: true,
       fact_id: "fact_minted",
       fact_type: "preference",
+      scope: "ic",
     });
+  });
+
+  it("passes the caller's hierarchyLevel through as the fact scope", async () => {
+    const { factStore, calls } = fakeFactStore();
+    const tool = createSaveMemoryTool(
+      { agentId: "agent_team", sessionId: "sess_1", hierarchyLevel: "team" },
+      { factStore },
+    );
+
+    await tool.handler({
+      content: "Team-wide convention: branch names use kebab-case.",
+      fact_type: "pattern",
+    });
+
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.args[4]).toBe("team");
   });
 
   it("returns isError for empty content", async () => {
     const { factStore, calls } = fakeFactStore();
     const tool = createSaveMemoryTool(
-      { agentId: "agent_a", sessionId: "sess_1" },
+      { agentId: "agent_a", sessionId: "sess_1", hierarchyLevel: "ic" },
       { factStore },
     );
 
@@ -67,7 +85,7 @@ describe("save_memory tool", () => {
   it("returns isError for unknown fact_type", async () => {
     const { factStore, calls } = fakeFactStore();
     const tool = createSaveMemoryTool(
-      { agentId: "agent_a", sessionId: "sess_1" },
+      { agentId: "agent_a", sessionId: "sess_1", hierarchyLevel: "ic" },
       { factStore },
     );
 
@@ -81,7 +99,7 @@ describe("save_memory tool", () => {
   it("tool descriptor exposes JSON schema with required fields", () => {
     const { factStore } = fakeFactStore();
     const tool = createSaveMemoryTool(
-      { agentId: "agent_a", sessionId: "sess_1" },
+      { agentId: "agent_a", sessionId: "sess_1", hierarchyLevel: "ic" },
       { factStore },
     );
 

@@ -62,6 +62,7 @@ describe("FactStore.addOrMerge — create path", () => {
       "sess_new",
       "Prefers pnpm over npm",
       "preference",
+      "ic",
     );
 
     expect(repo.searchByVector).toHaveBeenCalledWith({
@@ -83,6 +84,23 @@ describe("FactStore.addOrMerge — create path", () => {
     expect(createInput.source_session_ids).toEqual(["sess_new"]);
     expect(llm.complete).not.toHaveBeenCalled();
     expect(fact.content).toBe("Prefers pnpm over npm");
+  });
+
+  it("stamps the scope from the caller (team agent → team-scoped fact)", async () => {
+    vi.mocked(embed.embed).mockResolvedValue(new Array<number>(1536).fill(0.1));
+    vi.mocked(repo.searchByVector).mockResolvedValue([]);
+    vi.mocked(repo.create).mockImplementation(async (input) => ({
+      ...input,
+      created_at: new Date(),
+    }));
+
+    await store.addOrMerge("agent_team", "sess_new", "Team prefers X", "preference", "team");
+
+    expect(repo.searchByVector).toHaveBeenCalledWith(
+      expect.objectContaining({ scope: "team" }),
+    );
+    const createInput = vi.mocked(repo.create).mock.calls[0]![0];
+    expect(createInput.scope).toBe("team");
   });
 });
 
@@ -110,6 +128,7 @@ describe("FactStore.addOrMerge — merge path", () => {
       "sess_B",
       "Prefers pnpm and won't use npm",
       "preference",
+      "ic",
     );
 
     expect(llm.complete).toHaveBeenCalledOnce();
@@ -142,7 +161,7 @@ describe("FactStore.addOrMerge — merge path", () => {
       ...patch,
     }));
 
-    await store.addOrMerge("agent_1", "sess_B", "same session again", "preference");
+    await store.addOrMerge("agent_1", "sess_B", "same session again", "preference", "ic");
 
     const updatePatch = vi.mocked(repo.update).mock.calls[0]![1];
     expect(updatePatch.source_session_ids).toEqual(["sess_A", "sess_B"]);
@@ -161,7 +180,7 @@ describe("FactStore.addOrMerge — merge path", () => {
       ...patch,
     }));
 
-    await store.addOrMerge("agent_1", "sess_new", "new content", "preference");
+    await store.addOrMerge("agent_1", "sess_new", "new content", "preference", "ic");
     expect(vi.mocked(repo.update).mock.calls[0]![1].content).toBe("merged text");
   });
 });

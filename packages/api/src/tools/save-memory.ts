@@ -1,5 +1,11 @@
 import type { FactStore } from "@beevibe/core/services/memory";
-import { FACT_TYPES, FACT_TYPE_DESCRIPTIONS, type FactType } from "@beevibe/core";
+import {
+  FACT_TYPES,
+  FACT_TYPE_DESCRIPTIONS,
+  type FactType,
+  type HierarchyLevel,
+  type MemoryScope,
+} from "@beevibe/core";
 import type { AgentTool } from "./types.js";
 
 /**
@@ -47,6 +53,12 @@ export interface SaveMemoryContext {
   agentId: string;
   /** Beevibe session id for `source_session_ids` provenance. */
   sessionId: string;
+  /**
+   * Saver's tier — also the scope the fact is created at. HierarchyLevel
+   * and MemoryScope share the same string values (`"ic" | "team" | "org"`),
+   * so the cast at the call site is identity at runtime.
+   */
+  hierarchyLevel: HierarchyLevel;
 }
 
 /**
@@ -93,9 +105,10 @@ export function createSaveMemoryTool(
         ctx.sessionId,
         content,
         factType as FactType,
+        ctx.hierarchyLevel as MemoryScope,
       );
       return {
-        content: { saved: true, fact_id: fact.id, fact_type: factType },
+        content: { saved: true, fact_id: fact.id, fact_type: factType, scope: fact.scope },
       };
     },
   };

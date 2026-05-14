@@ -107,7 +107,11 @@ export function assembleTools(
 ): AgentTool[] {
   const memoryTools: AgentTool[] = [
     createSaveMemoryTool(
-      { agentId: ctx.caller.agentId, sessionId: ctx.beevibeSid },
+      {
+        agentId: ctx.caller.agentId,
+        sessionId: ctx.beevibeSid,
+        hierarchyLevel: ctx.caller.hierarchyLevel,
+      },
       { factStore: services.factStore },
     ),
     createUpdateCoreMemoryTool(
