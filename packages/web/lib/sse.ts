@@ -36,7 +36,20 @@ const eventInvalidations: Record<string, InvalidationKey[]> = {
     queryKeys.activity.all,
     queryKeys.agentNetwork.all,
   ],
-  "session.updated": [queryKeys.sessions.all, queryKeys.tasks.all, queryKeys.activity.all],
+  "session.updated": [
+    queryKeys.sessions.all,
+    queryKeys.tasks.all,
+    queryKeys.activity.all,
+    // Chat history only. A pending chat session completing (daemon
+    // reconnect after agent_offline, or normal turn settle) flips it
+    // from "user message only" → "user + agent reply"; that's the
+    // auto-recovery path. We do NOT fan out to `chat.conversations`
+    // here — the sidebar chain head only changes when a new conversation
+    // is opened, and `use-chat`'s onSuccess already invalidates it
+    // explicitly. Refetching it on every non-chat session.updated
+    // (task/mesh transitions) would be pure waste.
+    queryKeys.chat.history(undefined),
+  ],
   "memory.fact.created": [queryKeys.memory.all],
   "promotion.created": [queryKeys.promotions.all, queryKeys.memory.all],
   "mesh.activity": [queryKeys.mesh.all, queryKeys.activity.all, queryKeys.inbox.all],
