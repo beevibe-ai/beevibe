@@ -1,11 +1,12 @@
 "use client";
 
 import { useState } from "react";
-import { Box, Info } from "lucide-react";
+import { Box } from "lucide-react";
 import { DetailShell } from "@/components/detail/detail-shell";
 import { DiscoveryPanel } from "@/components/repo-runs/discovery-panel";
 import { LiveRunCard } from "@/components/repo-runs/live-run";
 import { ToolRunRow } from "@/components/repo-runs/repo-runs-section";
+import { RunFromPromptForm } from "@/components/repo-runs/run-from-prompt";
 import { SavedToolCard } from "@/components/repo-runs/saved-skills";
 import {
   FIXTURE_RUNS,
@@ -13,12 +14,11 @@ import {
 } from "@/lib/fixtures/repo-runs";
 
 /**
- * Tools — the product moment. Pick a goal, the agent picks a repo and
- * uses it inside a sandbox, the artifact appears here. Below the
- * discovery panel: live runs the user has just kicked off (real
- * sandboxed work, polled from `/api/tools/runs/[id]`). Below that:
- * fixture rows kept as design examples of what a finished run looks
- * like, until enough live runs accumulate to drop them.
+ * Tools — point at a repo, the agent uses it inside a sandbox, the
+ * artifact appears here. Primary path is the "Run a repo" form; the
+ * discovery panel below it stays as a quick-start affordance. Fixture
+ * sections at the bottom serve as design reference until enough live
+ * runs accumulate.
  */
 export function ToolsClient() {
   const [liveRunIds, setLiveRunIds] = useState<string[]>([]);
@@ -26,6 +26,8 @@ export function ToolsClient() {
   const launch = async (input: {
     repo_url: string;
     goal: string;
+    input_url?: string;
+    input_filename?: string;
   }): Promise<string | null> => {
     const r = await fetch("/api/tools/use-repo", {
       method: "POST",
@@ -57,14 +59,14 @@ export function ToolsClient() {
           </span>
         </div>
         <p className="text-sm text-muted-foreground max-w-2xl">
-          Tell us what you want done. We&apos;ll find a repo that can do it,
-          try it safely in a sandbox, and bring back the result. Save the
-          ones worth keeping for next time.
+          Point at a GitHub repo and tell the agent what you want done.
+          We clone, install, and run it inside a sandbox; the result
+          comes back here. Your machine stays clean.
         </p>
       </header>
 
       <div className="space-y-8">
-        <DiscoveryPanel onLaunch={launch} />
+        <RunFromPromptForm onLaunch={launch} />
 
         {liveRunIds.length > 0 ? (
           <section>
@@ -82,14 +84,14 @@ export function ToolsClient() {
               ))}
             </ul>
           </section>
-        ) : (
-          <p className="text-[11px] text-muted-foreground inline-flex items-center gap-1.5 px-1">
-            <Info className="h-3 w-3" />
-            Click <span className="font-medium text-foreground/85">Run this</span> on a
-            real candidate above and the live sandbox run shows up here with the agent&apos;s
-            transcript and exported artifacts.
-          </p>
-        )}
+        ) : null}
+
+        <section>
+          <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
+            Or try a starter
+          </h2>
+          <DiscoveryPanel onLaunch={launch} />
+        </section>
 
         <section>
           <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">

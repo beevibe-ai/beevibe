@@ -126,6 +126,31 @@ function nowIso(): string {
   return new Date().toISOString();
 }
 
+/**
+ * Hard caps to keep run state bounded.
+ *
+ * Without these the transcript grows unboundedly (every tool call +
+ * result is an event) and the orchestrator's response payload to the
+ * UI gets enormous. 500 events with 4KB-each ceilings keeps any single
+ * RunState well under 2MB.
+ */
+const MAX_TRANSCRIPT_EVENTS = 500;
+const MAX_EVENT_TEXT_BYTES = 4_000;
+/** Friendly error rewrites for known failure modes from `docker`/`spawn`. */
+function classifyStartupError(err: unknown): string {
+  const raw = err instanceof Error ? err.message : String(err);
+  if (/Cannot connect to the Docker daemon/i.test(raw)) {
+    return "Docker isn't running. Start Docker Desktop and try the run again.";
+  }
+  if (/ENOENT.*docker/i.test(raw)) {
+    return "The `docker` CLI isn't on PATH. Install Docker Desktop (or set DOCKER_HOST).";
+  }
+  if (/no space left on device/i.test(raw)) {
+    return "Docker is out of disk. Prune containers/images or expand Docker Desktop's allotment.";
+  }
+  return raw;
+}
+
 export async function runRepoAgent(opts: OrchestratorOptions): Promise<RunState> {
   const state: RunState = {
     run_id: opts.run_id,
@@ -138,7 +163,28 @@ export async function runRepoAgent(opts: OrchestratorOptions): Promise<RunState>
   };
   const emit = (): void => opts.on_state?.({ ...state, transcript: state.transcript.slice(), artifacts: state.artifacts.slice() });
   const log = (kind: TranscriptEvent["kind"], text: string): void => {
-    state.transcript.push({ at: nowIso(), kind, text });
+    const trimmed =
+      text.length > MAX_EVENT_TEXT_BYTES
+        ? text.slice(0, MAX_EVENT_TEXT_BYTES) +
+          `\n…[truncated ${text.length - MAX_EVENT_TEXT_BYTES} bytes]…`
+        : text;
+    state.transcript.push({ at: nowIso(), kind, text: trimmed });
+    // Drop oldest events when over the cap. Keep the first event
+    // (usually the "Creating sandbox…" log) and the most recent N-1.
+    if (state.transcript.length > MAX_TRANSCRIPT_EVENTS) {
+      const overflow = state.transcript.length - MAX_TRANSCRIPT_EVENTS;
+      state.transcript.splice(1, overflow);
+      // Insert a synthetic notice on the first overflow so the UI
+      // can show "log truncated" without inserting it every event.
+      const alreadyMarked = state.transcript[1]?.text.startsWith("[log truncated:");
+      if (!alreadyMarked) {
+        state.transcript.splice(1, 0, {
+          at: nowIso(),
+          kind: "log",
+          text: `[log truncated: dropped ${overflow} earlier event${overflow === 1 ? "" : "s"}]`,
+        });
+      }
+    }
     emit();
   };
 
@@ -147,7 +193,11 @@ export async function runRepoAgent(opts: OrchestratorOptions): Promise<RunState>
     log("log", "Creating sandbox container…");
     state.status = "preparing";
     emit();
-    sandbox = await createSandbox({ label: `bv-run-${opts.run_id}` });
+    try {
+      sandbox = await createSandbox({ label: `bv-run-${opts.run_id}` });
+    } catch (err) {
+      throw new Error(classifyStartupError(err));
+    }
     state.sandbox_id = sandbox.id;
     log("log", `Sandbox ${sandbox.id} created (image ${sandbox.image}).`);
 
@@ -206,12 +256,15 @@ export async function runRepoAgent(opts: OrchestratorOptions): Promise<RunState>
     });
 
     if (claudeResult.exit_code !== 0 && claudeResult.exit_code !== null) {
+      const tail = claudeResult.stderr.slice(-500);
       log(
         "error",
-        `Child claude exited with code ${claudeResult.exit_code}: ${claudeResult.stderr.slice(-500)}`,
+        `Child claude exited with code ${claudeResult.exit_code}: ${tail}`,
       );
-      state.status = "failed";
-      state.error = `claude exit ${claudeResult.exit_code}`;
+      state.status = claudeResult.timed_out ? "blocked" : "failed";
+      state.error = claudeResult.timed_out
+        ? `Run hit the ${opts.max_runtime_seconds ?? 600}s wall-clock budget — agent didn't finish in time.`
+        : `Claude exited ${claudeResult.exit_code}.${tail ? " " + tail.slice(-200) : ""}`;
       state.finished_at = nowIso();
       emit();
       return state;
@@ -237,13 +290,15 @@ export async function runRepoAgent(opts: OrchestratorOptions): Promise<RunState>
     return state;
   } finally {
     if (sandbox) {
+      // Cleanup must not change the run's outcome — swallow errors and
+      // log them as a note rather than as a failure.
       try {
         log("log", `Destroying sandbox ${sandbox.id}…`);
         await destroySandbox(sandbox);
       } catch (err) {
         log(
-          "error",
-          `Destroy failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
+          "log",
+          `Sandbox cleanup note: ${err instanceof Error ? err.message : String(err)}. Run with \`docker ps -a --filter name=bv-run-\` to inspect.`,
         );
       }
     }
@@ -381,7 +436,10 @@ function runClaude(args: {
     });
     proc.on("error", (err) => {
       clearTimeout(timer);
-      args.onTranscript("error", `claude spawn error: ${err.message}`);
+      const friendly = /ENOENT/i.test(err.message)
+        ? `Claude CLI not found at ${args.claudeBin}. Set BEEVIBE_CLAUDE_BIN to the binary path.`
+        : `claude spawn error: ${err.message}`;
+      args.onTranscript("error", friendly);
       resolve({ exit_code: -1, stdout, stderr, timed_out: timedOut });
     });
     proc.on("close", (code) => {
