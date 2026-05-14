@@ -19,6 +19,7 @@
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { RuntimeConfig } from "@beevibe/core";
+import { firstNonEmptyLine } from "./format.js";
 import type { AgentDisplay, AgentNetwork, AgentPeerOwner } from "./types.js";
 
 // Defensive cap on the peer fetch. The agent graph is one orbit per
@@ -119,15 +120,6 @@ function rowToAgentDisplay(row: AgentRow): AgentDisplay {
     specialization,
     review_policy: (row.review_policy ?? undefined) as AgentDisplay["review_policy"],
   };
-}
-
-function firstNonEmptyLine(content: string | null | undefined): string | undefined {
-  if (!content) return undefined;
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed) return trimmed;
-  }
-  return undefined;
 }
 
 export async function getAgentNetwork(

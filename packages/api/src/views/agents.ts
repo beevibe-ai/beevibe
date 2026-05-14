@@ -7,7 +7,7 @@
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { HierarchyLevel, SessionStatus } from "@beevibe/core";
-import { deriveShortId, formatRelativeShort } from "./format.js";
+import { deriveShortId, firstNonEmptyLine, formatRelativeShort } from "./format.js";
 import type {
   AgentDisplay,
   AgentDetail,
@@ -94,15 +94,6 @@ function rowToAgentDisplay(row: AgentRow): AgentDisplay {
     preferred_runtime_id: row.preferred_runtime_id ?? undefined,
     archived_at: row.archived_at ? row.archived_at.toISOString() : undefined,
   };
-}
-
-function firstNonEmptyLine(content: string | null | undefined): string | undefined {
-  if (!content) return undefined;
-  for (const line of content.split("\n")) {
-    const trimmed = line.trim();
-    if (trimmed) return trimmed;
-  }
-  return undefined;
 }
 
 export async function listAgents(
