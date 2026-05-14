@@ -16,6 +16,8 @@
  *     10 concern (pg_notify('runtime_wakeup', json) + per-instance hubs).
  */
 
+import { RUNTIME_HEARTBEAT_INTERVAL_MS } from "@beevibe/core";
+
 export type DaemonPushPayload =
   | { type: "task_available"; runtime_id: string; session_id: string }
   | { type: "cancel"; session_id: string };
@@ -29,12 +31,36 @@ export interface DaemonClient {
 
 const DEDUP_CAP = 128;
 
+/**
+ * How recently we need to have heard from a daemon (HTTP heartbeat OR
+ * WS upgrade) for its runtimes to count as "online". Derived from the
+ * shared `RUNTIME_HEARTBEAT_INTERVAL_MS` so the two values can't drift —
+ * 2× gives one missed-beat of slack before flipping offline.
+ *
+ * Why this matters: `hasRuntime` only knows about WS pushes — a daemon
+ * whose WebSocket briefly dropped but is still heartbeating via HTTP
+ * looks "offline" to anyone checking `hasRuntime`, even though chat
+ * dispatches would land on the next 30s HTTP claim poll. `isOnline`
+ * adds the heartbeat fallback so the chat 503 fast-fail and the UI's
+ * online dot don't false-negative on WS blips.
+ */
+const ONLINE_FRESHNESS_MS = 2 * RUNTIME_HEARTBEAT_INTERVAL_MS;
+
 export class DaemonHub {
   private readonly byRuntimeId = new Map<string, Set<DaemonClient>>();
   private readonly byDaemonId = new Map<string, Set<DaemonClient>>();
   private readonly dedup = new WeakMap<DaemonClient, Set<string>>();
+  /**
+   * Last time we heard from each runtime, via WS upgrade or HTTP
+   * heartbeat. Read by `isOnline`. Bumped from `bumpLastSeen` (called
+   * by the heartbeat HTTP handler) and from `register` (called by
+   * RuntimeWsServer.onConnect). Process-local; lost on api restart,
+   * which is fine — the next heartbeat (within 15s) refills it.
+   */
+  private readonly lastSeen = new Map<string, number>();
 
   register(client: DaemonClient): void {
+    const now = Date.now();
     for (const rid of client.runtimeIds) {
       let bucket = this.byRuntimeId.get(rid);
       if (!bucket) {
@@ -42,6 +68,10 @@ export class DaemonHub {
         this.byRuntimeId.set(rid, bucket);
       }
       bucket.add(client);
+      // WS upgrade counts as a liveness signal — route through the same
+      // method as the HTTP heartbeat handler so there's one canonical
+      // path for "we just heard from this runtime."
+      this.bumpLastSeen(rid, now);
     }
     let dbucket = this.byDaemonId.get(client.daemonId);
     if (!dbucket) {
@@ -108,9 +138,35 @@ export class DaemonHub {
     return n;
   }
 
-  /** Is this runtime currently online (≥1 client subscribed)? */
+  /**
+   * Is this runtime currently WS-subscribed? Narrow — true only when a
+   * push-channel client is connected RIGHT NOW. Use this for things
+   * that need an immediate-delivery guarantee (`hub.notify` internal
+   * fan-out). For "is the daemon reachable at all," prefer `isOnline`.
+   */
   hasRuntime(runtimeId: string): boolean {
     return (this.byRuntimeId.get(runtimeId)?.size ?? 0) > 0;
+  }
+
+  /**
+   * Is this runtime reachable via any channel — WS push OR recent HTTP
+   * heartbeat? Broader than `hasRuntime`; this is what user-facing
+   * surfaces (chat 503 fast-fail, online dot) should use so a WS blip
+   * doesn't false-negative against a daemon that's still heartbeating.
+   */
+  isOnline(runtimeId: string, now: number = Date.now()): boolean {
+    if (this.hasRuntime(runtimeId)) return true;
+    const seen = this.lastSeen.get(runtimeId);
+    return seen !== undefined && now - seen <= ONLINE_FRESHNESS_MS;
+  }
+
+  /**
+   * Note a liveness signal for a runtime. Called by the HTTP heartbeat
+   * route so `isOnline` includes daemons whose WS dropped but are still
+   * heartbeating. WS register also bumps this implicitly.
+   */
+  bumpLastSeen(runtimeId: string, now: number = Date.now()): void {
+    this.lastSeen.set(runtimeId, now);
   }
 
   private deliver(

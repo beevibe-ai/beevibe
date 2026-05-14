@@ -92,7 +92,7 @@ export function createRuntimesRouter(deps: RuntimesRoutesDeps): Router {
           external_id: d.external_id,
           last_seen_at: d.last_seen_at ? d.last_seen_at.toISOString() : null,
           created_at: d.created_at.toISOString(),
-          runtimes: runtimes.map((r) => projectRuntime(r, deps.hub.hasRuntime(r.id))),
+          runtimes: runtimes.map((r) => projectRuntime(r, deps.hub.isOnline(r.id))),
         };
       }),
     );

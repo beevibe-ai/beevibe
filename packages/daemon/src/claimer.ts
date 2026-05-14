@@ -12,6 +12,7 @@
  */
 
 import WebSocket from "ws";
+import { RUNTIME_HEARTBEAT_INTERVAL_MS } from "@beevibe/core";
 import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
 import type { Supervisor } from "./supervisor.js";
@@ -31,7 +32,6 @@ export interface ClaimerConfig {
 }
 
 const DEFAULT_POLL_MS = 30_000;
-const DEFAULT_HEARTBEAT_MS = 15_000;
 const DEFAULT_WS_RECONNECT_MAX_MS = 30_000;
 
 interface PushPayload {
@@ -53,7 +53,7 @@ export class Claimer {
 
   constructor(private readonly cfg: ClaimerConfig) {
     this.pollIntervalMs = cfg.pollIntervalMs ?? DEFAULT_POLL_MS;
-    this.heartbeatIntervalMs = cfg.heartbeatIntervalMs ?? DEFAULT_HEARTBEAT_MS;
+    this.heartbeatIntervalMs = cfg.heartbeatIntervalMs ?? RUNTIME_HEARTBEAT_INTERVAL_MS;
     this.wsReconnectMaxDelayMs =
       cfg.wsReconnectMaxDelayMs ?? DEFAULT_WS_RECONNECT_MAX_MS;
   }
