@@ -236,6 +236,7 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
         <PanelFooterField label="ID">
           <ClickToCopyId id={agent.id} />
         </PanelFooterField>
+        <PanelFooterField label="Owner">{agent.owner_label ?? "—"}</PanelFooterField>
         <PanelFooterField label="Hierarchy">{agent.hierarchy}</PanelFooterField>
         {agent.runtime ? (
           <PanelFooterField label="Runtime">{agent.runtime}</PanelFooterField>

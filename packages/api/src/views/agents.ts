@@ -21,6 +21,7 @@ interface AgentRow {
   id: string;
   name: string;
   owner_id: string;
+  owner_label: string | null;
   parent_agent_id: string | null;
   hierarchy_level: HierarchyLevel;
   review_policy: string | null;
@@ -40,11 +41,13 @@ SELECT
   a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
   a.review_policy, a.runtime_config, a.preferred_runtime_id, a.archived_at,
   a.created_at, a.updated_at,
+  p.name                  AS owner_label,
   COALESCE(sc.n, 0)::int  AS sessions_count,
   COALESCE(fc.n, 0)::int  AS facts_learned,
   tl.content              AS tag_line,
   dm.content              AS domain_content
 FROM agent a
+LEFT JOIN person p ON p.id = a.owner_id
 LEFT JOIN (
   SELECT agent_id, COUNT(*)::int AS n
   FROM session
@@ -78,6 +81,7 @@ function rowToAgentDisplay(row: AgentRow): AgentDisplay {
     id: row.id,
     name: row.name,
     owner_id: row.owner_id,
+    owner_label: row.owner_label ?? undefined,
     parent_agent_id: row.parent_agent_id ?? undefined,
     hierarchy_level: row.hierarchy_level,
     created_at: row.created_at,
@@ -117,6 +121,7 @@ SELECT
   a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
   a.review_policy, a.runtime_config, a.preferred_runtime_id, a.archived_at,
   a.created_at, a.updated_at,
+  p.name AS owner_label,
   (SELECT COUNT(*)::int FROM session       WHERE agent_id = a.id) AS sessions_count,
   (SELECT COUNT(*)::int FROM memory_fact   WHERE agent_id = a.id) AS facts_learned,
   (SELECT content FROM core_memory_block
@@ -124,6 +129,7 @@ SELECT
   (SELECT content FROM core_memory_block
     WHERE agent_id = a.id AND block_name = 'domain'   LIMIT 1) AS domain_content
 FROM agent a
+LEFT JOIN person p ON p.id = a.owner_id
 WHERE a.id = $1
 LIMIT 1
 `;

@@ -86,6 +86,8 @@ export interface AgentDisplay
     Agent,
     "id" | "name" | "owner_id" | "parent_agent_id" | "hierarchy_level" | "created_at" | "updated_at"
   > {
+  /** Human-readable owner name (joined from person.name). */
+  owner_label?: string;
   /** Defaults to `name` but the UI may want a different display string. */
   display_name: string;
   hierarchy: HierarchyLevel;
