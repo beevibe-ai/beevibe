@@ -515,16 +515,12 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
         res.status(404).json({ error: "fact_not_found" });
         return;
       }
-      // Ownership lives on the agent, not the fact — verify by joining
-      // through agent.owner_id. Matches the read-side filter in
-      // listMemoryFacts.
+      // Ownership lives on the agent, not the fact — load the agent and
+      // verify owner_id. memory_fact.agent_id is NOT NULL with ON DELETE
+      // CASCADE (initial schema), so the agent is guaranteed to exist
+      // here. Matches the read-side filter in listMemoryFacts.
       const agent = await deps.agentRepo.findById(fact.agent_id);
-      if (!agent) {
-        // Orphan fact; treat as "not found" to avoid leaking existence.
-        res.status(404).json({ error: "fact_not_found" });
-        return;
-      }
-      if (agent.owner_id !== req.caller.personId) {
+      if (!agent || agent.owner_id !== req.caller.personId) {
         res.status(403).json({ error: "not_owner" });
         return;
       }

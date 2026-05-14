@@ -233,7 +233,7 @@ function FactRow({ fact }: { fact: MemoryFactDisplay }) {
             type="button"
             onClick={() => setConfirming(true)}
             aria-label="Delete fact"
-            className="h-7 w-7 inline-flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+            className="h-7 w-7 inline-flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 transition-opacity cursor-pointer"
           >
             <Trash2 className="h-3.5 w-3.5" />
           </button>
