@@ -1,6 +1,21 @@
+import type { HierarchyLevel } from "./agent.js";
+
 export type MemoryScope = "ic" | "team" | "org";
 
 export const MEMORY_SCOPES: readonly MemoryScope[] = ["ic", "team", "org"] as const;
+
+/**
+ * Identity converter from HierarchyLevel → MemoryScope. The two unions
+ * share the same string values today (`"ic" | "team" | "org"`) but are
+ * intentionally distinct nominal types: HierarchyLevel describes an
+ * agent's tier; MemoryScope describes a fact's visibility. Using this
+ * helper instead of a raw `as MemoryScope` cast documents the
+ * equivalence in code and gives us one place to revisit if the two
+ * sets ever diverge (e.g., a future "domain" memory scope below ic).
+ */
+export function hierarchyToScope(level: HierarchyLevel): MemoryScope {
+  return level;
+}
 
 export type FactType = "belief" | "pattern" | "gotcha" | "preference" | "decision";
 
