@@ -12,6 +12,44 @@ export const FACT_TYPES: readonly FactType[] = [
   "decision",
 ] as const;
 
+/**
+ * Per-fact-type guidance. Single source of truth — surfaced inside the
+ * `save_memory` tool's `fact_type` enum description so the agent sees
+ * the intent + the "don't save this" guards at decision time, before
+ * it writes. Mirrors the role of `BlockTemplate.description` for core
+ * memory.
+ *
+ * The failure-mode guards encoded here come from issue #90: agents
+ * over-saved (a) one-off scoped requests as durable preferences and
+ * (b) self-referential meta-patterns about their own search/save
+ * behavior. Each description names the trap explicitly.
+ */
+export const FACT_TYPE_DESCRIPTIONS: Record<FactType, string> = {
+  belief:
+    "A position you hold based on multiple sessions of evidence. A lasting view, " +
+    "not a fleeting reaction to one session.",
+  pattern:
+    "A recurring observation about the codebase or the domain you work in — " +
+    "knowledge another agent could reuse. NOT a pattern about your own behavior " +
+    "(your search habits, your memory-keeping, how you should have responded next " +
+    "time). Save the thing you learned about the world, not a note-to-self about " +
+    "how to behave.",
+  gotcha:
+    "A non-obvious thing-that-bites — a footgun that's easy to step on, where the " +
+    "surprise itself is the value. Concrete and reusable across future tasks in " +
+    "the same area.",
+  preference:
+    "A user's stated durable rule. Trigger words: \"always\", \"from now on\", " +
+    "\"every time\", \"as a default\", \"going forward\". Do NOT save preferences " +
+    "for one-off requests scoped to a specific task, session, or work-product " +
+    "(\"after this task\", \"for this audit\", \"now\"). When in doubt, just do the " +
+    "thing once without saving — the user can restate it if they want it to stick.",
+  decision:
+    "A chosen path with rationale. The \"why\" that future-you (or another agent) " +
+    "needs to understand why the codebase / approach looks the way it does — not " +
+    "the mechanical \"what\" (read the code for that).",
+};
+
 export interface MemoryFact {
   id: string;
   agent_id: string;
