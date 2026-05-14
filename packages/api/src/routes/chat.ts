@@ -499,7 +499,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
     // pending forever and the user gets a clear error rather than a
     // 90-second timeout. Null runtime_id (legacy executor fallback) is
     // fine — the in-process executor claims within ≤30s.
-    if (dispatchResult.runtime_id && !deps.hub.hasRuntime(dispatchResult.runtime_id)) {
+    if (dispatchResult.runtime_id && !deps.hub.isOnline(dispatchResult.runtime_id)) {
       rateOutcome.release();
       res.status(503).json({
         error: "agent_offline",

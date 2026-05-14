@@ -157,3 +157,44 @@ describe("DaemonHub.hasRuntime", () => {
     expect(hub.hasRuntime("rt_x")).toBe(false);
   });
 });
+
+describe("DaemonHub.isOnline", () => {
+  it("is true while a WS client is subscribed (mirrors hasRuntime)", () => {
+    const a = makeClient("dmn_a", ["rt_x"]);
+    hub.register(a);
+    expect(hub.isOnline("rt_x")).toBe(true);
+    hub.unregister(a);
+    // No HTTP heartbeat after unregister, but the register itself
+    // bumped lastSeen — within freshness window it's still online.
+    expect(hub.isOnline("rt_x")).toBe(true);
+  });
+
+  it("falls back to heartbeat freshness when no WS client is connected", () => {
+    const t0 = 1_000_000;
+    hub.bumpLastSeen("rt_x", t0);
+    // No register — purely an HTTP-heartbeat-only daemon.
+    expect(hub.hasRuntime("rt_x")).toBe(false);
+    expect(hub.isOnline("rt_x", t0 + 15_000)).toBe(true);
+    // 30s freshness window: at exactly 30s still online; past that, offline.
+    expect(hub.isOnline("rt_x", t0 + 30_000)).toBe(true);
+    expect(hub.isOnline("rt_x", t0 + 30_001)).toBe(false);
+  });
+
+  it("returns false for a runtime we've never heard from", () => {
+    expect(hub.isOnline("rt_never")).toBe(false);
+  });
+
+  it("survives a WS drop when heartbeats keep arriving", () => {
+    const t0 = 1_000_000;
+    const a = makeClient("dmn_a", ["rt_x"]);
+    hub.register(a); // bumps lastSeen at t=t0
+    hub.unregister(a);
+    // 25s later — past nothing yet, well within freshness even without
+    // a heartbeat top-up. (Real daemons heartbeat at 15s, so they'd
+    // refresh long before this.)
+    expect(hub.isOnline("rt_x", t0 + 25_000)).toBe(true);
+    // A heartbeat at t=29s extends the window.
+    hub.bumpLastSeen("rt_x", t0 + 29_000);
+    expect(hub.isOnline("rt_x", t0 + 50_000)).toBe(true);
+  });
+});

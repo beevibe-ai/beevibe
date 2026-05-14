@@ -125,13 +125,16 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
       res.status(400).json({ error: "invalid_body", message: "runtime_ids required" });
       return;
     }
+    const runtimeIds = body.runtime_ids.filter(
+      (id): id is string => typeof id === "string",
+    );
     try {
       await deps.daemonRepo.touchLastSeen(req.caller!.daemonId);
-      await Promise.all(
-        body.runtime_ids
-          .filter((id): id is string => typeof id === "string")
-          .map((id) => deps.runtimeRepo.heartbeat(id)),
-      );
+      await Promise.all(runtimeIds.map((id) => deps.runtimeRepo.heartbeat(id)));
+      // Mirror the DB heartbeat into the in-memory hub so `isOnline`
+      // (used by chat 503 + the runtimes panel dot) keeps returning
+      // true even if the WS push channel has dropped.
+      for (const id of runtimeIds) deps.hub.bumpLastSeen(id);
       res.status(204).send();
     } catch (err) {
       console.error("[runtime/heartbeat]", err);

@@ -170,11 +170,14 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
         daemonHub.notify(session.runtime_id, session.id);
       }
     },
-    // Mesh-typed dispatches whose preferred runtime isn't currently
-    // connected get demoted to server_fallback_mesh — the server-fallback
-    // worker picks them up with a restricted tool surface so cross-team
-    // asks don't silently break when the target's daemon is offline.
-    isRuntimeOnline: (runtimeId) => daemonHub.hasRuntime(runtimeId),
+    // Mesh-typed dispatches whose preferred runtime isn't reachable get
+    // demoted to server_fallback_mesh — the server-fallback worker picks
+    // them up with a restricted tool surface so cross-team asks don't
+    // silently break when the target's daemon is offline. Use `isOnline`
+    // (WS or fresh heartbeat) rather than the narrow `hasRuntime` (WS
+    // only); a daemon mid-WS-blip is still reachable via the HTTP claim
+    // poll within ~30s, no need to demote.
+    isRuntimeOnline: (runtimeId) => daemonHub.isOnline(runtimeId),
   });
 
   // M6.4 escalation service: DB-only writes for the resolution + dispatch
