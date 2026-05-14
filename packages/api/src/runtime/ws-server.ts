@@ -120,6 +120,12 @@ export class RuntimeWsServer {
       },
     };
     this.options.hub.register(client);
+    // Bump last_heartbeat for every runtime this client just subscribed to.
+    // The DB trigger on `runtime.last_heartbeat` fires `runtime.updated` SSE,
+    // which invalidates the web's `/runtimes` cache so the online dot
+    // updates immediately instead of waiting up to ~30s for the next HTTP
+    // heartbeat or the staleTime to expire.
+    void this.touchHeartbeats(runtimeIds);
     ws.on("pong", () => {
       client.alive = true;
     });
@@ -145,6 +151,21 @@ export class RuntimeWsServer {
     };
     ws.on("close", cleanup);
     ws.on("error", cleanup);
+  }
+
+  private async touchHeartbeats(runtimeIds: readonly string[]): Promise<void> {
+    await Promise.all(
+      runtimeIds.map(async (rid) => {
+        try {
+          await this.options.runtimeRepo.heartbeat(rid);
+        } catch (err) {
+          console.warn("[runtime/ws] heartbeat on connect failed", {
+            runtimeId: rid,
+            err: err instanceof Error ? err.message : String(err),
+          });
+        }
+      }),
+    );
   }
 }
 

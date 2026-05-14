@@ -16,11 +16,11 @@ import {
   type RuntimePanelEntry,
   type RuntimesListResponse,
 } from "@/lib/api/client";
-import { apiBaseUrl, getUserKey, isApiConfigured } from "@/lib/api/config";
+import { isApiConfigured } from "@/lib/api/config";
 import { describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
-import { CommandBlock } from "@/components/command-block";
+import { DaemonInstallInstructions } from "@/components/daemon-install";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { cn } from "@/lib/utils";
@@ -308,19 +308,5 @@ function AddAnotherMachine() {
 }
 
 function InstallSnippet() {
-  const userKey = typeof window !== "undefined" ? getUserKey() : null;
-  const apiUrl = apiBaseUrl ?? "http://localhost:3000";
-  const setupCmd = `pnpm daemon setup --api ${apiUrl} --user-token ${userKey ?? "<your-key>"}`;
-  const startCmd = `pnpm daemon start`;
-  return (
-    <div className="w-full max-w-xl space-y-2">
-      <CommandBlock label="1. Register" command={setupCmd} />
-      <CommandBlock label="2. Start (long-running)" command={startCmd} />
-      <p className="text-[11px] text-muted-foreground/80 leading-snug pt-1">
-        Run from a checkout of the beevibe repo. A published{" "}
-        <span className="font-mono">npx @beevibe/daemon</span> / brew tap
-        is on the roadmap so users can install without the repo.
-      </p>
-    </div>
-  );
+  return <DaemonInstallInstructions className="w-full max-w-xl" />;
 }

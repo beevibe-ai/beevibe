@@ -113,12 +113,20 @@ describe("RuntimeWsServer", () => {
 
   it("upgrades a valid daemon caller and registers it on the hub", async () => {
     const fx = await setupFixture();
+    expect((await runtimeRepo.findById(fx.runtimeId))?.last_heartbeat).toBeUndefined();
+
     const { ws } = await connect(`/runtime/ws?runtime_ids=${fx.runtimeId}`, {
       Authorization: `Bearer ${fx.daemonToken}`,
     });
     expect(ws).toBeDefined();
     expect(hub.size()).toBe(1);
     expect(hub.hasRuntime(fx.runtimeId)).toBe(true);
+
+    // Connect-time heartbeat bumps last_heartbeat so the DB trigger fires
+    // `runtime.updated` SSE and the web's online dot updates immediately
+    // instead of waiting for the next HTTP heartbeat.
+    await new Promise((r) => setTimeout(r, 30));
+    expect((await runtimeRepo.findById(fx.runtimeId))?.last_heartbeat).toBeInstanceOf(Date);
 
     // Notify reaches the live socket.
     const received = new Promise<string>((resolve) => ws!.once("message", (data) => {
