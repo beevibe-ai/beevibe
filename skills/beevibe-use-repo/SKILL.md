@@ -16,6 +16,21 @@ do the work.
 use_repo(repo_url, goal, inputs?, limits?)
 ```
 
+The sandbox is reached through five MCP tools. Your host `Bash` / `Read` /
+`Edit` / `Write` tools are denied — every shell command and every file
+operation goes through:
+
+  - `mcp__beevibe-sandbox__sandbox_exec(cmd, cwd?, timeout_seconds?)`
+  - `mcp__beevibe-sandbox__sandbox_read_file(path, max_bytes?)`
+  - `mcp__beevibe-sandbox__sandbox_write_file(path, content)`
+  - `mcp__beevibe-sandbox__sandbox_list(path)`
+  - `mcp__beevibe-sandbox__sandbox_export_artifact(sandbox_path, title?)`
+
+These tools are exposed by the per-run MCP server in `@beevibe/sandbox`.
+In claude-code's tool budgeting they ship as deferred tools — at the
+start of your work you may need to call `ToolSearch` once per tool with
+`select:<full-mcp-name>` to load them before invoking them.
+
 ## Inputs
 
 - `repo_url`, `goal` — required.

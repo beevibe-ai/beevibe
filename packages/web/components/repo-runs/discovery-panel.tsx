@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, PlayCircle, Sparkles } from "lucide-react";
+import { ExternalLink, Loader2, PlayCircle, Sparkles } from "lucide-react";
 import {
   FIXTURE_GOALS,
   fitLabel,
@@ -16,16 +16,37 @@ import { shortRepoLabel } from "@/lib/fixtures/repo-runs";
 import { cn } from "@/lib/utils";
 
 /**
- * "What do you need done?" — the entry point. User picks a goal from a
- * starter chip, we show 2–3 candidate repos with a one-line description
- * and a Run button. No score chips, no signal panels, no regime banners
- * surfaced to the user. The scoring that the agent does happens server-
- * side; this panel just renders the picks.
+ * "What do you need done?" — the entry point. Real `Run this` on
+ * candidates with `real_repo: true` (currently just pdfplumber); demo-
+ * only on the others until they're wired to live repos.
  */
-export function DiscoveryPanel() {
+export function DiscoveryPanel({
+  onLaunch,
+}: {
+  /** POSTs the run to the backend and returns the run_id. Parent surfaces it. */
+  onLaunch: (input: {
+    repo_url: string;
+    goal: string;
+    candidate: Candidate;
+  }) => Promise<string | null>;
+}) {
   const [slug, setSlug] = useState<string>(FIXTURE_GOALS[0]!.slug);
-  const [dispatched, setDispatched] = useState<Set<string>>(new Set());
+  const [launching, setLaunching] = useState<string | null>(null);
   const goal = getGoalBySlug(slug);
+
+  const launch = async (cand: Candidate, goalText: string): Promise<void> => {
+    if (!cand.real_repo) return;
+    setLaunching(cand.id);
+    try {
+      await onLaunch({
+        repo_url: cand.repo_url,
+        goal: cand.goal_override ?? goalText,
+        candidate: cand,
+      });
+    } finally {
+      setLaunching(null);
+    }
+  };
 
   return (
     <section className="rounded-lg border border-border bg-card">
@@ -52,14 +73,8 @@ export function DiscoveryPanel() {
       {goal ? (
         <CandidatesList
           goal={goal}
-          dispatched={dispatched}
-          onDispatch={(id) =>
-            setDispatched((prev) => {
-              const next = new Set(prev);
-              next.add(id);
-              return next;
-            })
-          }
+          launchingId={launching}
+          onLaunch={(cand) => launch(cand, goal.goal)}
         />
       ) : null}
     </section>
@@ -93,12 +108,12 @@ function GoalChip({
 
 function CandidatesList({
   goal,
-  dispatched,
-  onDispatch,
+  launchingId,
+  onLaunch,
 }: {
   goal: DiscoveryResult;
-  dispatched: Set<string>;
-  onDispatch: (id: string) => void;
+  launchingId: string | null;
+  onLaunch: (cand: Candidate) => void;
 }) {
   return (
     <ul className="divide-y divide-border/60">
@@ -106,8 +121,8 @@ function CandidatesList({
         <li key={c.id}>
           <CandidateRow
             candidate={c}
-            dispatched={dispatched.has(c.id)}
-            onDispatch={() => onDispatch(c.id)}
+            launching={launchingId === c.id}
+            onLaunch={() => onLaunch(c)}
           />
         </li>
       ))}
@@ -123,12 +138,12 @@ const FIT_DOT: Record<Fit, string> = {
 
 function CandidateRow({
   candidate: c,
-  dispatched,
-  onDispatch,
+  launching,
+  onLaunch,
 }: {
   candidate: Candidate;
-  dispatched: boolean;
-  onDispatch: () => void;
+  launching: boolean;
+  onLaunch: () => void;
 }) {
   return (
     <div className="p-4 flex items-start gap-4">
@@ -169,15 +184,22 @@ function CandidateRow({
         </div>
       </div>
       <div className="shrink-0 pt-1">
-        {dispatched ? (
-          <span className="inline-flex items-center gap-1.5 text-[11px] text-status-done">
-            <PlayCircle className="h-3.5 w-3.5" />
-            Started
+        {!c.real_repo ? (
+          <span
+            className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/70"
+            title="Wired up in a later PR — for the first POC only pdfplumber runs for real."
+          >
+            demo only
+          </span>
+        ) : launching ? (
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-status-running">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            Starting…
           </span>
         ) : (
           <button
             type="button"
-            onClick={onDispatch}
+            onClick={onLaunch}
             className={cn(
               "h-8 px-3 rounded text-xs font-medium transition-colors cursor-pointer inline-flex items-center gap-1.5",
               c.next === "run"

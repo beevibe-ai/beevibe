@@ -28,6 +28,19 @@ export interface Candidate {
   /** Number of times the org has used it (used for cold-start signal). */
   prior_org_uses: number;
   next: NextStep;
+  /**
+   * POC marker: when true, clicking `Run this` dispatches a real sandboxed
+   * run through the orchestrator. When false, the candidate is in the
+   * discovery list as a design demo only — clicking is disabled.
+   * The first POC only wires up `pdfplumber`.
+   */
+  real_repo?: boolean;
+  /**
+   * If the agent needs an explicit goal phrasing — e.g. "extract tables
+   * from THIS sample PDF" — set it here. The orchestrator gets this
+   * over the bare goal-chip text.
+   */
+  goal_override?: string;
 }
 
 export interface DiscoveryResult {
@@ -55,6 +68,9 @@ export const FIXTURE_GOALS: DiscoveryResult[] = [
         prior_team_uses: 0,
         prior_org_uses: 0,
         next: "run",
+        real_repo: true,
+        goal_override:
+          "Extract tables from the bundled sample PDF (tests/pdfs/federal-register-2020-17221.pdf in the repo) into structured JSON. Export the JSON as the artifact.",
       },
       {
         id: "tabula-py",
