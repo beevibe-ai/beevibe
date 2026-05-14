@@ -2,7 +2,7 @@
  * Demo seeder for the M7 manual smoke flow.
  *
  * Targets the *dev* DB (DATABASE_URL) — same DB the running `pnpm dev`
- * api+executor are connected to. Provisions a fixed topology so a human
+ * api+scheduler are connected to. Provisions a fixed topology so a human
  * can connect their own Claude Code CLI via the cloudflared tunnel +
  * bv_u_ token and exercise the MCP tool surface:
  *

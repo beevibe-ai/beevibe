@@ -143,5 +143,3 @@ pnpm --filter @beevibe/api build
 pnpm --filter @beevibe/api typecheck
 pnpm --filter @beevibe/api test
 ```
-
-End-to-end smokes for the api are in [`/scripts/m6-e2e.ts`](../../scripts/m6-e2e.ts) (in-process) and [`/scripts/m7-e2e.ts`](../../scripts/m7-e2e.ts) (multi-process) — both gated by env flags, see the [root README](../../README.md).
