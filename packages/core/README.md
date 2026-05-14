@@ -35,7 +35,6 @@ Tree-shake-friendly subpaths via the `exports` map in `package.json`:
 | `@beevibe/core/auth` | API-key validation, `ResolvedCaller`, `provisionAgent` |
 | `@beevibe/core/adapters/postgres` | All 10 repository implementations + `createPool` |
 | `@beevibe/core/adapters/claude-code` | `ClaudeCodeRuntime` (spawns `claude` CLI) |
-| `@beevibe/core/adapters/opencode` | `OpenCodeRuntime` (spawns `opencode` CLI for OpenRouter, Ollama, and OpenAI-compatible providers) |
 | `@beevibe/core/adapters/openai` | `OpenAIEmbeddingService`, `OpenAILlmProvider` |
 | `@beevibe/core/adapters/anthropic` | `AnthropicLlmProvider` |
 | `@beevibe/core/adapters/local-workspace` | `LocalWorkspaceManager` |
@@ -113,7 +112,6 @@ Every external dependency lives behind a port. New runtimes (e.g., a different C
 |---|---|---|
 | `postgres/` | All 10 repos + `createPool` | Raw `pg` driver, no ORM. Schema in [`/migrations/`](../../migrations). |
 | `claude-code/` | `AgentRuntime` | Spawns `claude` CLI as subprocess, parses stream-JSON output, captures cache tokens. |
-| `opencode/` | `AgentRuntime` | Spawns `opencode run --format json`; delegates provider/model plumbing to OpenCode for OpenRouter, Ollama, and OpenAI-compatible endpoints. |
 | `openai/` | `EmbeddingService`, `LlmProvider` | `text-embedding-3-small` (1536 dims), GPT-4o for fact merging. |
 | `anthropic/` | `LlmProvider` | Claude Sonnet for fact promotion (native JSON schema output). |
 | `local-workspace/` | `WorkspaceManager` | Per-agent dirs under `~/.beevibe/workspaces/<agent_id>/`, manages `mcp-config.json`. |
