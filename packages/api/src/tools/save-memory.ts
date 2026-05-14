@@ -65,13 +65,10 @@ export function createSaveMemoryTool(
       "retrieval across all future sessions. Store self-contained facts that " +
       "stand alone when retrieved later (no \"we\", \"the user\", \"recently\" " +
       "— name specific entities and use definite language). One sentence per " +
-      "call; for multiple facts, call the tool multiple times. See the " +
-      "`fact_type` parameter for per-type guidance — each type has a narrow " +
-      "purpose, and if no type fits cleanly you probably shouldn't save the " +
-      "fact. The save date is auto-stamped — future retrievals show " +
-      "saved=YYYY-MM-DD so old facts can be judged for staleness. Persists " +
-      "across sessions; retrievable via the briefing's vector recall and via " +
-      "search_context.",
+      "call; for multiple facts, call the tool multiple times. The save date " +
+      "is auto-stamped — future retrievals show saved=YYYY-MM-DD so old facts " +
+      "can be judged for staleness. Persists across sessions; retrievable via " +
+      "the briefing's vector recall and via search_context.",
     schema: SAVE_MEMORY_SCHEMA as Record<string, unknown>,
     handler: async (input) => {
       const content = input.content;
