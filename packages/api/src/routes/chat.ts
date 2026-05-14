@@ -394,14 +394,25 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
 
     const truncated = chain.sessions.slice(-Math.ceil(HISTORY_LIMIT / 2)); // each session = 2 messages
     const messages = chainToMessages({ head_id: chain.head_id, sessions: truncated });
+    const latest = chain.sessions[chain.sessions.length - 1]!;
+    // If the tail session is still in flight, surface its id so the chat
+    // UI can resume the "agent is thinking" indicator after a navigation
+    // away — without this, the local-only `mutation.isPending` gate
+    // means the indicator disappears the moment the user leaves /chat
+    // and returns. chainToMessages already skips pending sessions
+    // (no result_summary, status !== 'failed'), so the user message is
+    // present but the agent reply slot is empty until SSE auto-recovery
+    // (PR #116) lands the response.
+    const pendingSessionId =
+      latest.status === "pending" || latest.status === "running" ? latest.id : undefined;
 
     res.json({
       ok: true,
       agent: { id: agent.id, name: agent.name, hierarchy: agent.hierarchy_level },
       messages,
-      // Latest session id so the next turn chains correctly.
-      prior_session_id: chain.sessions[chain.sessions.length - 1]!.id,
+      prior_session_id: latest.id,
       conversation_id: chain.head_id,
+      pending_session_id: pendingSessionId,
     });
   });
 

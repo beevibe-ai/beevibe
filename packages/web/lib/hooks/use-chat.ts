@@ -230,17 +230,24 @@ export function useChat(opts: UseChatOptions = {}) {
     if (mutationIsError && lastRole === "agent") resetMutation();
   }, [mutationIsError, lastRole, resetMutation]);
 
+  // pendingSessionId source-of-truth: the local mutation while it's in
+  // flight, otherwise the server-reported in-flight session (set by the
+  // /chat handler when the conversation's tail session is still running).
+  // The second source survives navigation away + back — without it, the
+  // "agent thinking" indicator vanishes the moment the user leaves /chat.
+  const localPendingSessionId = mutation.isPending ? mutation.variables?.sessionId : undefined;
+  const serverPendingSessionId = history.data?.pending_session_id;
+  const pendingSessionId = localPendingSessionId ?? serverPendingSessionId;
+
   return {
     messages,
     send,
-    isPending: mutation.isPending,
+    // Reflect EITHER source — input stays disabled and the thinking
+    // indicator stays visible while any pending session exists, not
+    // just while the local mutation is in flight.
+    isPending: mutation.isPending || serverPendingSessionId !== undefined,
     error: mutation.error,
-    /**
-     * Session id of the in-flight turn — derived from the mutation's input
-     * variables while pending so the chat UI can subscribe to `session.step`
-     * SSE events for this turn.
-     */
-    pendingSessionId: mutation.isPending ? mutation.variables?.sessionId : undefined,
+    pendingSessionId,
     /** History query state, for showing a "loading prior conversation…" indicator. */
     isLoadingHistory: history.isLoading,
   };
