@@ -14,6 +14,7 @@ import { queryKeys } from "@/lib/hooks/keys";
 import { Avatar } from "@/components/avatar";
 import { HierChip } from "@/components/hier-chip";
 import { CoreBlockCard } from "@/components/agents/core-block-card";
+import { RecentSessionRow } from "@/components/agents/recent-session-row";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
@@ -22,14 +23,7 @@ import { FooterField } from "@/components/detail/footer-field";
 import { Metric } from "@/components/detail/metric";
 import { cn } from "@/lib/utils";
 import type { AgentDetail } from "@/lib/api/types";
-import type { RecentSession } from "@/lib/types/agents";
 import type { ReviewPolicy } from "@beevibe/core";
-
-const RECENT_SESSION_DOT: Record<RecentSession["status"], string> = {
-  running: "bg-status-running animate-pulse-breathe",
-  review: "bg-status-review",
-  succeeded: "bg-status-done",
-};
 
 const AgentsBackLink = () => (
   <Link
@@ -210,7 +204,11 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
             ) : (
               <ul className="space-y-2">
                 {agent.recent_sessions.map((s, i) => (
-                  <RecentSessionRow key={s.short_id ?? i} session={s} />
+                  <RecentSessionRow
+                    key={s.short_id ?? i}
+                    session={s}
+                    variant="comfortable"
+                  />
                 ))}
               </ul>
             )}
@@ -264,44 +262,6 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         ) : null}
       </footer>
     </DetailShell>
-  );
-}
-
-function RecentSessionRow({ session }: { session: RecentSession }) {
-  const rowInner = (
-    <>
-      <span
-        className={cn("h-1.5 w-1.5 rounded-full", RECENT_SESSION_DOT[session.status])}
-        aria-hidden
-      />
-      <span className="flex-1 min-w-0 truncate">{session.title}</span>
-      {session.short_id ? (
-        <span className="font-mono text-xs text-muted-foreground">{session.short_id}</span>
-      ) : null}
-      <span className="text-xs text-muted-foreground tabular-nums shrink-0">{session.age}</span>
-    </>
-  );
-
-  // Without a short_id we can't route anywhere — render unlinked so we
-  // don't ship a dead <Link>. RecentSession.short_id is currently always
-  // populated in practice; this is defensive against future shapes.
-  if (!session.short_id) {
-    return (
-      <li className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm">
-        {rowInner}
-      </li>
-    );
-  }
-
-  return (
-    <li>
-      <Link
-        href={`/sessions/${session.short_id}`}
-        className="flex items-center gap-2 rounded-lg border border-border bg-card px-3 py-2 text-sm hover:bg-secondary/50 hover:border-border/80 transition-colors cursor-pointer"
-      >
-        {rowInner}
-      </Link>
-    </li>
   );
 }
 
