@@ -290,6 +290,16 @@ export interface ChatHistoryResponse {
   prior_session_id: string | null;
   /** Head session id of the conversation these messages belong to. */
   conversation_id: string | null;
+  /**
+   * Set when the conversation's tail session is still in flight
+   * (status `pending` or `running`). Lets the chat UI resume the
+   * "agent thinking" indicator after a navigation away — the local
+   * mutation's isPending flag only covers the in-page round-trip,
+   * not server-side turns that started in a different tab or before
+   * a refresh. Subscribe via useChatStream() to drive the live
+   * transcript.
+   */
+  in_flight_session_id?: string;
 }
 
 export interface ChatConversationSummary {

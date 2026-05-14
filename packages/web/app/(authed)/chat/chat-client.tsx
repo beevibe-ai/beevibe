@@ -56,7 +56,7 @@ export function ChatClient() {
   const conversationParam = searchParams?.get("c") ?? undefined;
   const isFresh = searchParams?.get("new") === "1";
 
-  const { messages, send, isPending, error, pendingSessionId } = useChat({
+  const { messages, send, isPending, isSubmitting, error, pendingSessionId } = useChat({
     conversationId: conversationParam,
     fresh: isFresh,
   });
@@ -65,15 +65,17 @@ export function ChatClient() {
 
   // After the user sends their first message in a `?new=1` surface, drop
   // the `new` param so reload restores the just-started conversation
-  // instead of bouncing the user back into an empty surface.
+  // instead of bouncing the user back into an empty surface. Gate on
+  // `isSubmitting` (local mutation) — a foreign-tab pending session
+  // shouldn't keep this surface stuck on `?new=1`.
   useEffect(() => {
-    if (isFresh && messages.length > 0 && !isPending) {
+    if (isFresh && messages.length > 0 && !isSubmitting) {
       const sp = new URLSearchParams(searchParams?.toString() ?? "");
       sp.delete("new");
       const qs = sp.toString();
       router.replace(qs ? `/chat?${qs}` : "/chat");
     }
-  }, [isFresh, messages.length, isPending, searchParams, router]);
+  }, [isFresh, messages.length, isSubmitting, searchParams, router]);
 
   // First-run gate: if the caller hasn't completed the welcome wizard
   // and didn't arrive here from it, bounce them to the wizard.
@@ -170,7 +172,7 @@ export function ChatClient() {
                   onKeyDown={onKeyDown}
                   placeholder="Ask your team agent…  (Enter to send, Shift+Enter for newline)"
                   rows={2}
-                  disabled={isPending}
+                  disabled={isSubmitting}
                   className="flex-1 rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none disabled:opacity-60"
                 />
                 <button
