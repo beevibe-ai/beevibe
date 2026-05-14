@@ -33,7 +33,11 @@ import {
   type RuntimeRepository,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
-import type { CoreMemory } from "@beevibe/core/services/memory";
+import {
+  BlockCharLimitExceededError,
+  BlockNotFoundError,
+  type CoreMemory,
+} from "@beevibe/core/services/memory";
 import { listTasks, getTask, type TaskListFilter } from "../views/tasks.js";
 import {
   TASK_STATUSES_BY_LIFECYCLE,
@@ -373,30 +377,17 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
         res.status(403).json({ error: "not_owner" });
         return;
       }
-      // CoreMemory.setContent handles block-exists + char_limit guards;
-      // surface those as 4xx instead of leaking as 500.
-      try {
-        const updated = await deps.coreMemory.setContent(id, blockName, body.content);
-        res.json({
-          ok: true,
-          block_name: updated.block_name,
-          char_count: updated.content.length,
-          char_limit: updated.char_limit,
-          updated_at: updated.updated_at.toISOString(),
-        });
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        if (msg.includes("not found")) {
-          res.status(404).json({ error: "block_not_found", message: msg });
-          return;
-        }
-        if (msg.includes("char_limit")) {
-          res.status(400).json({ error: "char_limit_exceeded", message: msg });
-          return;
-        }
-        throw err;
-      }
+      await deps.coreMemory.setContent(id, blockName, body.content);
+      res.json({ ok: true });
     } catch (err) {
+      if (err instanceof BlockNotFoundError) {
+        res.status(404).json({ error: "block_not_found", message: err.message });
+        return;
+      }
+      if (err instanceof BlockCharLimitExceededError) {
+        res.status(400).json({ error: "char_limit_exceeded", message: err.message });
+        return;
+      }
       handleError(err, res, "agent core_memory update");
     }
   });

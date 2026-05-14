@@ -38,7 +38,7 @@ export function CoreBlockCard({
   const [editing, setEditing] = useState(false);
   if (editing) {
     return (
-      <BlockShell accent={block.block_name === "persona" ? "primary" : undefined}>
+      <BlockShell accent={blockAccent(block.block_name)}>
         <BlockEditor
           agentId={agentId}
           block={block}
@@ -108,7 +108,7 @@ function BlockEditor({
       <div className="flex items-center gap-2 justify-end">
         {mutation.isError ? (
           <span className="mr-auto text-xs text-destructive">
-            {mutation.error instanceof Error ? mutation.error.message : "Save failed"}
+            {mutation.error?.message ?? "Save failed"}
           </span>
         ) : null}
         <button
@@ -206,12 +206,21 @@ function formatCount(n: number): string {
 
 // ── Persona — identity prose ─────────────────────────────────────────
 
+/**
+ * Map a block_name to its visual accent. Persona gets the primary left
+ * stripe to read as a quote / mission-statement; others use the default
+ * border. Centralised so the edit-mode shell (CoreBlockCard) and the
+ * view-mode block components don't drift.
+ */
+function blockAccent(blockName: string): "primary" | undefined {
+  return blockName === "persona" ? "primary" : undefined;
+}
+
 function PersonaBlock({ block, onEdit }: { block: CoreBlockDisplay; onEdit?: () => void }) {
   // Persona is short by nature (~400 chars), so no collapse — show the
-  // whole identity statement at once. Primary left accent stripe makes
-  // it read as a quote / mission-statement instead of a config field.
+  // whole identity statement at once.
   return (
-    <BlockShell accent="primary">
+    <BlockShell accent={blockAccent(block.block_name)}>
       <BlockHeader block={block} kindLabel="Identity" onEdit={onEdit} />
       <div className="text-sm text-foreground/85 italic">
         <ChatMarkdown content={block.content} />

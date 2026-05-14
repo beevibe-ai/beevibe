@@ -78,6 +78,10 @@ export class CoreMemory {
    * append/replace-substring path, this is the human's "rewrite the whole
    * block" path — used by the agent detail page's Edit affordance. Same
    * char_limit + block-existence guards.
+   *
+   * Throws {@link BlockNotFoundError} or {@link BlockCharLimitExceededError}
+   * so HTTP callers can map to 4xx via `instanceof` (mirrors the
+   * TaskNotFoundError / InvalidTaskTransitionError pattern in task-service).
    */
   async setContent(
     agentId: string,
@@ -86,16 +90,27 @@ export class CoreMemory {
   ): Promise<CoreMemoryBlock> {
     const block = await this.deps.repo.findOne(agentId, blockName);
     if (!block) {
-      throw new Error(
-        `Block "${blockName}" not found for agent ${agentId} — initDefaults first`,
-      );
+      throw new BlockNotFoundError(agentId, blockName);
     }
     if (content.length > block.char_limit) {
-      throw new Error(
-        `Block "${blockName}" would exceed char_limit ${block.char_limit} ` +
-          `(new length ${content.length})`,
-      );
+      throw new BlockCharLimitExceededError(blockName, block.char_limit, content.length);
     }
     return this.deps.repo.updateContent(agentId, blockName, content);
+  }
+}
+
+export class BlockNotFoundError extends Error {
+  constructor(agentId: string, blockName: string) {
+    super(`Block "${blockName}" not found for agent ${agentId} — initDefaults first`);
+    this.name = "BlockNotFoundError";
+  }
+}
+
+export class BlockCharLimitExceededError extends Error {
+  constructor(blockName: string, limit: number, attempted: number) {
+    super(
+      `Block "${blockName}" would exceed char_limit ${limit} (new length ${attempted})`,
+    );
+    this.name = "BlockCharLimitExceededError";
   }
 }
