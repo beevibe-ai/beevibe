@@ -138,22 +138,6 @@ importers:
         specifier: ^8.5.13
         version: 8.18.1
 
-  packages/sandbox:
-    dependencies:
-      '@modelcontextprotocol/sdk':
-        specifier: ^1.0.0
-        version: 1.29.0(zod@4.4.1)
-    devDependencies:
-      '@types/node':
-        specifier: ^20.16.0
-        version: 20.19.39
-      tsx:
-        specifier: ^4.19.0
-        version: 4.21.0
-      vitest:
-        specifier: ^2.1.0
-        version: 2.1.9(@types/node@20.19.39)(happy-dom@15.11.7)
-
   packages/scheduler:
     dependencies:
       '@beevibe/core':
@@ -178,9 +162,6 @@ importers:
       '@beevibe/core':
         specifier: workspace:*
         version: link:../core
-      '@beevibe/sandbox':
-        specifier: workspace:*
-        version: link:../sandbox
       '@tanstack/react-query':
         specifier: ^5.59.0
         version: 5.100.5(react@18.3.1)
@@ -4605,6 +4586,14 @@ snapshots:
       chai: 5.3.3
       tinyrainbow: 1.2.0
 
+  '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@20.19.39))':
+    dependencies:
+      '@vitest/spy': 2.1.9
+      estree-walker: 3.0.3
+      magic-string: 0.30.21
+    optionalDependencies:
+      vite: 5.4.21(@types/node@20.19.39)
+
   '@vitest/mocker@2.1.9(vite@5.4.21(@types/node@25.6.0))':
     dependencies:
       '@vitest/spy': 2.1.9
@@ -7503,7 +7492,7 @@ snapshots:
   vitest@2.1.9(@types/node@20.19.39)(happy-dom@15.11.7):
     dependencies:
       '@vitest/expect': 2.1.9
-      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@25.6.0))
+      '@vitest/mocker': 2.1.9(vite@5.4.21(@types/node@20.19.39))
       '@vitest/pretty-format': 2.1.9
       '@vitest/runner': 2.1.9
       '@vitest/snapshot': 2.1.9
