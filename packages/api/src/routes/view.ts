@@ -27,6 +27,7 @@ import {
   type AgentRepository,
   type DaemonRepository,
   type KnownCli,
+  type MemoryFactRepository,
   type MemoryScope,
   type ReviewPolicy,
   type RuntimeConfig,
@@ -64,6 +65,8 @@ export interface ViewRoutesDeps {
   daemonRepo: DaemonRepository;
   /** Backs `POST /agent/:id/core-memory/:blockName` (owner block edits). */
   coreMemory: CoreMemory;
+  /** Backs `DELETE /memory/fact/:id` (owner-driven memory cleanup). */
+  memoryFactRepo: MemoryFactRepository;
 }
 
 const LIFECYCLES = new Set<Lifecycle>(
@@ -496,6 +499,37 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(facts);
     } catch (err) {
       handleError(err, res, "memory fact list");
+    }
+  });
+
+  router.delete("/memory/fact/:id", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "missing_fact_id" });
+      return;
+    }
+    try {
+      const fact = await deps.memoryFactRepo.findById(id);
+      if (!fact) {
+        res.status(404).json({ error: "fact_not_found" });
+        return;
+      }
+      // Ownership lives on the agent, not the fact — load the agent and
+      // verify owner_id. memory_fact.agent_id is NOT NULL with ON DELETE
+      // CASCADE (initial schema), so the agent is guaranteed to exist
+      // here. Matches the read-side filter in listMemoryFacts.
+      const agent = await deps.agentRepo.findById(fact.agent_id);
+      if (!agent || agent.owner_id !== req.caller.personId) {
+        res.status(403).json({ error: "not_owner" });
+        return;
+      }
+      await deps.memoryFactRepo.delete(id);
+      // DELETE trigger on memory_fact fires `memory.fact.deleted` SSE
+      // (migration 1780600000000) → web invalidates the memory list.
+      res.json({ ok: true, fact_id: id });
+    } catch (err) {
+      handleError(err, res, "memory fact delete");
     }
   });
 

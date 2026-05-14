@@ -441,6 +441,16 @@ export const api = {
         query: { ...filter },
         signal: opts.signal,
       }),
+    /**
+     * Owner-driven delete. Lets users correct over-saved facts (issue
+     * #90 fix D) without waiting for FactPromoter or running SQL. The
+     * server fires `memory.fact.deleted` SSE so other tabs refresh.
+     */
+    deleteFact: (factId: string) =>
+      fetchJson<{ ok: true; fact_id: string }>(
+        `/memory/fact/${encodeURIComponent(factId)}`,
+        { method: "DELETE" },
+      ),
   },
   // Surfaces below depend on backend slices that haven't shipped yet
   // (dashboard/mesh need a data/display split; threads/promotions lack a
