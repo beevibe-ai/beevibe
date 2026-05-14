@@ -162,6 +162,13 @@ Before searching: check if the answer is already in your <core_memory>
 blocks or the <archival_memory> block from your session-start briefing —
 never call search_context for facts already in your in-context memory.
 
+If search returns empty and the question is about a completed task,
+list_work_products(task_id) and re-read the relevant work product's
+summary BEFORE concluding you can't answer. Memory is a cache; the
+work product is the source of truth for what the task produced.
+Treating "no archival hit" as "no answer" makes you fail on questions
+the work product itself can answer.
+
 Promotion ladder (archival is the default, core is reserved):
 - save_memory writes archival — cheap and forgiving; that's where new
   facts should go.

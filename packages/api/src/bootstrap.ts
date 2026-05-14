@@ -325,6 +325,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     runtimeRepo,
     daemonRepo,
     coreMemory,
+    memoryFactRepo,
   });
   server.getApp().use(viewRouter);
 

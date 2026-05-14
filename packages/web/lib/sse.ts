@@ -51,6 +51,7 @@ const eventInvalidations: Record<string, InvalidationKey[]> = {
     queryKeys.chat.history(undefined),
   ],
   "memory.fact.created": [queryKeys.memory.all],
+  "memory.fact.deleted": [queryKeys.memory.all],
   "promotion.created": [queryKeys.promotions.all, queryKeys.memory.all],
   "mesh.activity": [queryKeys.mesh.all, queryKeys.activity.all, queryKeys.inbox.all],
   "room.message": [queryKeys.rooms.all, queryKeys.activity.all],

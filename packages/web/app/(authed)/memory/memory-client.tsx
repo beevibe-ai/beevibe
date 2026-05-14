@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowUpDown,
@@ -12,6 +13,7 @@ import {
   Search,
   Sparkles,
   Tags,
+  Trash2,
 } from "lucide-react";
 import type { MemoryScope } from "@beevibe/core";
 import { ScopeTabs, type ScopeFilter } from "@/components/memory/scope-tabs";
@@ -23,6 +25,8 @@ import { RichTextRender } from "@/components/rich-text";
 import { useMemoryFacts } from "@/lib/hooks/use-memory";
 import { useSlashFocus } from "@/lib/hooks/use-slash-focus";
 import { isApiConfigured } from "@/lib/api/config";
+import { api } from "@/lib/api/client";
+import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
 import type { MemoryFactDisplay, FactCounts } from "@/lib/types/memory-facts";
 
@@ -88,6 +92,7 @@ export function MemoryClient() {
               <Th icon={<Layers className="h-3.5 w-3.5" />}>Scope</Th>
               <Th icon={<Bot className="h-3.5 w-3.5" />}>Agent</Th>
               <Th icon={<Clock className="h-3.5 w-3.5" />}>Created</Th>
+              <th className="w-10 px-3 py-2.5" aria-label="Actions" />
             </tr>
           </thead>
           <tbody>
@@ -118,7 +123,7 @@ function Body({
   if (!isApiConfigured) {
     return (
       <tr>
-        <td colSpan={5}>
+        <td colSpan={6}>
           <EmptyState
             icon={Sparkles}
             title="No facts learned yet"
@@ -132,7 +137,7 @@ function Body({
   if (isError) {
     return (
       <tr>
-        <td colSpan={5}>
+        <td colSpan={6}>
           <EmptyState icon={AlertTriangle} title="Couldn't load memory" />
         </td>
       </tr>
@@ -152,7 +157,7 @@ function Body({
   if (facts.length === 0) {
     return (
       <tr>
-        <td colSpan={5}>
+        <td colSpan={6}>
           <EmptyState
             icon={Sparkles}
             title={hasQuery ? "No matching facts" : "No facts learned yet"}
@@ -171,23 +176,70 @@ function Body({
   return (
     <>
       {facts.map((fact) => (
-        <tr key={fact.id} className="border-t border-border">
-          <td className="px-3 py-3">
-            <RichTextRender value={fact.content} />
-          </td>
-          <td className="px-3 py-3">
-            <FactTypeTag type={fact.fact_type} />
-          </td>
-          <td className="px-3 py-3">
-            <ScopeChip scope={fact.scope} />
-          </td>
-          <td className="px-3 py-3 text-xs text-muted-foreground">{fact.agent_label}</td>
-          <td className="px-3 py-3 text-xs text-muted-foreground tabular-nums">
-            {formatRelativeTime(fact.created_at)}
-          </td>
-        </tr>
+        <FactRow key={fact.id} fact={fact} />
       ))}
     </>
+  );
+}
+
+function FactRow({ fact }: { fact: MemoryFactDisplay }) {
+  const [confirming, setConfirming] = useState(false);
+  const queryClient = useQueryClient();
+  const mutation = useMutation({
+    mutationFn: () => api.memory.deleteFact(fact.id),
+    onSuccess: () => {
+      // SSE `memory.fact.deleted` will also invalidate, but local invalidate
+      // is the fast path so the row disappears before the round-trip lands.
+      void queryClient.invalidateQueries({ queryKey: queryKeys.memory.all });
+    },
+  });
+  return (
+    <tr className="group border-t border-border">
+      <td className="px-3 py-3">
+        <RichTextRender value={fact.content} />
+      </td>
+      <td className="px-3 py-3">
+        <FactTypeTag type={fact.fact_type} />
+      </td>
+      <td className="px-3 py-3">
+        <ScopeChip scope={fact.scope} />
+      </td>
+      <td className="px-3 py-3 text-xs text-muted-foreground">{fact.agent_label}</td>
+      <td className="px-3 py-3 text-xs text-muted-foreground tabular-nums">
+        {formatRelativeTime(fact.created_at)}
+      </td>
+      <td className="px-3 py-3 text-right">
+        {confirming ? (
+          <span className="inline-flex items-center gap-1">
+            <button
+              type="button"
+              onClick={() => setConfirming(false)}
+              disabled={mutation.isPending}
+              className="text-xs text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50 cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => mutation.mutate()}
+              disabled={mutation.isPending}
+              className="text-xs font-medium text-destructive hover:opacity-80 transition-opacity disabled:opacity-50 cursor-pointer"
+            >
+              {mutation.isPending ? "Deleting…" : "Confirm"}
+            </button>
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setConfirming(true)}
+            aria-label="Delete fact"
+            className="h-7 w-7 inline-flex items-center justify-center rounded text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+          >
+            <Trash2 className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </td>
+    </tr>
   );
 }
 
