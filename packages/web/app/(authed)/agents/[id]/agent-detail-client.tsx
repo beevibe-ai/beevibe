@@ -21,6 +21,8 @@ import { DetailShell } from "@/components/detail/detail-shell";
 import { FooterField } from "@/components/detail/footer-field";
 import { Metric } from "@/components/detail/metric";
 import { cn } from "@/lib/utils";
+import { AgentSavedToolsSection } from "@/components/repo-runs/saved-skills";
+import { getSavedToolsForAgentHierarchy } from "@/lib/fixtures/repo-runs";
 import type { AgentDetail } from "@/lib/api/types";
 import type { RecentSession } from "@/lib/types/agents";
 import type { ReviewPolicy } from "@beevibe/core";
@@ -192,6 +194,10 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
               </div>
             )}
           </section>
+
+          <AgentSavedToolsSection
+            tools={getSavedToolsForAgentHierarchy(agent.hierarchy)}
+          />
 
           <section>
             <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">

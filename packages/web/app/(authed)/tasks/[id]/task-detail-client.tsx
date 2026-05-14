@@ -26,6 +26,8 @@ import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { richTextToMarkdown } from "@/components/rich-text";
 import { formatRelativeTime, shortId } from "@/lib/format";
+import { RepoRunsSection } from "@/components/repo-runs/repo-runs-section";
+import { getRunsForTask } from "@/lib/fixtures/repo-runs";
 import type { TaskDetail, TaskDetailSessionRow } from "@/lib/api/types";
 import type { WorkProduct } from "@beevibe/core";
 
@@ -232,6 +234,12 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
               </div>
             </section>
           ) : null}
+
+          <RepoRunsSection
+            runs={getRunsForTask(task.id)}
+            taskId={task.id}
+            heading="Tool runs"
+          />
 
           <section>
             <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
