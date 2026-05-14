@@ -230,24 +230,36 @@ export function useChat(opts: UseChatOptions = {}) {
     if (mutationIsError && lastRole === "agent") resetMutation();
   }, [mutationIsError, lastRole, resetMutation]);
 
-  // pendingSessionId source-of-truth: the local mutation while it's in
-  // flight, otherwise the server-reported in-flight session (set by the
-  // /chat handler when the conversation's tail session is still running).
-  // The second source survives navigation away + back — without it, the
-  // "agent thinking" indicator vanishes the moment the user leaves /chat.
-  const localPendingSessionId = mutation.isPending ? mutation.variables?.sessionId : undefined;
-  const serverPendingSessionId = history.data?.pending_session_id;
-  const pendingSessionId = localPendingSessionId ?? serverPendingSessionId;
+  // The in-flight session id (drives the "agent thinking" indicator) has
+  // two sources merged here, in precedence order:
+  //   1. local mutation — freshest while the user's POST /chat is open.
+  //   2. server history — set when the conversation's tail session is
+  //      still in `pending`/`running` status. Survives navigation away,
+  //      cross-tab opens, and cold refreshes; closes the gap left by
+  //      the local-only mutation state.
+  const localSendingSessionId = mutation.isPending ? mutation.variables?.sessionId : undefined;
+  const serverInFlightSessionId = history.data?.in_flight_session_id;
+  const inFlightSessionId = localSendingSessionId ?? serverInFlightSessionId;
 
   return {
     messages,
     send,
-    // Reflect EITHER source — input stays disabled and the thinking
-    // indicator stays visible while any pending session exists, not
-    // just while the local mutation is in flight.
-    isPending: mutation.isPending || serverPendingSessionId !== undefined,
+    /**
+     * Narrow: this surface's own send is in flight. Use for the
+     * textarea disable + fresh-redirect gate so users can keep
+     * drafting while another tab's turn finishes.
+     */
+    isSubmitting: mutation.isPending,
+    /**
+     * Broad: any session for this conversation is in flight (this
+     * surface or another tab). Use for the thinking indicator + send
+     * button disable + suggestion suppression so the UI reflects
+     * server reality, not just this tab's mutation.
+     */
+    isPending: mutation.isPending || serverInFlightSessionId !== undefined,
     error: mutation.error,
-    pendingSessionId,
+    /** Renamed from pendingSessionId — semantics unchanged at the call site. */
+    pendingSessionId: inFlightSessionId,
     /** History query state, for showing a "loading prior conversation…" indicator. */
     isLoadingHistory: history.isLoading,
   };

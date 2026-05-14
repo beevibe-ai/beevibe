@@ -43,6 +43,26 @@ export function isTerminalSessionStatus(s: unknown): s is TerminalSessionStatus 
   );
 }
 
+/**
+ * Pre-terminal statuses — the session has been accepted but isn't done.
+ * Mirror of `TerminalSessionStatus`. Used by the chat history endpoint
+ * to flag a conversation's tail session as still-running so the UI can
+ * resume its "agent thinking" indicator after navigation.
+ */
+export type InFlightSessionStatus = Extract<SessionStatus, "pending" | "running">;
+
+export const IN_FLIGHT_SESSION_STATUSES: readonly InFlightSessionStatus[] = [
+  "pending",
+  "running",
+] as const;
+
+export function isInFlightSessionStatus(s: unknown): s is InFlightSessionStatus {
+  return (
+    typeof s === "string" &&
+    (IN_FLIGHT_SESSION_STATUSES as readonly string[]).includes(s)
+  );
+}
+
 export type SessionSpawnMode = "daemon" | "server_fallback_mesh";
 
 export interface SessionUsage {

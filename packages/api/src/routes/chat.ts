@@ -23,10 +23,11 @@
 
 import { randomUUID } from "node:crypto";
 import { Router, type RequestHandler, type Response } from "express";
-import type {
-  AgentRepository,
-  PersonRepository,
-  SessionRepository,
+import {
+  isInFlightSessionStatus,
+  type AgentRepository,
+  type PersonRepository,
+  type SessionRepository,
 } from "@beevibe/core";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { ResumeReason } from "@beevibe/core/services/agent-session";
@@ -395,16 +396,15 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
     const truncated = chain.sessions.slice(-Math.ceil(HISTORY_LIMIT / 2)); // each session = 2 messages
     const messages = chainToMessages({ head_id: chain.head_id, sessions: truncated });
     const latest = chain.sessions[chain.sessions.length - 1]!;
-    // If the tail session is still in flight, surface its id so the chat
-    // UI can resume the "agent is thinking" indicator after a navigation
-    // away — without this, the local-only `mutation.isPending` gate
-    // means the indicator disappears the moment the user leaves /chat
-    // and returns. chainToMessages already skips pending sessions
-    // (no result_summary, status !== 'failed'), so the user message is
+    // Surface the tail session's id when it's still in flight so the
+    // chat UI can resume its "agent is thinking" indicator after a
+    // navigation away — without this, the local-only `mutation.isPending`
+    // gate means the indicator vanishes the moment the user leaves
+    // /chat. chainToMessages already skips in-flight sessions (no
+    // result_summary, status !== 'failed'), so the user message is
     // present but the agent reply slot is empty until SSE auto-recovery
     // (PR #116) lands the response.
-    const pendingSessionId =
-      latest.status === "pending" || latest.status === "running" ? latest.id : undefined;
+    const inFlightSessionId = isInFlightSessionStatus(latest.status) ? latest.id : undefined;
 
     res.json({
       ok: true,
@@ -412,7 +412,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
       messages,
       prior_session_id: latest.id,
       conversation_id: chain.head_id,
-      pending_session_id: pendingSessionId,
+      in_flight_session_id: inFlightSessionId,
     });
   });
 
