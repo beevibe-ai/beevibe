@@ -1,6 +1,6 @@
 # @beevibe/web
 
-The Next.js dashboard. Humans use this to view agents, watch tasks move through their lifecycle, read session transcripts, browse memory, and approve/revise/cancel work.
+The Next.js dashboard. Humans use this to chat with their team agents, watch tasks move through their lifecycle, read session transcripts, browse memory, manage rooms with their teammates, and approve / revise / cancel work — plus a Runtimes panel to register and monitor the local daemons that actually run the agent CLIs.
 
 It's a thin, read-mostly UI — there are **no API routes** in this package. All data goes through [`@beevibe/api`](../api), and live updates arrive over SSE from `GET /api/stream` on that server. For full setup, see the [root README](../../README.md).
 
@@ -21,36 +21,60 @@ Next.js defaults to port 3000, which collides with the api's default. Either run
 
 \* When unset, the app boots but every page renders an empty/not-configured state. Useful for layout work without a backing api.
 
-To mint a `bv_u_` key for local dev, run `pnpm tsx scripts/provision-demo.ts` from the repo root — it creates a captain + IC team and prints the token (along with a paste-ready `mcp.json` snippet, separately useful for the Claude CLI smoke).
+`pnpm bootstrap` writes both vars into `packages/web/.env.local` when it provisions the admin user. To mint a fresh `bv_u_` key for a demo run, `pnpm tsx scripts/provision-demo.ts` from the repo root creates a captain + IC team and prints the token.
+
+## Auth
+
+Authenticated pages live under `app/(authed)/` and are gated by `<AuthGate>` (`components/auth-gate.tsx`). The gate hits `GET /me` to resolve the caller; on `401` it redirects to `/sign-in`.
+
+Public pages (no auth):
+
+- `/sign-in` — email + password
+- `/sign-up` — email + password (gated server-side by `BEEVIBE_SIGNUP_ENABLED`)
+- `/welcome` — post-signup wizard: install daemon, verify runtimes, meet your team agent
+
+The `bv_u_` token is sourced from `NEXT_PUBLIC_BV_USER_KEY` for now (single-tenant local dev) — sign-in / sign-up live API endpoints exist on the api side and the wizard reads from them, but the production token-storage flow is still in progress.
 
 ## Pages
 
-All pages live under `app/(authed)/` — there's no public surface and no login flow yet (token is sourced from the env var above).
-
 | Path | What you see |
 |---|---|
-| `/` | Home dashboard — KPI tiles, fleet status bars, task breakdown |
-| `/tasks` | Kanban board grouped by lifecycle (backlog / ready / running / done / archived); filterable by view, assignee, lifecycle |
-| `/tasks/:id` | Task detail — metadata, sessions rail, controls (approve / reject / revise / cancel) |
-| `/tasks/:id/sessions/:sid` | Session transcript + escalation-resolution UI |
-| `/agents` | Agent list with hierarchy and organization layout |
-| `/memory` | Fact browser with scope tabs (`ic` / `team` / `org`) |
-| `/mesh` | Agent-to-agent activity feed + request graph |
-| `/promotions` | Audit log of memory facts that the promoter elevated across scopes |
+| `/` | Redirects to `/dashboard`. |
+| `/dashboard` | Home — KPI tiles, fleet status bars, task breakdown. |
+| `/chat` | Multi-agent chat surface. Sidebar lists conversations; main pane streams the active turn token-by-token (via `lib/chat-stream.ts`); live panel shows tool steps. |
+| `/sessions/:sid` | Chat-session detail — full transcript, usage panel, daemon `Ran on …` line. |
+| `/agents` | Agent list with hierarchy. |
+| `/agents/:id` | Agent detail — core memory blocks, depth metrics, recent sessions. |
+| `/tasks` | Kanban board grouped by lifecycle (backlog / ready / running / done / archived); filterable by view, assignee, lifecycle. |
+| `/tasks/:id` | Task detail — metadata, sessions rail, controls (approve / reject / revise / cancel). |
+| `/tasks/:id/sessions/:sid` | Task-session transcript + escalation-resolution UI. |
+| `/work-products/:id` | Work-product detail (PR / branch / commit / document / …). |
+| `/memory` | Fact browser with scope tabs (`ic` / `team` / `org`). |
+| `/promotions` | Audit log of memory facts that the promoter elevated across scopes. |
+| `/mesh` | Agent-to-agent activity feed + request graph. |
+| `/rooms` | Shared rooms list. |
+| `/rooms/:id` | Room detail — team-orbit visualization (`components/team-orbit.tsx`), message stream, mention picker. |
+| `/runtimes` | Worker daemon panel — list of registered daemons + their CLIs, online/offline badges (live via `runtime.updated` SSE), revoke action, install instructions for fresh machines. |
 
 ## Data flow
 
 ```
 Browser ──HTTP──> @beevibe/api  ──SQL──> Postgres
    ▲                  │
-   └───SSE(/api/stream)┘   ←── PG NOTIFY
+   │                  │
+   ├──SSE invalidate──┤
+   │ (lib/sse.ts)     │
+   │                  │
+   └─SSE token stream─┘
+     (lib/chat-stream.ts, /chat only)
+                                 ←── PG NOTIFY (bv_event)
 ```
 
-- **Reads** go through `lib/api/client.ts` — a tiny fetch wrapper around `@beevibe/api`'s read endpoints (`GET /task`, `GET /agent`, `GET /memory/fact`, `GET /session/:short_id`, …). Wrapped in [TanStack Query](https://tanstack.com/query) for caching + retries.
-- **Mutations** call the same client (`POST /task/:id/approve`, `POST /escalation/:id/resolve`, …). On success, React Query invalidates the relevant keys.
-- **Live updates** flow via `useLiveUpdates()` (`lib/sse.ts`). It opens an `EventSource` to `/api/stream` (token passed as `?token=` because `EventSource` can't set headers), and on each `task.updated` / `session.updated` / `memory.fact.created` / etc. invalidates the matching React Query keys — pages refetch automatically.
+- **Reads + mutations** go through domain hooks under `lib/hooks/` (`use-chat`, `use-tasks`, `use-agents`, `use-rooms`, `use-runtimes`, …) — each one wraps `lib/api/client.ts` (the typed fetch wrapper) in [TanStack Query](https://tanstack.com/query). Query keys are centralized in `lib/hooks/keys.ts`.
+- **Live invalidations** flow via `useLiveUpdates()` (`lib/sse.ts`). It opens an `EventSource` to `/api/stream` (token passed as `?token=` because `EventSource` can't set headers) and on each event (`task.updated` / `session.updated` / `session.event` / `memory.fact.created` / `memory.fact.deleted` / `runtime.updated` / `room.message` / `mesh.activity` / `promotion.created` / `agent.updated`) invalidates the matching React Query keys — pages refetch automatically. The `eventInvalidations` map in `lib/sse.ts` is the canonical event → keys registry.
+- **Chat token stream** is separate. `lib/chat-stream.ts` opens its own SSE connection that carries inline tool-step / agent-message tokens for the active chat turn. Distinct from the invalidation channel because it streams data, not "go refetch X."
 
-The web package only imports `@beevibe/core` for **types** (`TaskStatus`, `MemoryScope`, `HierarchyLevel`, …). It never touches the database directly.
+The web package only imports `@beevibe/core` for **types** (`TaskStatus`, `MemoryScope`, `HierarchyLevel`, `KnownCli`, …) via the `@beevibe/core/domain` browser-safe subpath. It never touches the database directly.
 
 ## Source layout
 
@@ -59,23 +83,47 @@ app/
 ├── layout.tsx          root layout, theme provider
 ├── providers.tsx       QueryClientProvider + useLiveUpdates
 ├── globals.css         Tailwind + CSS variables (light/dark)
-└── (authed)/           every page lives under this group
-    ├── page.tsx        home / dashboard
-    ├── tasks/
-    ├── agents/
+├── not-found.tsx       404
+├── sign-in/            sign-in form
+├── sign-up/            sign-up form
+├── welcome/            post-signup wizard
+└── (authed)/           gated by <AuthGate>
+    ├── layout.tsx      auth-gate + sidebar shell
+    ├── page.tsx        / → /dashboard redirect
+    ├── dashboard/
+    ├── chat/
+    ├── sessions/[sid]/
+    ├── agents/, agents/[id]/
+    ├── tasks/, tasks/[id]/, tasks/[id]/sessions/[sid]/
+    ├── work-products/[id]/
     ├── memory/
+    ├── promotions/
     ├── mesh/
-    └── promotions/
+    ├── rooms/, rooms/[id]/
+    └── runtimes/
 
 components/
-├── tasks/, agents/, memory/, mesh/, promotions/, sessions/
-├── kpi-tile.tsx, status-pill.tsx, priority-pill.tsx, …
-└── skeletons/          loading states for every list/detail page
+├── auth-gate.tsx                 route gate (calls GET /me)
+├── sidebar.tsx, mode-sidebars.tsx app shell
+├── user-widget.tsx, theme-toggle.tsx
+├── team-orbit.tsx                 room visualization
+├── daemon-install.tsx             install instructions for /runtimes empty state
+├── chat/, agents/, tasks/, sessions/, memory/, mesh/, promotions/, home/, detail/
+├── agent-chip.tsx, hier-chip.tsx, scope-chip.tsx, fact-type-tag.tsx
+├── task-status-icon.tsx, command-block.tsx, rich-text.tsx, relative-time.tsx
+├── avatar.tsx, empty-state.tsx, load-older-button.tsx
+└── skeleton.tsx, skeletons.tsx
 
 lib/
-├── api/client.ts       fetch wrapper around @beevibe/api
-├── sse.ts              useLiveUpdates() — EventSource → React Query invalidate
-└── types.ts            UI-only shapes
+├── api/                 typed fetch wrapper (client.ts) + http.ts + config.ts
+├── hooks/               domain hooks per resource (use-chat, use-tasks, use-agents, …)
+│                        + keys.ts (centralized React Query key factory)
+├── types/               UI-only shapes split per domain
+├── sse.ts               useLiveUpdates() — EventSource → React Query invalidate
+├── chat-stream.ts       chat token stream (separate SSE channel)
+├── dashboard-display.ts, mesh-display.ts, mesh-layout.ts
+├── tasks-grouping.ts, tool-format.ts, usage-format.ts, format.ts
+└── utils.ts
 ```
 
 ## Styling
