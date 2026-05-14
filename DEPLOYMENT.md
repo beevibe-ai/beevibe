@@ -9,11 +9,6 @@ deployment needs:
 - `@beevibe/web`
 - one local `beevibe-daemon` per user machine that should run agent sessions
 
-Daemons register every supported CLI they find on `PATH`. `claude` is the
-default high-reliability runtime. `opencode` is the open/free model path: it
-can route through OpenRouter, Ollama, and OpenAI-compatible providers using
-OpenCode's own provider configuration.
-
 ## Required Environment
 
 Copy [`.env.example`](./.env.example) and set the values for your host.

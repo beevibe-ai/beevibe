@@ -49,7 +49,6 @@ export async function runStart(): Promise<void> {
     api,
     supervisor,
     workspaceManager,
-    runtimeRegistry,
     runtimeIds: cfg.runtimes.map((r) => r.id),
   });
   claimer.start();

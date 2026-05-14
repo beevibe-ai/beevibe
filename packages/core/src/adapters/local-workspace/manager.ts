@@ -91,18 +91,6 @@ export class LocalWorkspaceManager implements WorkspaceManager {
         `No runtime registered for agent ${agent.id} (runtime_config.type='${agent.runtime_config.type}')`,
       );
     }
-    if (runtime.prepareWorkspace) {
-      if (!agent.api_key) {
-        throw new Error(
-          `Cannot prepare workspace for agent ${agent.id}: agent.api_key is missing`,
-        );
-      }
-      await runtime.prepareWorkspace({
-        workspace,
-        agentApiKey: agent.api_key,
-        mcpServerUrl: this.config.mcpServerUrl,
-      });
-    }
     await syncSkills({
       sourceDir: this.config.skillsSourceDir,
       targetDir: runtime.skillsDir(workspace),
