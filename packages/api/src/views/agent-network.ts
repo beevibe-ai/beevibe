@@ -18,7 +18,15 @@
  */
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
+import type { RuntimeConfig } from "@beevibe/core";
 import type { AgentDisplay, AgentNetwork, AgentPeerOwner } from "./types.js";
+
+// Defensive cap on the peer fetch. The agent graph is one orbit per
+// owner (~5 agents each); 500 rows covers roughly 100 owners' trees.
+// Beyond that we'd want owner-level pagination, but cutting at row
+// level here is fine as a tripwire — payload size stays bounded and
+// the UI is unusable with 100+ orbits anyway.
+const PEERS_LIMIT = 500;
 
 const SELF_SQL = /* sql */ `
 SELECT
@@ -61,6 +69,7 @@ WHERE a.owner_id <> $1
 ORDER BY a.owner_id,
   CASE a.hierarchy_level WHEN 'org' THEN 0 WHEN 'team' THEN 1 ELSE 2 END,
   a.name ASC
+LIMIT ${PEERS_LIMIT}
 `;
 
 interface AgentRow {
@@ -70,7 +79,7 @@ interface AgentRow {
   parent_agent_id: string | null;
   hierarchy_level: "ic" | "team" | "org";
   review_policy: string | null;
-  runtime_config: Record<string, unknown>;
+  runtime_config: RuntimeConfig;
   created_at: Date;
   updated_at: Date;
   sessions_count: string | number;
@@ -86,8 +95,8 @@ function rowToAgentDisplay(row: AgentRow): AgentDisplay {
   // was previously surfacing `runtime_config.model` as `runtime` — same
   // conflation. Match `agents.ts` so the network UI shows "claude" not
   // "claude-opus-4-7" under the Runtime label.
-  const runtime = (row.runtime_config?.type as string | undefined) ?? "claude";
-  const model = row.runtime_config?.model as string | undefined;
+  const runtime = row.runtime_config.type ?? "claude";
+  const model = row.runtime_config.model;
   return {
     id: row.id,
     name: row.name,
