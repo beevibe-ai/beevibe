@@ -15,6 +15,15 @@ export interface SseListenerConfig {
   databaseUrl: string;
   manager: SseManager;
   ownerLookup: OwnerLookup;
+  /**
+   * Synchronous side-channel for in-process subscribers. Fires for every
+   * parsed `bv_event` BEFORE the async owner-lookup + SseManager fan-out
+   * so cross-process signal handlers don't wait on the DB owner query.
+   * Used by MeshServer to fast-fail callers when their mesh callee
+   * session (possibly running in the scheduler binary) terminates.
+   * Listener throws are caught and logged; they never break the fan-out.
+   */
+  onEvent?: (event: BvEvent) => void;
   /** Default 5s. */
   reconnectDelayMs?: number;
 }
@@ -75,6 +84,16 @@ export class SseListener {
       if (msg.channel !== "bv_event" || !msg.payload) return;
       const parsed = parseEvent(msg.payload);
       if (!parsed) return;
+      if (this.config.onEvent) {
+        try {
+          this.config.onEvent(parsed);
+        } catch (err) {
+          console.error(
+            "[SseListener] onEvent subscriber threw:",
+            (err as Error).message,
+          );
+        }
+      }
       void this.config.ownerLookup.ownersOf(parsed).then((owners) => {
         this.config.manager.publish(parsed, owners);
       });

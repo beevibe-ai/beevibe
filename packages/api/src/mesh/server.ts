@@ -576,6 +576,18 @@ export class MeshServer {
       entry.reject(new Error(`mesh callee session failed: ${reason}`));
     }
   }
+
+  /**
+   * Cheap predicate the `session.updated` SSE listener uses to decide
+   * whether a session-row change is worth a DB fetch. Returns true iff
+   * an `ask`/`negotiate` caller is currently blocked waiting on this
+   * specific callee session. False for every other session id in the
+   * system — chats, tasks, mesh sessions whose caller already resolved,
+   * etc. — so the listener can short-circuit before reading the row.
+   */
+  hasPendingCalleeSession(calleeSessionId: string): boolean {
+    return this.pendingByCalleeSession.has(calleeSessionId);
+  }
 }
 
 function escapeAttr(s: string): string {
