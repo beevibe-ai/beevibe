@@ -58,6 +58,14 @@ export async function runDispatch(
   } as unknown as Agent;
   const ws = await deps.workspaceManager.ensureWorkspace({ agent: syntheticAgent });
 
+  // Hot-path log so the daemon's stdout shows what it's actually doing.
+  // Previously this path was silent — "CLI exited with code 1" with no
+  // way to tell which session it was, what cwd was used, or whether
+  // anything was even spawned.
+  console.log(
+    `[daemon/spawn] sess=${payload.session_id} agent=${payload.agent_id} type=${payload.type} cwd=${ws.path}`,
+  );
+
   const runtime = deps.runtime ?? new ClaudeCodeRuntime();
 
   // Buffer events so the daemon doesn't fire one POST per token. Flushed
@@ -138,15 +146,38 @@ export async function runDispatch(
       : result?.status === "cancelled"
         ? "cancelled"
         : "failed";
+
+  // Build the error string from the most informative source available:
+  // 1. A spawn-side throw (workspace mkdir, ENOENT on `claude`, …) — runError.
+  // 2. The CLI's own stderr tail when it ran but exited non-zero — result.stderr.
+  // Plain "CLI exited with code N" is no longer the user's only signal
+  // when something goes wrong.
+  const errorDetail = runError?.message ?? result?.stderr;
+
   const done = {
     session_id: payload.session_id,
     status,
     cli_session_id: result?.cli_session_id,
     result_summary: result?.output ?? "",
-    exit_code: status === "succeeded" ? 0 : 1,
-    error: runError?.message,
+    // Real exit code (when we got one) — beats the previous hardcoded
+    // 0/1. The api uses this to distinguish exit-1 (CLI ran and failed)
+    // from exit-null (spawn never settled — ENOENT etc.).
+    exit_code: result?.exit_code ?? (status === "succeeded" ? 0 : null),
+    error: errorDetail,
     usage: result?.usage,
   };
+
+  // Hot-path log — same line for spawn end as for spawn start. Operator
+  // can grep one session id and see the full lifecycle in one place.
+  if (status === "succeeded") {
+    console.log(`[daemon/spawn] sess=${payload.session_id} exit=0`);
+  } else {
+    console.error(
+      `[daemon/spawn] sess=${payload.session_id} status=${status} exit=${done.exit_code}` +
+        (errorDetail ? `\n  error:\n    ${errorDetail.split("\n").join("\n    ")}` : ""),
+    );
+  }
+
   try {
     await deps.api.post("/runtime/done", done);
   } catch (err) {

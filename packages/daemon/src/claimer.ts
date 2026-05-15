@@ -177,6 +177,12 @@ export class Claimer {
     while (this.running && this.cfg.supervisor.hasCapacity()) {
       const payload = await this.cfg.api.claim<DispatchPayload>(runtimeId);
       if (!payload) return;
+      // Visibility: every claim shows up in the daemon's stdout. The
+      // spawner logs the matching cwd + exit lines so one session id
+      // can be grep'd end-to-end.
+      console.log(
+        `[daemon/claim] sess=${payload.session_id} agent=${payload.agent_id} runtime=${runtimeId}`,
+      );
       const ctrl = this.cfg.supervisor.start(payload.session_id);
       void runDispatch(
         { api: this.cfg.api, workspaceManager: this.cfg.workspaceManager },

@@ -164,6 +164,22 @@ export interface RuntimeResult {
 
   /** Process-group id (for killing the whole tree) — maps to session.process_group_id. */
   process_group_id?: number;
+
+  /**
+   * Tail of the CLI's stderr (truncated to ~4KB), populated only when
+   * `status === 'failed'`. Lets the daemon surface the real diagnostic
+   * to /runtime/done instead of the user staring at a useless
+   * "CLI exited with code N". `undefined` on success or cancel.
+   */
+  stderr?: string;
+
+  /**
+   * Raw exit code of the CLI subprocess. Distinct from `status`: a
+   * non-zero code maps to `status='failed'`, null (spawn never settled)
+   * also maps to failed but tells us something different (ENOENT, fork
+   * failed, etc.).
+   */
+  exit_code?: number | null;
 }
 
 /** Result of `healthCheck()`. */

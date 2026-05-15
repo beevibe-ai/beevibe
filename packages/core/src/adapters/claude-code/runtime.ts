@@ -153,10 +153,21 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     }
 
     const parsed = parseClaudeMessages(messages, result.exitCode);
+    // Surface the CLI's stderr tail on failure so operators / users get
+    // the actual diagnostic instead of just "CLI exited with code N".
+    // Capped at 4KB — most useful info is at the end (final error +
+    // stacktrace), so tail-slice rather than head.
+    const STDERR_TAIL_BYTES = 4096;
+    const stderrTail =
+      parsed.status === "failed" && result.stderr
+        ? result.stderr.slice(-STDERR_TAIL_BYTES)
+        : undefined;
     return {
       ...parsed,
       process_pid: result.pid ?? undefined,
       process_group_id: result.process_group_id ?? undefined,
+      exit_code: result.exitCode,
+      ...(stderrTail ? { stderr: stderrTail } : {}),
     };
   }
 

@@ -184,10 +184,42 @@ export function groupIntoConversations(
   return chains;
 }
 
+/**
+ * The bare "CLI exited with code N" message from parseClaudeMessages tells
+ * the user nothing actionable — the daemon now also surfaces the CLI's
+ * stderr tail (`session.error`), so prefer that when it's something other
+ * than the same bare line. If neither holds anything useful, fall back to
+ * a daemon-pointer message instead of "(turn failed — no response)".
+ */
+const BARE_CLI_EXIT_RE = /^CLI exited with code (-?\d+|null)\.?$/;
+const DAEMON_LOG_POINTER =
+  "Couldn't reach your team agent. Check the terminal where you ran " +
+  "`beevibe-daemon start` for the failure detail.";
+
+function failureMessageFor(s: {
+  result_summary?: string | null;
+  error?: string | null;
+}): string {
+  const error = s.error?.trim();
+  if (error && !BARE_CLI_EXIT_RE.test(error)) return error;
+  const summary = s.result_summary?.trim();
+  if (summary && !BARE_CLI_EXIT_RE.test(summary)) return summary;
+  return DAEMON_LOG_POINTER;
+}
+
 function chainToMessages(chain: ConversationChain): HistoryMessage[] {
   const messages: HistoryMessage[] = [];
   for (const s of chain.sessions) {
     messages.push({ id: `u_${s.id}`, role: "user", content: s.intent });
+    if (s.status === "failed") {
+      messages.push({
+        id: `a_${s.id}`,
+        role: "agent",
+        content: failureMessageFor(s),
+        session_id: s.id,
+      });
+      continue;
+    }
     const summary = s.result_summary ?? "";
     if (summary) {
       const { visible, view_refs, open_view, suggested_actions } = processResponse(summary);
@@ -199,13 +231,6 @@ function chainToMessages(chain: ConversationChain): HistoryMessage[] {
         ...(view_refs.length > 0 ? { view_refs } : {}),
         ...(open_view ? { open_view } : {}),
         ...(suggested_actions ? { suggested_actions } : {}),
-      });
-    } else if (s.status === "failed") {
-      messages.push({
-        id: `a_${s.id}`,
-        role: "agent",
-        content: s.error || "(turn failed — no response)",
-        session_id: s.id,
       });
     }
   }
@@ -253,11 +278,15 @@ function toChatTurnResponse(
   const { visible, view_refs, open_view, suggested_actions } = processResponse(
     session.result_summary ?? "",
   );
+  // Failed turns get the same friendlier-than-"CLI exited with code 1"
+  // treatment as chat history. Success path stays unchanged.
+  const response =
+    session.status === "failed" ? failureMessageFor(session) : visible || session.error || "";
   return {
     ok: true,
     agent: { id: agent.id, name: agent.name, hierarchy: agent.hierarchy_level },
     session_id: session.id,
-    response: visible || session.error || "",
+    response,
     status: session.status,
     view_refs,
     ...(open_view ? { open_view } : {}),
