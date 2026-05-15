@@ -255,6 +255,44 @@ describe("AgentSession.run", () => {
     expect(failPatch![1].error).toContain("spawn ENOENT");
   });
 
+  it("fires onSessionComplete with the failed row when the runtime throws", async () => {
+    // Spawn/CLI exceptions used to skip the hook — only graceful failures
+    // fired it — which left mesh resolvers waiting out the 5-min timeout.
+    // Verifies the in-catch fire so failResolverForCalleeSession runs fast.
+    const onSessionComplete = vi
+      .fn<NonNullable<AgentSessionDeps["onSessionComplete"]>>()
+      .mockResolvedValue();
+    const local = new AgentSession({
+      agentRepo,
+      sessionRepo,
+      sessionEventRepo,
+      runtime,
+      memoryAgent,
+      onSessionComplete,
+    });
+    vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
+    vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({
+      systemPromptAppend: "",
+      userMessagePrefix: "",
+      snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] },
+    });
+    vi.mocked(runtime.execute).mockRejectedValue(new Error("spawn ENOENT"));
+    vi.mocked(sessionRepo.update).mockImplementation(async (id, patch) =>
+      makeSession(id, patch as Partial<Session>),
+    );
+
+    await expect(
+      local.run({ agentId: "agent_1", intent: "x", workspace: WORKSPACE }),
+    ).rejects.toThrow(/spawn ENOENT/);
+
+    // Allow the fire-and-forget hook to settle before asserting.
+    await new Promise((r) => setImmediate(r));
+    expect(onSessionComplete).toHaveBeenCalledTimes(1);
+    expect(onSessionComplete.mock.calls[0]![0].status).toBe("failed");
+    expect(onSessionComplete.mock.calls[0]![0].error).toContain("spawn ENOENT");
+  });
+
   it("passes agent.runtime_config.model + max_turns into RuntimeContext (per-agent override)", async () => {
     vi.mocked(agentRepo.findById).mockResolvedValue(
       makeAgent({

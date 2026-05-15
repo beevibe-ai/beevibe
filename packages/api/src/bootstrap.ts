@@ -33,6 +33,7 @@ import { TaskService } from "@beevibe/core/services/task-service";
 import { EscalationService } from "@beevibe/core/services/escalation-service";
 import { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { DaemonOrphanReaper } from "@beevibe/core/services/orphan-reaper";
+import type { Session } from "@beevibe/core";
 import { MeshServer } from "./mesh/server.js";
 import { BeevibeApiServer } from "./server.js";
 import { SessionCache } from "./session-cache.js";
@@ -228,6 +229,24 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     makeMemoryAgent,
   });
 
+  // Shared between `onSessionComplete` (graceful failed/cancelled) and
+  // `onSessionReaped` (daemon-orphan reaps). If a mesh callee terminates
+  // without ever calling respond_ask / respond_negotiate, the waiting
+  // caller would otherwise sit out the 5-min resolver timeout and surface
+  // as a generic MCP "transport dropped" error. The mesh-failure paths
+  // call this so the caller's promise rejects within a tick. Success path
+  // is unaffected — respondAsk/respondNegotiate fired `fireResolver` and
+  // drained the index before this ever runs. Blocker sessions are
+  // fire-and-forget, no resolver to reject.
+  const failMeshCalleeIfTerminal = (session: Session, fallbackReason: string) => {
+    if (
+      (session.type === "mesh_ask" || session.type === "mesh_negotiate") &&
+      (session.status === "failed" || session.status === "cancelled")
+    ) {
+      mesh.failResolverForCalleeSession(session.id, session.error ?? fallbackReason);
+    }
+  };
+
   /**
    * The session cache's onEvict needs to call `onTaskComplete(beevibeSid)`,
    * but `onTaskComplete` lives on a per-agent MemoryAgent. We don't know
@@ -349,8 +368,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
       if (session.type === "chat") {
         chatResolver.resolve(session.id, session);
       }
-      // Future: mesh resolver for cross-instance mesh, post-dispatch
-      // hook for parent-task rollup, etc.
+      failMeshCalleeIfTerminal(session, session.status);
     },
   });
   server.getApp().use("/runtime", runtimeRouter);
@@ -430,7 +448,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
       if (session.type === "chat") {
         chatResolver.resolve(session.id, session);
       }
-      // Mesh waiters time out via their own awaitResolver; no fanout here.
+      failMeshCalleeIfTerminal(session, "daemon_orphaned");
     },
   });
   void daemonOrphanReaper.start();

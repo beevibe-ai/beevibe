@@ -227,11 +227,26 @@ export class AgentSession {
         },
       });
     } catch (err) {
-      await this.deps.sessionRepo.update(sid, {
+      const failedSession = await this.deps.sessionRepo.update(sid, {
         status: "failed",
         error: (err as Error).message,
         completed_at: new Date(),
       });
+      // Fire onSessionComplete on the in-catch failure path too. Without
+      // this, exceptions thrown out of `executor.execute` (spawn errors,
+      // CLI crashes) update the row to status=failed but skip the hook
+      // that the graceful failure path on line ~272 fires — leaving mesh
+      // resolvers blocked until their 5-min timeout. The hook is
+      // fire-and-forget; we still rethrow so the dispatcher sees the
+      // original error and can mark the daemon's claim as failed.
+      if (!input.skipOnComplete) {
+        void this.deps.onSessionComplete?.(failedSession).catch((hookErr) =>
+          console.error(
+            "[AgentSession] onSessionComplete (catch path) failed:",
+            (hookErr as Error).message,
+          ),
+        );
+      }
       throw err;
     }
 
