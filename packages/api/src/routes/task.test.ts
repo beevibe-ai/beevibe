@@ -18,6 +18,7 @@ import {
 } from "@beevibe/core/adapters/postgres";
 import { provisionAgent, provisionUser } from "@beevibe/core/auth";
 import { TaskService } from "@beevibe/core/services/task-service";
+import { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { DEFAULT_RUNTIME_CONFIG, agentId, personId, taskId } from "@beevibe/core";
 import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
 import { createAuthMiddleware } from "../auth/middleware.js";
@@ -34,6 +35,7 @@ describe("task routes — integration", () => {
   let taskRepo: PostgresTaskRepository;
   let workProductRepo: PostgresWorkProductRepository;
   let taskService: TaskService;
+  let dispatchService: DispatchService;
   let hub: DaemonHub;
 
   beforeAll(() => {
@@ -46,6 +48,7 @@ describe("task routes — integration", () => {
     taskRepo = new PostgresTaskRepository(pool);
     workProductRepo = new PostgresWorkProductRepository(pool);
     taskService = new TaskService({ taskRepo, workProductRepo, agentRepo, sessionRepo });
+    dispatchService = new DispatchService({ agentRepo, sessionRepo, taskRepo });
     hub = new DaemonHub();
   });
 
@@ -68,6 +71,7 @@ describe("task routes — integration", () => {
         taskService,
         sessionRepo,
         runtimeRepo,
+        dispatchService,
         hub,
         pool,
       }),
@@ -134,7 +138,7 @@ describe("task routes — integration", () => {
     expect(res.body.task.status).toBe("cancelled");
   });
 
-  it("revise: review → needs_revision + stamps next_dispatch_context", async () => {
+  it("revise: review → revision + stamps next_dispatch_context + dispatches a session", async () => {
     const { owner, agent } = await setupHuman();
     const task = await seedTask("review", agent.agent.id);
 
@@ -144,16 +148,31 @@ describe("task routes — integration", () => {
       .send({ feedback: "please add error handling" });
 
     expect(res.status).toBe(200);
-    expect(res.body.task.status).toBe("needs_revision");
+    // The route reviseTask + dispatchService.dispatchTask: reviseTask
+    // moves the task to 'needs_revision' and stamps the dispatch
+    // context; dispatchService then transitions it to 'revision' and
+    // inserts a pending session row. Without the dispatch, the task
+    // would sit at needs_revision forever — no daemon would claim it.
+    expect(res.body.task.status).toBe("revision");
 
     const refetched = await taskRepo.findById(task.id);
-    expect(refetched?.status).toBe("needs_revision");
+    expect(refetched?.status).toBe("revision");
     expect(refetched?.next_dispatch_context?.kind).toBe("revision");
     if (refetched?.next_dispatch_context?.kind === "revision") {
       expect(refetched.next_dispatch_context.feedback).toBe("please add error handling");
       expect(refetched.next_dispatch_context.source).toBe("human");
       expect(refetched.next_dispatch_context.from_status).toBe("review");
     }
+
+    // Regression: assert the pending session row exists. Previously
+    // the route called reviseTask but skipped dispatchTask, so the task
+    // was re-queued in DB but no session was ever created — the daemon
+    // had nothing to claim and the task stayed stuck.
+    const sessions = await sessionRepo.listForTask(task.id);
+    expect(sessions.length).toBe(1);
+    expect(sessions[0]?.status).toBe("pending");
+    expect(sessions[0]?.type).toBe("task");
+    expect(sessions[0]?.agent_id).toBe(agent.agent.id);
   });
 
   it("revise: missing feedback → 400", async () => {

@@ -33,6 +33,8 @@ import {
   InvalidTaskTransitionError,
   TaskNotFoundError,
 } from "@beevibe/core/services/task-service";
+import { buildIntent, type ResumeReason } from "@beevibe/core/services/agent-session";
+import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "../runtime/hub.js";
 
@@ -53,6 +55,12 @@ export interface TaskRoutesDeps {
   taskService: TaskService;
   sessionRepo: SessionRepository;
   runtimeRepo: RuntimeRepository;
+  /**
+   * Required to dispatch the revision session after `POST /task/:id/revise`.
+   * Without it, the task lands at `needs_revision` and just sits — no
+   * session row exists for the daemon to claim.
+   */
+  dispatchService: DispatchService;
   /** Push cancel frames over WS to daemon-bound running sessions. */
   hub: DaemonHub;
   /** For pg_notify('cancel_task', task_id) — server-fallback path only. */
@@ -189,11 +197,37 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
       const updated = await deps.taskService.reviseTask(id, feedback, {
         source: "human",
       });
+
+      // Mirror the parent_agent revise_task MCP tool path
+      // (hierarchy.ts:824-840): reviseTask just stamps the task with
+      // status='needs_revision' + next_dispatch_context. Without an
+      // explicit dispatch, no session row exists and no daemon claims
+      // the task — it sits at needs_revision until manual intervention.
+      // The MCP tool dispatched; this route forgot to.
+      let dispatchedStatus: TaskStatus = updated.status;
+      if (updated.next_dispatch_context?.kind === "revision" && updated.assignee_id) {
+        const reason: ResumeReason = updated.next_dispatch_context;
+        const intent = buildIntent(
+          { id: updated.id, title: updated.title, description: updated.description },
+          reason,
+        );
+        await deps.dispatchService.dispatchTask({
+          task: updated,
+          agentId: updated.assignee_id,
+          intent,
+          reason,
+          type: "task",
+        });
+        // dispatchService transitions needs_revision → revision and
+        // inserts a pending session pinned to the agent's runtime.
+        dispatchedStatus = "revision";
+      }
+
       res.json({
         ok: true,
         task: {
           id: updated.id,
-          status: updated.status,
+          status: dispatchedStatus,
           next_dispatch_context: updated.next_dispatch_context,
         },
       });
