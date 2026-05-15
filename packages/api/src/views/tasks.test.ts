@@ -11,8 +11,15 @@ import { makeMockPool } from "./test-helpers.js";
 describe("listTasks", () => {
   it("returns empty array when DB returns no rows", async () => {
     const pool = makeMockPool([[]]);
-    const tasks = await listTasks(pool);
+    const tasks = await listTasks(pool, { bypassOwnerScope: true });
     expect(tasks).toEqual([]);
+  });
+
+  it("throws when neither caller_person_id nor bypassOwnerScope is set", async () => {
+    // Fail-closed guard: a future caller forgetting the scope param would
+    // otherwise leak every task in the DB. Surface the mistake immediately.
+    const pool = makeMockPool([[]]);
+    await expect(listTasks(pool)).rejects.toThrow(/caller_person_id/);
   });
 
   it("maps a row with joins into a TaskListItem", async () => {
@@ -48,7 +55,7 @@ describe("listTasks", () => {
         },
       ],
     ]);
-    const tasks = await listTasks(pool);
+    const tasks = await listTasks(pool, { bypassOwnerScope: true });
     expect(tasks).toHaveLength(1);
     const t = tasks[0]!;
     expect(t.title).toBe("Wire kanban");
@@ -66,18 +73,30 @@ describe("listTasks", () => {
   it("translates lifecycle filter into a status array param", async () => {
     const pool = makeMockPool([[]]);
     const queryMock = pool._spy;
-    await listTasks(pool, { lifecycle: "in_review" });
+    await listTasks(pool, { lifecycle: "in_review", bypassOwnerScope: true });
     expect(queryMock).toHaveBeenCalledWith(
       expect.any(String),
-      [["review", "blocked"], null],
+      [["review", "blocked"], null, null],
     );
   });
 
   it("forwards assignee_id when set", async () => {
     const pool = makeMockPool([[]]);
     const queryMock = pool._spy;
-    await listTasks(pool, { assignee_id: "agt_xyz" });
-    expect(queryMock).toHaveBeenCalledWith(expect.any(String), [null, "agt_xyz"]);
+    await listTasks(pool, { assignee_id: "agt_xyz", bypassOwnerScope: true });
+    expect(queryMock).toHaveBeenCalledWith(expect.any(String), [null, "agt_xyz", null]);
+  });
+
+  it("forwards caller_person_id as the owner-scope param", async () => {
+    // The /task route always sets this. SQL gates rows by assignee or
+    // creator agent ownership, or by direct person-creator match.
+    const pool = makeMockPool([[]]);
+    const queryMock = pool._spy;
+    await listTasks(pool, { caller_person_id: "per_owner" });
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.any(String),
+      [null, null, "per_owner"],
+    );
   });
 });
 

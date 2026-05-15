@@ -89,7 +89,10 @@ export function TasksClient() {
         </div>
       ) : (
         <div className="flex-1 overflow-x-auto overflow-y-auto">
-          <div className="group/board flex gap-4 px-6 py-5 min-h-full">
+          {/* w-full forces the flex row to fill the scroll container so
+              flex-1 children share the available width; overflow-x-auto
+              kicks in only when all lanes hit their min-width. */}
+          <div className="group/board flex gap-4 px-6 py-5 min-h-full w-full">
             {lanes.map((lane) => (
               <BoardColumn
                 key={lane.key}
@@ -98,7 +101,6 @@ export function TasksClient() {
                 activeTaskId={selectedTaskId}
               />
             ))}
-            <div className="shrink-0 w-2" aria-hidden />
           </div>
           {emptyMessage ? (
             <div className="px-6 pb-8 max-w-md mx-auto">

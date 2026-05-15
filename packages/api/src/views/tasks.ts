@@ -39,6 +39,19 @@ export interface TaskListFilter {
    * tasks-grouping.ts.
    */
   view?: "all" | "mine" | "sprint" | "timeline";
+  /**
+   * Caller's person id — the list is scoped to tasks where the caller
+   * owns the assignee agent, owns the creator agent, or created the task
+   * directly. Required unless `bypassOwnerScope` is set.
+   */
+  caller_person_id?: string;
+  /**
+   * Test/admin escape hatch — explicitly opt out of owner-scope
+   * filtering. The runtime guard in `listTasks` enforces that one of
+   * `caller_person_id` or `bypassOwnerScope` is set, so production
+   * callers can't silently leak by forgetting the scope.
+   */
+  bypassOwnerScope?: true;
 }
 
 interface TaskListRow {
@@ -118,6 +131,12 @@ LEFT JOIN wp_counts wpc     ON wpc.task_id = t.id
 LEFT JOIN latest_session ls ON ls.task_id = t.id
 WHERE ($1::text[] IS NULL OR t.status = ANY($1::text[]))
   AND ($2::text   IS NULL OR t.assignee_id = $2)
+  AND (
+    $3::text IS NULL
+    OR asg.owner_id = $3
+    OR crt_a.owner_id = $3
+    OR (t.creator_type = 'person' AND t.creator_id = $3)
+  )
 ORDER BY t.created_at DESC
 `;
 
@@ -180,10 +199,16 @@ export async function listTasks(
   pool: Pool,
   filter: TaskListFilter = {},
 ): Promise<TaskListItem[]> {
+  if (!filter.caller_person_id && !filter.bypassOwnerScope) {
+    throw new Error(
+      "listTasks requires caller_person_id (or bypassOwnerScope for tests/admin tooling)",
+    );
+  }
   const statuses = resolveStatusFilter(filter);
   const { rows } = await pool.query<TaskListRow>(LIST_SQL, [
     statuses ? [...statuses] : null,
     filter.assignee_id ?? null,
+    filter.caller_person_id ?? null,
   ]);
   return rows.map(rowToTaskListItem);
 }
