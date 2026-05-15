@@ -135,7 +135,9 @@ describe("TasksClient — lane rendering", () => {
         return countNode?.textContent;
       },
     );
-    expect(counts).toEqual(["2", "1", "1", "1", "1"]);
+    // Pending=1 (p1), In progress=2 (p2 assigned + ip1 in_progress),
+    // Blocked=1, In review=1, Done=1. `assigned` lives in In progress.
+    expect(counts).toEqual(["1", "2", "1", "1", "1"]);
   });
 
   it("hides cancelled+failed by default and surfaces the archive toggle", async () => {

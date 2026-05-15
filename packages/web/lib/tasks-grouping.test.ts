@@ -23,7 +23,11 @@ function makeTask(id: string, status: TaskStatus): TaskListItem {
 
 const EXPECTED_LIFECYCLE: Record<TaskStatus, Lifecycle> = {
   pending: "pending",
-  assigned: "pending",
+  // `assigned` lives in In progress — see LIFECYCLE_OF doc-comment.
+  // The brief INSERT-then-UPDATE window after agent-side create_task
+  // (where status is `assigned` before dispatchService bumps it to
+  // `in_progress`) shouldn't visibly bounce the card across lanes.
+  assigned: "in_progress",
   in_progress: "in_progress",
   revision: "in_progress",
   needs_revision: "in_progress",
@@ -106,8 +110,8 @@ describe("groupTasks", () => {
     const lanes = groupTasks(tasks, { showArchived: true });
     const byKey = Object.fromEntries(lanes.map((l) => [l.key, l]));
 
-    expect(byKey.pending.tasks.map((t) => t.id)).toEqual(["a", "g"]);
-    expect(byKey.in_progress.tasks.map((t) => t.id)).toEqual(["b", "h"]);
+    expect(byKey.pending.tasks.map((t) => t.id)).toEqual(["a"]);
+    expect(byKey.in_progress.tasks.map((t) => t.id)).toEqual(["b", "g", "h"]);
     expect(byKey.blocked.tasks.map((t) => t.id)).toEqual(["c"]);
     expect(byKey.in_review.tasks.map((t) => t.id)).toEqual(["d"]);
     expect(byKey.done.tasks.map((t) => t.id)).toEqual(["e"]);

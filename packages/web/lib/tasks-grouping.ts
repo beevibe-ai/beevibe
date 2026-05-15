@@ -13,6 +13,13 @@ export type Lifecycle =
 /**
  * Status → lifecycle lane.
  *
+ * - `assigned` lives in In progress, not Pending. Agent-created tasks
+ *   land at `assigned` for the brief window between INSERT and the
+ *   dispatchService UPDATE that transitions them to `in_progress` (and
+ *   if the daemon takes a moment to claim, they sit at `assigned` for
+ *   longer). From the user's mental model "this task has been routed
+ *   to an agent" = active work, not waiting-for-someone-to-pick-it-up.
+ *   `pending` stays for human-created tasks with no assignee.
  * - `blocked` lives in its own lane (was previously folded into
  *   In review). Blocked = waiting on an external dependency, semantically
  *   different from "waiting on a human verdict." Different action by the
@@ -24,7 +31,7 @@ export type Lifecycle =
  */
 const LIFECYCLE_OF: Record<TaskStatus, Lifecycle> = {
   pending: "pending",
-  assigned: "pending",
+  assigned: "in_progress",
   in_progress: "in_progress",
   revision: "in_progress",
   needs_revision: "in_progress",
