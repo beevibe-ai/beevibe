@@ -303,6 +303,9 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     authMiddleware: server.getAuthMiddleware(),
     taskRepo,
     taskService,
+    sessionRepo,
+    runtimeRepo,
+    hub: daemonHub,
     pool,
   });
   server.getApp().use("/task", taskRouter);
