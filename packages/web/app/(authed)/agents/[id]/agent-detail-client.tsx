@@ -6,12 +6,13 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, AlertTriangle, Bot, Archive } from "lucide-react";
 import { useAgent } from "@/lib/hooks/use-agents";
-import { useIsOwner } from "@/lib/hooks/use-me";
+import { useIsOwner, useMe } from "@/lib/hooks/use-me";
 import { isApiConfigured } from "@/lib/api/config";
 import { formatReviewPolicy } from "@/lib/format";
 import { api, type RuntimesListResponse } from "@/lib/api/client";
 import { queryKeys } from "@/lib/hooks/keys";
 import { Avatar } from "@/components/avatar";
+import { CliMcpInstructions } from "@/components/cli-mcp-instructions";
 import { HierChip } from "@/components/hier-chip";
 import { CoreBlockCard } from "@/components/agents/core-block-card";
 import { RecentSessionRow } from "@/components/agents/recent-session-row";
@@ -100,6 +101,13 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
   // while /me loads so the cold-mount render doesn't briefly hide owner
   // controls before resolving.
   const isOwner = useIsOwner(agent.owner_id);
+  // The human MCP route keys off the caller's user token and dispatches
+  // to whatever `findTopLevelForOwner` returns — i.e. the caller's
+  // primary agent. Surfacing "Connect your CLI" anywhere else would be
+  // misleading: pointing your CLI at /mcp won't reach that agent.
+  const { data: me } = useMe();
+  const isPrimaryAgent =
+    isOwner === true && me?.primary_agent?.id === agent.id;
   // Aside only renders when it has content. For non-owners with no
   // outgoing mesh, we'd otherwise reserve 1/3 of the grid for an empty
   // column — main expands to full width in that case.
@@ -213,6 +221,19 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
               </ul>
             )}
           </section>
+
+          {isPrimaryAgent ? (
+            <section>
+              <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
+                Connect your CLI
+              </h2>
+              <p className="text-xs text-muted-foreground mb-3 max-w-prose">
+                Pipe your local CLI through the human MCP endpoint so you can
+                drive this team agent from a terminal session.
+              </p>
+              <CliMcpInstructions />
+            </section>
+          ) : null}
         </div>
 
         {showAside ? (
