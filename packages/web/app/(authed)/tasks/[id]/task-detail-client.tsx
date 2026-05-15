@@ -12,6 +12,7 @@ import {
 import { useTask } from "@/lib/hooks/use-tasks";
 import {
   useApproveTask,
+  useCancelTask,
   useRejectTask,
   useReviseTask,
 } from "@/lib/hooks/use-task-mutations";
@@ -98,16 +99,27 @@ function reviewStatus(
   };
 }
 
+// Mirrors CANCELLABLE_FROM in packages/api/src/routes/task.ts — the
+// statuses where the api will accept a cancel. Terminal statuses
+// (done/failed/cancelled) reject with 409, so don't show the button.
+const TASK_TERMINAL_STATUSES = ["done", "failed", "cancelled"] as const;
+
 function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   const isInReview = task.status === "review";
+  const isTerminal = (TASK_TERMINAL_STATUSES as readonly string[]).includes(task.status);
   const activeSession = task.latest_session?.status === "running" ? task.latest_session : null;
   const approve = useApproveTask(task.id);
   const reject = useRejectTask(task.id);
   const revise = useReviseTask(task.id);
+  const cancel = useCancelTask(task.id);
   const [reviseOpen, setReviseOpen] = useState(false);
   const [reviseFeedback, setReviseFeedback] = useState("");
 
-  const { anyPending, lastError, lastErrorAction } = reviewStatus({ approve, reject, revise });
+  const { anyPending: reviewPending, lastError, lastErrorAction } = reviewStatus({ approve, reject, revise });
+  // Cancel disables the review actions too — if cancel is in flight,
+  // the task is about to become terminal and approve/reject/revise
+  // would race against it.
+  const anyPending = reviewPending || cancel.isPending;
 
   const submitRevise = () => {
     const feedback = reviseFeedback.trim();
@@ -131,8 +143,24 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
           <div className="flex items-center gap-1.5 mt-1.5 shrink-0">
             <TaskStatusPill status={task.status} />
             {task.assignee_hierarchy ? <HierChip hier={task.assignee_hierarchy} /> : null}
+            {!isTerminal ? (
+              <button
+                type="button"
+                disabled={anyPending}
+                onClick={() => cancel.mutate({})}
+                className="h-7 px-2.5 rounded text-xs font-medium border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Cancel this task — stops any running session"
+              >
+                {cancel.isPending ? "Cancelling…" : "Cancel"}
+              </button>
+            ) : null}
           </div>
         </div>
+        {cancel.isError ? (
+          <div className="text-xs text-status-failed text-right mb-2">
+            Couldn&apos;t cancel: {cancel.error.message}
+          </div>
+        ) : null}
 
         {isInReview ? (
           <>
