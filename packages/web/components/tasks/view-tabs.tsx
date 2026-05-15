@@ -52,7 +52,7 @@ function ArchiveBadge({ count }: { count: number }) {
       className="h-7 inline-flex items-center gap-1.5 px-2 rounded text-[11px] font-medium text-muted-foreground tabular-nums"
     >
       <Archive className="h-3 w-3" />
-      <span>{count} archived</span>
+      {count} archived
     </span>
   );
 }

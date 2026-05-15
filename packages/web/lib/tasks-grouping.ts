@@ -53,6 +53,16 @@ const VISIBLE_LANES: LaneTemplate[] = [
   { key: "done", label: "Done", dot: "bg-status-done" },
 ];
 
+/**
+ * "Archived" = any status that's terminal-non-success. Derived from
+ * `LIFECYCLE_OF` so the badge count and the board filter stay in sync —
+ * if a future status maps to `null` (omit from board), it automatically
+ * counts toward the archived badge too.
+ */
+export function isArchivedStatus(status: TaskStatus): boolean {
+  return LIFECYCLE_OF[status] === null;
+}
+
 export function groupTasks(tasks: TaskListItem[]): BoardLane[] {
   const buckets: Record<Lifecycle, TaskListItem[]> = {
     pending: [],
@@ -72,11 +82,11 @@ export function groupTasks(tasks: TaskListItem[]): BoardLane[] {
   }));
 }
 
-/** Count of failed+cancelled tasks — drives the archived badge in the header. */
+/** Count of archived (terminal-non-success) tasks — drives the header badge. */
 export function countArchivedTasks(tasks: TaskListItem[]): number {
   let n = 0;
   for (const t of tasks) {
-    if (t.status === "failed" || t.status === "cancelled") n += 1;
+    if (isArchivedStatus(t.status)) n += 1;
   }
   return n;
 }
