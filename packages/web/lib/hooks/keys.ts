@@ -19,6 +19,7 @@ export const queryKeys = {
   memory: {
     all: ["memory"] as const,
     facts: (filter: { scope?: MemoryScope }) => ["memory", "facts", filter] as const,
+    counts: () => ["memory", "counts"] as const,
   },
   promotions: {
     all: ["promotions"] as const,

@@ -9,7 +9,7 @@
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { FactType, MemoryScope } from "@beevibe/core";
-import type { MemoryFactDisplay, MergeOrigin } from "./types.js";
+import type { MemoryFactCounts, MemoryFactDisplay, MergeOrigin } from "./types.js";
 
 interface FactRow {
   id: string;
@@ -59,6 +59,38 @@ export async function listMemoryFacts(
     limit,
   ]);
   return rows.map(rowToMemoryFactDisplay);
+}
+
+/**
+ * Per-scope fact counts for the memory page's scope tabs. Owner-scoped
+ * and unconditional — the tab counts must stay stable regardless of
+ * which scope filter is active on `/memory/fact`, otherwise switching
+ * tabs makes the other tabs' badges flash to 0.
+ */
+const COUNTS_SQL = /* sql */ `
+SELECT f.scope, COUNT(*)::int AS n
+FROM memory_fact f
+JOIN agent a ON a.id = f.agent_id
+WHERE a.owner_id = $1
+GROUP BY f.scope
+`;
+
+interface CountsRow {
+  scope: MemoryScope;
+  n: number;
+}
+
+export async function listMemoryFactCounts(
+  pool: Pool,
+  ownerId: string,
+): Promise<MemoryFactCounts> {
+  const { rows } = await pool.query<CountsRow>(COUNTS_SQL, [ownerId]);
+  const counts: MemoryFactCounts = { total: 0, ic: 0, team: 0, org: 0 };
+  for (const row of rows) {
+    counts[row.scope] = row.n;
+    counts.total += row.n;
+  }
+  return counts;
 }
 
 function rowToMemoryFactDisplay(row: FactRow): MemoryFactDisplay {
