@@ -9,7 +9,10 @@
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { FactType, MemoryScope } from "@beevibe/core";
+import { MEMORY_SCOPES } from "@beevibe/core";
 import type { MemoryFactCounts, MemoryFactDisplay, MergeOrigin } from "./types.js";
+
+const MEMORY_SCOPE_SET = new Set<string>(MEMORY_SCOPES);
 
 interface FactRow {
   id: string;
@@ -87,6 +90,10 @@ export async function listMemoryFactCounts(
   const { rows } = await pool.query<CountsRow>(COUNTS_SQL, [ownerId]);
   const counts: MemoryFactCounts = { total: 0, ic: 0, team: 0, org: 0 };
   for (const row of rows) {
+    // Defensive: if a future migration adds a new MemoryScope and this
+    // query runs before the DTO/UI catch up, ignore the unknown bucket
+    // rather than corrupting the result with a stray property.
+    if (!MEMORY_SCOPE_SET.has(row.scope)) continue;
     counts[row.scope] = row.n;
     counts.total += row.n;
   }
