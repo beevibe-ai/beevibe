@@ -305,6 +305,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     taskService,
     sessionRepo,
     runtimeRepo,
+    dispatchService,
     hub: daemonHub,
     pool,
   });
