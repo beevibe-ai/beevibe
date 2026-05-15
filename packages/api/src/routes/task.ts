@@ -20,6 +20,7 @@ import { Router, type RequestHandler, type Response } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   TASK_PRIORITIES,
+  isInFlightSessionStatus,
   taskId,
   type RuntimeRepository,
   type SessionRepository,
@@ -243,10 +244,10 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
       //   scheduler's CancelListener, which aborts the in-process spawn.
       // We fire both — pg_notify is cheap and the daemon doesn't listen
       // on it. Each path is a no-op for sessions running on the other.
-      const running = await deps.sessionRepo.listForTask(id);
-      const cancelPushes: Array<Promise<unknown>> = [];
-      for (const s of running) {
-        if (s.status !== "pending" && s.status !== "running") continue;
+      const sessions = await deps.sessionRepo.listForTask(id);
+      const cancelPushes: Array<Promise<void>> = [];
+      for (const s of sessions) {
+        if (!isInFlightSessionStatus(s.status)) continue;
         if (!s.runtime_id) continue;
         cancelPushes.push(
           deps.runtimeRepo.findById(s.runtime_id).then((rt) => {
