@@ -39,6 +39,13 @@ export interface TaskListFilter {
    * tasks-grouping.ts.
    */
   view?: "all" | "mine" | "sprint" | "timeline";
+  /**
+   * Caller's person id. When set, the list is scoped to tasks the caller
+   * is connected to — they own the assignee agent, they own the creator
+   * agent, or they created the task themselves. Required for the /task
+   * route; tests/internal callers may omit to bypass the scope.
+   */
+  caller_person_id?: string;
 }
 
 interface TaskListRow {
@@ -118,6 +125,12 @@ LEFT JOIN wp_counts wpc     ON wpc.task_id = t.id
 LEFT JOIN latest_session ls ON ls.task_id = t.id
 WHERE ($1::text[] IS NULL OR t.status = ANY($1::text[]))
   AND ($2::text   IS NULL OR t.assignee_id = $2)
+  AND (
+    $3::text IS NULL
+    OR asg.owner_id = $3
+    OR crt_a.owner_id = $3
+    OR (t.creator_type = 'person' AND t.creator_id = $3)
+  )
 ORDER BY t.created_at DESC
 `;
 
@@ -184,6 +197,7 @@ export async function listTasks(
   const { rows } = await pool.query<TaskListRow>(LIST_SQL, [
     statuses ? [...statuses] : null,
     filter.assignee_id ?? null,
+    filter.caller_person_id ?? null,
   ]);
   return rows.map(rowToTaskListItem);
 }

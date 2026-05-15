@@ -86,7 +86,11 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
   router.get("/task", async (req, res) => {
     if (!requireHuman(req, res)) return;
 
-    const filter: TaskListFilter = {};
+    // Always scope to the caller's owner tree: a task is visible only if
+    // the caller owns the assignee agent, owns the creator agent, or
+    // created it directly. Without this scope the list leaks tasks across
+    // owners (any logged-in person could see every task in the DB).
+    const filter: TaskListFilter = { caller_person_id: req.caller.personId };
     const lifecycleParam = typeof req.query.lifecycle === "string" ? req.query.lifecycle : undefined;
     if (lifecycleParam && LIFECYCLES.has(lifecycleParam as Lifecycle)) {
       filter.lifecycle = lifecycleParam as Lifecycle;

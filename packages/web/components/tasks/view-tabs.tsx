@@ -39,16 +39,15 @@ export function ViewTabs({
       </p>
 
       <div className="shrink-0 flex items-center gap-2">
-        {/* Archive toggle — only when there's anything to show. The
-            cancelled + failed tasks would otherwise dominate Done, so
-            they're hidden by default. Click to surface a sixth lane. */}
-        {archivedCount > 0 ? (
-          <ArchiveToggle
-            count={archivedCount}
-            showing={showArchived}
-            onToggle={onToggleArchived}
-          />
-        ) : null}
+        {/* Archive toggle — always rendered so the affordance is
+            discoverable even when there's nothing archived yet. Failed
+            and cancelled tasks would otherwise dominate Done, so they're
+            hidden by default behind this toggle. */}
+        <ArchiveToggle
+          count={archivedCount}
+          showing={showArchived}
+          onToggle={onToggleArchived}
+        />
         <SearchBox query={query} onChange={onQueryChange} onFocus={onSearch} />
       </div>
     </div>

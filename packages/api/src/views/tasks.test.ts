@@ -69,7 +69,7 @@ describe("listTasks", () => {
     await listTasks(pool, { lifecycle: "in_review" });
     expect(queryMock).toHaveBeenCalledWith(
       expect.any(String),
-      [["review", "blocked"], null],
+      [["review", "blocked"], null, null],
     );
   });
 
@@ -77,7 +77,20 @@ describe("listTasks", () => {
     const pool = makeMockPool([[]]);
     const queryMock = pool._spy;
     await listTasks(pool, { assignee_id: "agt_xyz" });
-    expect(queryMock).toHaveBeenCalledWith(expect.any(String), [null, "agt_xyz"]);
+    expect(queryMock).toHaveBeenCalledWith(expect.any(String), [null, "agt_xyz", null]);
+  });
+
+  it("forwards caller_person_id as the owner-scope param", async () => {
+    // The /task route always sets this. SQL gates rows by assignee or
+    // creator agent ownership, or by direct person-creator match, so a
+    // null here means "no owner scope" (tests/internal callers only).
+    const pool = makeMockPool([[]]);
+    const queryMock = pool._spy;
+    await listTasks(pool, { caller_person_id: "per_owner" });
+    expect(queryMock).toHaveBeenCalledWith(
+      expect.any(String),
+      [null, null, "per_owner"],
+    );
   });
 });
 
