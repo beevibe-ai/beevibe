@@ -87,12 +87,30 @@ interface ResolverEntry<T> {
   resolve: (response: T) => void;
   reject: (err: Error) => void;
   timer: ReturnType<typeof setTimeout>;
+  /**
+   * Callee session this resolver is waiting on. When that session ends in a
+   * terminal failure state, `failResolverForCalleeSession` looks the
+   * resolver up via the reverse `pendingByCalleeSession` index and rejects
+   * fast — otherwise the resolver would sit out the full ASK / NEGOTIATE
+   * timeout (5 min) and the caller's MCP transport would eventually drop
+   * with a generic "transport dropped" error instead of a useful reason.
+   */
+  calleeSessionId?: string;
 }
 
 type AskOrNegotiate = AskResponse | NegotiateResponse | EscalatedSentinel;
 
 export class MeshServer {
   private readonly resolvers = new Map<string, ResolverEntry<AskOrNegotiate>>();
+  /**
+   * Reverse index: callee session id → resolver keys waiting on it.
+   * Populated by `awaitResolver` when a `calleeSessionId` is passed and
+   * drained by `fireResolver`/`failResolverForCalleeSession`. One callee
+   * session can have ≥1 waiters across its lifetime (negotiate flips
+   * between initiator and responder keys as rounds alternate, all tied to
+   * the same B-resident session).
+   */
+  private readonly pendingByCalleeSession = new Map<string, Set<string>>();
 
   constructor(private readonly deps: MeshServerDeps) {}
 
@@ -121,14 +139,26 @@ export class MeshServer {
       `Read the question, search relevant context if needed, and respond by calling respond_ask(request_id="${requestId}", answer="..."). The answer is delivered to the asker via that tool — replying in chat alone does NOT reach them. After respond_ask returns, exit.\n` +
       `</context>`;
 
+    // Pre-mint the callee session id so we can index the asker's resolver
+    // by it. If the callee session fails before calling respond_ask, the
+    // bootstrap hooks invoke `failResolverForCalleeSession(sid, ...)` and
+    // the asker gets a clear error fast instead of waiting out the 5-min
+    // resolver timeout.
+    const calleeSid = makeSessionId();
+
     void this.spawnTargetSession({
       targetAgentId: toAgentId,
       type: "mesh_ask",
       intent,
+      sessionId: calleeSid,
       callerAgentId: fromAgentId,
     });
 
-    return this.awaitResolver<AskResponse>(`${requestId}:asker`, DEFAULT_ASK_TIMEOUT_MS);
+    return this.awaitResolver<AskResponse>(
+      `${requestId}:asker`,
+      DEFAULT_ASK_TIMEOUT_MS,
+      calleeSid,
+    );
   }
 
   /**
@@ -231,6 +261,7 @@ export class MeshServer {
     return this.awaitResolver<NegotiateResponse | EscalatedSentinel>(
       `${neg.id}:initiator`,
       DEFAULT_NEGOTIATE_TIMEOUT_MS,
+      counterpartySid,
     );
   }
 
@@ -343,9 +374,13 @@ export class MeshServer {
     // key from whichever was just resolved (or the initiator key if this
     // was B's first response to round 1).
     const myKey = initiatorEntry ? responderKey : initiatorKey;
+    // Across the negotiation's lifetime both initiator and responder
+    // waiters are tied to the same B-resident session, so failing that
+    // session must reject whichever side is currently blocked.
     return this.awaitResolver<NegotiateResponse | EscalatedSentinel>(
       myKey,
       DEFAULT_NEGOTIATE_TIMEOUT_MS,
+      neg.counterparty_session_id ?? undefined,
     );
   }
 
@@ -467,10 +502,13 @@ export class MeshServer {
   private awaitResolver<T extends AskOrNegotiate>(
     key: string,
     timeoutMs: number,
+    calleeSessionId?: string,
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
-        if (this.resolvers.delete(key)) {
+        const entry = this.resolvers.get(key);
+        if (entry && this.resolvers.delete(key)) {
+          this.untrackResolverKey(key, entry.calleeSessionId);
           reject(new Error(`mesh resolver timeout (${timeoutMs}ms) for ${key}`));
         }
       }, timeoutMs);
@@ -478,7 +516,16 @@ export class MeshServer {
         resolve: resolve as (response: AskOrNegotiate) => void,
         reject,
         timer,
+        calleeSessionId,
       });
+      if (calleeSessionId) {
+        let keys = this.pendingByCalleeSession.get(calleeSessionId);
+        if (!keys) {
+          keys = new Set();
+          this.pendingByCalleeSession.set(calleeSessionId, keys);
+        }
+        keys.add(key);
+      }
     });
   }
 
@@ -487,8 +534,40 @@ export class MeshServer {
     if (!entry) return false;
     clearTimeout(entry.timer);
     this.resolvers.delete(key);
+    this.untrackResolverKey(key, entry.calleeSessionId);
     entry.resolve(response);
     return true;
+  }
+
+  private untrackResolverKey(key: string, calleeSessionId: string | undefined): void {
+    if (!calleeSessionId) return;
+    const keys = this.pendingByCalleeSession.get(calleeSessionId);
+    if (!keys) return;
+    keys.delete(key);
+    if (keys.size === 0) this.pendingByCalleeSession.delete(calleeSessionId);
+  }
+
+  /**
+   * Reject every resolver currently waiting on `calleeSessionId`. Called
+   * from the bootstrap session-terminal hooks (`onSessionComplete` for
+   * graceful failures + `onSessionReaped` for daemon-orphan reaps) so a
+   * caller's `ask`/`negotiate` promise rejects within a heartbeat of the
+   * callee session entering a terminal failure state, instead of sitting
+   * through the 5-minute resolver timeout. Idempotent — no-op when the
+   * session has no registered waiters (success path or unrelated session).
+   */
+  failResolverForCalleeSession(calleeSessionId: string, reason: string): void {
+    const keys = this.pendingByCalleeSession.get(calleeSessionId);
+    if (!keys || keys.size === 0) return;
+    // Snapshot before mutating: rejecting drains via `untrackResolverKey`.
+    for (const key of [...keys]) {
+      const entry = this.resolvers.get(key);
+      if (!entry) continue;
+      clearTimeout(entry.timer);
+      this.resolvers.delete(key);
+      entry.reject(new Error(`mesh callee session failed: ${reason}`));
+    }
+    this.pendingByCalleeSession.delete(calleeSessionId);
   }
 }
 

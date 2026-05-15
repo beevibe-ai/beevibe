@@ -349,8 +349,22 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
       if (session.type === "chat") {
         chatResolver.resolve(session.id, session);
       }
-      // Future: mesh resolver for cross-instance mesh, post-dispatch
-      // hook for parent-task rollup, etc.
+      // If a mesh callee terminates without ever calling respond_ask /
+      // respond_negotiate, the waiting caller would otherwise sit out the
+      // 5-min resolver timeout and surface as a generic MCP "transport
+      // dropped" error. Reject fast with the session's recorded error so
+      // the caller sees a useful reason within a tick of the row going
+      // terminal. Success path is unaffected: respondAsk/respondNegotiate
+      // already fired `fireResolver` and drained the index.
+      if (
+        (session.type === "mesh_ask" || session.type === "mesh_negotiate") &&
+        (session.status === "failed" || session.status === "cancelled")
+      ) {
+        mesh.failResolverForCalleeSession(
+          session.id,
+          session.error ?? session.status,
+        );
+      }
     },
   });
   server.getApp().use("/runtime", runtimeRouter);
@@ -430,7 +444,19 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
       if (session.type === "chat") {
         chatResolver.resolve(session.id, session);
       }
-      // Mesh waiters time out via their own awaitResolver; no fanout here.
+      // Same fast-fail path as `onSessionComplete` above — when the
+      // daemon-orphan reaper marks a callee session failed, drop the
+      // caller's mesh resolver immediately instead of waiting for the
+      // 5-min timeout.
+      if (
+        (session.type === "mesh_ask" || session.type === "mesh_negotiate") &&
+        session.status === "failed"
+      ) {
+        mesh.failResolverForCalleeSession(
+          session.id,
+          session.error ?? "daemon_orphaned",
+        );
+      }
     },
   });
   void daemonOrphanReaper.start();
