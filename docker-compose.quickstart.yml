@@ -60,6 +60,10 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://beevibe:beevibe@postgres:5432/beevibe
+      # api bakes this URL into mcp-config.json when it preps a workspace for
+      # a daemon-claimed session. The daemon writes that file on the user's
+      # host and spawns the CLI there — so the URL must resolve from the
+      # host, hence the published port (not the in-network DNS name).
       BEEVIBE_MCP_SERVER_URL: http://localhost:3000/mcp
       BEEVIBE_API_PORT: "3000"
       BEEVIBE_CORS_ORIGINS: http://localhost:3030
@@ -80,6 +84,9 @@ services:
     restart: unless-stopped
     environment:
       DATABASE_URL: postgresql://beevibe:beevibe@postgres:5432/beevibe
+      # scheduler-spawned (server-fallback-mesh) CLIs run inside THIS
+      # container's network namespace, so they reach api via the docker DNS
+      # name, not the host's published port.
       BEEVIBE_MCP_SERVER_URL: http://api:3000/mcp
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set}
       OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be set}
