@@ -8,6 +8,95 @@ welcome but please skim this first.
 Be kind. Disagreement is fine; rudeness is not. The maintainers will close
 issues / PRs that don't meet this bar.
 
+## Local development
+
+The container stack in [docker-compose.quickstart.yml](./docker-compose.quickstart.yml)
+is the right answer for "I just want to try it." For an iterative dev loop
+with file watching, hot reload, and breakpoints, run the services on the
+host instead.
+
+### Prerequisites
+
+- Node.js v20+ — [nodejs.org](https://nodejs.org/)
+- pnpm v9 — `corepack enable && corepack prepare pnpm@9.12.0 --activate`
+- Docker — for the local Postgres
+- Claude Code CLI on `PATH` — [claude.ai/code](https://claude.ai/code).
+  Run `claude login` once before dispatching real agent work.
+- Provider keys: `OPENAI_API_KEY` (embeddings) + `ANTHROPIC_API_KEY` (LLM).
+
+### First-run setup
+
+```bash
+git clone https://github.com/beevibe-ai/beevibe.git && cd beevibe
+pnpm install
+pnpm bootstrap
+```
+
+`pnpm bootstrap` writes `.env` from `.env.example` (prompting for provider
+keys), starts local Postgres via docker-compose, runs migrations, and
+provisions an admin person + team agent. Re-running is safe — it detects
+existing setup and skips.
+
+### Daily loop
+
+```bash
+pnpm dev                                # postgres + api + scheduler
+pnpm --filter @beevibe/web dev -- -p 3030   # in a second terminal
+```
+
+Open <http://localhost:3030>. Edit code; api/scheduler use `tsx watch` and
+web uses Next dev — both restart on save.
+
+### Minting a `bv_u_` token for the daemon
+
+`pnpm bootstrap` creates an admin and writes its `bv_u_` key into both
+root `.env` and `packages/web/.env.local`. To mint another user (or a
+clean demo topology):
+
+```bash
+pnpm provision-user                       # one extra person + team agent
+pnpm tsx scripts/provision-demo.ts        # captain + 2 ICs + paste-ready mcp.json
+```
+
+Then register your daemon against the dev api:
+
+```bash
+pnpm tsx packages/daemon/src/main.ts setup \
+  --api http://localhost:3000 --user-token <bv_u_…>
+pnpm tsx packages/daemon/src/main.ts start
+```
+
+### Common commands
+
+```bash
+pnpm build              # build all packages (turbo)
+pnpm typecheck          # TypeScript across the workspace
+pnpm lint               # ESLint
+pnpm test               # unit + integration (CI runs this)
+pnpm migrate up         # apply migrations to DATABASE_URL
+pnpm db:reset           # wipe + recreate the local DB
+pnpm install-skills     # sync /skills/* into ~/.claude/skills/
+pnpm sync-core-memory   # re-sync core memory block descriptions
+```
+
+### Monorepo layout
+
+```text
+packages/
+├── api/         MCP tools, REST API, SSE, chat, mesh broker, /runtime
+├── core/        domain types, ports, services, adapters, auth
+├── daemon/      local process that claims sessions and spawns CLIs
+├── scheduler/   server-side fallback claimant + orphan reaper
+└── web/         Next.js dashboard
+
+infra/railway/   Dockerfiles + Railway config-as-code per service
+migrations/      node-pg-migrate SQL migrations
+scripts/         dev orchestration + provisioning + skills sync
+skills/          shipped Anthropic Agent Skills (synced into workspaces)
+```
+
+Each `packages/<name>/README.md` is the source of truth for that subsystem.
+
 ## How to contribute
 
 1. **Open an issue first** for non-trivial work (anything beyond a typo,
