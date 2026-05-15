@@ -43,7 +43,7 @@ export function TasksClient() {
     router.push("/tasks", { scroll: false });
   }, [router]);
 
-  const { data, isLoading, isError } = useTasks({});
+  const { data, isLoading, isFetching, isError } = useTasks({});
 
   const filtered = useMemo(() => {
     if (!data) return [];
@@ -61,6 +61,7 @@ export function TasksClient() {
     isApiConfigured,
     isError,
     isLoading,
+    isFetching,
     hasResults: filtered.length > 0,
     hasQuery: query.length > 0,
   });
@@ -121,6 +122,7 @@ function pickEmptyMessage(state: {
   isApiConfigured: boolean;
   isError: boolean;
   isLoading: boolean;
+  isFetching: boolean;
   hasResults: boolean;
   hasQuery: boolean;
 }): EmptyMessage | null {
@@ -139,7 +141,13 @@ function pickEmptyMessage(state: {
       description: "Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load tasks.",
     };
   }
-  if (state.isLoading || state.hasResults) return null;
+  // Suppress the empty state while ANY fetch is in flight — including a
+  // background refetch where `data === []` is cached. Without this guard,
+  // navigating /chat → /tasks after an SSE-triggered cache invalidation
+  // briefly shows "No tasks yet" until the refetch settles, even though
+  // the api is about to return the new task. `isLoading` only catches
+  // the initial-fetch case (no data yet); `isFetching` covers refetches.
+  if (state.isLoading || state.isFetching || state.hasResults) return null;
   if (state.hasQuery) {
     return {
       icon: ListChecks,

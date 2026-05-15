@@ -96,6 +96,47 @@ describe("TasksClient — empty-state branches", () => {
     ).toBeInTheDocument();
   });
 
+  // Regression: previously, navigating /chat → /tasks after an SSE
+  // invalidation that marked a cached `[]` as stale would briefly flash
+  // the "No tasks yet" empty state until the background refetch settled
+  // (typically ~200ms). User perception: "the task didn't show up; I
+  // had to refresh." Hard refresh worked because isLoading=true on
+  // initial mount correctly suppresses the empty state. Background
+  // refetches on a stale-empty cache had isLoading=false and so fell
+  // through to the misleading empty state.
+  it("does NOT render the no-results empty state while a background refetch is in flight on a stale-empty cache", async () => {
+    // Resolver we control so the refetch stays in-flight while we
+    // assert. This is the window the bug-fix targets.
+    let resolveRefetch: (tasks: TaskListItem[]) => void = () => {};
+    listMock.mockImplementation(
+      () => new Promise((resolve) => { resolveRefetch = resolve; }),
+    );
+
+    // Pre-seed the cache as if a previous /tasks visit returned [], then
+    // invalidate it to simulate the SSE task.created handler. This puts
+    // useTasks in the exact state we want on mount: cached empty data,
+    // stale, refetch about to fire.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    client.setQueryData(["tasks", "list", {}], []);
+    await client.invalidateQueries({ queryKey: ["tasks"] });
+
+    const Wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={client}>{children}</QueryClientProvider>
+    );
+    render(<TasksClient />, { wrapper: Wrapper });
+
+    // Refetch is in flight. With the bug, "No tasks yet" would be in
+    // the DOM right now. With the fix, isFetching=true suppresses it.
+    await waitFor(() => expect(listMock).toHaveBeenCalled());
+    expect(screen.queryByText("No tasks yet")).not.toBeInTheDocument();
+
+    // Refetch settles with a real task — the lane shows the task and
+    // the empty state stays absent.
+    resolveRefetch([makeTask({ id: "new1", status: "in_progress", title: "freshly minted" })]);
+    expect(await screen.findByText("freshly minted")).toBeInTheDocument();
+    expect(screen.queryByText("No tasks yet")).not.toBeInTheDocument();
+  });
+
   it("renders the no-matching-search empty state when query has no matches", async () => {
     listMock.mockResolvedValue([makeTask({ title: "alpha" }), makeTask({ id: "t2", title: "beta" })]);
     renderClient();
