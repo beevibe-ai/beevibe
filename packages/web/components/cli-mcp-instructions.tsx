@@ -20,6 +20,8 @@ const CHANNEL_OPTIONS: readonly ChannelOption[] = [
   { id: "manual", label: "Manual", hint: "raw URL + token" },
 ];
 
+const MCP_SERVER_NAME = "beevibe";
+
 interface SetupStep {
   label: string;
   command: string;
@@ -42,9 +44,9 @@ function buildBundle(channel: CliChannel, mcpUrl: string, token: string): SetupB
         ),
         steps: [
           {
-            label: "Register the beevibe MCP server",
+            label: `Register the ${MCP_SERVER_NAME} MCP server`,
             command:
-              `claude mcp add --transport http beevibe ${mcpUrl} \\\n` +
+              `claude mcp add --transport http ${MCP_SERVER_NAME} ${mcpUrl} \\\n` +
               `  --header "Authorization: Bearer ${token}"`,
           },
         ],
@@ -67,9 +69,9 @@ function buildBundle(channel: CliChannel, mcpUrl: string, token: string): SetupB
           {
             label: "Add the MCP server block",
             command:
-              `[mcp_servers.beevibe]\n` +
+              `[mcp_servers.${MCP_SERVER_NAME}]\n` +
               `url = "${mcpUrl}"\n\n` +
-              `[mcp_servers.beevibe.headers]\n` +
+              `[mcp_servers.${MCP_SERVER_NAME}.headers]\n` +
               `Authorization = "Bearer ${token}"`,
           },
         ],
@@ -84,7 +86,7 @@ function buildBundle(channel: CliChannel, mcpUrl: string, token: string): SetupB
       return {
         prelude: (
           <p className="text-xs text-muted-foreground leading-relaxed">
-            Add a <span className="font-mono">mcp.beevibe</span> entry to{" "}
+            Add a <span className="font-mono">mcp.{MCP_SERVER_NAME}</span> entry to{" "}
             <span className="font-mono">~/.config/opencode/opencode.json</span>{" "}
             (or your project&apos;s <span className="font-mono">opencode.json</span>):
           </p>
@@ -95,7 +97,7 @@ function buildBundle(channel: CliChannel, mcpUrl: string, token: string): SetupB
             command: JSON.stringify(
               {
                 mcp: {
-                  beevibe: {
+                  [MCP_SERVER_NAME]: {
                     type: "remote",
                     url: mcpUrl,
                     headers: { Authorization: `Bearer ${token}` },
