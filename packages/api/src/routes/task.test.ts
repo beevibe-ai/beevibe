@@ -10,6 +10,7 @@ import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
   PostgresPersonRepository,
+  PostgresRuntimeRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
   PostgresWorkProductRepository,
@@ -20,6 +21,7 @@ import { TaskService } from "@beevibe/core/services/task-service";
 import { DEFAULT_RUNTIME_CONFIG, agentId, personId, taskId } from "@beevibe/core";
 import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
 import { createAuthMiddleware } from "../auth/middleware.js";
+import { DaemonHub } from "../runtime/hub.js";
 import { createTaskRouter } from "./task.js";
 
 describe("task routes — integration", () => {
@@ -28,9 +30,11 @@ describe("task routes — integration", () => {
   let personRepo: PostgresPersonRepository;
   let coreMemoryRepo: PostgresCoreMemoryRepository;
   let sessionRepo: PostgresSessionRepository;
+  let runtimeRepo: PostgresRuntimeRepository;
   let taskRepo: PostgresTaskRepository;
   let workProductRepo: PostgresWorkProductRepository;
   let taskService: TaskService;
+  let hub: DaemonHub;
 
   beforeAll(() => {
     pool = createTestPool();
@@ -38,9 +42,11 @@ describe("task routes — integration", () => {
     personRepo = new PostgresPersonRepository(pool);
     coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
     sessionRepo = new PostgresSessionRepository(pool);
+    runtimeRepo = new PostgresRuntimeRepository(pool);
     taskRepo = new PostgresTaskRepository(pool);
     workProductRepo = new PostgresWorkProductRepository(pool);
     taskService = new TaskService({ taskRepo, workProductRepo, agentRepo, sessionRepo });
+    hub = new DaemonHub();
   });
 
   beforeEach(async () => {
@@ -60,6 +66,9 @@ describe("task routes — integration", () => {
         authMiddleware: createAuthMiddleware({ agentRepo, personRepo }),
         taskRepo,
         taskService,
+        sessionRepo,
+        runtimeRepo,
+        hub,
         pool,
       }),
     );

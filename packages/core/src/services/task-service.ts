@@ -109,6 +109,18 @@ export class TaskService {
   ): Promise<Task> {
     const task = await this.requireTask(taskId);
 
+    // Reject late updates from agents whose task was already terminated
+    // by a human (cancel) or by a successful close (done). Without this
+    // guard, an agent that runs to completion AFTER a human cancel can
+    // silently overwrite the cancelled status — the user's intervention
+    // gets undone and the result_summary "(cancelled by …)" is lost.
+    if (TERMINAL_STATUSES.includes(task.status)) {
+      throw new InvalidTaskTransitionError(
+        `update_progress on task ${taskId}: task is already in terminal status '${task.status}'. ` +
+          `Exit your session — no further updates accepted.`,
+      );
+    }
+
     let finalStatus = status;
     if (status === "done" && task.assignee_id) {
       const agent = await this.deps.agentRepo.findById(task.assignee_id);

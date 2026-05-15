@@ -20,7 +20,10 @@ import { Router, type RequestHandler, type Response } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   TASK_PRIORITIES,
+  isInFlightSessionStatus,
   taskId,
+  type RuntimeRepository,
+  type SessionRepository,
   type TaskRepository,
   type TaskPriority,
   type TaskStatus,
@@ -31,6 +34,7 @@ import {
   TaskNotFoundError,
 } from "@beevibe/core/services/task-service";
 import { requireHuman } from "../auth/middleware.js";
+import type { DaemonHub } from "../runtime/hub.js";
 
 /** Statuses from which /cancel is legal. Anything non-terminal. */
 const CANCELLABLE_FROM: readonly TaskStatus[] = [
@@ -47,7 +51,11 @@ export interface TaskRoutesDeps {
   authMiddleware: RequestHandler;
   taskRepo: TaskRepository;
   taskService: TaskService;
-  /** For pg_notify('cancel_task', task_id). */
+  sessionRepo: SessionRepository;
+  runtimeRepo: RuntimeRepository;
+  /** Push cancel frames over WS to daemon-bound running sessions. */
+  hub: DaemonHub;
+  /** For pg_notify('cancel_task', task_id) — server-fallback path only. */
   pool: Pool;
 }
 
@@ -228,14 +236,32 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
         result_summary: reason,
       });
 
-      // pg_notify the executor's cancel-listener so the in-flight CLI
-      // subprocess (if any) gets killed via AbortController.
+      // Route the cancel signal to whichever path is running the work:
+      // - Daemon-bound sessions: push `{type:"cancel"}` over WS via
+      //   DaemonHub. The daemon's claimer.ts handles the frame and
+      //   aborts the subprocess via Supervisor → AbortController → SIGTERM.
+      // - Server-fallback (in-process) sessions: pg_notify the
+      //   scheduler's CancelListener, which aborts the in-process spawn.
+      // We fire both — pg_notify is cheap and the daemon doesn't listen
+      // on it. Each path is a no-op for sessions running on the other.
+      const sessions = await deps.sessionRepo.listForTask(id);
+      const cancelPushes: Array<Promise<void>> = [];
+      for (const s of sessions) {
+        if (!isInFlightSessionStatus(s.status)) continue;
+        if (!s.runtime_id) continue;
+        cancelPushes.push(
+          deps.runtimeRepo.findById(s.runtime_id).then((rt) => {
+            if (rt) deps.hub.cancel(rt.daemon_id, s.id);
+          }),
+        );
+      }
+      await Promise.all(cancelPushes);
       await deps.pool.query(`SELECT pg_notify('cancel_task', $1)`, [id]);
 
       res.json({
         ok: true,
         task_id: id,
-        note: "cancellation signal sent to executor; CLI subprocess will be killed if running",
+        note: "cancellation signal sent to daemon (WS) and scheduler (pg_notify); CLI subprocess will be killed if running",
       });
     } catch (err) {
       handleServiceError(err, res);

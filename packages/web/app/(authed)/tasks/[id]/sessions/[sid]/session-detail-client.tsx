@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { AlertTriangle, ChevronRight, Terminal } from "lucide-react";
 import { useSession } from "@/lib/hooks/use-sessions";
-import { useCancelSession } from "@/lib/hooks/use-session-mutations";
 import { isApiConfigured } from "@/lib/api/config";
 import { Avatar } from "@/components/avatar";
 import { HierChip } from "@/components/hier-chip";
@@ -101,9 +100,12 @@ function Breadcrumbs({
   );
 }
 
-function SessionDetailBody({ session, taskId }: { session: SessionDisplay; taskId: string }) {
-  const cancel = useCancelSession(session.short_id, taskId);
-
+function SessionDetailBody({ session, taskId: _taskId }: { session: SessionDisplay; taskId: string }) {
+  // Cancel is a task-level action, not a session-level one — moved to
+  // the task detail page. The button used to live here but it called
+  // `api.tasks.cancel(taskId)` under the hood, which confused users
+  // ("I cancelled the session, why is it still running?") and left the
+  // running session orphaned in the daemon-spawn path.
   return (
     <>
       <header className="mb-6">
@@ -126,24 +128,7 @@ function SessionDetailBody({ session, taskId }: { session: SessionDisplay; taskI
               <span className="tabular-nums">{session.duration_label}</span>
             </div>
           </div>
-          <div className="flex items-center gap-1 shrink-0">
-            {session.status === "running" ? (
-              <button
-                type="button"
-                disabled={cancel.isPending}
-                onClick={() => cancel.mutate()}
-                className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {cancel.isPending ? "Canceling…" : "Cancel"}
-              </button>
-            ) : null}
-          </div>
         </div>
-        {cancel.isError ? (
-          <div className="mt-1 text-xs text-status-failed text-right">
-            Couldn&apos;t cancel: {cancel.error.message}
-          </div>
-        ) : null}
       </header>
 
       <BriefingComposer briefing={session.briefing} />
