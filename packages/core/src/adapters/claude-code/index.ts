@@ -6,5 +6,7 @@ export {
   parseStreamJsonLine,
   extractStepEvents,
   parseClaudeStreamJson,
+  bareCliExitMessage,
+  isBareCliExitMessage,
 } from "./stream-json.js";
 export type { StreamJsonMessage } from "./stream-json.js";

@@ -31,6 +31,7 @@ import {
 } from "@beevibe/core";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { ResumeReason } from "@beevibe/core/services/agent-session";
+import { isBareCliExitMessage } from "@beevibe/core/adapters/claude-code";
 import { requireHuman } from "../auth/middleware.js";
 import type { ChatResolver } from "../runtime/chat-resolver.js";
 import type { DaemonHub } from "../runtime/hub.js";
@@ -190,20 +191,22 @@ export function groupIntoConversations(
  * stderr tail (`session.error`), so prefer that when it's something other
  * than the same bare line. If neither holds anything useful, fall back to
  * a daemon-pointer message instead of "(turn failed — no response)".
+ *
+ * Exported so non-chat surfaces that render failed sessions (e.g. rooms)
+ * can apply the same mapping rather than each site re-implementing it.
  */
-const BARE_CLI_EXIT_RE = /^CLI exited with code (-?\d+|null)\.?$/;
 const DAEMON_LOG_POINTER =
   "Couldn't reach your team agent. Check the terminal where you ran " +
   "`beevibe-daemon start` for the failure detail.";
 
-function failureMessageFor(s: {
+export function failureMessageFor(s: {
   result_summary?: string | null;
   error?: string | null;
 }): string {
   const error = s.error?.trim();
-  if (error && !BARE_CLI_EXIT_RE.test(error)) return error;
+  if (error && !isBareCliExitMessage(error)) return error;
   const summary = s.result_summary?.trim();
-  if (summary && !BARE_CLI_EXIT_RE.test(summary)) return summary;
+  if (summary && !isBareCliExitMessage(summary)) return summary;
   return DAEMON_LOG_POINTER;
 }
 

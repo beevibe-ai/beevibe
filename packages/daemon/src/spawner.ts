@@ -58,10 +58,9 @@ export async function runDispatch(
   } as unknown as Agent;
   const ws = await deps.workspaceManager.ensureWorkspace({ agent: syntheticAgent });
 
-  // Hot-path log so the daemon's stdout shows what it's actually doing.
-  // Previously this path was silent — "CLI exited with code 1" with no
-  // way to tell which session it was, what cwd was used, or whether
-  // anything was even spawned.
+  // One log line per spawn, same `sess=` token as claimer.ts and the
+  // exit line below, so one session id grep'd from a daemon log shows
+  // the full lifecycle.
   console.log(
     `[daemon/spawn] sess=${payload.session_id} agent=${payload.agent_id} type=${payload.type} cwd=${ws.path}`,
   );
@@ -159,16 +158,15 @@ export async function runDispatch(
     status,
     cli_session_id: result?.cli_session_id,
     result_summary: result?.output ?? "",
-    // Real exit code (when we got one) — beats the previous hardcoded
-    // 0/1. The api uses this to distinguish exit-1 (CLI ran and failed)
-    // from exit-null (spawn never settled — ENOENT etc.).
-    exit_code: result?.exit_code ?? (status === "succeeded" ? 0 : null),
+    // Real exit code when the spawn actually ran; null on the runError
+    // path means "spawn never settled" (ENOENT etc.) — the api can use
+    // that to distinguish "CLI ran and failed" from "we never got to
+    // run it." Previously hardcoded 0/1, which threw away that info.
+    exit_code: result?.exit_code ?? null,
     error: errorDetail,
     usage: result?.usage,
   };
 
-  // Hot-path log — same line for spawn end as for spawn start. Operator
-  // can grep one session id and see the full lifecycle in one place.
   if (status === "succeeded") {
     console.log(`[daemon/spawn] sess=${payload.session_id} exit=0`);
   } else {
