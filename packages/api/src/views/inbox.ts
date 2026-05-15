@@ -29,12 +29,15 @@ const TITLE_TRUNCATE = 120;
  * the same column set (id / kind / title / detail / href / age_at)
  * so the application layer maps a uniform row shape to InboxItem.
  *
- * Branch 1 — tasks awaiting the caller's review/unblock decision.
- *   Filter: status IN ('review','blocked') AND creator_id = $1.
- *   `detail` carries the assignee's name (or "(unassigned)") when in
- *   review, the blocker's reason when blocked.
+ * Branches 1 + 2 — tasks awaiting the caller's review/unblock decision.
+ *   Scoped via assignee or creator-agent ownership (matching the
+ *   `/task` list scope in views/tasks.ts). Humans don't create tasks
+ *   directly — the `create_task` MCP tool stamps `creator_type='agent'`
+ *   — so a `creator_type='person' AND creator_id=$1` filter (which is
+ *   what this query used to do) misses every real task in the system.
+ *   Detail: assignee name when in review, blocker reason when blocked.
  *
- * Branch 2 — escalations awaiting a human resolver. Walked from
+ * Branch 3 — escalations awaiting a human resolver. Walked from
  *   negotiation → both agents to find any owned by the caller; one
  *   row per escalation regardless of which side the caller owns.
  */
@@ -44,14 +47,18 @@ WITH inbox AS (
     'task_review:' || t.id          AS id,
     'task_review'::text             AS kind,
     LEFT(t.title, ${TITLE_TRUNCATE}) AS title,
-    COALESCE(a.name, '(unassigned)') AS detail,
+    COALESCE(asg.name, '(unassigned)') AS detail,
     '/tasks/' || t.id               AS href,
     t.updated_at                    AS age_at
   FROM task t
-  LEFT JOIN agent a ON a.id = t.assignee_id
-  WHERE t.creator_id = $1
-    AND t.creator_type = 'person'
-    AND t.status = 'review'
+  LEFT JOIN agent asg   ON asg.id   = t.assignee_id
+  LEFT JOIN agent crt_a ON crt_a.id = t.creator_id  AND t.creator_type = 'agent'
+  WHERE t.status = 'review'
+    AND (
+      asg.owner_id = $1
+      OR crt_a.owner_id = $1
+      OR (t.creator_type = 'person' AND t.creator_id = $1)
+    )
 
   UNION ALL
 
@@ -63,9 +70,14 @@ WITH inbox AS (
     '/tasks/' || t.id                    AS href,
     t.updated_at                         AS age_at
   FROM task t
-  WHERE t.creator_id = $1
-    AND t.creator_type = 'person'
-    AND t.status = 'blocked'
+  LEFT JOIN agent asg   ON asg.id   = t.assignee_id
+  LEFT JOIN agent crt_a ON crt_a.id = t.creator_id  AND t.creator_type = 'agent'
+  WHERE t.status = 'blocked'
+    AND (
+      asg.owner_id = $1
+      OR crt_a.owner_id = $1
+      OR (t.creator_type = 'person' AND t.creator_id = $1)
+    )
 
   UNION ALL
 
