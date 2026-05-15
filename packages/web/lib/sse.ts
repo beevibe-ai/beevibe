@@ -43,14 +43,14 @@ const eventInvalidations: Record<string, InvalidationKey[]> = {
     // Match ALL chat history slots, not just the `<latest>` one. A user
     // viewing a specific conversation (cacheId = conv head) needs the
     // same auto-recovery: when their pending chat session completes, the
-    // cache slot for that conversation has to refetch. Using the
-    // `["chat", "history"]` prefix invalidates every per-conversation
-    // slot under it. We do NOT fan out to `chat.conversations` — the
-    // sidebar chain head only changes when a new conversation is opened,
-    // and `use-chat`'s onSuccess already invalidates it explicitly.
-    // Refetching it on every non-chat session.updated (task/mesh
-    // transitions) would be pure waste.
-    ["chat", "history"],
+    // cache slot for that conversation has to refetch. The `historyAll`
+    // prefix invalidates every per-conversation slot under it. We do NOT
+    // fan out to `chat.conversations` — the sidebar chain head only
+    // changes when a new conversation is opened, and `use-chat`'s
+    // onSuccess already invalidates it explicitly. Refetching it on
+    // every non-chat session.updated (task/mesh transitions) would be
+    // pure waste.
+    queryKeys.chat.historyAll,
   ],
   "memory.fact.created": [queryKeys.memory.all],
   "memory.fact.deleted": [queryKeys.memory.all],

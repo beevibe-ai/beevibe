@@ -67,6 +67,8 @@ export const queryKeys = {
     /** Per-conversation history. `undefined` = the most recent conversation. */
     history: (conversationId?: string) =>
       ["chat", "history", conversationId ?? "<latest>"] as const,
+    /** Prefix that matches every per-conversation history slot at once. */
+    historyAll: ["chat", "history"] as const,
     conversations: () => ["chat", "conversations"] as const,
   },
 } as const;
