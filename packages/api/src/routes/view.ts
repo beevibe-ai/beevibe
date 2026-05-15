@@ -46,7 +46,7 @@ import {
 } from "../views/tasks-grouping.js";
 import { listAgents, getAgent } from "../views/agents.js";
 import { getSessionByShortId, AmbiguousShortIdError } from "../views/sessions.js";
-import { listMemoryFacts } from "../views/memory.js";
+import { listMemoryFactCounts, listMemoryFacts } from "../views/memory.js";
 import { getDashboardSummary } from "../views/dashboard.js";
 import { getMeshOverview } from "../views/mesh.js";
 import { listPromotions } from "../views/promotions.js";
@@ -503,6 +503,16 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(facts);
     } catch (err) {
       handleError(err, res, "memory fact list");
+    }
+  });
+
+  router.get("/memory/fact/counts", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    try {
+      const counts = await listMemoryFactCounts(deps.pool, req.caller.personId);
+      res.json(counts);
+    } catch (err) {
+      handleError(err, res, "memory fact counts");
     }
   });
 

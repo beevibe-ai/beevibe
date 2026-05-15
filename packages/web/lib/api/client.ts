@@ -9,7 +9,7 @@ import type { TaskListItem } from "@/lib/types/tasks";
 import type { AgentDisplay } from "@/lib/types/agents";
 import type { AgentNetwork } from "@/lib/types/agent-network";
 import type { SessionDisplay } from "@/lib/types/sessions";
-import type { MemoryFactDisplay } from "@/lib/types/memory-facts";
+import type { FactCounts, MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
 import type { InboxItem } from "@/lib/types/inbox";
 import type {
@@ -451,6 +451,14 @@ export const api = {
         query: { ...filter },
         signal: opts.signal,
       }),
+    /**
+     * Per-scope counts for the memory page's tab badges. Driven by a
+     * separate endpoint so the badges stay stable across scope changes —
+     * deriving counts from a scope-filtered list would zero out the
+     * inactive tabs.
+     */
+    factCounts: (opts: ReadOptions = {}) =>
+      fetchJson<FactCounts>("/memory/fact/counts", { signal: opts.signal }),
     /**
      * Owner-driven delete. Lets users correct over-saved facts (issue
      * #90 fix D) without waiting for FactPromoter or running SQL. The

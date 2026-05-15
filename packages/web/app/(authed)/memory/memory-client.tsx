@@ -22,7 +22,7 @@ import { FactRowSkeleton } from "@/components/skeletons";
 import { FactTypeTag } from "@/components/fact-type-tag";
 import { ScopeChip } from "@/components/scope-chip";
 import { RichTextRender } from "@/components/rich-text";
-import { useMemoryFacts } from "@/lib/hooks/use-memory";
+import { useMemoryFactCounts, useMemoryFacts } from "@/lib/hooks/use-memory";
 import { useSlashFocus } from "@/lib/hooks/use-slash-focus";
 import { isApiConfigured } from "@/lib/api/config";
 import { api } from "@/lib/api/client";
@@ -41,9 +41,13 @@ export function MemoryClient() {
 
   const filterScope: MemoryScope | undefined = scope === "all" ? undefined : scope;
   const { data, isLoading, isError } = useMemoryFacts({ scope: filterScope });
+  // Counts come from a separate endpoint so the tab badges stay stable
+  // when the scope filter narrows the list below. Deriving counts from
+  // the filtered `data` would zero out the inactive tabs.
+  const { data: countsData } = useMemoryFactCounts();
 
   const facts = data ?? EMPTY_FACTS;
-  const counts = useMemo(() => deriveCounts(facts), [facts]);
+  const counts = countsData ?? EMPTY_COUNTS;
   const haystacks = useMemo(() => buildHaystacks(facts), [facts]);
   const filtered = useMemo(() => applyFilter(facts, haystacks, query), [facts, haystacks, query]);
 
@@ -264,13 +268,6 @@ function FilterButton({ label }: { label: string }) {
       <ChevronDown className="h-3 w-3" />
     </button>
   );
-}
-
-function deriveCounts(facts: MemoryFactDisplay[]): FactCounts {
-  if (facts.length === 0) return EMPTY_COUNTS;
-  const counts: FactCounts = { total: facts.length, ic: 0, team: 0, org: 0 };
-  for (const f of facts) counts[f.scope] += 1;
-  return counts;
 }
 
 function buildHaystacks(facts: MemoryFactDisplay[]): string[] {

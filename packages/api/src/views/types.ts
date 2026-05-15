@@ -283,6 +283,18 @@ export interface MemoryFactDisplay {
   promotion_origin_scope?: MemoryScope;
 }
 
+/**
+ * Per-scope fact counts for the /memory page's tab badges. Owner-scoped
+ * and unfiltered — the badges have to stay stable regardless of which
+ * scope tab is currently selected on the page.
+ */
+export interface MemoryFactCounts {
+  total: number;
+  ic: number;
+  team: number;
+  org: number;
+}
+
 // ── Dashboard ───────────────────────────────────────────────────────────────
 //
 // The dashboard DTO is intentionally pure data. The web composes display
