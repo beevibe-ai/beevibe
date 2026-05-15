@@ -2,7 +2,6 @@
 
 import { useRef } from "react";
 import { Archive, Search } from "lucide-react";
-import { cn } from "@/lib/utils";
 import { useSlashFocus } from "@/lib/hooks/use-slash-focus";
 
 // Header for /tasks. The earlier strip had "All tasks / My tasks"
@@ -19,8 +18,6 @@ interface Props {
   onQueryChange: (value: string) => void;
   /** Number of failed+cancelled tasks under the current filter. */
   archivedCount: number;
-  showArchived: boolean;
-  onToggleArchived: () => void;
 }
 
 export function ViewTabs({
@@ -28,8 +25,6 @@ export function ViewTabs({
   query,
   onQueryChange,
   archivedCount,
-  showArchived,
-  onToggleArchived,
 }: Props) {
   return (
     <div className="flex items-center gap-3 px-6 pt-5 pb-4 border-b border-border/60">
@@ -39,46 +34,26 @@ export function ViewTabs({
       </p>
 
       <div className="shrink-0 flex items-center gap-2">
-        {/* Archive toggle — always rendered so the affordance is
-            discoverable even when there's nothing archived yet. Failed
-            and cancelled tasks would otherwise dominate Done, so they're
-            hidden by default behind this toggle. */}
-        <ArchiveToggle
-          count={archivedCount}
-          showing={showArchived}
-          onToggle={onToggleArchived}
-        />
+        {/* Read-only badge. Failed + cancelled aren't rendered as a
+            lane on the board (Done is reserved for "this shipped"); the
+            badge just surfaces the count so the user knows the morgue
+            isn't empty without dedicating a column to it. */}
+        <ArchiveBadge count={archivedCount} />
         <SearchBox query={query} onChange={onQueryChange} onFocus={onSearch} />
       </div>
     </div>
   );
 }
 
-function ArchiveToggle({
-  count,
-  showing,
-  onToggle,
-}: {
-  count: number;
-  showing: boolean;
-  onToggle: () => void;
-}) {
+function ArchiveBadge({ count }: { count: number }) {
   return (
-    <button
-      type="button"
-      onClick={onToggle}
-      aria-pressed={showing}
-      title={showing ? "Hide archived (failed + cancelled)" : "Show archived (failed + cancelled)"}
-      className={cn(
-        "h-7 inline-flex items-center gap-1.5 px-2 rounded text-[11px] font-medium border transition-colors cursor-pointer tabular-nums",
-        showing
-          ? "border-border bg-secondary text-foreground"
-          : "border-transparent text-muted-foreground hover:text-foreground hover:bg-secondary/60",
-      )}
+    <span
+      title="Archived (failed + cancelled). Not shown on the board."
+      className="h-7 inline-flex items-center gap-1.5 px-2 rounded text-[11px] font-medium text-muted-foreground tabular-nums"
     >
       <Archive className="h-3 w-3" />
       <span>{count} archived</span>
-    </button>
+    </span>
   );
 }
 

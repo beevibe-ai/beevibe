@@ -24,11 +24,6 @@ export function TasksClient() {
   const selectedTaskId = searchParams?.get("p") ?? undefined;
 
   const [query, setQuery] = useState("");
-  // Cancelled + failed are noise on the default board — agents fail
-  // more than humans intend, and a "Cancelled" column always-visible
-  // would dominate the board. Default closed; surface count + toggle
-  // in the header so the morgue stays accessible without dominating.
-  const [showArchived, setShowArchived] = useState(false);
 
   const openTask = useCallback(
     (taskId: string) => {
@@ -53,10 +48,7 @@ export function TasksClient() {
   }, [data, query]);
 
   const archivedCount = useMemo(() => countArchivedTasks(filtered), [filtered]);
-  const lanes = useMemo(
-    () => groupTasks(filtered, { showArchived }),
-    [filtered, showArchived],
-  );
+  const lanes = useMemo(() => groupTasks(filtered), [filtered]);
   const emptyMessage = pickEmptyMessage({
     isApiConfigured,
     isError,
@@ -77,8 +69,6 @@ export function TasksClient() {
         query={query}
         onQueryChange={setQuery}
         archivedCount={archivedCount}
-        showArchived={showArchived}
-        onToggleArchived={() => setShowArchived((v) => !v)}
       />
 
       {fullScreenEmpty ? (

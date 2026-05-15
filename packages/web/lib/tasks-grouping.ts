@@ -7,22 +7,22 @@ export type Lifecycle =
   | "in_progress"
   | "blocked"
   | "in_review"
-  | "done"
-  | "archived";
+  | "done";
 
 /**
- * Status → lifecycle lane.
+ * Status → lifecycle lane (or `null` to omit from the board entirely).
  *
- * - `blocked` lives in its own lane (was previously folded into
- *   In review). Blocked = waiting on an external dependency, semantically
- *   different from "waiting on a human verdict." Different action by the
- *   human reading the board, so different column.
- * - `failed` and `cancelled` are terminal states that aren't success.
- *   They go into the `archived` lane, hidden by default — `Done` should
- *   read as "this shipped." Archive toggle exposes them when the user
- *   wants to see what didn't ship.
+ * `blocked` lives in its own lane (was previously folded into In review).
+ * Blocked = waiting on an external dependency, semantically different from
+ * "waiting on a human verdict" — different action by the human reading
+ * the board, so different column.
+ *
+ * `failed` and `cancelled` are terminal non-success statuses. They are
+ * omitted from the board so `Done` reads as "this shipped." The header's
+ * archived badge surfaces the count for awareness, but the board itself
+ * stays focused on in-flight + shipped work.
  */
-const LIFECYCLE_OF: Record<TaskStatus, Lifecycle> = {
+const LIFECYCLE_OF: Record<TaskStatus, Lifecycle | null> = {
   pending: "pending",
   assigned: "pending",
   in_progress: "in_progress",
@@ -31,8 +31,8 @@ const LIFECYCLE_OF: Record<TaskStatus, Lifecycle> = {
   review: "in_review",
   blocked: "blocked",
   done: "done",
-  failed: "archived",
-  cancelled: "archived",
+  failed: null,
+  cancelled: null,
 };
 
 interface LaneTemplate {
@@ -53,41 +53,26 @@ const VISIBLE_LANES: LaneTemplate[] = [
   { key: "done", label: "Done", dot: "bg-status-done" },
 ];
 
-const ARCHIVED_LANE: LaneTemplate = {
-  key: "archived",
-  label: "Archived",
-  dot: "bg-muted-foreground/40",
-};
-
-interface GroupOptions {
-  /** Append the Archived lane (failed + cancelled). Default: false. */
-  showArchived?: boolean;
-}
-
-export function groupTasks(
-  tasks: TaskListItem[],
-  options: GroupOptions = {},
-): BoardLane[] {
+export function groupTasks(tasks: TaskListItem[]): BoardLane[] {
   const buckets: Record<Lifecycle, TaskListItem[]> = {
     pending: [],
     in_progress: [],
     blocked: [],
     in_review: [],
     done: [],
-    archived: [],
   };
-  for (const t of tasks) buckets[LIFECYCLE_OF[t.status]].push(t);
-  const template = options.showArchived
-    ? [...VISIBLE_LANES, ARCHIVED_LANE]
-    : VISIBLE_LANES;
-  return template.map((l) => ({
+  for (const t of tasks) {
+    const lane = LIFECYCLE_OF[t.status];
+    if (lane) buckets[lane].push(t);
+  }
+  return VISIBLE_LANES.map((l) => ({
     ...l,
     count: buckets[l.key].length,
     tasks: buckets[l.key],
   }));
 }
 
-/** Count of failed+cancelled tasks — drives the "X archived" toggle. */
+/** Count of failed+cancelled tasks — drives the archived badge in the header. */
 export function countArchivedTasks(tasks: TaskListItem[]): number {
   let n = 0;
   for (const t of tasks) {

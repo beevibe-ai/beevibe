@@ -21,7 +21,9 @@ function makeTask(id: string, status: TaskStatus): TaskListItem {
   };
 }
 
-const EXPECTED_LIFECYCLE: Record<TaskStatus, Lifecycle> = {
+// `null` = omitted from the board; the header's archived badge surfaces
+// the count instead. Only failed + cancelled get this treatment today.
+const EXPECTED_LIFECYCLE: Record<TaskStatus, Lifecycle | null> = {
   pending: "pending",
   assigned: "pending",
   in_progress: "in_progress",
@@ -30,12 +32,12 @@ const EXPECTED_LIFECYCLE: Record<TaskStatus, Lifecycle> = {
   review: "in_review",
   blocked: "blocked",
   done: "done",
-  failed: "archived",
-  cancelled: "archived",
+  failed: null,
+  cancelled: null,
 };
 
 describe("groupTasks", () => {
-  it("returns five lanes in workflow order by default (no archived)", () => {
+  it("returns five lanes in workflow order", () => {
     const lanes = groupTasks([]);
     expect(lanes.map((l) => l.key)).toEqual([
       "pending",
@@ -47,28 +49,20 @@ describe("groupTasks", () => {
     expect(lanes.every((l) => l.count === 0 && l.tasks.length === 0)).toBe(true);
   });
 
-  it("appends an archived lane when showArchived is true", () => {
-    const lanes = groupTasks([], { showArchived: true });
-    expect(lanes.map((l) => l.key)).toEqual([
-      "pending",
-      "in_progress",
-      "blocked",
-      "in_review",
-      "done",
-      "archived",
-    ]);
-  });
-
   it("maps every TaskStatus exhaustively (no status falls through to a wrong lane)", () => {
     for (const status of TASK_STATUSES) {
-      const [task] = [makeTask("t1", status)];
-      const lanes = groupTasks([task], { showArchived: true });
+      const lanes = groupTasks([makeTask("t1", status)]);
       const populated = lanes.find((l) => l.tasks.length === 1);
-      expect(populated?.key, `status=${status}`).toBe(EXPECTED_LIFECYCLE[status]);
+      const expected = EXPECTED_LIFECYCLE[status];
+      if (expected === null) {
+        expect(populated, `status=${status}`).toBeUndefined();
+      } else {
+        expect(populated?.key, `status=${status}`).toBe(expected);
+      }
     }
   });
 
-  it("hides failed + cancelled tasks when showArchived is false", () => {
+  it("hides failed + cancelled tasks from the board", () => {
     const tasks: TaskListItem[] = [
       makeTask("a", "pending"),
       makeTask("b", "failed"),
@@ -103,7 +97,7 @@ describe("groupTasks", () => {
       makeTask("g", "assigned"),
       makeTask("h", "needs_revision"),
     ];
-    const lanes = groupTasks(tasks, { showArchived: true });
+    const lanes = groupTasks(tasks);
     const byKey = Object.fromEntries(lanes.map((l) => [l.key, l]));
 
     expect(byKey.pending.tasks.map((t) => t.id)).toEqual(["a", "g"]);
@@ -111,11 +105,12 @@ describe("groupTasks", () => {
     expect(byKey.blocked.tasks.map((t) => t.id)).toEqual(["c"]);
     expect(byKey.in_review.tasks.map((t) => t.id)).toEqual(["d"]);
     expect(byKey.done.tasks.map((t) => t.id)).toEqual(["e"]);
-    expect(byKey.archived.tasks.map((t) => t.id)).toEqual(["f"]);
+    // "f" is failed → omitted from the board.
+    expect(lanes.some((l) => l.tasks.some((t) => t.id === "f"))).toBe(false);
   });
 
   it("attaches a non-empty dot class and label to each lane", () => {
-    const lanes = groupTasks([], { showArchived: true });
+    const lanes = groupTasks([]);
     for (const lane of lanes) {
       expect(lane.dot).toMatch(/^bg-/);
       expect(lane.label.length).toBeGreaterThan(0);

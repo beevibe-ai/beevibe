@@ -138,7 +138,7 @@ describe("TasksClient — lane rendering", () => {
     expect(counts).toEqual(["2", "1", "1", "1", "1"]);
   });
 
-  it("hides cancelled+failed by default and surfaces the archive toggle", async () => {
+  it("omits cancelled+failed from the board and surfaces their count as a header badge", async () => {
     listMock.mockResolvedValue([
       makeTask({ id: "d1", status: "done", title: "done one" }),
       makeTask({ id: "f1", status: "failed", title: "failed one" }),
@@ -147,17 +147,16 @@ describe("TasksClient — lane rendering", () => {
     renderClient();
 
     expect(await screen.findByText("done one")).toBeInTheDocument();
-    // Failed + cancelled are off by default.
+    // Failed + cancelled are never rendered on the board — the badge is
+    // informational only.
     expect(screen.queryByText("failed one")).not.toBeInTheDocument();
     expect(screen.queryByText("cancel one")).not.toBeInTheDocument();
-    // Toggle pill exposes the count. Accessible name = its text
-    // content ("2 archived") since the button has no aria-label.
-    const toggle = screen.getByRole("button", { name: /\d+ archived/i });
-    expect(toggle).toHaveTextContent("2 archived");
-    // Click expands the Archived lane.
-    await userEvent.click(toggle);
-    expect(await screen.findByText("failed one")).toBeInTheDocument();
-    expect(screen.getByText("cancel one")).toBeInTheDocument();
+    // Read-only badge shows the count. No button role: there's nothing
+    // to toggle anymore.
+    expect(screen.getByText("2 archived")).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: /\d+ archived/i }),
+    ).not.toBeInTheDocument();
   });
 
   it("calls the task list endpoint without a view filter (no My tasks tab)", async () => {
