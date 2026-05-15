@@ -462,33 +462,36 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   // /api/stream pushes to subscribed browsers.
   const sseManager = new SseManager();
   const ownerLookup = new OwnerLookup(pool);
+
+  // Cross-process mesh fast-fail. The api server's `onSessionComplete`
+  // hook only fires for sessions claimed via /runtime/done (daemon path).
+  // `spawn_mode='server_fallback_mesh'` callees run inside the scheduler
+  // binary, so a failure there never reaches MeshServer through the
+  // in-process callback. Subscribe to the existing `session.updated`
+  // pg_notify and fast-fail any pending caller waiting on that row. The
+  // `hasPendingCalleeSession` guard short-circuits the 99% case (every
+  // chat / task / unrelated session.updated) before touching the DB.
+  const forwardMeshFailFromSession = (event: { event: string; id: string }) => {
+    if (event.event !== "session.updated") return;
+    if (!mesh.hasPendingCalleeSession(event.id)) return;
+    void sessionRepo
+      .findById(event.id)
+      .then((session) => {
+        if (session) failMeshCalleeIfTerminal(session, session.status);
+      })
+      .catch((err: unknown) => {
+        console.error(
+          "[sse] mesh-fail lookup failed:",
+          err instanceof Error ? err.message : err,
+        );
+      });
+  };
+
   const sseListener = new SseListener({
     databaseUrl: cfg.databaseUrl,
     manager: sseManager,
     ownerLookup,
-    // Cross-process mesh fast-fail. The api server's `onSessionComplete`
-    // hook only fires for sessions claimed via /runtime/done (daemon path).
-    // `spawn_mode='server_fallback_mesh'` callees run inside the scheduler
-    // binary, so a failure there never reaches MeshServer through the
-    // in-process callback. Subscribe to the existing `session.updated`
-    // pg_notify and fast-fail any pending caller waiting on that row.
-    // Guard with `hasPendingCalleeSession` so we skip the DB fetch for
-    // the 99% case (every chat / task / unrelated session.updated).
-    onEvent: (event) => {
-      if (event.event !== "session.updated") return;
-      if (!mesh.hasPendingCalleeSession(event.id)) return;
-      void sessionRepo
-        .findById(event.id)
-        .then((session) => {
-          if (session) failMeshCalleeIfTerminal(session, session.status);
-        })
-        .catch((err: unknown) => {
-          console.error(
-            "[sse] mesh-fail lookup failed:",
-            err instanceof Error ? err.message : err,
-          );
-        });
-    },
+    onEvent: forwardMeshFailFromSession,
   });
   sseListener.start();
   const streamRouter = createStreamRouter({
