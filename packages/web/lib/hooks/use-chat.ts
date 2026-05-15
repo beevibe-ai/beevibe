@@ -142,8 +142,12 @@ export function useChat(opts: UseChatOptions = {}) {
         session_id: sessionId,
         prior_session_id: priorSessionId,
       }),
-    onMutate: ({ message }) => {
-      // Optimistically append the user's turn so it shows up instantly.
+    onMutate: ({ message, sessionId }) => {
+      // Optimistically append the user's turn AND stamp in_flight_session_id
+      // into the cache so the thinking indicator survives nav-away-and-back:
+      // if the hook unmounts mid-mutation, local `mutation.isPending` state
+      // is gone, and `serverInFlightSessionId` is the only signal left for
+      // the next mount to honor.
       queryClient.setQueryData<ChatHistoryResponse>(queryKey, (prev) => {
         const base = prev ?? FRESH_HISTORY;
         return {
@@ -152,11 +156,15 @@ export function useChat(opts: UseChatOptions = {}) {
             ...base.messages,
             { id: localId(), role: "user", content: message },
           ],
+          in_flight_session_id: sessionId,
         };
       });
     },
     onSuccess: (data) => {
-      // Append the agent turn and advance the chain pointer in-place.
+      // Append the agent turn, advance the chain pointer, AND clear
+      // in_flight_session_id. Without the explicit clear the thinking
+      // indicator persists (the spread preserves whatever onMutate
+      // stamped) — manifesting as "agent replied but UI still spinning."
       queryClient.setQueryData<ChatHistoryResponse>(queryKey, (prev) => {
         const base = prev ?? FRESH_HISTORY;
         const agentMessage: ChatHistoryMessage = {
@@ -172,6 +180,7 @@ export function useChat(opts: UseChatOptions = {}) {
           ...base,
           messages: [...base.messages, agentMessage],
           prior_session_id: data.session_id,
+          in_flight_session_id: undefined,
         };
       });
       // First turn of a brand-new conversation can flip the server's
@@ -191,21 +200,23 @@ export function useChat(opts: UseChatOptions = {}) {
     onError: (err) => {
       // agent_offline (503) is special: the api persisted the session row
       // before rejecting, so the turn is queued, not lost. Keep the user
-      // message visible — refresh would show it anyway from the server,
-      // and rolling back here just creates a flicker of "vanished, then
-      // back on refresh". When the daemon reconnects and the session
-      // completes, session.updated SSE invalidates chat queries and the
-      // response auto-appears.
+      // message AND in_flight_session_id visible — refresh would show
+      // them anyway from the server, and rolling back here creates a
+      // flicker of "vanished, then back on refresh". When the daemon
+      // reconnects and the session completes, session.updated SSE
+      // invalidates chat queries and the response auto-appears.
       if (err instanceof ApiError && err.errorCode === "agent_offline") return;
 
       // Other errors (429 rate limit, 400 validation, etc.) reject the
-      // turn before persistence — roll back so the input doesn't look
+      // turn before persistence — roll back the optimistic user message
+      // AND clear in_flight_session_id so the input doesn't look
       // sent-and-stuck.
       queryClient.setQueryData<ChatHistoryResponse>(queryKey, (prev) => {
         if (!prev) return prev;
         const last = prev.messages[prev.messages.length - 1];
-        if (last?.role !== "user") return prev;
-        return { ...prev, messages: prev.messages.slice(0, -1) };
+        const messages =
+          last?.role === "user" ? prev.messages.slice(0, -1) : prev.messages;
+        return { ...prev, messages, in_flight_session_id: undefined };
       });
     },
   });
