@@ -506,9 +506,7 @@ export class MeshServer {
   ): Promise<T> {
     return new Promise<T>((resolve, reject) => {
       const timer = setTimeout(() => {
-        const entry = this.resolvers.get(key);
-        if (entry && this.resolvers.delete(key)) {
-          this.untrackResolverKey(key, entry.calleeSessionId);
+        if (this.removeResolver(key)) {
           reject(new Error(`mesh resolver timeout (${timeoutMs}ms) for ${key}`));
         }
       }, timeoutMs);
@@ -530,21 +528,31 @@ export class MeshServer {
   }
 
   private fireResolver(key: string, response: AskOrNegotiate): boolean {
-    const entry = this.resolvers.get(key);
+    const entry = this.removeResolver(key);
     if (!entry) return false;
-    clearTimeout(entry.timer);
-    this.resolvers.delete(key);
-    this.untrackResolverKey(key, entry.calleeSessionId);
     entry.resolve(response);
     return true;
   }
 
-  private untrackResolverKey(key: string, calleeSessionId: string | undefined): void {
-    if (!calleeSessionId) return;
-    const keys = this.pendingByCalleeSession.get(calleeSessionId);
-    if (!keys) return;
-    keys.delete(key);
-    if (keys.size === 0) this.pendingByCalleeSession.delete(calleeSessionId);
+  /**
+   * Single source of truth for resolver cleanup: clears the timer, drops
+   * the entry from both `resolvers` and the reverse `pendingByCalleeSession`
+   * index, and returns the entry so the caller can resolve/reject it.
+   * Returns `undefined` if no entry was registered (idempotent).
+   */
+  private removeResolver(key: string): ResolverEntry<AskOrNegotiate> | undefined {
+    const entry = this.resolvers.get(key);
+    if (!entry) return undefined;
+    clearTimeout(entry.timer);
+    this.resolvers.delete(key);
+    if (entry.calleeSessionId) {
+      const keys = this.pendingByCalleeSession.get(entry.calleeSessionId);
+      if (keys) {
+        keys.delete(key);
+        if (keys.size === 0) this.pendingByCalleeSession.delete(entry.calleeSessionId);
+      }
+    }
+    return entry;
   }
 
   /**
@@ -559,15 +567,14 @@ export class MeshServer {
   failResolverForCalleeSession(calleeSessionId: string, reason: string): void {
     const keys = this.pendingByCalleeSession.get(calleeSessionId);
     if (!keys || keys.size === 0) return;
-    // Snapshot before mutating: rejecting drains via `untrackResolverKey`.
+    // Snapshot the key set first: an entry.reject() can synchronously
+    // resume awaiters that re-enter mesh code, and removeResolver mutates
+    // the same set as it drains. Iterating the live set is unsafe.
     for (const key of [...keys]) {
-      const entry = this.resolvers.get(key);
+      const entry = this.removeResolver(key);
       if (!entry) continue;
-      clearTimeout(entry.timer);
-      this.resolvers.delete(key);
       entry.reject(new Error(`mesh callee session failed: ${reason}`));
     }
-    this.pendingByCalleeSession.delete(calleeSessionId);
   }
 }
 
