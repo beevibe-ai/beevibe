@@ -1,0 +1,113 @@
+# Self-contained quickstart: postgres + api + scheduler + web in containers.
+#
+# Usage:
+#   ANTHROPIC_API_KEY=… OPENAI_API_KEY=… docker compose \
+#     -f docker-compose.quickstart.yml up -d --build
+#
+# Then open http://localhost:3030.
+#
+# Differences from the dev-focused docker-compose.yml (postgres-only):
+#   - Builds + runs the three Node services from the Railway Dockerfiles.
+#   - Migrations run as a one-shot `migrate` service before api starts.
+#   - No bind mount of source — this is a "try it" stack, not a dev loop.
+#     For an iterative dev loop run `pnpm dev` instead (see CONTRIBUTING.md).
+#
+# End users still install + run `beevibe-daemon` on their own machine to
+# actually spawn agent CLI sessions; the api/scheduler containers do not
+# spawn local CLIs themselves.
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: beevibe-quickstart-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: beevibe
+      POSTGRES_PASSWORD: beevibe
+      POSTGRES_DB: beevibe
+    volumes:
+      - quickstart_pg_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U beevibe -d beevibe"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot: applies all migrations to the postgres above, then exits.
+  # Uses npx so we don't have to bake node-pg-migrate into the api image.
+  migrate:
+    image: node:20-slim
+    working_dir: /app
+    volumes:
+      - ./migrations:/app/migrations:ro
+    environment:
+      DATABASE_URL: postgresql://beevibe:beevibe@postgres:5432/beevibe
+    command:
+      - sh
+      - -c
+      - "npx -y node-pg-migrate@7 -m /app/migrations up"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  api:
+    build:
+      context: .
+      dockerfile: infra/railway/Dockerfile.api
+    container_name: beevibe-quickstart-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://beevibe:beevibe@postgres:5432/beevibe
+      # api bakes this URL into mcp-config.json when it preps a workspace for
+      # a daemon-claimed session. The daemon writes that file on the user's
+      # host and spawns the CLI there — so the URL must resolve from the
+      # host, hence the published port (not the in-network DNS name).
+      BEEVIBE_MCP_SERVER_URL: http://localhost:3000/mcp
+      BEEVIBE_API_PORT: "3000"
+      BEEVIBE_CORS_ORIGINS: http://localhost:3030
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be set}
+      BEEVIBE_SIGNUP_ENABLED: "1"
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: infra/railway/Dockerfile.scheduler
+    container_name: beevibe-quickstart-scheduler
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://beevibe:beevibe@postgres:5432/beevibe
+      # scheduler-spawned (server-fallback-mesh) CLIs run inside THIS
+      # container's network namespace, so they reach api via the docker DNS
+      # name, not the host's published port.
+      BEEVIBE_MCP_SERVER_URL: http://api:3000/mcp
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:?ANTHROPIC_API_KEY must be set}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?OPENAI_API_KEY must be set}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  web:
+    build:
+      context: .
+      dockerfile: infra/railway/Dockerfile.web
+      args:
+        NEXT_PUBLIC_BV_API_URL: http://localhost:3000
+    container_name: beevibe-quickstart-web
+    restart: unless-stopped
+    environment:
+      PORT: "3030"
+    ports:
+      - "3030:3030"
+    depends_on:
+      - api
+
+volumes:
+  quickstart_pg_data:
