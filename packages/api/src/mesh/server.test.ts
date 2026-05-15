@@ -79,6 +79,22 @@ describe("MeshServer.failResolverForCalleeSession", () => {
     expect(() => mesh.failResolverForCalleeSession("sess_unknown", "x")).not.toThrow();
   });
 
+  it("hasPendingCalleeSession tracks the in-flight reverse index", async () => {
+    const { mesh, dispatchCalls } = makeMesh();
+    expect(mesh.hasPendingCalleeSession("sess_unknown")).toBe(false);
+
+    const ask = mesh.sendAsk("req_3", "agent_caller", "agent_callee", "yo?");
+    await new Promise((r) => setImmediate(r));
+    const calleeSid = dispatchCalls[0]?.sessionIdOverride;
+    expect(calleeSid).toBeDefined();
+    expect(mesh.hasPendingCalleeSession(calleeSid!)).toBe(true);
+
+    // Drains on fast-fail.
+    mesh.failResolverForCalleeSession(calleeSid!, "x");
+    await expect(ask).rejects.toThrow();
+    expect(mesh.hasPendingCalleeSession(calleeSid!)).toBe(false);
+  });
+
   it("does not interfere with the success path", async () => {
     const { mesh, dispatchCalls } = makeMesh();
     const ask = mesh.sendAsk("req_2", "agent_caller", "agent_callee", "ping?");
