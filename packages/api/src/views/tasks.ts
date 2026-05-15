@@ -40,12 +40,18 @@ export interface TaskListFilter {
    */
   view?: "all" | "mine" | "sprint" | "timeline";
   /**
-   * Caller's person id. When set, the list is scoped to tasks the caller
-   * is connected to — they own the assignee agent, they own the creator
-   * agent, or they created the task themselves. Required for the /task
-   * route; tests/internal callers may omit to bypass the scope.
+   * Caller's person id — the list is scoped to tasks where the caller
+   * owns the assignee agent, owns the creator agent, or created the task
+   * directly. Required unless `bypassOwnerScope` is set.
    */
   caller_person_id?: string;
+  /**
+   * Test/admin escape hatch — explicitly opt out of owner-scope
+   * filtering. The runtime guard in `listTasks` enforces that one of
+   * `caller_person_id` or `bypassOwnerScope` is set, so production
+   * callers can't silently leak by forgetting the scope.
+   */
+  bypassOwnerScope?: true;
 }
 
 interface TaskListRow {
@@ -193,6 +199,11 @@ export async function listTasks(
   pool: Pool,
   filter: TaskListFilter = {},
 ): Promise<TaskListItem[]> {
+  if (!filter.caller_person_id && !filter.bypassOwnerScope) {
+    throw new Error(
+      "listTasks requires caller_person_id (or bypassOwnerScope for tests/admin tooling)",
+    );
+  }
   const statuses = resolveStatusFilter(filter);
   const { rows } = await pool.query<TaskListRow>(LIST_SQL, [
     statuses ? [...statuses] : null,

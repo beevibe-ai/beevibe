@@ -31,7 +31,7 @@ export function BoardColumn({
   activeTaskId?: string;
 }) {
   return (
-    <div className="flex flex-col flex-1 basis-0 min-w-[220px]">
+    <div className="flex flex-col flex-1 min-w-[220px]">
       <div className="flex items-center gap-2 h-8 px-1 mb-2">
         <span
           className={cn("inline-flex items-center gap-1.5 px-1.5 h-5 rounded text-[11px] font-medium")}
