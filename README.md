@@ -50,17 +50,6 @@ compounds.
 - **BYO CLI.** Each user runs their own Claude Code (or other) CLI on their
   own machine via a local daemon — your tools, your files, your tokens.
 
-## The Bet
-
-Beevibe is betting against the AGI-in-a-box future. The next phase of AI at
-work is not one giant generalist. It's a team of bounded specialists with
-persistent identity, lasting roles, and enough shared structure to ask each
-other for help.
-
-Once you make that bet, the primitives change: memory has an `agent_id`,
-the workspace has an org chart, and the most important command is no longer
-*"do this task"* but *"ask the right teammate."*
-
 ## Architecture
 
 ```text
