@@ -260,11 +260,32 @@ export function parseClaudeMessages(
 
   return {
     status: succeeded ? "completed" : "failed",
-    output: output || (succeeded ? "Session completed." : `CLI exited with code ${exitCode}`),
+    output: output || (succeeded ? "Session completed." : bareCliExitMessage(exitCode)),
     transcript: transcript || undefined,
     usage,
     cli_session_id: sessionId,
   };
+}
+
+/**
+ * The placeholder message `parseClaudeMessages` returns when the CLI
+ * exited non-zero with no final-result message to surface. Exported so
+ * downstream consumers (e.g. the chat route's user-facing failure
+ * mapping) can detect this exact string and replace it with something
+ * more actionable instead of pattern-matching across package boundaries.
+ */
+export function bareCliExitMessage(exitCode: number | null): string {
+  return `CLI exited with code ${exitCode}`;
+}
+
+/**
+ * Matches strings produced by `bareCliExitMessage` — the only "useless"
+ * stand-in this layer emits on failure. Consumers that want to swap a
+ * bare exit for a friendlier diagnostic gate on this predicate so the
+ * coupling stays in one place.
+ */
+export function isBareCliExitMessage(s: string): boolean {
+  return /^CLI exited with code (-?\d+|null)$/.test(s);
 }
 
 /**

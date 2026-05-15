@@ -4,6 +4,12 @@
  *   - setup --api <url> --user-token <bv_u_…> [--device-name <name>]
  *   - start
  *   - update [--yes]
+ *
+ * The daemon owns its own config (~/.beevibe/config.json) and has no
+ * legitimate reason to read a local .env. Compiled binaries are built
+ * with `--no-compile-autoload-dotenv --no-compile-autoload-bunfig`
+ * (see packages/daemon/scripts/build-binaries.sh) so launching from
+ * inside a beevibe checkout doesn't silently slurp the repo's .env.
  */
 
 import { runSetup } from "./setup.js";

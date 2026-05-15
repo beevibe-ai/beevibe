@@ -26,6 +26,7 @@ import {
   type AgentSessionDeps,
   teamAgentRoutingDirective,
 } from "@beevibe/core/services/agent-session";
+import { failureMessageFor } from "./chat.js";
 import {
   roomId as makeRoomId,
   roomMessageId as makeRoomMessageId,
@@ -599,13 +600,20 @@ async function runMentionedAgents(
           .filter((s) => s.length > 0)
           .join("\n\n"),
       });
-      const visible = session.result_summary ?? "";
+      // Failed sessions used to surface the raw "CLI exited with code N"
+      // string to other room members. Route through the same mapper the
+      // chat surface uses so rooms get the daemon-pointer or stderr tail
+      // instead of an opaque exit code.
+      const content =
+        session.status === "failed"
+          ? failureMessageFor({ result_summary: session.result_summary, error: session.error })
+          : session.result_summary ?? "";
       await deps.roomRepo.appendMessage({
         id: makeRoomMessageId(),
         room_id: roomId,
         kind: "agent",
         sender_agent_id: agent.id,
-        content: visible,
+        content,
         session_id: session.id,
       });
     } catch (err) {

@@ -119,6 +119,35 @@ describe("LocalWorkspaceManager", () => {
     expect(root).toMatch(/\/\.beevibe\/workspaces$/);
   });
 
+  // Regression: previously the constructor used `??` which only checks for
+  // null/undefined — an empty-string workspaceRoot (leaked from a stray
+  // `WORKSPACE_ROOT=` in .env via Bun's auto-load) slipped through, and
+  // downstream `join("", agent.id)` produced a relative path that spawn
+  // resolved off the daemon's cwd. The fix uses `||` so any falsy value
+  // (empty string included) falls through to the homedir default.
+  it("falsy workspaceRoot (empty string) falls back to the homedir default", () => {
+    const m = new LocalWorkspaceManager({
+      workspaceRoot: "",
+      mcpServerUrl: MCP_URL,
+      runtimeRegistry: fakeRuntimeRegistry,
+      skillsSourceDir,
+    });
+    const root = (m as unknown as { root: string }).root;
+    expect(root).toMatch(/\/\.beevibe\/workspaces$/);
+  });
+
+  it("throws on a relative workspaceRoot (fail-fast belt-and-suspenders)", () => {
+    expect(
+      () =>
+        new LocalWorkspaceManager({
+          workspaceRoot: "relative/path",
+          mcpServerUrl: MCP_URL,
+          runtimeRegistry: fakeRuntimeRegistry,
+          skillsSourceDir,
+        }),
+    ).toThrow(/must be absolute/);
+  });
+
   it("removeWorkspace deletes the dir and all contents", async () => {
     const ws = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_rm" }) });
     writeFileSync(join(ws.path, "file.txt"), "x");
@@ -191,7 +220,7 @@ describe("LocalWorkspaceManager", () => {
       expect(existsSync(configPath)).toBe(true);
     });
 
-    it("new instance with different mcpServerUrl does NOT auto-refresh a stale file (documented limitation)", async () => {
+    it("new instance with different mcpServerUrl auto-refreshes the stale file", async () => {
       await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_stale" }) });
       const configPath = join(workspaceRoot, "agent_stale", "mcp-config.json");
       const original = readFileSync(configPath, "utf-8");
@@ -204,11 +233,27 @@ describe("LocalWorkspaceManager", () => {
       });
       await different.ensureWorkspace({ agent: makeAgent({ id: "agent_stale" }) });
 
-      // File persists unchanged — operator must rm to force refresh.
+      // File now rewrites on URL drift — operator no longer has to `rm`
+      // to switch a workspace from localhost to a hosted api after deploy.
       const after = readFileSync(configPath, "utf-8");
-      expect(after).toBe(original);
-      expect(after).toContain(MCP_URL);
-      expect(after).not.toContain("different.example");
+      expect(after).not.toBe(original);
+      expect(after).not.toContain(MCP_URL);
+      expect(after).toContain("different.example");
+    });
+
+    it("auto-refreshes when agent.api_key rotates", async () => {
+      await manager.ensureWorkspace({
+        agent: makeAgent({ id: "agent_rotate", api_key: "bv_a_oldkey" }),
+      });
+      const configPath = join(workspaceRoot, "agent_rotate", "mcp-config.json");
+      expect(readFileSync(configPath, "utf-8")).toContain("Bearer bv_a_oldkey");
+
+      await manager.ensureWorkspace({
+        agent: makeAgent({ id: "agent_rotate", api_key: "bv_a_newkey" }),
+      });
+      const after = readFileSync(configPath, "utf-8");
+      expect(after).toContain("Bearer bv_a_newkey");
+      expect(after).not.toContain("bv_a_oldkey");
     });
 
     it("throws when agent has no api_key", async () => {

@@ -46,8 +46,16 @@ for entry in "${TARGETS[@]}"; do
   target="${entry%%:*}"
   outname="${entry##*:}"
   echo "==> Building $outname ($target)"
+  # --no-compile-autoload-dotenv / --no-compile-autoload-bunfig (Bun
+  # ≥1.3.3): standalone executables normally auto-load .env + bunfig.toml
+  # from the cwd at startup. The daemon's own config lives in
+  # ~/.beevibe/config.json — a repo-checkout .env has no business
+  # leaking in. Disable both at build time so launching the daemon from
+  # any directory is deterministic.
   bun build src/main.ts \
     --compile \
+    --no-compile-autoload-dotenv \
+    --no-compile-autoload-bunfig \
     --target="$target" \
     --outfile="$OUTDIR/$outname" \
     --define "BEEVIBE_DAEMON_VERSION=\"$VERSION\""

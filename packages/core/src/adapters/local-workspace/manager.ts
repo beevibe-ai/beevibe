@@ -1,6 +1,6 @@
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { isAbsolute, join } from "node:path";
 import type { Agent } from "../../domain/agent.js";
 import type { RuntimeRegistry, Workspace } from "../../ports/runtime.js";
 import type { WorkspaceManager } from "../../ports/workspace.js";
@@ -56,7 +56,20 @@ export class LocalWorkspaceManager implements WorkspaceManager {
   private readonly root: string;
 
   constructor(private config: LocalWorkspaceManagerConfig) {
-    this.root = config.workspaceRoot ?? join(homedir(), ".beevibe", "workspaces");
+    // `||` not `??` — an empty-string `workspaceRoot` (e.g. leaked from a
+    // stray `WORKSPACE_ROOT=` line in .env via Bun's auto-load) is a bug
+    // disguised as "configured": `?? ` would accept it and downstream
+    // `join("", agent.id)` produces a relative path that spawn resolves
+    // off the daemon's cwd. Force the homedir fallback for any falsy
+    // value so the workspace always lands at a known absolute path.
+    this.root = config.workspaceRoot || join(homedir(), ".beevibe", "workspaces");
+    // Belt-and-suspenders: if someone constructs us with a relative root,
+    // fail fast at construction time instead of mid-spawn.
+    if (!isAbsolute(this.root)) {
+      throw new Error(
+        `LocalWorkspaceManager: workspaceRoot must be absolute, got "${this.root}"`,
+      );
+    }
   }
 
   async ensureWorkspace({ agent }: { agent: Agent }): Promise<Workspace> {
@@ -66,16 +79,22 @@ export class LocalWorkspaceManager implements WorkspaceManager {
     // their current permissions, which is the right semantic (idempotent).
     mkdirSync(path, { recursive: true, mode: 0o700 });
 
+    if (!agent.api_key) {
+      throw new Error(
+        `Cannot write mcp-config.json for agent ${agent.id}: agent.api_key is missing`,
+      );
+    }
     const configPath = join(path, "mcp-config.json");
-    if (!existsSync(configPath)) {
-      if (!agent.api_key) {
-        throw new Error(
-          `Cannot write mcp-config.json for agent ${agent.id}: agent.api_key is missing`,
-        );
-      }
-      writeFileSync(configPath, buildMcpConfig(agent.api_key, this.config.mcpServerUrl), {
-        mode: 0o600,
-      });
+    const expected = buildMcpConfig(agent.api_key, this.config.mcpServerUrl);
+    // Auto-refresh on drift: previously this was guarded by a bare
+    // `existsSync` and a stale URL or rotated bv_a_ would persist until
+    // the operator manually rm'd the file (documented but undiscoverable).
+    // Compare-and-rewrite catches api_url switches (e.g. localhost → hosted
+    // after deploy) and key rotations on the next ensureWorkspace call.
+    const needsWrite =
+      !existsSync(configPath) || readFileSync(configPath, "utf-8") !== expected;
+    if (needsWrite) {
+      writeFileSync(configPath, expected, { mode: 0o600 });
     }
 
     const workspace: Workspace = { path };
