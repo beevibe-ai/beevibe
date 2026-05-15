@@ -60,25 +60,40 @@ spawn their local CLI sessions.
 
 ## Docker
 
+The repo ships a self-contained compose stack — postgres + api + scheduler +
+web in one command, no Node or pnpm on the host.
+
+```bash
+ANTHROPIC_API_KEY=sk-ant-… \
+OPENAI_API_KEY=sk-…       \
+docker compose -f docker-compose.quickstart.yml up -d --build
+```
+
+Visit `http://localhost:3030` for the dashboard. To shut down + wipe the
+local db volume:
+
+```bash
+docker compose -f docker-compose.quickstart.yml down -v
+```
+
+The stack runs migrations as a one-shot service before api starts, so no
+separate migrate step is needed. The compose file is annotated with the
+non-obvious wiring — see the `BEEVIBE_MCP_SERVER_URL` comments for why api
+and scheduler resolve the api differently.
+
+For per-image manual control (custom networking, sidecars, separate hosts
+per service), build and run the images individually:
+
 ```bash
 docker build -f infra/railway/Dockerfile.api -t beevibe-api .
 docker build -f infra/railway/Dockerfile.scheduler -t beevibe-scheduler .
 docker build -f infra/railway/Dockerfile.web \
   --build-arg NEXT_PUBLIC_BV_API_URL=http://localhost:3000 \
   -t beevibe-web .
-
-docker compose up -d postgres
-
-docker run --rm --network host \
-  -e DATABASE_URL=postgresql://beevibe:beevibe@localhost:5433/beevibe \
-  beevibe-api pnpm migrate:deploy up
-
-docker run -p 3000:3000 --network host --env-file .env beevibe-api
-docker run --network host --env-file .env beevibe-scheduler
-docker run -p 8080:3000 --env-file .env beevibe-web
 ```
 
-Visit `http://localhost:8080` for the dashboard.
+Then run with your own env file. See the Dockerfile headers for the
+required runtime envs per service.
 
 ## Bare Node
 
@@ -98,6 +113,8 @@ The daemon is installed and run on the machine that should execute agent CLI
 sessions.
 
 ```bash
+brew install beevibe-ai/tap/beevibe-daemon
+
 beevibe-daemon setup \
   --api https://your-api.example.com \
   --user-token <bv_u_token>

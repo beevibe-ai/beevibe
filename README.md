@@ -168,20 +168,13 @@ To actually dispatch agent work after the stack is up, install the daemon
 on the machine where Claude Code lives and point it at the api:
 
 ```bash
+brew install beevibe-ai/tap/beevibe-daemon
 beevibe-daemon setup --api http://localhost:3000 --user-token <bv_u_…>
 beevibe-daemon start
 ```
 
 The `bv_u_` token is created by `pnpm provision-user` (see
 [CONTRIBUTING.md](./CONTRIBUTING.md#minting-a-bv_u_-token-for-the-daemon)).
-
-## Project status
-
-Single-tenant self-hosted is the v1 scope. Cross-instance api federation
-(running multiple api replicas in front of the same Postgres) is on the
-roadmap — for now the mesh and chat resolvers are in-process maps, so both
-halves of a long-held request need to reach the same api process. See
-[DEPLOYMENT.md → Production Notes](./DEPLOYMENT.md#production-notes).
 
 ## Contributing
 
