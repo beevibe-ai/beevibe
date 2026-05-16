@@ -2,13 +2,16 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import {
   ArrowLeft,
   AlertTriangle,
   FileText,
   ListChecks,
+  Package,
   Terminal,
 } from "lucide-react";
+import { api } from "@/lib/api/client";
 import { useTask } from "@/lib/hooks/use-tasks";
 import {
   useApproveTask,
@@ -358,28 +361,162 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
 }
 
 function WorkProductCard({ wp }: { wp: WorkProduct }) {
-  // Card → dedicated /work-products/[id] page where the body renders
-  // full-width with markdown. We used to inline-expand here, but the
-  // briefing bodies are real documents (audits, reports) — they want a
-  // page, not a sliver of a card.
+  const isRepoArtifact = wp.type === "artifact" && typeof (wp.metadata as Record<string, unknown> | undefined)?.repo_run_id === "string";
+  const repoRunId = isRepoArtifact ? (wp.metadata as Record<string, unknown>).repo_run_id as string : undefined;
+  const [showSave, setShowSave] = useState(false);
+
   return (
     <li>
-      <Link
-        href={`/work-products/${wp.id}`}
-        className="rounded-lg border border-border bg-card p-3 flex items-start gap-3 hover:bg-secondary/30 transition-colors"
-      >
-        <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium">{wp.title}</div>
-          {wp.summary ? (
-            <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{wp.summary}</p>
-          ) : null}
-        </div>
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 mt-0.5">
-          {wp.type.replace(/_/g, " ")}
-        </span>
-      </Link>
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <Link
+          href={`/work-products/${wp.id}`}
+          className="p-3 flex items-start gap-3 hover:bg-secondary/30 transition-colors block"
+        >
+          <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium">{wp.title}</div>
+            {wp.summary ? (
+              <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{wp.summary}</p>
+            ) : null}
+          </div>
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 mt-0.5">
+            {wp.type.replace(/_/g, " ")}
+          </span>
+        </Link>
+        {isRepoArtifact && repoRunId && (
+          <div className="border-t px-3 py-1.5 flex items-center gap-2">
+            <button
+              onClick={() => setShowSave(true)}
+              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <Package className="h-3.5 w-3.5" />
+              Save as capability
+            </button>
+            <Link
+              href={`/capabilities/runs/${repoRunId}`}
+              className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              View run →
+            </Link>
+          </div>
+        )}
+      </div>
+      {showSave && repoRunId && (
+        <SaveAsCapabilityModal
+          repoRunId={repoRunId}
+          initialName={slugify(wp.title)}
+          initialGoal={wp.summary ?? wp.title}
+          onClose={() => setShowSave(false)}
+        />
+      )}
     </li>
+  );
+}
+
+function slugify(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 64);
+}
+
+function SaveAsCapabilityModal({
+  repoRunId,
+  initialName,
+  initialGoal,
+  onClose,
+}: {
+  repoRunId: string;
+  initialName: string;
+  initialGoal: string;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(initialName);
+  const [goal, setGoal] = useState(initialGoal);
+  const [done, setDone] = useState(false);
+  const save = useMutation({
+    mutationFn: () =>
+      api.learnedSkills.create({ name, goal_pattern: goal, repo_run_id: repoRunId }),
+    onSuccess: () => setDone(true),
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-card border rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+        <h2 className="text-base font-semibold mb-4">Save as capability</h2>
+        {done ? (
+          <div className="space-y-3">
+            <p className="text-sm text-green-600 dark:text-green-400">
+              ✓ Saved as <strong>{name}</strong>. Your agents will find it in the discovery step for similar goals.
+            </p>
+            <button
+              onClick={onClose}
+              className="w-full rounded-md border px-4 py-2 text-sm hover:bg-muted transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        ) : (
+          <form
+            onSubmit={(e) => { e.preventDefault(); save.mutate(); }}
+            className="space-y-4"
+          >
+            <div>
+              <label className="text-xs font-medium text-muted-foreground block mb-1">
+                Capability name
+              </label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="extract-pdf-tables"
+                pattern="[a-z0-9-]{2,64}"
+                required
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Lowercase letters, numbers, hyphens. 2–64 characters.
+              </p>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground block mb-1">
+                Goal pattern
+              </label>
+              <textarea
+                value={goal}
+                onChange={(e) => setGoal(e.target.value)}
+                rows={3}
+                required
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                How future agents will match this capability to a goal.
+              </p>
+            </div>
+            {save.error && (
+              <p className="text-xs text-red-500">
+                {save.error instanceof Error ? save.error.message : "Save failed"}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 rounded-md border px-4 py-2 text-sm hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={save.isPending}
+                className="flex-1 rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {save.isPending ? "Saving…" : "Save to library"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
   );
 }
 
