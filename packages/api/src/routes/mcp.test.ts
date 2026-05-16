@@ -133,7 +133,7 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
       });
 
       // Initialize was called inside connect. Inspect server info + tools.
-      // Team-tier caller gets 24 tools: 2 memory + 16 hierarchy + 6 mesh.
+      // Team-tier caller gets 25 tools: 2 memory + 16 hierarchy + 6 mesh + 1 use_repo.
       const tools = await client.listTools();
       expect(tools.tools.map((t) => t.name).sort()).toEqual([
         "add_to_escalation",
@@ -160,6 +160,7 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
         "update_core_memory",
         "update_progress",
         "update_work_product",
+        "use_repo",
       ]);
 
       // Server-info has no/empty instructions for agent callers (briefing is
@@ -192,7 +193,7 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
       const mcpSid = transport.sessionId;
       expect(mcpSid).toBeTruthy();
 
-      // tools/list — human caller, agent is team-tier → 24 tools.
+      // tools/list — human caller, agent is team-tier → 25 tools.
       const tools = await client.listTools();
       const names = tools.tools.map((t) => t.name);
       expect(names).toContain("save_memory");
@@ -205,7 +206,8 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
       expect(names).toContain("revise_task");
       expect(names).toContain("create_subordinate_agent");
       expect(names).toContain("get_work_product");
-      expect(tools.tools.length).toBe(24);
+      expect(names).toContain("use_repo");
+      expect(tools.tools.length).toBe(25);
 
       // tools/call save_memory — should write a fact stamped with the auto-
       // created beevibe chat session id. We don't know the sid client-side;

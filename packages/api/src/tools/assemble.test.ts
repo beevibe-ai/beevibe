@@ -80,9 +80,9 @@ function icCtx(spawnMode?: AssembleToolsContext["spawnMode"]): AssembleToolsCont
 }
 
 describe("assembleTools — daemon (full surface)", () => {
-  it("team caller gets the full team surface (24 tools)", () => {
+  it("team caller gets the full team surface (25 tools, includes use_repo)", () => {
     const tools = assembleTools(teamCtx(), buildMinimalServices());
-    expect(tools.length).toBe(24);
+    expect(tools.length).toBe(25);
     const names = new Set(tools.map((t) => t.name));
     expect(names.has("create_task")).toBe(true);
     expect(names.has("update_work_product")).toBe(true);
@@ -90,15 +90,17 @@ describe("assembleTools — daemon (full surface)", () => {
     expect(names.has("revise_task")).toBe(true);
     expect(names.has("add_to_escalation")).toBe(true);
     expect(names.has("create_subordinate_agent")).toBe(true);
+    expect(names.has("use_repo")).toBe(true);
   });
 
-  it("ic caller gets the IC surface (13 tools)", () => {
+  it("ic caller gets the IC surface (14 tools, includes use_repo)", () => {
     const tools = assembleTools(icCtx(), buildMinimalServices());
-    expect(tools.length).toBe(13);
+    expect(tools.length).toBe(14);
     const names = new Set(tools.map((t) => t.name));
     expect(names.has("create_task")).toBe(false);
     expect(names.has("respond_ask")).toBe(true);
     expect(names.has("report_blocker")).toBe(true);
+    expect(names.has("use_repo")).toBe(true);
   });
 });
 
