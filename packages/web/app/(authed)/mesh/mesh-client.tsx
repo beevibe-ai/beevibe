@@ -22,10 +22,9 @@ export function MeshClient() {
           <div>
             <h1 className="text-lg font-semibold tracking-tight mb-1">Mesh activity</h1>
             <p className="text-sm text-muted-foreground max-w-prose leading-relaxed">
-              Agents ask each other when their bounded context isn&rsquo;t enough. Each ask is a session
-              — caller&rsquo;s intent, target&rsquo;s response, with provenance.{" "}
-              <span className="font-mono text-foreground">ChainBudget</span> caps depth and total
-              tokens per chain to prevent runaway loops.
+              Agents ask each other when one agent&rsquo;s context isn&rsquo;t enough. Each ask is a
+              session with caller intent, response, and provenance. We cap depth and tokens per
+              chain so loops can&rsquo;t run away.
             </p>
           </div>
         </div>

@@ -26,9 +26,8 @@ export function ChainBudget({ data }: Props = {}) {
       </div>
       {empty ? (
         <p className="text-xs text-muted-foreground leading-relaxed">
-          Depth and token totals appear once an ask spawns a follow-up chain.{" "}
-          <span className="text-foreground/80">ChainBudget</span> caps each chain at depth 4 or
-          50k tokens, whichever comes first.
+          Depth and token totals appear once an ask spawns a follow-up chain. Each chain is capped
+          at depth 4 or 50k tokens, whichever comes first.
         </p>
       ) : (
         <>
@@ -37,9 +36,8 @@ export function ChainBudget({ data }: Props = {}) {
             <BudgetRow label="Max depth" row={data.max_depth} />
             <BudgetRow label="Tokens used" row={data.tokens} />
           </div>
-          <div className="mt-3 text-[10px] text-muted-foreground leading-relaxed">
-            <span className="text-foreground/80">ChainBudget</span> caps each chain at depth 4 or
-            50k tokens, whichever comes first.
+          <div className="mt-3 text-[11px] text-muted-foreground leading-relaxed">
+            Each chain is capped at depth 4 or 50k tokens, whichever comes first.
           </div>
         </>
       )}
