@@ -55,7 +55,7 @@ export function MeshActivityFeed({
   return (
     <section className="col-span-3">
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground">
           Recent asks{" "}
           <span className="text-muted-foreground/70 tabular-nums">{visible.length}</span>
         </h2>

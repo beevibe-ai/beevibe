@@ -99,10 +99,10 @@ export function MeshGraphStatic({
   return (
     <section>
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-[10px] uppercase tracking-wider text-muted-foreground">
+        <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground">
           Live graph · last 24h
         </h2>
-        <div className="text-[10px] text-muted-foreground">
+        <div className="text-[11px] text-muted-foreground">
           <span className="text-foreground tabular-nums">{edges.length}</span> edges ·{" "}
           <span className="text-foreground tabular-nums">{nodes.length}</span> agents
         </div>
