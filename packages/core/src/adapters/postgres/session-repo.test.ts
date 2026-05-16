@@ -190,6 +190,62 @@ describe("PostgresSessionRepository", () => {
     expect(same.status).toBe("running");
   });
 
+  describe("softDeleteChatChain", () => {
+    it("walks the chain backwards and stamps every session as deleted", async () => {
+      const turn1 = await sessions.create(newSession({ type: "chat", intent: "hi" }));
+      const turn2 = await sessions.create(
+        newSession({ type: "chat", intent: "follow up", prior_session_id: turn1.id }),
+      );
+      const turn3 = await sessions.create(
+        newSession({ type: "chat", intent: "again", prior_session_id: turn2.id }),
+      );
+
+      const deleted = await sessions.softDeleteChatChain(turn3.id, agent);
+      expect(deleted).toBe(3);
+
+      // listChatForAgent must hide the whole chain so it doesn't reappear
+      // under a new head id when the original head is gone.
+      const remaining = await sessions.listChatForAgent(agent, 100);
+      expect(remaining).toEqual([]);
+    });
+
+    it("is scoped to agent — a different agent's head id does nothing", async () => {
+      const head = await sessions.create(newSession({ type: "chat", intent: "hi" }));
+      const otherAgent = await agents.create({
+        id: agentId(),
+        name: "B",
+        owner_id: person,
+        hierarchy_level: "ic",
+        runtime_config: DEFAULT_RUNTIME_CONFIG,
+      });
+
+      const deleted = await sessions.softDeleteChatChain(head.id, otherAgent.id);
+      expect(deleted).toBe(0);
+
+      const remaining = await sessions.listChatForAgent(agent, 100);
+      expect(remaining.map((s) => s.id)).toEqual([head.id]);
+    });
+
+    it("is idempotent — re-deleting an already-deleted chain returns 0", async () => {
+      const head = await sessions.create(newSession({ type: "chat", intent: "hi" }));
+      expect(await sessions.softDeleteChatChain(head.id, agent)).toBe(1);
+      expect(await sessions.softDeleteChatChain(head.id, agent)).toBe(0);
+    });
+
+    it("only touches chat sessions — task chains in between are untouched", async () => {
+      // Build a chat chain that happens to share an agent with task work.
+      const chatHead = await sessions.create(newSession({ type: "chat", intent: "hi" }));
+      const taskRun = await sessions.create(newSession({ type: "task", task_id: task }));
+
+      await sessions.softDeleteChatChain(chatHead.id, agent);
+
+      const tasksRemaining = await sessions.listForAgent(agent);
+      // listForAgent returns ALL types and is not filtered by deleted_at,
+      // so the task session must still be there.
+      expect(tasksRemaining.some((s) => s.id === taskRun.id)).toBe(true);
+    });
+  });
+
   describe("claimNextForRuntime", () => {
     let daemons: PostgresDaemonRepository;
     let runtimes: PostgresRuntimeRepository;

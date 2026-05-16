@@ -517,6 +517,15 @@ export const api = {
       fetchJson<ChatConversationsResponse>("/chat/conversations", {
         signal: opts.signal,
       }),
+    /**
+     * Soft-delete a conversation chain. Server stamps `deleted_at` on
+     * every session in the chain; the row stays for audit. Idempotent.
+     */
+    deleteConversation: (headId: string) =>
+      fetchJson<{ ok: true; deleted: number }>(
+        `/chat/conversations/${encodeURIComponent(headId)}`,
+        { method: "DELETE" },
+      ),
   },
   activity: {
     /** Recent sessions across the caller's agent tree. Used by the live chat rail. */

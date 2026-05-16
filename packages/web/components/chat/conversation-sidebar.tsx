@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
-import { MessageSquare } from "lucide-react";
+import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { MessageSquare, Trash2 } from "lucide-react";
 import {
   api,
   type ChatConversationsResponse,
@@ -142,33 +144,78 @@ function ConversationRow({
   active: boolean;
   stale: boolean;
 }) {
+  const router = useRouter();
+  const queryClient = useQueryClient();
+  const [confirming, setConfirming] = useState(false);
+  const deleteMutation = useMutation({
+    mutationFn: () => api.chat.deleteConversation(c.head_id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.chat.conversations() });
+      // Drop the user back to /chat if they're currently viewing the
+      // chain we just deleted — otherwise the URL still references a
+      // dead head_id and GET /chat?c=… renders an empty surface.
+      if (active) router.replace("/chat");
+    },
+  });
+
+  const onDeleteClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!confirming) {
+      setConfirming(true);
+      return;
+    }
+    deleteMutation.mutate();
+  };
+
   return (
     <li>
-      <Link
-        href={`/chat?c=${encodeURIComponent(c.head_id)}`}
+      <div
         className={cn(
-          "block px-3 py-1.5 mx-1 my-0.5 rounded transition-colors",
+          "group relative block px-3 py-1.5 mx-1 my-0.5 rounded transition-colors",
           active ? "bg-secondary" : "hover:bg-secondary/60",
           stale && !active && "opacity-60",
+          deleteMutation.isPending && "opacity-50 pointer-events-none",
         )}
       >
-        <div className="flex items-baseline gap-1.5">
-          <div
-            className={cn(
-              "text-xs truncate flex-1 min-w-0",
-              active ? "text-foreground font-semibold" : "text-foreground/85 font-medium",
-            )}
-          >
-            {c.title}
+        <Link
+          href={`/chat?c=${encodeURIComponent(c.head_id)}`}
+          className="block"
+          onClick={() => setConfirming(false)}
+        >
+          <div className="flex items-baseline gap-1.5">
+            <div
+              className={cn(
+                "text-xs truncate flex-1 min-w-0",
+                active ? "text-foreground font-semibold" : "text-foreground/85 font-medium",
+              )}
+            >
+              {c.title}
+            </div>
+            <span className="text-[10px] tabular-nums text-muted-foreground/70 shrink-0 group-hover:invisible">
+              {formatRelativeTime(c.last_at)}
+            </span>
           </div>
-          <span className="text-[10px] tabular-nums text-muted-foreground/70 shrink-0">
-            {formatRelativeTime(c.last_at)}
-          </span>
-        </div>
-        <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1 leading-snug">
-          {c.last_preview}
-        </div>
-      </Link>
+          <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1 leading-snug">
+            {c.last_preview}
+          </div>
+        </Link>
+        <button
+          type="button"
+          onClick={onDeleteClick}
+          onBlur={() => setConfirming(false)}
+          aria-label={confirming ? "Confirm delete conversation" : "Delete conversation"}
+          title={confirming ? "Click again to delete" : "Delete conversation"}
+          className={cn(
+            "absolute top-1.5 right-2 h-5 px-1.5 inline-flex items-center justify-center rounded transition-opacity cursor-pointer text-[10px] font-medium",
+            confirming
+              ? "opacity-100 bg-status-failed/15 text-status-failed hover:bg-status-failed/25"
+              : "opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-foreground hover:bg-secondary",
+          )}
+        >
+          {confirming ? "Delete?" : <Trash2 className="h-3 w-3" />}
+        </button>
+      </div>
     </li>
   );
 }

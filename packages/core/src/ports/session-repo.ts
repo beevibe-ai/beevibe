@@ -25,8 +25,20 @@ export interface SessionRepository {
    * Most-recent chat sessions for an agent, capped at `limit`. Used by
    * the chat surface to rehydrate history on page load. Bounded so a
    * heavy user with thousands of turns doesn't drag GET /chat.
+   * Soft-deleted sessions (`deleted_at IS NOT NULL`) are excluded.
    */
   listChatForAgent(agentId: string, limit: number): Promise<Session[]>;
+
+  /**
+   * Soft-delete a whole chat conversation by walking the chain backwards
+   * from the head via `prior_session_id` and stamping `deleted_at` on
+   * every session in the chain. Scoped to `agentId` so a session id
+   * collision (or token misuse) can't delete someone else's history.
+   *
+   * Returns the count of rows deleted (0 if the head doesn't belong to
+   * the agent or was already deleted).
+   */
+  softDeleteChatChain(headId: string, agentId: string): Promise<number>;
 
   /**
    * Count currently-running sessions for an agent.
