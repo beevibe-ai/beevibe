@@ -127,6 +127,9 @@ importers:
       '@beevibe/core':
         specifier: workspace:*
         version: link:../core
+      '@beevibe/sandbox':
+        specifier: workspace:*
+        version: link:../sandbox
       ws:
         specifier: ^8.18.0
         version: 8.20.0
