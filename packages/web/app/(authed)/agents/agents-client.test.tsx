@@ -111,10 +111,9 @@ describe("AgentsClient", () => {
       ],
     });
     renderAgents();
-    // Peer label sits above each satellite orbit on the canvas.
-    expect(await screen.findByText("Daniel's team")).toBeInTheDocument();
-    expect(screen.getByText("Roadmap pod")).toBeInTheDocument(); // agent card
+    // Peer satellite orbit renders the peer's agent card.
+    expect(await screen.findByText("Roadmap pod")).toBeInTheDocument();
     // The page caption mentions collaborators when peers are present.
-    expect(screen.getByText(/People you collaborate with/)).toBeInTheDocument();
+    expect(screen.getByText(/People you work with/)).toBeInTheDocument();
   });
 });

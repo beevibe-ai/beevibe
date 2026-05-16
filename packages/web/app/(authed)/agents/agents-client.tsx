@@ -9,7 +9,6 @@ import { EmptyState } from "@/components/empty-state";
 import { TeamOrbit } from "@/components/team-orbit";
 import { AgentDetailPanel } from "@/components/agents/agent-detail-panel";
 import { usePanZoom } from "@/lib/hooks/use-pan-zoom";
-import type { AgentPeerOwner } from "@/lib/types/agent-network";
 
 /**
  * /agents — pan/zoom canvas of the agent network.
@@ -103,7 +102,6 @@ export function AgentsClient() {
                       transform: "translate(-50%, -50%)",
                     }}
                   >
-                    <PeerLabel peer={peer} />
                     <TeamOrbit
                       agents={peer.agents}
                       size="satellite"
@@ -144,17 +142,9 @@ function Caption({ hasPeers }: { hasPeers: boolean }) {
       <h1 className="text-sm font-semibold tracking-tight">Your team</h1>
       <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
         {hasPeers
-          ? "Your team agent at center, specialists orbiting them. People you collaborate with float around the edges. Drag to pan, scroll to zoom — click any agent to open a peek."
-          : "Your team agent at center, specialists orbiting them. Drag to pan, scroll to zoom — click any agent to open a peek."}
+          ? "Your team lead is in the middle, with their specialists around them. People you work with sit further out. Click anyone to see what they're up to — drag to move, scroll to zoom."
+          : "Your team lead is in the middle, with their specialists around them. Click anyone to see what they're up to — drag to move, scroll to zoom."}
       </p>
-    </div>
-  );
-}
-
-function PeerLabel({ peer }: { peer: AgentPeerOwner }) {
-  return (
-    <div className="mb-1 text-[11px] uppercase tracking-wider text-muted-foreground font-medium whitespace-nowrap">
-      {peer.owner_label}&apos;s team
     </div>
   );
 }
