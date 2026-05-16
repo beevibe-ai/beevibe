@@ -56,7 +56,7 @@ export function UserWidget() {
         <div
           role="menu"
           className={cn(
-            "absolute bottom-full left-0 right-0 mb-1 rounded-md border border-border bg-popover shadow-md py-1",
+            "absolute bottom-full left-0 right-0 mb-2 z-50 rounded-md border border-border bg-popover shadow-lg py-1",
           )}
         >
           <button
