@@ -6,12 +6,10 @@ import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
   Bot,
-  Check,
   CheckCircle2,
   Cpu,
   GaugeCircle,
   Inbox,
-  Loader2,
   Network,
   ShieldAlert,
   Sparkles,
@@ -25,7 +23,6 @@ import {
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { useInbox } from "@/lib/hooks/use-inbox";
-import { useApproveTask } from "@/lib/hooks/use-task-mutations";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -253,15 +250,14 @@ export function TasksAttentionSidebar({
 function AttentionRow({ item, active }: { item: InboxItem; active: boolean }) {
   const meta = INBOX_KIND_META[item.kind];
   const Icon = meta.icon;
-  const taskId = inboxTaskId(item);
   return (
     <li
       className={cn(
-        "group/row mx-1 my-0.5 rounded flex items-stretch transition-colors",
+        "mx-1 my-0.5 rounded transition-colors",
         active ? "bg-secondary" : "hover:bg-secondary/60",
       )}
     >
-      <Link href={inboxRowHref(item)} className="flex-1 min-w-0 px-3 py-1.5">
+      <Link href={inboxRowHref(item)} className="block px-3 py-1.5">
         <div className="flex items-baseline gap-1.5">
           <Icon
             className={cn("h-3 w-3 shrink-0 self-center", meta.iconClass)}
@@ -283,39 +279,7 @@ function AttentionRow({ item, active }: { item: InboxItem; active: boolean }) {
           {item.detail}
         </div>
       </Link>
-      {item.kind === "task_review" && taskId ? (
-        <ApproveButton taskId={taskId} />
-      ) : null}
     </li>
-  );
-}
-
-function ApproveButton({ taskId }: { taskId: string }) {
-  const approve = useApproveTask(taskId);
-  return (
-    <button
-      type="button"
-      title="Approve"
-      aria-label="Approve task"
-      disabled={approve.isPending}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        approve.mutate({});
-      }}
-      className={cn(
-        "shrink-0 mr-1 my-0.5 px-1.5 inline-flex items-center justify-center rounded text-status-done/80 hover:bg-status-done/15 hover:text-status-done transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed",
-        // Reveal on row hover so the rail stays calm when nothing's
-        // hovered. Keyboard focus (focus-within on the li) also reveals.
-        "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100",
-      )}
-    >
-      {approve.isPending ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
-      ) : (
-        <Check className="h-3.5 w-3.5" />
-      )}
-    </button>
   );
 }
 
