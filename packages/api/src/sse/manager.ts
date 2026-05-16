@@ -19,6 +19,13 @@ export interface BvEvent {
   event: string;
   /** Row id of whatever changed. */
   id: string;
+  /**
+   * Inline payload for push-style events (e.g. `session.step` carries
+   * kind/tool_name/content so the chat UI can render without a
+   * round-trip). Cache-invalidation events (e.g. `task.updated`) omit
+   * this and the client refetches by id.
+   */
+  data?: Record<string, unknown>;
 }
 
 export type SseSubscriber = (event: BvEvent) => void;

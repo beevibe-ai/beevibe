@@ -127,9 +127,21 @@ export class SseListener {
 
 function parseEvent(payload: string): BvEvent | undefined {
   try {
-    const raw = JSON.parse(payload) as { event?: unknown; id?: unknown };
+    const raw = JSON.parse(payload) as {
+      event?: unknown;
+      id?: unknown;
+      data?: unknown;
+    };
     if (typeof raw.event === "string" && typeof raw.id === "string") {
-      return { event: raw.event, id: raw.id };
+      // Forward `data` when present (push-style events like `session.step`
+      // carry their payload inline). Cache-invalidation events omit it.
+      const isPlainObject =
+        raw.data !== null &&
+        typeof raw.data === "object" &&
+        !Array.isArray(raw.data);
+      return isPlainObject
+        ? { event: raw.event, id: raw.id, data: raw.data as Record<string, unknown> }
+        : { event: raw.event, id: raw.id };
     }
   } catch {
     // ignore malformed payload
