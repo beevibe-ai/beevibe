@@ -1,0 +1,66 @@
+{
+  "description": "Curated repos to boost in the discovery ranker for common goal families. Each entry lifts its repo_url by +20 points in the final ranking so the magic moment reliably fires for day-one use cases.",
+  "version": "1.0.0",
+  "entries": [
+    {
+      "repo_url": "https://github.com/jsvine/pdfplumber",
+      "goal_keywords": ["pdf", "extract", "table", "parse", "ocr"],
+      "language": "python",
+      "category": "data"
+    },
+    {
+      "repo_url": "https://github.com/yt-dlp/yt-dlp",
+      "goal_keywords": ["youtube", "video", "download", "audio", "mp3", "mp4"],
+      "language": "python",
+      "category": "media"
+    },
+    {
+      "repo_url": "https://github.com/microsoft/playwright",
+      "goal_keywords": ["screenshot", "browser", "scrape", "page", "headless", "web"],
+      "language": "javascript",
+      "category": "web"
+    },
+    {
+      "repo_url": "https://github.com/FFmpeg/FFmpeg",
+      "goal_keywords": ["video", "convert", "transcode", "audio", "ffmpeg", "codec"],
+      "language": "c",
+      "category": "media"
+    },
+    {
+      "repo_url": "https://github.com/camelot-dev/camelot",
+      "goal_keywords": ["pdf", "table", "csv", "extract"],
+      "language": "python",
+      "category": "data"
+    },
+    {
+      "repo_url": "https://github.com/nicowillis/spreadsheet-intelligence",
+      "goal_keywords": ["excel", "xlsx", "spreadsheet", "csv"],
+      "language": "python",
+      "category": "data"
+    },
+    {
+      "repo_url": "https://github.com/ageitgey/face_recognition",
+      "goal_keywords": ["face", "image", "recognize", "detect"],
+      "language": "python",
+      "category": "vision"
+    },
+    {
+      "repo_url": "https://github.com/huggingface/transformers",
+      "goal_keywords": ["nlp", "sentiment", "classify", "summarize", "translate", "llm"],
+      "language": "python",
+      "category": "ml"
+    },
+    {
+      "repo_url": "https://github.com/sherlock-project/sherlock",
+      "goal_keywords": ["username", "social", "find", "lookup", "profile"],
+      "language": "python",
+      "category": "osint"
+    },
+    {
+      "repo_url": "https://github.com/mozilla/geckodriver",
+      "goal_keywords": ["firefox", "browser", "selenium", "automation"],
+      "language": "rust",
+      "category": "web"
+    }
+  ]
+}
