@@ -57,8 +57,8 @@ export function RoomsListClient() {
     <div className="flex-1 overflow-y-auto px-6 py-6">
       <div className="max-w-2xl mx-auto">
         <header className="mb-6">
-          <h1 className="text-xl font-semibold tracking-tight">Rooms</h1>
-          <p className="text-xs text-muted-foreground mt-0.5 max-w-prose">
+          <h1 className="text-lg font-semibold tracking-tight">Rooms</h1>
+          <p className="text-sm text-muted-foreground mt-1 max-w-prose">
             Shared spaces where multiple humans collaborate alongside their team agents. Invite
             a teammate by email — their team agent joins the room, and yours can ask theirs
             questions directly via mesh.

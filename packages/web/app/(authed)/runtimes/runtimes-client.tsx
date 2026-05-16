@@ -39,7 +39,7 @@ export function RuntimesClient() {
     <div className="flex-1 overflow-auto">
       <div className="pt-8 pb-12 px-6">
         <div className="max-w-3xl mx-auto mb-8 space-y-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Runtimes</h1>
+          <h1 className="text-lg font-semibold tracking-tight">Runtimes</h1>
           <p className="text-sm text-muted-foreground max-w-prose">
             beevibe-daemon runs on your machine and is what spawns your
             agents&apos; CLI subprocesses. Each daemon registers one runtime

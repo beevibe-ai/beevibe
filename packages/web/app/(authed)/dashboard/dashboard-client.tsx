@@ -79,7 +79,7 @@ function Body({
   return (
     <div className="space-y-10">
       <header>
-        <h1 className="text-xl font-semibold tracking-tight">Metrics</h1>
+        <h1 className="text-lg font-semibold tracking-tight">Metrics</h1>
         <p className="mt-1 text-sm text-muted-foreground max-w-prose">
           Throughput, fleet activity, and trends across your team&apos;s work.
         </p>

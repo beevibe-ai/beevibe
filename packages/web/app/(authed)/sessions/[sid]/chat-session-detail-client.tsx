@@ -129,7 +129,7 @@ function ChatSessionBody({ session }: { session: SessionDisplay }) {
           />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-base font-semibold leading-tight">One turn</h1>
+              <h1 className="text-base font-semibold tracking-tight leading-tight">One turn</h1>
               <SessionStatusPill status={session.status} />
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
