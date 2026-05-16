@@ -1,26 +1,24 @@
 import { createHash } from "node:crypto";
 import { promises as fs } from "node:fs";
 import { join, relative } from "node:path";
-import { Router, type Request, type RequestHandler, type Response } from "express";
+import { Router, type RequestHandler } from "express";
 import {
   daemonId as newDaemonId,
   runtimeId as newRuntimeId,
   sessionEventId as newSessionEventId,
   isTerminalSessionStatus,
   type AgentRepository,
+  type DaemonRepository,
   type PersonRepository,
   type Session,
   type SessionEventRepository,
   type SessionRepository,
+  type RuntimeRepository,
 } from "@beevibe/core";
 import {
   generateDaemonApiKey,
   hashDaemonToken,
 } from "@beevibe/core/auth";
-import type {
-  DaemonRepository,
-  RuntimeRepository,
-} from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 import {
   composeIntent,
@@ -455,6 +453,7 @@ async function composeDispatchPayload(
     agent_id: agent.id,
     agent_api_key: agent.api_key,
     agent_hierarchy_level: agent.hierarchy_level,
+    runtime_type: agent.runtime_config.type,
     intent: composeIntent(session.intent, briefing.userMessagePrefix),
     system_prompt_append: composeSystemPromptAppend(
       agent.runtime_config.system_prompt_addition,
@@ -553,4 +552,3 @@ async function assertDaemonOwnsSessions(
   const owned = await deps.sessionRepo.countOwnedByDaemon(daemonId, ids);
   return owned === ids.length;
 }
-

@@ -7,6 +7,7 @@
 
 import type {
   HierarchyLevel,
+  KnownCli,
   SessionEventKind,
   SessionStatus,
   SessionType,
@@ -61,6 +62,8 @@ export interface DispatchPayload {
    * sync. Pulled from agent.hierarchy_level at claim time.
    */
   agent_hierarchy_level: HierarchyLevel;
+  /** CLI runtime to spawn. Mirrors `agent.runtime_config.type`. */
+  runtime_type: KnownCli;
   intent: string;
   system_prompt_append: string;
   /** When set, daemon spawns with `--resume <cli_session_id>`. */

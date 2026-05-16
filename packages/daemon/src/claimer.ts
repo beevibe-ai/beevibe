@@ -12,7 +12,7 @@
  */
 
 import WebSocket from "ws";
-import { RUNTIME_HEARTBEAT_INTERVAL_MS } from "@beevibe/core";
+import { RUNTIME_HEARTBEAT_INTERVAL_MS, type RuntimeRegistry } from "@beevibe/core";
 import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
 import type { Supervisor } from "./supervisor.js";
@@ -22,6 +22,7 @@ export interface ClaimerConfig {
   api: ApiClient;
   supervisor: Supervisor;
   workspaceManager: LocalWorkspaceManager;
+  runtimeRegistry: RuntimeRegistry;
   runtimeIds: string[];
   /** Default 30_000ms. */
   pollIntervalMs?: number;
@@ -185,7 +186,11 @@ export class Claimer {
       );
       const ctrl = this.cfg.supervisor.start(payload.session_id);
       void runDispatch(
-        { api: this.cfg.api, workspaceManager: this.cfg.workspaceManager },
+        {
+          api: this.cfg.api,
+          workspaceManager: this.cfg.workspaceManager,
+          runtimeRegistry: this.cfg.runtimeRegistry,
+        },
         payload,
         ctrl.signal,
       )

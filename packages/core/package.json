@@ -30,6 +30,14 @@
       "types": "./dist/adapters/claude-code/index.d.ts",
       "default": "./dist/adapters/claude-code/index.js"
     },
+    "./adapters/codex": {
+      "types": "./dist/adapters/codex/index.d.ts",
+      "default": "./dist/adapters/codex/index.js"
+    },
+    "./adapters/opencode": {
+      "types": "./dist/adapters/opencode/index.d.ts",
+      "default": "./dist/adapters/opencode/index.js"
+    },
     "./adapters/local-workspace": {
       "types": "./dist/adapters/local-workspace/index.d.ts",
       "default": "./dist/adapters/local-workspace/index.js"

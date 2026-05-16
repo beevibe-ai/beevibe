@@ -109,7 +109,7 @@ For a deeper version of any layer, see the package READMEs:
 | **Task** | A unit of team work assigned to a person or agent. Tasks can spawn child tasks and move through review. |
 | **Mesh** | The agent-to-agent layer for asking the right teammate, negotiating, responding, and escalating. |
 | **Memory** | Durable per-agent core memory blocks plus vector-searchable facts that compound across team work. |
-| **Runtime** | A registered `(daemon, CLI)` pair, usually a user's local `claude` binary. |
+| **Runtime** | A registered `(daemon, CLI)` pair, such as a user's local `claude`, `codex`, or `opencode` binary. |
 | **Daemon** | A local process that claims sessions and spawns CLI runs on a user's machine. |
 
 ## Quick Start

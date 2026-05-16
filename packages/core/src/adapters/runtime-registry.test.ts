@@ -8,6 +8,18 @@ describe("createDefaultRuntimeRegistry", () => {
     expect(registry["claude"]!.type).toBe("claude");
   });
 
+  it("registers opencode", () => {
+    const registry = createDefaultRuntimeRegistry();
+    expect(registry["opencode"]).toBeDefined();
+    expect(registry["opencode"]!.type).toBe("opencode");
+  });
+
+  it("registers codex", () => {
+    const registry = createDefaultRuntimeRegistry();
+    expect(registry["codex"]).toBeDefined();
+    expect(registry["codex"]!.type).toBe("codex");
+  });
+
   it("every registry value's .type matches its registry key (sanity check against typos)", () => {
     const registry = createDefaultRuntimeRegistry();
     for (const [key, runtime] of Object.entries(registry)) {
