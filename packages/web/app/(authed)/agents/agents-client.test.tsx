@@ -114,6 +114,6 @@ describe("AgentsClient", () => {
     // Peer satellite orbit renders the peer's agent card.
     expect(await screen.findByText("Roadmap pod")).toBeInTheDocument();
     // The page caption mentions collaborators when peers are present.
-    expect(screen.getByText(/People you work with/)).toBeInTheDocument();
+    expect(screen.getByText(/Other teams sit further out/)).toBeInTheDocument();
   });
 });
