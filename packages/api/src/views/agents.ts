@@ -30,6 +30,7 @@ interface AgentRow {
   created_at: Date;
   updated_at: Date;
   sessions_count: string;
+  active_sessions: string;
   facts_learned: string;
   tag_line: string | null;
   domain_content: string | null;
@@ -40,13 +41,17 @@ SELECT
   a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
   a.review_policy, a.runtime_config, a.preferred_runtime_id, a.archived_at,
   a.created_at, a.updated_at,
-  COALESCE(sc.n, 0)::int  AS sessions_count,
-  COALESCE(fc.n, 0)::int  AS facts_learned,
+  COALESCE(sc.n, 0)::int          AS sessions_count,
+  COALESCE(sc.running_n, 0)::int  AS active_sessions,
+  COALESCE(fc.n, 0)::int          AS facts_learned,
   tl.content              AS tag_line,
   dm.content              AS domain_content
 FROM agent a
 LEFT JOIN (
-  SELECT agent_id, COUNT(*)::int AS n
+  SELECT
+    agent_id,
+    COUNT(*)::int AS n,
+    COUNT(*) FILTER (WHERE status = 'running')::int AS running_n
   FROM session
   GROUP BY agent_id
 ) sc ON sc.agent_id = a.id
@@ -85,6 +90,7 @@ function rowToAgentDisplay(row: AgentRow): AgentDisplay {
     display_name: row.name,
     hierarchy: row.hierarchy_level,
     sessions_count: Number(row.sessions_count),
+    active_sessions: Number(row.active_sessions),
     facts_learned: Number(row.facts_learned),
     runtime,
     model,
@@ -118,6 +124,7 @@ SELECT
   a.review_policy, a.runtime_config, a.preferred_runtime_id, a.archived_at,
   a.created_at, a.updated_at,
   (SELECT COUNT(*)::int FROM session       WHERE agent_id = a.id) AS sessions_count,
+  (SELECT COUNT(*)::int FROM session       WHERE agent_id = a.id AND status = 'running') AS active_sessions,
   (SELECT COUNT(*)::int FROM memory_fact   WHERE agent_id = a.id) AS facts_learned,
   (SELECT content FROM core_memory_block
     WHERE agent_id = a.id AND block_name = 'tag_line' LIMIT 1) AS tag_line,

@@ -13,11 +13,13 @@ const PRESENCE_BG = {
   off: "bg-secondary",
 } as const;
 
+export type Presence = "running" | "idle" | "off";
+
 interface Props {
   initial: string;
   kind: HierarchyLevel | "person";
   size?: number;
-  presence?: "running" | "idle" | "off";
+  presence?: Presence;
   className?: string;
 }
 

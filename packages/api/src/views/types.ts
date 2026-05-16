@@ -90,6 +90,8 @@ export interface AgentDisplay
   display_name: string;
   hierarchy: HierarchyLevel;
   sessions_count?: number;
+  /** Sessions in `running` status right now (subset of sessions_count). */
+  active_sessions?: number;
   facts_learned?: number;
   /** Reserved for future memory-merge telemetry. */
   merge_events?: number;

@@ -1,4 +1,9 @@
-export { CoreMemory } from "./core-memory.js";
+export {
+  CoreMemory,
+  BlockNotFoundError,
+  CharLimitExceededError,
+  InvalidReplaceError,
+} from "./core-memory.js";
 export type { CoreMemoryDeps, CoreMemoryOperation } from "./core-memory.js";
 
 export { FactStore } from "./fact-store.js";

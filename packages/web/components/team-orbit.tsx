@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Activity, Bot, Sparkles } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { Skeleton } from "@/components/skeleton";
+import { agentPresence } from "@/lib/agent-presence";
 import { useAgents } from "@/lib/hooks/use-agents";
 import { cn } from "@/lib/utils";
 import type { AgentDisplay } from "@/lib/types/agents";
@@ -153,7 +154,7 @@ function Orbit({
           stroke="currentColor"
           strokeWidth={1}
           strokeDasharray="3 6"
-          className="text-border"
+          className="text-muted-foreground/30"
         />
         {positions.map((pos, i) => (
           <line
@@ -163,8 +164,8 @@ function Orbit({
             x2={m.size / 2 + pos.x}
             y2={m.size / 2 + pos.y}
             stroke="currentColor"
-            strokeWidth={1}
-            className="text-border/70"
+            strokeWidth={1.25}
+            className="text-muted-foreground/40"
           />
         ))}
       </svg>
@@ -242,7 +243,12 @@ function TeamCard({
       // the card and crash into its neighbors on the ring.
       style={{ minWidth: m.teamCard, maxWidth: m.teamCard * 1.35 }}
     >
-      <Avatar initial={initial} kind={agent.hierarchy} size={m.teamAvatar} />
+      <Avatar
+        initial={initial}
+        kind={agent.hierarchy}
+        size={m.teamAvatar}
+        presence={agentPresence(agent)}
+      />
       <div className="mt-3 w-full">
         <div
           className={cn(
@@ -256,7 +262,11 @@ function TeamCard({
           {agent.hierarchy}
         </div>
       </div>
-      <CardStats sessions={agent.sessions_count} facts={agent.facts_learned} />
+      <CardStats
+        active={agent.active_sessions}
+        sessions={agent.sessions_count}
+        facts={agent.facts_learned}
+      />
     </Link>
   );
 }
@@ -279,7 +289,12 @@ function SpecialistCard({
       className="group flex flex-col items-center text-center rounded-xl border border-border bg-card hover:bg-secondary/40 hover:border-foreground/30 transition-colors p-3"
       style={{ minWidth: m.icCard, maxWidth: m.icCard * 1.5 }}
     >
-      <Avatar initial={initial} kind={agent.hierarchy} size={m.icAvatar} />
+      <Avatar
+        initial={initial}
+        kind={agent.hierarchy}
+        size={m.icAvatar}
+        presence={agentPresence(agent)}
+      />
       <div className="mt-2 w-full">
         <div className="text-xs font-semibold leading-snug break-words">
           {agent.display_name ?? agent.name}
@@ -296,6 +311,7 @@ function SpecialistCard({
         ) : null}
       </div>
       <CardStats
+        active={agent.active_sessions}
         sessions={agent.sessions_count}
         facts={agent.facts_learned}
         compact
@@ -305,29 +321,48 @@ function SpecialistCard({
 }
 
 function CardStats({
+  active,
   sessions,
   facts,
   compact,
 }: {
+  active: number | undefined;
   sessions: number | undefined;
   facts: number | undefined;
   compact?: boolean;
 }) {
+  const running = active ?? 0;
   return (
-    <div
-      className={cn(
-        "mt-3 w-full flex items-center justify-center gap-3 text-muted-foreground/80 tabular-nums",
-        compact ? "text-[10px]" : "text-[11px]",
-      )}
-    >
-      <span className="inline-flex items-center gap-1">
-        <Activity className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
-        {sessions ?? 0}
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <Sparkles className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
-        {facts ?? 0}
-      </span>
+    <div className="mt-3 w-full flex flex-col items-center gap-1">
+      {running > 0 ? (
+        <span
+          className={cn(
+            "inline-flex items-center gap-1.5 font-semibold text-status-running tabular-nums",
+            compact ? "text-[11px]" : "text-xs",
+          )}
+        >
+          <span
+            className="h-1.5 w-1.5 rounded-full bg-status-running animate-pulse-breathe"
+            aria-hidden
+          />
+          {running} running
+        </span>
+      ) : null}
+      <div
+        className={cn(
+          "flex items-center justify-center gap-3 text-muted-foreground/80 tabular-nums",
+          compact ? "text-[10px]" : "text-[11px]",
+        )}
+      >
+        <span className="inline-flex items-center gap-1">
+          <Activity className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
+          {sessions ?? 0}
+        </span>
+        <span className="inline-flex items-center gap-1">
+          <Sparkles className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
+          {facts ?? 0}
+        </span>
+      </div>
     </div>
   );
 }

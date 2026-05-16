@@ -32,6 +32,11 @@ import {
   type RuntimeConfig,
   type RuntimeRepository,
 } from "@beevibe/core";
+import {
+  BlockNotFoundError,
+  CharLimitExceededError,
+  type CoreMemory,
+} from "@beevibe/core/services/memory";
 import { requireHuman } from "../auth/middleware.js";
 import { listTasks, getTask, type TaskListFilter } from "../views/tasks.js";
 import {
@@ -57,6 +62,8 @@ export interface ViewRoutesDeps {
   runtimeRepo: RuntimeRepository;
   /** Backs `POST /agent/:id/runtime` (cross-tenant guard). */
   daemonRepo: DaemonRepository;
+  /** Backs `POST /agent/:id/core-memory/:block_name` (human-facing block editor). */
+  coreMemory: CoreMemory;
 }
 
 const LIFECYCLES = new Set<Lifecycle>(
@@ -369,6 +376,61 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json({ ok: true, archived_at: updated.archived_at!.toISOString() });
     } catch (err) {
       handleError(err, res, "agent archive");
+    }
+  });
+
+  // Human-facing core memory block editor. Replace-all semantics — the
+  // UI is a textarea whose content becomes the block's new content
+  // verbatim. Agents have their own surface for nuanced edits (the
+  // `update_core_memory` MCP tool with append + substring-replace
+  // operations); this route is deliberately the simpler one for human
+  // edits. Owner-only — only the agent's owning person can edit their
+  // agent's core memory.
+  router.post("/agent/:id/core-memory/:blockName", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    const blockName = req.params.blockName;
+    if (!id || !blockName) {
+      res.status(400).json({ error: "missing_agent_id_or_block_name" });
+      return;
+    }
+    const body = req.body as { content?: unknown } | undefined;
+    if (typeof body?.content !== "string") {
+      res.status(400).json({
+        error: "invalid_body",
+        message: "expected { content: string }",
+      });
+      return;
+    }
+    try {
+      const existing = await deps.agentRepo.findById(id);
+      if (!existing) {
+        res.status(404).json({ error: "agent_not_found" });
+        return;
+      }
+      if (existing.owner_id !== req.caller.personId) {
+        res.status(403).json({ error: "not_owner" });
+        return;
+      }
+      const updated = await deps.coreMemory.replaceAll(id, blockName, body.content);
+      res.json({
+        ok: true,
+        block: {
+          id: updated.id,
+          agent_id: updated.agent_id,
+          block_name: updated.block_name,
+          content: updated.content,
+          char_count: updated.content.length,
+          char_limit: updated.char_limit,
+          updated_at: updated.updated_at.toISOString(),
+        },
+      });
+    } catch (err) {
+      if (err instanceof CharLimitExceededError || err instanceof BlockNotFoundError) {
+        res.status(422).json({ error: err.code, message: err.message });
+        return;
+      }
+      handleError(err, res, "agent core memory update");
     }
   });
 

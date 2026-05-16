@@ -4,6 +4,33 @@ import type { CoreMemoryBlockRepository } from "../../ports/core-memory-repo.js"
 
 export type CoreMemoryOperation = "append" | "replace";
 
+/** Typed errors so callers can map to status codes without string-matching. */
+export class BlockNotFoundError extends Error {
+  readonly code = "block_not_found";
+  constructor(agentId: string, blockName: string) {
+    super(`Block "${blockName}" not found for agent ${agentId} — initDefaults first`);
+    this.name = "BlockNotFoundError";
+  }
+}
+
+export class CharLimitExceededError extends Error {
+  readonly code = "char_limit_exceeded";
+  constructor(blockName: string, attempted: number, limit: number) {
+    super(
+      `Block "${blockName}" would exceed char_limit ${limit} (new length ${attempted})`,
+    );
+    this.name = "CharLimitExceededError";
+  }
+}
+
+export class InvalidReplaceError extends Error {
+  readonly code = "invalid_replace";
+  constructor(message: string) {
+    super(message);
+    this.name = "InvalidReplaceError";
+  }
+}
+
 export interface CoreMemoryDeps {
   repo: CoreMemoryBlockRepository;
 }
@@ -38,12 +65,7 @@ export class CoreMemory {
     content: string,
     oldContent?: string,
   ): Promise<CoreMemoryBlock> {
-    const block = await this.deps.repo.findOne(agentId, blockName);
-    if (!block) {
-      throw new Error(
-        `Block "${blockName}" not found for agent ${agentId} — initDefaults first`,
-      );
-    }
+    const block = await this.loadBlockOrThrow(agentId, blockName);
 
     let nextContent: string;
     if (operation === "append") {
@@ -51,25 +73,55 @@ export class CoreMemory {
       nextContent = `${block.content}${separator}${content}`;
     } else {
       if (oldContent === undefined || oldContent.length === 0) {
-        throw new Error(
+        throw new InvalidReplaceError(
           `update_core_memory(replace) requires non-empty old_content for block "${blockName}"`,
         );
       }
       if (!block.content.includes(oldContent)) {
-        throw new Error(
+        throw new InvalidReplaceError(
           `update_core_memory(replace): old_content not found in block "${blockName}"`,
         );
       }
       nextContent = block.content.replace(oldContent, content);
     }
 
-    if (nextContent.length > block.char_limit) {
-      throw new Error(
-        `Block "${blockName}" would exceed char_limit ${block.char_limit} ` +
-          `(new length ${nextContent.length})`,
+    this.assertWithinLimit(block, nextContent);
+    return this.deps.repo.updateContent(agentId, blockName, nextContent);
+  }
+
+  /**
+   * Replace a block's entire content. Used by the human-facing core
+   * memory editor (POST `/agent/:id/core-memory/:block_name`) — agents
+   * use `applyUpdate` with append/replace operations so their MCP
+   * surface stays narrow + auditable. The human path doesn't need the
+   * substring-replace contract; a textarea edit is a full-content swap.
+   */
+  async replaceAll(
+    agentId: string,
+    blockName: string,
+    content: string,
+  ): Promise<CoreMemoryBlock> {
+    const block = await this.loadBlockOrThrow(agentId, blockName);
+    this.assertWithinLimit(block, content);
+    return this.deps.repo.updateContent(agentId, blockName, content);
+  }
+
+  private async loadBlockOrThrow(
+    agentId: string,
+    blockName: string,
+  ): Promise<CoreMemoryBlock> {
+    const block = await this.deps.repo.findOne(agentId, blockName);
+    if (!block) throw new BlockNotFoundError(agentId, blockName);
+    return block;
+  }
+
+  private assertWithinLimit(block: CoreMemoryBlock, content: string): void {
+    if (content.length > block.char_limit) {
+      throw new CharLimitExceededError(
+        block.block_name,
+        content.length,
+        block.char_limit,
       );
     }
-
-    return this.deps.repo.updateContent(agentId, blockName, nextContent);
   }
 }
