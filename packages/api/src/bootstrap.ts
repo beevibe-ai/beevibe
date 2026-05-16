@@ -43,6 +43,7 @@ import { SessionCache } from "./session-cache.js";
 import { createMcpRouter } from "./routes/mcp.js";
 import { createTaskRouter } from "./routes/task.js";
 import { createRepoRunsRouter } from "./routes/repo-runs.js";
+import { createLearnedSkillsRouter } from "./routes/learned-skills.js";
 import { createEscalationRouter } from "./routes/escalation.js";
 import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
@@ -446,6 +447,15 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     repoRunRepo,
   });
   server.getApp().use("/repo-runs", repoRunsRouter);
+
+  // Capability Network — learned-skills REST surface.
+  const learnedSkillsRouter = createLearnedSkillsRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    learnedSkillRepo,
+    repoRunRepo,
+    repoRoot: process.cwd(),
+  });
+  server.getApp().use("/learned-skills", learnedSkillsRouter);
 
   // Phase 8 — onboarding/identity surface (bv_u_).
   // GET /me, POST /me/onboarding/complete, GET /health/runtime.

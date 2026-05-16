@@ -1,6 +1,6 @@
 import { fetchJson } from "./http";
-import type { RepoRun, RepoRunStatus } from "@beevibe/core";
-export type { RepoRun, RepoRunStatus };
+import type { RepoRun, RepoRunStatus, LearnedSkill } from "@beevibe/core";
+export type { RepoRun, RepoRunStatus, LearnedSkill };
 import type {
   TaskDetail,
   AgentDetail,
@@ -639,6 +639,22 @@ export const api = {
       fetchJson<{ run: RepoRun }>(`/repo-runs/${encodeURIComponent(id)}`, { signal: opts.signal }),
     cancel: (id: string) =>
       fetchJson<{ run: RepoRun }>(`/repo-runs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
+  },
+  learnedSkills: {
+    list: (opts: ReadOptions = {}) =>
+      fetchJson<{ skills: LearnedSkill[] }>("/learned-skills", { signal: opts.signal }),
+    create: (input: { name: string; goal_pattern: string; repo_run_id: string }) =>
+      fetchJson<{ skill: LearnedSkill }>("/learned-skills", { method: "POST", body: input }),
+    delete: (id: string) =>
+      fetchJson<void>(`/learned-skills/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    publish: (id: string) =>
+      fetchJson<{
+        ok: boolean;
+        pr_url?: string;
+        reason?: string;
+        skill_md?: string;
+        instructions?: string;
+      }>(`/learned-skills/${encodeURIComponent(id)}/publish`, { method: "POST" }),
   },
 } as const;
 
