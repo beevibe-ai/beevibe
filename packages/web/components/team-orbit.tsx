@@ -73,10 +73,20 @@ interface Position {
 
 function orbitPositions(count: number, radius: number): Position[] {
   if (count === 0) return [];
-  return Array.from({ length: count }, (_, i) => {
+  if (count === 1) return [{ x: 0, y: -radius }];
+  const raw = Array.from({ length: count }, (_, i) => {
     const angle = (i / count) * 2 * Math.PI - Math.PI / 2;
     return { x: Math.cos(angle) * radius, y: Math.sin(angle) * radius };
   });
+  // For odd counts (3, 5, 7...) the natural radial layout is
+  // vertically lopsided — one node directly above center but multiple
+  // nodes only partway below. Shift the whole ring so its vertical
+  // bounding box is centered, putting the team agent at the visual
+  // centroid. Even counts are already balanced and yShift evaluates
+  // to 0.
+  const ys = raw.map((p) => p.y);
+  const yShift = -(Math.min(...ys) + Math.max(...ys)) / 2;
+  return raw.map((p) => ({ x: p.x, y: p.y + yShift }));
 }
 
 /**
