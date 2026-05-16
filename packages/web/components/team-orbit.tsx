@@ -9,39 +9,61 @@ import { cn } from "@/lib/utils";
 import type { AgentDisplay } from "@/lib/types/agents";
 
 /**
- * Visual orbit of the user's team — team agent at the center, IC
- * specialists arranged around them on a dashed ring with thin
- * connection lines. Used on /agents (full size) and on the
- * dashboard's Home page (compact). Game-card layout reads as
- * "trading cards of agents" rather than a list of rows.
+ * Knowledge-graph view of a team: pill-shaped nodes for the team agent
+ * and its specialists, connected by solid edges with a small role
+ * label. Used on /agents (full size) and on the dashboard's Home page
+ * (compact).
  *
- * Three size variants:
- *   - "large"     — 640×640, full orbit. /agents centers the caller's
- *                   own team here.
- *   - "compact"   — 480×480. Embeds (e.g. dashboard summary).
- *   - "satellite" — 320×320, dense cards. Peer orbits arranged
- *                   around the caller's own orbit on the network canvas.
+ * Three size variants — same visual language, just smaller pills:
+ *   - "large"     — full graph (used on /agents).
+ *   - "compact"   — embeds (e.g. dashboard summary).
+ *   - "satellite" — peer graphs around the caller's own on the
+ *                   network canvas. Edge labels are dropped here.
  */
 export type TeamOrbitSize = "large" | "compact" | "satellite";
 
 interface OrbitMetrics {
   size: number;
   radius: number;
-  teamCard: number;
-  icCard: number;
+  teamHeight: number;
+  icHeight: number;
   teamAvatar: number;
   icAvatar: number;
+  teamMaxWidth: number;
+  icMaxWidth: number;
 }
 
-// Radii are tuned so a 2-line wrapping team card at the center plus
-// a 2-line wrapping IC card on the ring don't visually collide. The
-// container `size` is mostly the dashed-circle bounding box; cards
-// freely extend beyond it on the canvas (no overflow:hidden), so this
-// is just where the SVG ring is drawn.
 const METRICS: Record<TeamOrbitSize, OrbitMetrics> = {
-  large: { size: 780, radius: 290, teamCard: 180, icCard: 140, teamAvatar: 64, icAvatar: 44 },
-  compact: { size: 580, radius: 210, teamCard: 140, icCard: 110, teamAvatar: 48, icAvatar: 36 },
-  satellite: { size: 400, radius: 165, teamCard: 100, icCard: 84, teamAvatar: 36, icAvatar: 26 },
+  large: {
+    size: 780,
+    radius: 290,
+    teamHeight: 56,
+    icHeight: 48,
+    teamAvatar: 40,
+    icAvatar: 32,
+    teamMaxWidth: 320,
+    icMaxWidth: 280,
+  },
+  compact: {
+    size: 580,
+    radius: 210,
+    teamHeight: 46,
+    icHeight: 40,
+    teamAvatar: 32,
+    icAvatar: 26,
+    teamMaxWidth: 240,
+    icMaxWidth: 220,
+  },
+  satellite: {
+    size: 400,
+    radius: 165,
+    teamHeight: 36,
+    icHeight: 32,
+    teamAvatar: 24,
+    icAvatar: 20,
+    teamMaxWidth: 180,
+    icMaxWidth: 160,
+  },
 };
 
 interface Position {
@@ -58,19 +80,19 @@ function orbitPositions(count: number, radius: number): Position[] {
 }
 
 /**
- * Click handler for an agent card. When supplied, cards intercept the
- * default navigation to /agents/:id so callers can open the agent in
- * a peek panel instead of a full route change. The Link href stays
+ * Click handler for an agent node. When supplied, nodes intercept the
+ * default navigation to /agents/:id so callers can open the agent in a
+ * peek panel instead of a full route change. The Link href stays
  * intact so right-click "open in new tab" still works.
  */
 export type AgentSelectHandler = (agentId: string) => void;
 
 /**
- * Render a single team's orbit. Pass an explicit `agents` array (typed
- * as one team + its IC subordinates); the component picks the
- * top-level agent as the center and arranges the ICs around it. For a
- * self-rendering convenience that fetches the caller's own agents,
- * use <SelfTeamOrbit /> below.
+ * Render a single team's knowledge graph. Pass an explicit `agents`
+ * array (typed as one team + its IC subordinates); the component picks
+ * the top-level agent as the center and arranges the ICs around it.
+ * For a self-rendering convenience that fetches the caller's own
+ * agents, use <SelfTeamOrbit /> below.
  */
 export function TeamOrbit({
   agents,
@@ -96,7 +118,7 @@ export function TeamOrbit({
 
   return (
     <div>
-      <Orbit team={primary} ics={ics} size={size} onSelect={onSelect} />
+      <Graph team={primary} ics={ics} size={size} onSelect={onSelect} />
       {teams.length > 1 ? (
         <section className="mt-12">
           <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
@@ -105,7 +127,7 @@ export function TeamOrbit({
           <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {teams.slice(1).map((team) => (
               <li key={team.id}>
-                <SpecialistCard agent={team} size="compact" onSelect={onSelect} />
+                <Pill agent={team} size="compact" role="team" onSelect={onSelect} />
               </li>
             ))}
           </ul>
@@ -124,7 +146,7 @@ export function SelfTeamOrbit({ size = "large" }: { size?: TeamOrbitSize }) {
   return <TeamOrbit agents={data} size={size} loading={isLoading} />;
 }
 
-function Orbit({
+function Graph({
   team,
   ics,
   size,
@@ -137,6 +159,9 @@ function Orbit({
 }) {
   const m = METRICS[size];
   const positions = orbitPositions(ics.length, m.radius);
+  const showLabels = size === "large";
+  const cx = m.size / 2;
+  const cy = m.size / 2;
 
   return (
     <div className="relative mx-auto" style={{ width: m.size, height: m.size }}>
@@ -145,35 +170,42 @@ function Orbit({
         viewBox={`0 0 ${m.size} ${m.size}`}
         aria-hidden
       >
-        <circle
-          cx={m.size / 2}
-          cy={m.size / 2}
-          r={m.radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth={1}
-          strokeDasharray="3 6"
-          className="text-border"
-        />
         {positions.map((pos, i) => (
           <line
             key={i}
-            x1={m.size / 2}
-            y1={m.size / 2}
-            x2={m.size / 2 + pos.x}
-            y2={m.size / 2 + pos.y}
+            x1={cx}
+            y1={cy}
+            x2={cx + pos.x}
+            y2={cy + pos.y}
             stroke="currentColor"
-            strokeWidth={1}
-            className="text-border/70"
+            strokeWidth={1.25}
+            strokeLinecap="round"
+            className="text-border"
           />
         ))}
       </svg>
 
+      {showLabels
+        ? positions.map((pos, i) => (
+            <span
+              key={i}
+              className="absolute z-[1] text-[9px] uppercase tracking-wider font-medium text-muted-foreground/80 bg-background px-1.5 py-0.5 rounded-full pointer-events-none select-none"
+              style={{
+                left: `calc(50% + ${pos.x / 2}px)`,
+                top: `calc(50% + ${pos.y / 2}px)`,
+                transform: "translate(-50%, -50%)",
+              }}
+            >
+              reports to
+            </span>
+          ))
+        : null}
+
       <div
-        className="absolute"
+        className="absolute z-[2]"
         style={{ left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}
       >
-        <TeamCard agent={team} size={size} onSelect={onSelect} />
+        <Pill agent={team} size={size} role="team" onSelect={onSelect} />
       </div>
 
       {ics.map((ic, i) => {
@@ -182,14 +214,14 @@ function Orbit({
         return (
           <div
             key={ic.id}
-            className="absolute"
+            className="absolute z-[2]"
             style={{
               left: `calc(50% + ${pos.x}px)`,
               top: `calc(50% + ${pos.y}px)`,
               transform: "translate(-50%, -50%)",
             }}
           >
-            <SpecialistCard agent={ic} size={size} onSelect={onSelect} />
+            <Pill agent={ic} size={size} role="ic" onSelect={onSelect} />
           </div>
         );
       })}
@@ -197,13 +229,12 @@ function Orbit({
   );
 }
 
-// ── Cards ────────────────────────────────────────────────────────────
+// ── Pill node ────────────────────────────────────────────────────────
 
 // data-pan="ignore" tells the canvas pan handler to skip drag-starts
-// that begin on a card. Without it the click would still register
-// but the pointer-down would also start a canvas pan, which feels
-// laggy.
-function cardInteractionProps(
+// that begin on a pill. Without it the click still fires but the
+// pointer-down also starts a canvas pan, which feels laggy.
+function pillInteractionProps(
   agentId: string,
   onSelect: AgentSelectHandler | undefined,
 ) {
@@ -211,8 +242,8 @@ function cardInteractionProps(
   return {
     "data-pan": "ignore" as const,
     onClick: (e: React.MouseEvent) => {
-      // Let cmd/ctrl/middle/shift-clicks fall through to the browser
-      // so they keep the open-in-new-tab behavior the Link provides.
+      // Let cmd/ctrl/middle/shift-clicks fall through so they keep the
+      // open-in-new-tab behavior the Link provides.
       if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
       e.preventDefault();
       onSelect(agentId);
@@ -220,115 +251,97 @@ function cardInteractionProps(
   };
 }
 
-function TeamCard({
+function Pill({
   agent,
   size,
+  role,
   onSelect,
 }: {
   agent: AgentDisplay;
   size: TeamOrbitSize;
+  role: "team" | "ic";
   onSelect?: AgentSelectHandler;
 }) {
   const m = METRICS[size];
+  const isTeam = role === "team";
   const initial = (agent.display_name ?? agent.name ?? "?").charAt(0).toUpperCase();
+  const height = isTeam ? m.teamHeight : m.icHeight;
+  const avatarSize = isTeam ? m.teamAvatar : m.icAvatar;
+  const maxWidth = isTeam ? m.teamMaxWidth : m.icMaxWidth;
+  const showStats = size !== "satellite";
+  const showSubline = size === "large";
+
+  const textSize =
+    size === "large" ? "text-sm" : size === "compact" ? "text-xs" : "text-[11px]";
+
   return (
     <Link
       href={`/agents/${agent.id}`}
-      {...cardInteractionProps(agent.id, onSelect)}
-      className="group flex flex-col items-center text-center rounded-2xl border border-border bg-card hover:bg-secondary/40 hover:border-foreground/30 transition-colors p-4 shadow-sm"
-      // Cards on the pan/zoom canvas grow with their content. We hold
-      // a min-width as a baseline so a 1-letter agent name still looks
-      // like a card, and a max so a freakishly long name can't blow up
-      // the card and crash into its neighbors on the ring.
-      style={{ minWidth: m.teamCard, maxWidth: m.teamCard * 1.35 }}
+      {...pillInteractionProps(agent.id, onSelect)}
+      className={cn(
+        "group inline-flex items-center gap-2.5 rounded-full border bg-card hover:bg-secondary/60 hover:border-foreground/30 transition-colors shadow-sm cursor-pointer",
+        isTeam
+          ? "pl-1.5 pr-3.5 border-foreground/15 ring-1 ring-foreground/5"
+          : "pl-1.5 pr-3 border-border",
+      )}
+      style={{ height, maxWidth }}
     >
-      <Avatar initial={initial} kind={agent.hierarchy} size={m.teamAvatar} />
-      <div className="mt-3 w-full">
-        <div
+      <Avatar initial={initial} kind={agent.hierarchy} size={avatarSize} />
+      <span className="flex flex-col min-w-0">
+        <span
           className={cn(
-            "font-semibold leading-snug break-words",
-            size === "large" ? "text-sm" : "text-xs",
+            "font-semibold leading-tight truncate",
+            textSize,
           )}
         >
           {agent.display_name ?? agent.name}
-        </div>
-        <div className="mt-1 inline-block text-[10px] uppercase tracking-wider font-mono px-1 py-px rounded bg-hier-team/15 text-hier-team">
-          {agent.hierarchy}
-        </div>
-      </div>
-      <CardStats sessions={agent.sessions_count} facts={agent.facts_learned} />
-    </Link>
-  );
-}
-
-function SpecialistCard({
-  agent,
-  size,
-  onSelect,
-}: {
-  agent: AgentDisplay;
-  size: TeamOrbitSize;
-  onSelect?: AgentSelectHandler;
-}) {
-  const m = METRICS[size];
-  const initial = (agent.display_name ?? agent.name ?? "?").charAt(0).toUpperCase();
-  return (
-    <Link
-      href={`/agents/${agent.id}`}
-      {...cardInteractionProps(agent.id, onSelect)}
-      className="group flex flex-col items-center text-center rounded-xl border border-border bg-card hover:bg-secondary/40 hover:border-foreground/30 transition-colors p-3"
-      style={{ minWidth: m.icCard, maxWidth: m.icCard * 1.5 }}
-    >
-      <Avatar initial={initial} kind={agent.hierarchy} size={m.icAvatar} />
-      <div className="mt-2 w-full">
-        <div className="text-xs font-semibold leading-snug break-words">
-          {agent.display_name ?? agent.name}
-        </div>
-        {size === "large" ? (
-          <p
-            className={cn(
-              "mt-1 text-[11px] leading-snug line-clamp-2",
-              agent.specialization ? "text-muted-foreground" : "text-muted-foreground/60 italic",
-            )}
-          >
-            {agent.specialization ?? "No tagline yet"}
-          </p>
+        </span>
+        {isTeam ? (
+          <span className="text-[9px] uppercase tracking-wider font-mono text-hier-team leading-none mt-1">
+            team
+          </span>
+        ) : showSubline && agent.specialization ? (
+          <span className="text-[10px] leading-tight text-muted-foreground truncate mt-0.5">
+            {agent.specialization}
+          </span>
         ) : null}
-      </div>
-      <CardStats
-        sessions={agent.sessions_count}
-        facts={agent.facts_learned}
-        compact
-      />
+      </span>
+      {showStats ? (
+        <PillStats
+          sessions={agent.sessions_count}
+          facts={agent.facts_learned}
+          compact={size !== "large"}
+        />
+      ) : null}
     </Link>
   );
 }
 
-function CardStats({
+function PillStats({
   sessions,
   facts,
   compact,
 }: {
   sessions: number | undefined;
   facts: number | undefined;
-  compact?: boolean;
+  compact: boolean;
 }) {
   return (
-    <div
+    <span
       className={cn(
-        "mt-3 w-full flex items-center justify-center gap-3 text-muted-foreground/80 tabular-nums",
+        "flex items-center gap-2.5 ml-auto pl-2.5 border-l border-border text-muted-foreground tabular-nums shrink-0",
         compact ? "text-[10px]" : "text-[11px]",
       )}
     >
       <span className="inline-flex items-center gap-1">
-        <Activity className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
+        <Activity className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} aria-hidden />
         {sessions ?? 0}
       </span>
       <span className="inline-flex items-center gap-1">
-        <Sparkles className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} />
+        <Sparkles className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} aria-hidden />
         {facts ?? 0}
       </span>
-    </div>
+    </span>
   );
 }
 
@@ -350,16 +363,16 @@ function OrbitSkeleton({ size }: { size: TeamOrbitSize }) {
   const m = METRICS[size];
   return (
     <div
-      className="mx-auto flex flex-col items-center gap-6"
+      className="mx-auto flex flex-col items-center gap-5"
       style={{ width: m.size }}
     >
-      <div style={{ width: m.teamCard, height: m.teamCard }}>
-        <Skeleton className="h-full w-full rounded-2xl" />
+      <div style={{ width: m.teamMaxWidth, height: m.teamHeight }}>
+        <Skeleton className="h-full w-full rounded-full" />
       </div>
-      <div className="grid grid-cols-3 gap-4">
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <div key={i} style={{ width: m.icCard, height: m.icCard }}>
-            <Skeleton className="h-full w-full rounded-xl" />
+      <div className="flex flex-wrap items-center justify-center gap-3">
+        {[0, 1, 2].map((i) => (
+          <div key={i} style={{ width: m.icMaxWidth, height: m.icHeight }}>
+            <Skeleton className="h-full w-full rounded-full" />
           </div>
         ))}
       </div>

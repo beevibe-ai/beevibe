@@ -1,4 +1,4 @@
-import type { ChainBudgetRow } from "@/lib/types/mesh";
+import type { ChainBudgetData, ChainBudgetRow } from "@/lib/types/mesh";
 
 const BAR_COLOR = {
   done: "bg-status-done",
@@ -6,30 +6,43 @@ const BAR_COLOR = {
   primary: "bg-primary",
 } as const;
 
-const EMPTY_ROW: ChainBudgetRow = {
-  used_label: "—",
-  max_label: "—",
-  percent: 0,
-  color: "primary",
-};
+interface Props {
+  /** When undefined the component renders an explicit "no chains yet" empty
+   *  state instead of three placeholder dashes (which read as broken UI). */
+  data?: ChainBudgetData;
+}
 
-export function ChainBudget() {
+export function ChainBudget({ data }: Props = {}) {
+  const empty = !data;
   return (
-    <div className="mt-5 rounded-lg border border-border bg-card p-3.5">
+    <div className="rounded-lg border border-border bg-card p-3.5">
       <div className="flex items-baseline justify-between mb-2.5">
         <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
           Chain budget · last 24h
         </span>
+        {empty ? (
+          <span className="text-[10px] text-muted-foreground/70">no chains yet</span>
+        ) : null}
       </div>
-      <div className="space-y-2 text-xs">
-        <BudgetRow label="Avg depth" row={EMPTY_ROW} />
-        <BudgetRow label="Max depth" row={EMPTY_ROW} />
-        <BudgetRow label="Tokens used" row={EMPTY_ROW} />
-      </div>
-      <div className="mt-3 text-[10px] text-muted-foreground leading-relaxed">
-        <span className="text-foreground/80">ChainBudget</span> caps each chain at depth 4 or 50k
-        tokens, whichever first.
-      </div>
+      {empty ? (
+        <p className="text-xs text-muted-foreground leading-relaxed">
+          Depth and token totals appear once an ask spawns a follow-up chain.{" "}
+          <span className="text-foreground/80">ChainBudget</span> caps each chain at depth 4 or
+          50k tokens, whichever comes first.
+        </p>
+      ) : (
+        <>
+          <div className="space-y-2 text-xs">
+            <BudgetRow label="Avg depth" row={data.avg_depth} />
+            <BudgetRow label="Max depth" row={data.max_depth} />
+            <BudgetRow label="Tokens used" row={data.tokens} />
+          </div>
+          <div className="mt-3 text-[10px] text-muted-foreground leading-relaxed">
+            <span className="text-foreground/80">ChainBudget</span> caps each chain at depth 4 or
+            50k tokens, whichever comes first.
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -71,6 +71,16 @@ export interface MeshDisplay {
   summary: MeshSummary;
 }
 
+/**
+ * Cross-component hover state. Lets a row hover light up the matching graph
+ * edge, and a node hover dim non-touching rows. Lifted into the mesh page so
+ * the feed and graph can stay in sync without prop drilling further.
+ */
+export type MeshHover =
+  | { kind: "row"; askId: string; caller: string; target: string }
+  | { kind: "node"; label: string }
+  | null;
+
 // ── Re-export the backend data DTO ────────────────────────────────────────
 
 export type {
