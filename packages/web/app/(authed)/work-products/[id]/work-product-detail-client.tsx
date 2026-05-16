@@ -105,7 +105,7 @@ function Body({ wp }: { wp: WorkProductDetail }) {
             {wp.type.replace(/_/g, " ")}
           </span>
         </div>
-        <h1 className="text-lg font-semibold leading-tight">{wp.title}</h1>
+        <h1 className="text-base font-semibold tracking-tight leading-tight">{wp.title}</h1>
         <div className="mt-1.5 text-xs text-muted-foreground">
           By <span className="text-foreground/85">{wp.agent_label}</span>{" "}
           · updated {formatRelativeTime(wp.updated_at)}

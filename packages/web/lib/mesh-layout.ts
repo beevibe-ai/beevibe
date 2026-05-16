@@ -49,7 +49,9 @@ export function layoutMeshGraph(
   }
 
   const center = { x: VIEWBOX_W / 2, y: VIEWBOX_H / 2 };
-  const radius = Math.min(VIEWBOX_W, VIEWBOX_H) / 2 - NODE_RADIUS - 24;
+  // Generous inset so long labels (e.g. "Platform & Release specialist")
+  // don't get clipped at the left/right viewBox edges.
+  const radius = Math.min(VIEWBOX_W, VIEWBOX_H) / 2 - NODE_RADIUS - 80;
 
   const ordered = [...nodeData].sort(
     (a, b) => HIER_ORDER[a.hier] - HIER_ORDER[b.hier] || a.label.localeCompare(b.label),

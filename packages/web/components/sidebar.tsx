@@ -158,7 +158,7 @@ function NewChatButton({ onClick }: { onClick: () => void }) {
           size={18}
         />
         <span className="flex-1 text-left">New chat</span>
-        <kbd className="text-[10px] font-mono text-muted-foreground/70 tabular-nums">
+        <kbd className="text-[11px] font-mono text-muted-foreground/70 tabular-nums">
           ⌘O
         </kbd>
       </button>

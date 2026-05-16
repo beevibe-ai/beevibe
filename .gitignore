@@ -13,3 +13,5 @@ coverage/
 .idea/
 .claude/
 .gstack/
+.vercel/
+agent_*/

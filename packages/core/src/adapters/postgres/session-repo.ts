@@ -59,12 +59,40 @@ export class PostgresSessionRepository implements SessionRepository {
   async listChatForAgent(agentId: string, limit: number): Promise<Session[]> {
     const { rows } = await this.pool.query<SessionRow>(
       `SELECT * FROM session
-        WHERE agent_id = $1 AND type = 'chat'
+        WHERE agent_id = $1 AND type = 'chat' AND deleted_at IS NULL
         ORDER BY created_at DESC
         LIMIT $2`,
       [agentId, limit],
     );
     return rows.map(rowToSession);
+  }
+
+  async softDeleteChatChain(headId: string, agentId: string): Promise<number> {
+    // Walk backwards from the head through `prior_session_id` and stamp
+    // `deleted_at` on every session in the chain. Single roundtrip via
+    // recursive CTE. Scoped to agentId so the head must belong to the
+    // caller's agent — otherwise the CTE base case is empty and nothing
+    // is updated.
+    const { rowCount } = await this.pool.query(
+      `WITH RECURSIVE chain(id, prior_session_id) AS (
+         SELECT id, prior_session_id
+           FROM session
+          WHERE id = $1
+            AND agent_id = $2
+            AND type = 'chat'
+            AND deleted_at IS NULL
+         UNION ALL
+         SELECT s.id, s.prior_session_id
+           FROM session s
+           JOIN chain c ON s.id = c.prior_session_id
+          WHERE s.deleted_at IS NULL
+       )
+       UPDATE session
+          SET deleted_at = now()
+        WHERE id IN (SELECT id FROM chain)`,
+      [headId, agentId],
+    );
+    return rowCount ?? 0;
   }
 
   async countRunningByAgent(agentId: string, types: SessionType[]): Promise<number> {

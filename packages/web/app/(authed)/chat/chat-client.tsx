@@ -9,8 +9,8 @@ import {
   ArrowRight,
   ArrowUp,
   MessageSquare,
-  Send,
 } from "lucide-react";
+import type { HierarchyLevel } from "@beevibe/core";
 import { isApiConfigured } from "@/lib/api/config";
 import { api, type ChatConversationsResponse, type SuggestedAction } from "@/lib/api/client";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
@@ -18,12 +18,20 @@ import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
 import { useMe } from "@/lib/hooks/use-me";
 import { useAgents } from "@/lib/hooks/use-agents";
 import { queryKeys } from "@/lib/hooks/keys";
-import { sessionHref, shortId, formatRelativeTime } from "@/lib/format";
+import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/avatar";
 import { ReferenceCards } from "@/components/chat/reference-cards";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ToolStepList } from "@/components/chat/tool-step-list";
+
+function useTeamAgent() {
+  const agents = useAgents();
+  const teamAgent = agents.data?.find((a) => a.hierarchy !== "ic");
+  const initial = (teamAgent?.display_name ?? teamAgent?.name ?? "?").charAt(0).toUpperCase();
+  const kind: HierarchyLevel = teamAgent?.hierarchy ?? "team";
+  return { initial, kind };
+}
 
 const PROMPT_SUGGESTIONS = [
   "What's on the team's plate today?",
@@ -62,6 +70,7 @@ export function ChatClient() {
   });
   const liveSteps = useChatStream(pendingSessionId);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
+  const teamAgent = useTeamAgent();
 
   // After the user sends their first message in a `?new=1` surface, drop
   // the `new` param so reload restores the just-started conversation
@@ -137,23 +146,25 @@ export function ChatClient() {
           />
         ) : (
           <>
-            <header className="px-6 pt-5 pb-3 border-b border-border/60">
-              <h1 className="text-sm font-medium text-muted-foreground">Chat</h1>
-            </header>
-
-            <div ref={transcriptRef} className="flex-1 overflow-y-auto px-6 py-6">
-              <div className="max-w-3xl mx-auto space-y-4">
-                {messages.map((m, i) => (
-                  <Bubble
-                    key={m.id}
-                    message={m}
-                    showSuggestions={!isPending && i === messages.length - 1}
-                    onSuggest={submit}
-                  />
-                ))}
-                {isPending ? <Thinking steps={liveSteps} /> : null}
+            <div ref={transcriptRef} className="flex-1 overflow-y-auto px-6 py-8">
+              <div className="max-w-3xl mx-auto">
+                {messages.map((m, i) => {
+                  const prev = messages[i - 1];
+                  const isFirstInGroup = !prev || prev.role !== m.role;
+                  return (
+                    <Bubble
+                      key={m.id}
+                      message={m}
+                      showSuggestions={!isPending && i === messages.length - 1}
+                      onSuggest={submit}
+                      teamAgent={teamAgent}
+                      isFirstInGroup={isFirstInGroup}
+                    />
+                  );
+                })}
+                {isPending ? <Thinking steps={liveSteps} teamAgent={teamAgent} /> : null}
                 {error ? (
-                  <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
+                  <div className="mt-4 rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
                     <div className="flex items-center gap-1.5 text-status-failed font-medium mb-1">
                       <AlertTriangle className="h-3.5 w-3.5" />
                       Couldn&apos;t reach the agent
@@ -164,26 +175,28 @@ export function ChatClient() {
               </div>
             </div>
 
-            <div className="border-t border-border/60 px-6 py-4">
-              <div className="max-w-3xl mx-auto flex items-end gap-2">
+            <div className="px-6 pb-5 pt-2">
+              <div className="max-w-3xl mx-auto rounded-xl border border-border bg-card focus-within:ring-2 focus-within:ring-ring transition-shadow">
                 <textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
                   onKeyDown={onKeyDown}
-                  placeholder="Ask your team agent…  (Enter to send, Shift+Enter for newline)"
+                  placeholder="Reply to your team…"
                   rows={2}
                   disabled={isSubmitting}
-                  className="flex-1 rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none disabled:opacity-60"
+                  className="w-full bg-transparent px-4 pt-3 pb-1 text-sm focus:outline-none resize-none placeholder:text-muted-foreground/60 disabled:opacity-60"
                 />
-                <button
-                  type="button"
-                  onClick={() => submit()}
-                  disabled={isPending || draft.trim().length === 0}
-                  aria-label="Send"
-                  className="h-9 w-9 inline-flex items-center justify-center rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                >
-                  <Send className="h-4 w-4" />
-                </button>
+                <div className="flex items-center justify-end px-3 pb-2">
+                  <button
+                    type="button"
+                    onClick={() => submit()}
+                    disabled={isPending || draft.trim().length === 0}
+                    aria-label="Send"
+                    className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <ArrowUp className="h-3.5 w-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
           </>
@@ -234,7 +247,7 @@ function HeroEmptyChat({
           ) : (
             <Avatar initial="?" kind="team" size={56} />
           )}
-          <h1 className="mt-5 text-2xl font-semibold tracking-tight">
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight">
             How can your team help you today?
           </h1>
         </div>
@@ -328,43 +341,52 @@ function Bubble({
   message,
   showSuggestions,
   onSuggest,
+  teamAgent,
+  isFirstInGroup,
 }: {
   message: ChatMessage;
   showSuggestions?: boolean;
   onSuggest?: (label: string) => void;
+  teamAgent: { initial: string; kind: HierarchyLevel };
+  isFirstInGroup: boolean;
 }) {
   const isUser = message.role === "user";
-  // Server now supplies view_refs per turn; fall back to empty if missing.
   const refIds = !isUser ? message.view_refs ?? [] : [];
   const suggestions = showSuggestions ? message.suggested_actions ?? [] : [];
   return (
-    <div className={cn("flex flex-col", isUser ? "items-end" : "items-start")}>
-      <div
-        className={cn(
-          "max-w-[80%] rounded-lg px-3 py-2",
-          isUser
-            ? "bg-primary text-primary-foreground"
-            : "bg-secondary text-foreground border border-border",
-        )}
-      >
-        {isUser ? (
-          <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-        ) : (
-          <ChatMarkdown content={message.content} inverted={false} />
-        )}
-        {refIds.length > 0 ? <ReferenceCards ids={refIds} /> : null}
-        {message.open_view ? <OpenViewCta open_view={message.open_view} /> : null}
-        {message.session_id ? (
-          <div className="mt-1.5 text-[10px] font-mono opacity-70">
-            <Link href={sessionHref(message.session_id)} className="hover:underline">
-              {shortId(message.session_id)}
-            </Link>
-          </div>
+    <div
+      className={cn(
+        "flex w-full",
+        isUser ? "justify-end" : "justify-start",
+        isFirstInGroup ? "mt-4" : "mt-1",
+      )}
+    >
+      {!isUser ? (
+        <div className="w-7 mr-2 shrink-0 flex justify-center">
+          {isFirstInGroup ? (
+            <Avatar initial={teamAgent.initial} kind={teamAgent.kind} size={28} />
+          ) : null}
+        </div>
+      ) : null}
+      <div className={cn("flex flex-col max-w-[78%]", isUser ? "items-end" : "items-start")}>
+        <div
+          className={cn(
+            "rounded-2xl px-3.5 py-2",
+            isUser ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground",
+          )}
+        >
+          {isUser ? (
+            <div className="text-sm whitespace-pre-wrap">{message.content}</div>
+          ) : (
+            <ChatMarkdown content={message.content} inverted={false} />
+          )}
+          {refIds.length > 0 ? <ReferenceCards ids={refIds} /> : null}
+          {message.open_view ? <OpenViewCta open_view={message.open_view} /> : null}
+        </div>
+        {suggestions.length > 0 && onSuggest ? (
+          <SuggestedActions actions={suggestions} onPick={onSuggest} />
         ) : null}
       </div>
-      {suggestions.length > 0 && onSuggest ? (
-        <SuggestedActions actions={suggestions} onPick={onSuggest} />
-      ) : null}
     </div>
   );
 }
@@ -377,7 +399,7 @@ function SuggestedActions({
   onPick: (text: string) => void;
 }) {
   return (
-    <div className="mt-2 max-w-[80%] flex flex-wrap gap-1.5">
+    <div className="mt-2 flex flex-wrap gap-1.5">
       {actions.map((a) => (
         <button
           key={a.label}
@@ -405,7 +427,13 @@ function OpenViewCta({ open_view }: { open_view: { path: string; label?: string 
   );
 }
 
-function Thinking({ steps }: { steps: ChatStreamStep[] }) {
+function Thinking({
+  steps,
+  teamAgent,
+}: {
+  steps: ChatStreamStep[];
+  teamAgent: { initial: string; kind: HierarchyLevel };
+}) {
   // Split agent text from tool steps. Agent text is the response being
   // written; tools are the substrate beneath, categorized so the
   // audience can SEE when the agent is asking another agent (mesh) vs
@@ -426,8 +454,11 @@ function Thinking({ steps }: { steps: ChatStreamStep[] }) {
   const recentTools = toolSteps.slice(-8);
 
   return (
-    <div className="flex flex-col items-start w-full">
-      <div className="max-w-[80%] rounded-lg px-3 py-2 bg-secondary text-foreground border border-border w-full">
+    <div className="flex w-full justify-start mt-4">
+      <div className="w-7 mr-2 shrink-0 flex justify-center">
+        <Avatar initial={teamAgent.initial} kind={teamAgent.kind} size={28} />
+      </div>
+      <div className="max-w-[78%] rounded-2xl px-3.5 py-2 bg-secondary text-foreground">
         {streamingText ? (
           <ChatMarkdown content={streamingText} />
         ) : (

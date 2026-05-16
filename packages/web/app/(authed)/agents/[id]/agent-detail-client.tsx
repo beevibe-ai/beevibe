@@ -120,7 +120,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
           <Avatar initial={initial} kind={agent.hierarchy} size={56} presence={presence} />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-xl font-semibold leading-tight">{agent.display_name}</h1>
+              <h1 className="text-base font-semibold tracking-tight leading-tight">{agent.display_name}</h1>
               <HierChip hier={agent.hierarchy} />
               {archived ? (
                 <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase tracking-wider text-muted-foreground">

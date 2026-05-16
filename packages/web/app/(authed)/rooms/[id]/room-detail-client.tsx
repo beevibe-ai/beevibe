@@ -222,7 +222,7 @@ function RoomHeader({
   return (
     <header className="px-6 pt-6 pb-3 border-b border-border/60 flex items-baseline justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="text-xl font-semibold tracking-tight truncate">{room.room.name}</h1>
+        <h1 className="text-base font-semibold tracking-tight leading-tight truncate">{room.room.name}</h1>
         <div className="mt-1 text-xs text-muted-foreground flex items-center gap-1.5 flex-wrap">
           <Users className="h-3.5 w-3.5" />
           {room.members.map((m, i) => (

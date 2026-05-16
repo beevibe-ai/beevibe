@@ -1,15 +1,15 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Bot, Maximize2, Minus, Plus } from "lucide-react";
+import type { PanZoomTransform } from "@/lib/hooks/use-pan-zoom";
 import { useAgentNetwork } from "@/lib/hooks/use-agent-network";
 import { isApiConfigured } from "@/lib/api/config";
 import { EmptyState } from "@/components/empty-state";
 import { TeamOrbit } from "@/components/team-orbit";
 import { AgentDetailPanel } from "@/components/agents/agent-detail-panel";
 import { usePanZoom } from "@/lib/hooks/use-pan-zoom";
-import type { AgentPeerOwner } from "@/lib/types/agent-network";
 
 /**
  * /agents — pan/zoom canvas of the agent network.
@@ -61,6 +61,7 @@ export function AgentsClient() {
       ) : (
         <>
           <Caption hasPeers={peers.length > 0} />
+          <GestureHint transform={panZoom.transform} />
 
           {/* Pan/zoom container — captures wheel + pointer, transforms
               the inner world. Cursor hint reads as "draggable canvas". */}
@@ -103,7 +104,6 @@ export function AgentsClient() {
                       transform: "translate(-50%, -50%)",
                     }}
                   >
-                    <PeerLabel peer={peer} />
                     <TeamOrbit
                       agents={peer.agents}
                       size="satellite"
@@ -136,25 +136,70 @@ function Caption({ hasPeers }: { hasPeers: boolean }) {
   // time they land. `pointer-events-none` so it never absorbs a pan
   // start. The pan handler also skips children with data-pan="ignore"
   // but pointer-events-none is the cheaper guarantee.
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   return (
     <div
-      className="absolute top-6 left-6 max-w-xs pointer-events-none z-10"
+      className={`absolute top-6 left-6 max-w-[260px] pointer-events-none z-10 transition-all duration-500 ease-out motion-reduce:transition-none ${
+        mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"
+      }`}
       data-pan="ignore"
     >
       <h1 className="text-sm font-semibold tracking-tight">Your team</h1>
-      <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
+      <div className="mt-1.5 h-px w-6 bg-border/80" aria-hidden />
+      <p className="mt-2 text-[13px] text-muted-foreground leading-relaxed">
         {hasPeers
-          ? "Your team agent at center, specialists orbiting them. People you collaborate with float around the edges. Drag to pan, scroll to zoom — click any agent to open a peek."
-          : "Your team agent at center, specialists orbiting them. Drag to pan, scroll to zoom — click any agent to open a peek."}
+          ? "Lead in the middle, specialists around them. Other teams sit further out."
+          : "Lead in the middle, specialists around them."}
       </p>
     </div>
   );
 }
 
-function PeerLabel({ peer }: { peer: AgentPeerOwner }) {
+function GestureHint({ transform }: { transform: PanZoomTransform }) {
+  // Small bottom-left chip that whispers the gesture model on first
+  // load. Fades itself out the moment the user pans or zooms — at that
+  // point they've discovered it, so the hint is just noise. Also
+  // auto-dismisses after a few seconds so it doesn't linger if the
+  // user is just reading.
+  const [visible, setVisible] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    const inT = setTimeout(() => setVisible(true), 400);
+    const outT = setTimeout(() => setDismissed(true), 7000);
+    return () => {
+      clearTimeout(inT);
+      clearTimeout(outT);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (dismissed) return;
+    const moved =
+      transform.x !== 0 || transform.y !== 0 || transform.scale !== 1;
+    if (moved) setDismissed(true);
+  }, [transform.x, transform.y, transform.scale, dismissed]);
+
+  if (dismissed && !visible) return null;
+
   return (
-    <div className="mb-1 text-[11px] uppercase tracking-wider text-muted-foreground font-medium whitespace-nowrap">
-      {peer.owner_label}&apos;s team
+    <div
+      className={`absolute bottom-6 left-6 z-10 pointer-events-none transition-all duration-500 ease-out motion-reduce:transition-none ${
+        visible && !dismissed
+          ? "opacity-100 translate-y-0"
+          : "opacity-0 translate-y-1"
+      }`}
+      data-pan="ignore"
+    >
+      <div className="inline-flex items-center gap-2 rounded-full border border-border bg-card/80 backdrop-blur-sm px-3 py-1 text-[11px] text-muted-foreground shadow-sm">
+        <span>drag</span>
+        <span className="text-border" aria-hidden>·</span>
+        <span>scroll to zoom</span>
+      </div>
     </div>
   );
 }

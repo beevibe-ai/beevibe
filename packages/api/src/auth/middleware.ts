@@ -61,22 +61,32 @@ export function createAuthMiddleware(deps: LookupApiKeyDeps): RequestHandler {
 }
 
 /**
- * SSE-friendly auth wrapper. Browsers using `EventSource` cannot set a
- * custom `Authorization` header, so the `/api/stream` route accepts the
- * token via `?token=` query as well. If the header is already present
- * (Authorization: Bearer ...) it takes precedence.
+ * Pure adapter: copy `?token=` query into the `Authorization: Bearer ...`
+ * header so downstream auth middleware (which only reads the header) can
+ * handle EventSource requests. EventSource can't set custom headers, so
+ * `/api/stream` accepts the token via query. Header takes precedence
+ * when both are present.
  *
  * Tokens-in-URLs are normally a leak risk (logged by proxies), but the
  * stream payload is just `{event, id}` — no secrets, and the leaked
  * URL would be re-captured on every reload anyway.
+ *
+ * Used in two places: as the front of `createStreamAuthMiddleware` for
+ * the stream router's own auth, AND mounted by bootstrap at `/api/stream`
+ * ahead of viewRouter's root-mounted header-only auth so that auth
+ * doesn't 401 the request before the stream router sees it.
  */
+export const streamTokenAdapter: RequestHandler = (req, _res, next) => {
+  if (!req.headers.authorization && typeof req.query.token === "string") {
+    req.headers.authorization = `Bearer ${req.query.token}`;
+  }
+  next();
+};
+
 export function createStreamAuthMiddleware(deps: LookupApiKeyDeps): RequestHandler {
   const inner = createAuthMiddleware(deps);
   return (req, res, next) => {
-    if (!req.headers.authorization && typeof req.query.token === "string") {
-      req.headers.authorization = `Bearer ${req.query.token}`;
-    }
-    inner(req, res, next);
+    streamTokenAdapter(req, res, () => inner(req, res, next));
   };
 }
 

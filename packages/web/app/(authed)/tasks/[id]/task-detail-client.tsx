@@ -139,7 +139,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
     <DetailShell nav={<TasksBackLink />}>
       <header className="mb-6">
         <div className="flex items-start justify-between gap-6 mb-2">
-          <h1 className="text-2xl font-semibold leading-tight flex-1 min-w-0">{task.title}</h1>
+          <h1 className="text-base font-semibold tracking-tight leading-tight flex-1 min-w-0">{task.title}</h1>
           <div className="flex items-center gap-1.5 mt-1.5 shrink-0">
             <TaskStatusPill status={task.status} />
             {task.assignee_hierarchy ? <HierChip hier={task.assignee_hierarchy} /> : null}

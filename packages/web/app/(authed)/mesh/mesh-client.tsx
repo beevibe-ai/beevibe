@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { AlertTriangle, Info, Network } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
@@ -9,7 +10,7 @@ import { MeshGraphStatic } from "@/components/mesh/graph-static";
 import { ChainBudget } from "@/components/mesh/chain-budget";
 import { useMeshOverview } from "@/lib/hooks/use-mesh";
 import { isApiConfigured } from "@/lib/api/config";
-import type { MeshDisplay } from "@/lib/types/mesh";
+import type { MeshDisplay, MeshHover } from "@/lib/types/mesh";
 
 export function MeshClient() {
   const { data, isLoading, isError } = useMeshOverview();
@@ -19,12 +20,11 @@ export function MeshClient() {
       <div className="max-w-5xl mx-auto pt-8 pb-12 px-6">
         <div className="mb-6 flex items-baseline justify-between gap-6">
           <div>
-            <h1 className="text-xl font-semibold tracking-tight mb-1">Mesh activity</h1>
+            <h1 className="text-lg font-semibold tracking-tight mb-1">Mesh activity</h1>
             <p className="text-sm text-muted-foreground max-w-prose leading-relaxed">
-              Agents ask each other when their bounded context isn&rsquo;t enough. Each ask is a session
-              — caller&rsquo;s intent, target&rsquo;s response, with provenance.{" "}
-              <span className="font-mono text-foreground">ChainBudget</span> caps depth and total
-              tokens per chain to prevent runaway loops.
+              Agents ask each other when one agent&rsquo;s context isn&rsquo;t enough. Each ask is a
+              session with caller intent, response, and provenance. We cap depth and tokens per
+              chain so loops can&rsquo;t run away.
             </p>
           </div>
         </div>
@@ -88,11 +88,34 @@ function Body({
     );
   }
 
+  if (!data) return null;
+  return <MeshContent data={data} />;
+}
+
+function MeshContent({ data }: { data: MeshDisplay }) {
+  const [hover, setHover] = useState<MeshHover>(null);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+
   return (
     <div className="grid grid-cols-5 gap-6">
-      <MeshActivityFeed asks={data?.asks} />
+      <MeshActivityFeed
+        asks={data.asks}
+        hover={hover}
+        selectedAgent={selectedAgent}
+        onHoverRow={(row) => setHover(row ? { kind: "row", ...row } : null)}
+        onClearSelection={() => setSelectedAgent(null)}
+      />
       <div className="col-span-2 space-y-3">
-        <MeshGraphStatic nodes={data?.graph.nodes} edges={data?.graph.edges} />
+        <MeshGraphStatic
+          nodes={data.graph.nodes}
+          edges={data.graph.edges}
+          hover={hover}
+          selectedAgent={selectedAgent}
+          onHoverNode={(label) => setHover(label ? { kind: "node", label } : null)}
+          onClickNode={(label) =>
+            setSelectedAgent((current) => (current === label ? null : label))
+          }
+        />
         <ChainBudget />
       </div>
     </div>

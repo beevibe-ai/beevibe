@@ -389,6 +389,31 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
     res.json({ ok: true, conversations });
   });
 
+  // Soft-delete a conversation chain. The repo walks back from the head
+  // via `prior_session_id` and stamps `deleted_at` on every session in
+  // the chain, scoped to the caller's primary agent so a session id
+  // collision (or token misuse) can't delete someone else's history.
+  // Idempotent: re-deleting an already-deleted chain returns 200.
+  router.delete("/conversations/:headId", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const headId = req.params.headId;
+    if (!headId) {
+      res.status(400).json({ error: "missing_head_id" });
+      return;
+    }
+    try {
+      const agent = await deps.agentRepo.findTopLevelForOwner(req.caller.personId);
+      if (!agent) {
+        res.status(404).json({ error: "agent_not_found" });
+        return;
+      }
+      const deleted = await deps.sessionRepo.softDeleteChatChain(headId, agent.id);
+      res.json({ ok: true, deleted });
+    } catch (err) {
+      handleError(err, res);
+    }
+  });
+
   router.get("/", async (req, res) => {
     if (!requireHuman(req, res)) return;
     const agent = await deps.agentRepo.findTopLevelForOwner(req.caller.personId);

@@ -37,6 +37,13 @@ export function createStreamRouter(deps: StreamRoutesDeps): Router {
     });
     res.flushHeaders?.();
 
+    // Initial data event so the client's onmessage fires and trips the
+    // health probe before the first real event arrives. SSE comments
+    // (`: ...`) don't fire onmessage in the browser, so we have to send
+    // a data line. The empty body parses to {} and the client filter
+    // (requires .event and .id) drops it cleanly without dispatching.
+    res.write("data: {}\n\n");
+
     const send = (event: BvEvent) => {
       res.write(`data: ${JSON.stringify(event)}\n\n`);
     };
