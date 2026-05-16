@@ -17,3 +17,4 @@ export * from "./negotiation-repo.js";
 export * from "./escalation-repo.js";
 export * from "./room-repo.js";
 export * from "./agent-provision-event-repo.js";
+export * from "./repo-run-repo.js";
