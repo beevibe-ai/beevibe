@@ -126,7 +126,7 @@ export class CodexRuntime implements AgentRuntime {
       process_pid: result.pid ?? undefined,
       process_group_id: result.process_group_id ?? undefined,
       exit_code: result.exitCode,
-      stderr: parsed.status === "failed" ? result.stderr.slice(-4_000) : undefined,
+      stderr: stderrForFailure(parsed, result.stderr),
     };
   }
 
@@ -165,6 +165,19 @@ export class CodexRuntime implements AgentRuntime {
       mcpServerUrl: context.mcpServerUrl,
     });
   }
+}
+
+function stderrForFailure(
+  parsed: Omit<RuntimeResult, "process_pid" | "process_group_id">,
+  stderr: string,
+): string | undefined {
+  if (parsed.status !== "failed") return undefined;
+  const output = parsed.output.trim();
+  // Codex emits structured `error` events on stdout for user-actionable
+  // failures (usage limit, auth, etc.). Prefer that over stderr, which often
+  // contains noisy plugin / skill loader warnings.
+  if (output && output !== "Codex failed.") return undefined;
+  return stderr ? stderr.slice(-4_000) : undefined;
 }
 
 function buildGlobalArgs(context: RuntimeContext, config: CodexRuntimeConfig): string[] {
@@ -246,7 +259,26 @@ function parseCodexEvents(
 ): Omit<RuntimeResult, "process_pid" | "process_group_id"> {
   const lastMessage = readIfExists(lastMessagePath).trim();
   const assistantText = events.map(pickText).filter(Boolean).join("\n").trim();
-  const output = lastMessage || assistantText || fallbackText(stdout);
+  if (!lastMessage && !assistantText) {
+    // Neither source produced text. Log a sample so we can see what
+    // Codex actually emitted — the chat reply will be a generic
+    // "Codex completed./failed." fallback (or a `fallbackText` distill
+    // of any JSON events that lacked recognized text fields).
+    const sample = events.slice(0, 5).map((e) => ({
+      type: typeof e.type === "string" ? e.type : undefined,
+      keys: Object.keys(e).slice(0, 8),
+    }));
+    console.warn(
+      "[codex-adapter] no assistant text extracted: events=%d, lastMessageFileExists=%s, sample=%j",
+      events.length,
+      existsSync(lastMessagePath),
+      sample,
+    );
+  }
+  const output =
+    exitCode === 0
+      ? lastMessage || assistantText || fallbackText(stdout)
+      : assistantText || lastMessage || fallbackText(stdout);
   return {
     status: exitCode === 0 ? "completed" : "failed",
     output: output || (exitCode === 0 ? "Codex completed." : "Codex failed."),
@@ -310,6 +342,13 @@ function pickText(evt: JsonRecord): string {
     const itemText = pickString(item, ["text", "content", "message"]);
     if (itemText) return itemText;
   }
+  // Streaming shapes sometimes nest the chunk as { delta: { text: "..." } }
+  // rather than a flat string delta.
+  const delta = isRecord(evt.delta) ? evt.delta : undefined;
+  if (delta) {
+    const deltaText = pickString(delta, ["text", "content", "message"]);
+    if (deltaText) return deltaText;
+  }
   if (isRecord(evt.message)) {
     return pickString(evt.message, ["content", "text"]) ?? "";
   }
@@ -331,12 +370,16 @@ function summarizeTool(evt: JsonRecord): string {
 }
 
 function fallbackText(stdout: string): string {
+  // Stdout is supposed to be NDJSON. Drop non-JSON lines — they're
+  // Codex's tracing/log output (skill loader warnings, plugin manifest
+  // diagnostics, etc.) and never legitimate model output. If we kept
+  // them, a turn that fails to surface an assistant message would dump
+  // the raw log noise into the chat reply.
   return stdout
     .split("\n")
-    .map((line) => {
-      const parsed = parseJsonLine(line);
-      return parsed ? pickText(parsed) : line;
-    })
+    .map(parseJsonLine)
+    .filter((evt): evt is JsonRecord => !!evt)
+    .map(pickText)
     .filter(Boolean)
     .join("\n")
     .trim();

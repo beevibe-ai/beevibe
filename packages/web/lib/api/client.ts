@@ -88,6 +88,8 @@ export interface HealthResponse {
 
 export interface ChatSendInput {
   message: string;
+  /** Optional per-turn CLI preference. Server resolves this to an online runtime. */
+  runtime_type?: KnownCli;
   /** Previous turn's session id — enables `--resume` continuity. */
   prior_session_id?: string;
   /**

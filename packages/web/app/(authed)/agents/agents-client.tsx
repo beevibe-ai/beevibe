@@ -72,7 +72,7 @@ export function AgentsClient() {
             // scrolling the page or selecting card text mid-drag.
           >
             <div
-              className="absolute left-1/2 top-1/2 will-change-transform"
+              className="absolute left-1/2 top-1/2"
               style={panZoom.style}
             >
               {/* Self orbit anchored at world origin (0,0); the parent

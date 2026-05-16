@@ -171,6 +171,66 @@ describe("CodexRuntime.execute", () => {
     const result = await new CodexRuntime().execute(ctx());
     expect(result.status).toBe("cancelled");
   });
+
+  it("drops non-JSON log noise from stdout when no assistant text was extracted", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    runCliSpy.mockImplementation(async (options) => {
+      lastOptions = options;
+      // Codex's Rust binary prints `tracing` WARN lines to stdout
+      // alongside JSON events. With no assistant message in events
+      // and no last-message file, the old fallback dumped these
+      // warnings as the chat reply.
+      const stdout =
+        "2026-05-16T16:50:34Z WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain '..'\n" +
+        JSON.stringify({ type: "thread.started", thread_id: "codex_t1" }) +
+        "\n";
+      options.onLog?.("stdout", stdout);
+      return { ...MOCK_OK, stdout, exitCode: 0 };
+    });
+    // Unique workspace so a sibling test's last-message file (which
+    // shares a directory and a millisecond-precision filename) can't
+    // bleed in.
+    const result = await new CodexRuntime().execute(
+      ctx({ workspace: { path: `/tmp/beevibe-codex-noise-${Math.random()}` } }),
+    );
+    expect(result.output).toBe("Codex completed.");
+    expect(result.output).not.toContain("WARN");
+    warnSpy.mockRestore();
+  });
+
+  it("extracts text from nested delta objects", async () => {
+    runCliSpy.mockImplementation(async (options) => {
+      lastOptions = options;
+      const stdout =
+        JSON.stringify({ type: "item.delta", delta: { text: "hello world" } }) + "\n";
+      options.onLog?.("stdout", stdout);
+      return { ...MOCK_OK, stdout, exitCode: 0 };
+    });
+    const result = await new CodexRuntime().execute(
+      ctx({ workspace: { path: `/tmp/beevibe-codex-delta-${Math.random()}` } }),
+    );
+    expect(result.output).toBe("hello world");
+  });
+
+  it("prefers structured Codex errors over noisy stderr", async () => {
+    runCliSpy.mockImplementation(async (options) => {
+      lastOptions = options;
+      const stdout =
+        JSON.stringify({ type: "error", message: "You've hit your usage limit." }) +
+        "\n";
+      options.onLog?.("stdout", stdout);
+      return {
+        ...MOCK_OK,
+        stdout,
+        stderr: "WARN plugin noise",
+        exitCode: 1,
+      };
+    });
+    const result = await new CodexRuntime().execute(ctx());
+    expect(result.status).toBe("failed");
+    expect(result.output).toBe("You've hit your usage limit.");
+    expect(result.stderr).toBeUndefined();
+  });
 });
 
 describe("CodexRuntime.healthCheck", () => {

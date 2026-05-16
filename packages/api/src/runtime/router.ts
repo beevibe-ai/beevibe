@@ -7,6 +7,7 @@ import {
   runtimeId as newRuntimeId,
   sessionEventId as newSessionEventId,
   isTerminalSessionStatus,
+  isKnownCli,
   type AgentRepository,
   type DaemonRepository,
   type PersonRepository,
@@ -408,6 +409,12 @@ async function composeDispatchPayload(
 ): Promise<DispatchPayload | null> {
   const agent = await deps.agentRepo.findById(session.agent_id);
   if (!agent || !agent.api_key) return null;
+  const claimedRuntime = session.runtime_id
+    ? await deps.runtimeRepo.findById(session.runtime_id)
+    : undefined;
+  const runtimeType = isKnownCli(claimedRuntime?.cli)
+    ? claimedRuntime.cli
+    : agent.runtime_config.type;
 
   const memoryAgent = deps.makeMemoryAgent(agent.id);
   const isChat = session.type === "chat";
@@ -453,7 +460,7 @@ async function composeDispatchPayload(
     agent_id: agent.id,
     agent_api_key: agent.api_key,
     agent_hierarchy_level: agent.hierarchy_level,
-    runtime_type: agent.runtime_config.type,
+    runtime_type: runtimeType,
     intent: composeIntent(session.intent, briefing.userMessagePrefix),
     system_prompt_append: composeSystemPromptAppend(
       agent.runtime_config.system_prompt_addition,

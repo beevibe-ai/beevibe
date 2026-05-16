@@ -62,7 +62,7 @@ export interface DispatchPayload {
    * sync. Pulled from agent.hierarchy_level at claim time.
    */
   agent_hierarchy_level: HierarchyLevel;
-  /** CLI runtime to spawn. Mirrors `agent.runtime_config.type`. */
+  /** CLI runtime to spawn. Mirrors the claimed `session.runtime_id` when pinned. */
   runtime_type: KnownCli;
   intent: string;
   system_prompt_append: string;
