@@ -57,6 +57,7 @@ function buildMinimalServices(): AssembleToolsServices {
     mesh: {} as unknown as MeshServer,
     pool: {} as unknown as Pool,
     memoryAgent: {} as unknown as MemoryAgent,
+    repoRunRepo: {} as unknown as import("@beevibe/core").RepoRunRepository,
   };
 }
 

@@ -15,6 +15,7 @@ import type {
   AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
+  RepoRunRepository,
   SessionRepository,
   TaskRepository,
   WorkProductRepository,
@@ -49,6 +50,8 @@ export interface McpRouterDeps {
   mesh: MeshServer;
   pool: Pool;
   makeMemoryAgent: (agentId: string) => MemoryAgent;
+  /** Capability Network: backs the use_repo MCP tool. */
+  repoRunRepo: RepoRunRepository;
 }
 
 /** Tracked per-MCP-session state. mcpSid ↔ transport + server. */
@@ -249,6 +252,7 @@ async function handleMcpRequest(
       mesh: deps.mesh,
       pool: deps.pool,
       memoryAgent,
+      repoRunRepo: deps.repoRunRepo,
     },
   );
 

@@ -3,6 +3,7 @@ import type {
   AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
+  RepoRunRepository,
   SessionSpawnMode,
   TaskRepository,
   WorkProductRepository,
@@ -17,6 +18,7 @@ import { buildIcMeshTools, buildTeamMeshTools } from "./mesh.js";
 import { buildHierarchyTools } from "./hierarchy.js";
 import { createSaveMemoryTool } from "./save-memory.js";
 import { createUpdateCoreMemoryTool } from "./update-core-memory.js";
+import { createUseRepoTool } from "./use-repo.js";
 import type { AgentTool } from "./types.js";
 
 export interface AssembleToolsServices {
@@ -35,6 +37,8 @@ export interface AssembleToolsServices {
   coreMemoryRepo: CoreMemoryBlockRepository;
   /** Phase 9: audit log + per-parent daily cap on subordinate spawning. */
   agentProvisionEventRepo: AgentProvisionEventRepository;
+  /** Capability Network: backs use_repo (creates repo_run rows). */
+  repoRunRepo: RepoRunRepository;
 }
 
 /**
@@ -157,7 +161,19 @@ export function assembleTools(
       ? buildIcMeshTools(meshCtx, meshServices)
       : buildTeamMeshTools(meshCtx, meshServices);
 
-  const all = [...memoryTools, ...hierarchyTools, ...meshTools];
+  // Capability Network: use_repo is available to every agent regardless
+  // of tier. Trust boundary is the sandbox, not a per-agent grant.
+  const useRepoTool = createUseRepoTool(
+    { agentId: ctx.caller.agentId },
+    {
+      agentRepo: services.agentRepo,
+      taskRepo: services.taskRepo,
+      repoRunRepo: services.repoRunRepo,
+      dispatchService: services.dispatchService,
+    },
+  );
+
+  const all = [...memoryTools, ...hierarchyTools, ...meshTools, useRepoTool];
   if (ctx.spawnMode === "server_fallback_mesh") {
     return filterForServerFallback(all);
   }

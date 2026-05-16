@@ -4,15 +4,18 @@ import {
   PostgresCoreMemoryRepository,
   PostgresDaemonRepository,
   PostgresEscalationRepository,
+  PostgresLearnedSkillRepository,
   PostgresMemoryFactRepository,
   PostgresNegotiationRepository,
   PostgresNegotiationRoundRepository,
   PostgresAgentProvisionEventRepository,
   PostgresPersonRepository,
+  PostgresRepoRunRepository,
   PostgresRoomRepository,
   PostgresRuntimeRepository,
   PostgresSessionEventRepository,
   PostgresSessionRepository,
+  PostgresSkillOutcomeRepository,
   PostgresTaskRepository,
   PostgresWorkProductRepository,
   createPool,
@@ -39,6 +42,7 @@ import { BeevibeApiServer } from "./server.js";
 import { SessionCache } from "./session-cache.js";
 import { createMcpRouter } from "./routes/mcp.js";
 import { createTaskRouter } from "./routes/task.js";
+import { createRepoRunsRouter } from "./routes/repo-runs.js";
 import { createEscalationRouter } from "./routes/escalation.js";
 import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
@@ -130,6 +134,9 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const escalationRepo = new PostgresEscalationRepository(pool);
   const roomRepo = new PostgresRoomRepository(pool);
   const agentProvisionEventRepo = new PostgresAgentProvisionEventRepository(pool);
+  const repoRunRepo = new PostgresRepoRunRepository(pool);
+  const learnedSkillRepo = new PostgresLearnedSkillRepository(pool);
+  const skillOutcomeRepo = new PostgresSkillOutcomeRepository(pool);
 
   // External services (LLM + embeddings) for memory pipeline
   const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
@@ -295,6 +302,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     mesh,
     pool,
     makeMemoryAgent,
+    repoRunRepo,
   });
   server.getApp().use("/mcp", mcpRouter);
 
@@ -370,6 +378,8 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     runtimeRepo,
     sessionRepo,
     sessionEventRepo,
+    repoRunRepo,
+    workProductRepo,
     hub: daemonHub,
     makeMemoryAgent,
     mcpServerUrl: cfg.mcpServerUrl,
@@ -377,6 +387,18 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     onSessionComplete: async (session) => {
       if (session.type === "chat") {
         chatResolver.resolve(session.id, session);
+      }
+      // Capability Network: flip the container task to 'review' when a
+      // run_repo session succeeds so the artifact lands in the inbox.
+      if (session.type === "run_repo" && session.status === "succeeded" && session.task_id) {
+        try {
+          await taskRepo.update(session.task_id, { status: "review" });
+        } catch (err) {
+          console.warn(
+            "[onSessionComplete] run_repo task→review failed:",
+            err instanceof Error ? err.message : String(err),
+          );
+        }
       }
       failMeshCalleeIfTerminal(session, session.status);
     },
@@ -417,6 +439,13 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     hub: daemonHub,
   });
   server.getApp().use("/runtimes", runtimesRouter);
+
+  // Capability Network — repo-run REST surface.
+  const repoRunsRouter = createRepoRunsRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    repoRunRepo,
+  });
+  server.getApp().use("/repo-runs", repoRunsRouter);
 
   // Phase 8 — onboarding/identity surface (bv_u_).
   // GET /me, POST /me/onboarding/complete, GET /health/runtime.
