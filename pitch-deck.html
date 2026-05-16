@@ -1,0 +1,751 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Beevibe — Pitch Deck</title>
+<style>
+  :root {
+    --bg:        #0b0d12;
+    --bg-2:      #11141c;
+    --panel:     #161a24;
+    --ink:       #f3f0e6;
+    --ink-dim:   #b4b1a4;
+    --muted:     #7a7868;
+    --honey:     #f5b301;
+    --honey-2:   #ffd34d;
+    --amber:     #ff8a2b;
+    --line:      #232838;
+    --line-soft: #1a1f2c;
+    --good:      #6ee7b7;
+  }
+
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, BlinkMacSystemFont, "Inter", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+    height: 100%;
+    overflow: hidden;
+  }
+
+  .deck {
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  .slide {
+    position: absolute;
+    inset: 0;
+    display: none;
+    padding: 7vh 9vw;
+    flex-direction: column;
+    justify-content: center;
+    animation: fade .35s ease both;
+    background:
+      radial-gradient(1200px 600px at 90% -10%, rgba(245, 179, 1, 0.06), transparent 60%),
+      radial-gradient(900px 600px at -10% 110%, rgba(255, 138, 43, 0.05), transparent 60%),
+      var(--bg);
+  }
+  .slide.active { display: flex; }
+
+  @keyframes fade {
+    from { opacity: 0; transform: translateY(6px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ---------- typographic primitives ---------- */
+  .eyebrow {
+    text-transform: uppercase;
+    letter-spacing: 0.22em;
+    font-size: 0.72rem;
+    color: var(--honey);
+    font-weight: 600;
+    margin-bottom: 1.6rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+  }
+  .eyebrow::before {
+    content: "";
+    display: inline-block;
+    width: 24px;
+    height: 1px;
+    background: var(--honey);
+  }
+
+  h1 {
+    font-size: clamp(2.4rem, 5.4vw, 5rem);
+    line-height: 1.02;
+    letter-spacing: -0.02em;
+    margin: 0 0 1.4rem;
+    font-weight: 700;
+  }
+  h2 {
+    font-size: clamp(1.8rem, 3.4vw, 3rem);
+    line-height: 1.08;
+    letter-spacing: -0.015em;
+    margin: 0 0 1.4rem;
+    font-weight: 700;
+  }
+  h3 {
+    font-size: 1.15rem;
+    margin: 0 0 0.5rem;
+    color: var(--ink);
+    font-weight: 600;
+    letter-spacing: -0.005em;
+  }
+  p, li {
+    font-size: clamp(1rem, 1.25vw, 1.18rem);
+    line-height: 1.55;
+    color: var(--ink-dim);
+  }
+  .lede {
+    font-size: clamp(1.15rem, 1.55vw, 1.45rem);
+    color: var(--ink);
+    max-width: 56ch;
+    line-height: 1.45;
+  }
+  .small { font-size: 0.92rem; color: var(--muted); }
+  .accent { color: var(--honey); }
+  .ink-strong { color: var(--ink); font-weight: 600; }
+
+  code, .mono {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.92em;
+    color: var(--honey-2);
+  }
+
+  /* ---------- layout helpers ---------- */
+  .row { display: flex; gap: 2rem; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 2.2rem; }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.4rem; }
+  .grid-4 { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.2rem; }
+
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.5rem 1.6rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .card::before {
+    content: "";
+    position: absolute;
+    inset: 0 0 auto 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--honey), transparent);
+    opacity: 0.5;
+  }
+  .card p { margin: 0; font-size: 1rem; }
+  .card .ic {
+    width: 34px; height: 34px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 10px;
+    background: rgba(245, 179, 1, 0.10);
+    color: var(--honey);
+    font-weight: 700;
+    margin-bottom: 0.9rem;
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 1rem;
+  }
+
+  ul.clean { list-style: none; padding: 0; margin: 0; }
+  ul.clean li {
+    padding: 0.65rem 0;
+    border-bottom: 1px solid var(--line-soft);
+    display: flex;
+    gap: 0.9rem;
+  }
+  ul.clean li:last-child { border-bottom: none; }
+  ul.clean li::before {
+    content: "→";
+    color: var(--honey);
+    font-weight: 700;
+    flex-shrink: 0;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    background: rgba(245, 179, 1, 0.08);
+    color: var(--honey-2);
+    border: 1px solid rgba(245, 179, 1, 0.25);
+    font-size: 0.78rem;
+    letter-spacing: 0.04em;
+    font-weight: 500;
+  }
+
+  /* ---------- ASCII / architecture block ---------- */
+  pre.diagram {
+    font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.82rem;
+    line-height: 1.35;
+    color: var(--ink-dim);
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.4rem 1.6rem;
+    margin: 0;
+    overflow: auto;
+    white-space: pre;
+  }
+  pre.diagram .h { color: var(--honey); font-weight: 700; }
+  pre.diagram .b { color: var(--ink); }
+
+  /* ---------- comparison ---------- */
+  .compare {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.4rem;
+  }
+  .compare .col {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.4rem 1.5rem;
+    background: var(--panel);
+  }
+  .compare .col.then { opacity: 0.85; }
+  .compare .col.now  { border-color: rgba(245, 179, 1, 0.4); }
+  .compare .col h4 {
+    margin: 0 0 1rem;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.18em;
+    color: var(--muted);
+  }
+  .compare .col.now h4 { color: var(--honey); }
+  .compare .col p { color: var(--ink); font-size: 1.05rem; line-height: 1.5; margin: 0 0 0.7rem; }
+  .compare .col .row-item {
+    display: flex; gap: 0.7rem;
+    padding: 0.55rem 0;
+    border-bottom: 1px dashed var(--line);
+    font-size: 0.98rem;
+  }
+  .compare .col .row-item:last-child { border-bottom: none; }
+  .compare .col .row-item .lbl {
+    color: var(--muted);
+    width: 5.5rem;
+    flex-shrink: 0;
+    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    padding-top: 0.12rem;
+  }
+
+  /* ---------- concept table ---------- */
+  .concepts {
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    background: var(--panel);
+    overflow: hidden;
+  }
+  .concepts .item {
+    display: grid;
+    grid-template-columns: 180px 1fr;
+    padding: 0.95rem 1.3rem;
+    border-bottom: 1px solid var(--line-soft);
+    align-items: baseline;
+  }
+  .concepts .item:last-child { border-bottom: none; }
+  .concepts .item .name {
+    color: var(--honey);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+  .concepts .item .desc {
+    color: var(--ink-dim);
+    font-size: 1rem;
+    line-height: 1.5;
+  }
+
+  /* ---------- code block ---------- */
+  pre.code {
+    background: #0a0c11;
+    border: 1px solid var(--line);
+    border-radius: 14px;
+    padding: 1.3rem 1.5rem;
+    margin: 0;
+    color: var(--ink);
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    font-size: 0.95rem;
+    line-height: 1.55;
+    overflow: auto;
+  }
+  pre.code .c { color: var(--muted); }
+  pre.code .k { color: var(--honey); }
+  pre.code .s { color: var(--good); }
+
+  /* ---------- title slide ---------- */
+  .title-wrap {
+    display: flex;
+    align-items: center;
+    gap: 3rem;
+  }
+  .logo-mark {
+    width: 140px;
+    height: 140px;
+    flex-shrink: 0;
+    position: relative;
+  }
+  .logo-mark svg { width: 100%; height: 100%; display: block; }
+
+  .title-wrap h1 {
+    font-size: clamp(3rem, 7vw, 6.5rem);
+    margin: 0;
+  }
+  .title-wrap .sub {
+    margin-top: 1rem;
+    font-size: clamp(1.1rem, 1.6vw, 1.5rem);
+    color: var(--ink-dim);
+    max-width: 36ch;
+    line-height: 1.4;
+  }
+
+  /* ---------- footer / chrome ---------- */
+  .chrome {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    padding: 1rem 9vw;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    z-index: 10;
+    pointer-events: none;
+    font-size: 0.78rem;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+  .chrome .brand { display: inline-flex; align-items: center; gap: 0.5rem; }
+  .chrome .brand .dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--honey);
+    box-shadow: 0 0 12px var(--honey);
+  }
+  .chrome .nav { pointer-events: auto; display: inline-flex; gap: 0.5rem; }
+  .chrome button {
+    background: transparent;
+    border: 1px solid var(--line);
+    color: var(--ink-dim);
+    border-radius: 8px;
+    width: 30px; height: 30px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    transition: all .15s ease;
+  }
+  .chrome button:hover {
+    border-color: var(--honey);
+    color: var(--honey);
+  }
+  .counter {
+    font-family: "JetBrains Mono", ui-monospace, monospace;
+    color: var(--ink-dim);
+  }
+  .counter .sep { color: var(--muted); margin: 0 0.3rem; }
+
+  /* progress bar */
+  .progress {
+    position: fixed;
+    top: 0; left: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--honey), var(--amber));
+    width: 0;
+    transition: width .35s ease;
+    z-index: 20;
+  }
+
+  /* ---------- cta slide ---------- */
+  .cta-box {
+    border: 1px solid var(--line);
+    border-radius: 18px;
+    padding: 2.2rem 2.4rem;
+    background:
+      radial-gradient(600px 200px at 0% 0%, rgba(245,179,1,0.08), transparent 60%),
+      var(--panel);
+    margin-top: 1.5rem;
+  }
+
+  /* responsive */
+  @media (max-width: 900px) {
+    .slide { padding: 5vh 6vw; }
+    .grid-2, .compare { grid-template-columns: 1fr; }
+    .grid-3 { grid-template-columns: 1fr; }
+    .grid-4 { grid-template-columns: 1fr; }
+    .title-wrap { flex-direction: column; align-items: flex-start; gap: 1.5rem; }
+    .logo-mark { width: 84px; height: 84px; }
+    .concepts .item { grid-template-columns: 1fr; gap: 0.2rem; }
+  }
+
+  /* print */
+  @media print {
+    html, body { overflow: visible; height: auto; background: white; color: black; }
+    .deck { position: static; }
+    .chrome, .progress { display: none; }
+    .slide {
+      display: flex !important;
+      position: relative;
+      page-break-after: always;
+      min-height: 100vh;
+      background: white !important;
+      color: black !important;
+      animation: none;
+    }
+    .slide * { color: black !important; }
+    .card, .compare .col, .concepts, pre.diagram, pre.code, .cta-box {
+      background: #fafaf5 !important;
+      border-color: #ddd !important;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div class="progress" id="progress"></div>
+
+<div class="deck" id="deck">
+
+  <!-- 1. TITLE -->
+  <section class="slide active">
+    <div class="title-wrap">
+      <div class="logo-mark" aria-hidden="true">
+        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="g1" x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stop-color="#ffd34d"/>
+              <stop offset="1" stop-color="#f5b301"/>
+            </linearGradient>
+          </defs>
+          <!-- hex frame -->
+          <polygon points="50,4 91,27 91,73 50,96 9,73 9,27"
+                   fill="none" stroke="url(#g1)" stroke-width="2.5"/>
+          <!-- inner hex cells (honeycomb) -->
+          <g fill="url(#g1)" opacity="0.95">
+            <polygon points="50,28 64,36 64,52 50,60 36,52 36,36"/>
+          </g>
+          <g fill="none" stroke="url(#g1)" stroke-width="2" opacity="0.7">
+            <polygon points="30,46 44,54 44,70 30,78 16,70 16,54"/>
+            <polygon points="70,46 84,54 84,70 70,78 56,70 56,54"/>
+          </g>
+        </svg>
+      </div>
+      <div>
+        <div class="eyebrow">Pitch Deck · 2026</div>
+        <h1>Beevibe</h1>
+        <p class="sub">The agent-native operating system for companies. Where your team and your AI agents finally work in the same place.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 2. PROBLEM -->
+  <section class="slide">
+    <div class="eyebrow">The Problem</div>
+    <h2>Every engineer works with AI all day. <br/>The team still coordinates like it&rsquo;s 2019.</h2>
+    <div class="grid-2" style="margin-top: 1.5rem;">
+      <div>
+        <p class="lede">
+          Claude Code, Cursor, Codex — individually, every developer is faster than ever.
+          Then the team gets in a room together, and the gains evaporate.
+        </p>
+      </div>
+      <div>
+        <ul class="clean">
+          <li>The same context is re&#8209;explained to AI dozens of times a week.</li>
+          <li>The same answer is learned, then forgotten, across different engineers.</li>
+          <li>Each person&rsquo;s AI work lives in a private bubble — nothing compounds.</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 3. INSIGHT -->
+  <section class="slide">
+    <div class="eyebrow">The Insight</div>
+    <h2>The agents aren&rsquo;t too weak. <br/><span class="accent">The shared layer is missing.</span></h2>
+    <div class="compare" style="margin-top: 2rem;">
+      <div class="col then">
+        <h4>Humans coordinate via</h4>
+        <p>Slack &middot; Notion &middot; Linear</p>
+        <div class="row-item"><span class="lbl">Who</span><span>People who own context</span></div>
+        <div class="row-item"><span class="lbl">What</span><span>Chat, docs, tasks, review</span></div>
+        <div class="row-item"><span class="lbl">Where</span><span>Shared, persistent surface</span></div>
+      </div>
+      <div class="col now">
+        <h4>AI agents coordinate via</h4>
+        <p>&hellip; nothing.</p>
+        <div class="row-item"><span class="lbl">Who</span><span>Isolated CLIs on private laptops</span></div>
+        <div class="row-item"><span class="lbl">What</span><span>Cold-start context, every time</span></div>
+        <div class="row-item"><span class="lbl">Where</span><span>One terminal session, then gone</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 4. SOLUTION -->
+  <section class="slide">
+    <div class="eyebrow">The Solution</div>
+    <h2>A shared workspace where <span class="accent">people and AI agents</span> work side by side.</h2>
+    <p class="lede" style="margin-top: 0.5rem;">
+      Agents hold lasting roles, build bounded domain memory, ask the right teammate when
+      their context runs out, and escalate blockers back to humans.
+    </p>
+    <div class="grid-4" style="margin-top: 1.8rem;">
+      <div class="card">
+        <div class="ic">01</div>
+        <h3>Shared AI workspace</h3>
+        <p>People and agents work in the same team graph — tasks, ownership, review, handoffs, escalation.</p>
+      </div>
+      <div class="card">
+        <div class="ic">02</div>
+        <h3>Persistent specialists</h3>
+        <p>Each agent has an identity, a domain, a hierarchy level, and bounded memory that deepens across sessions.</p>
+      </div>
+      <div class="card">
+        <div class="ic">03</div>
+        <h3>Agent &harr; agent mesh</h3>
+        <p>When an agent leaves its domain, it can ask another specialist for context or negotiate toward a solution.</p>
+      </div>
+      <div class="card">
+        <div class="ic">04</div>
+        <h3>Human-in-the-loop</h3>
+        <p>Humans review, redirect, revise, cancel, and resolve blockers — from one dashboard.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 5. ARCHITECTURE -->
+  <section class="slide">
+    <div class="eyebrow">How It Works</div>
+    <h2>One control plane. <span class="accent">Local CLIs.</span> Shared memory.</h2>
+    <div class="grid-2" style="margin-top: 1.4rem; grid-template-columns: 1.1fr 1fr; align-items: center;">
+      <pre class="diagram"><span class="h">     Humans                          Agents</span>
+     ──────                          ──────
+ ┌───────────────┐               ┌───────────────┐
+ │ Web Dashboard │               │  Claude Code  │
+ │   (Next.js)   │               │    (BYO CLI)  │
+ └───────┬───────┘               └───────┬───────┘
+         │ REST + SSE                    │ MCP tools
+         ▼                               ▼
+   ┌─────────────────────────────────────────────┐
+   │            <span class="b">@beevibe/api</span>  · control plane    │
+   └─────────┬──────────────────────────┬────────┘
+             │ SQL                      │ WSS push
+             ▼                          ▼
+   ┌────────────────────┐    ┌────────────────────┐
+   │  <span class="b">Postgres + pgvector</span>│    │  <span class="b">beevibe-daemon</span>    │
+   │  shared state,     │    │  spawns the local  │
+   │  mesh, memory      │    │  CLI per session   │
+   └────────────────────┘    └────────────────────┘</pre>
+      <div>
+        <ul class="clean">
+          <li><span><span class="ink-strong">API</span> &mdash; control plane: REST, SSE, MCP, WSS, daemon orchestration.</span></li>
+          <li><span><span class="ink-strong">Postgres + pgvector</span> &mdash; shared state, mesh, memory, sessions.</span></li>
+          <li><span><span class="ink-strong">Daemon</span> &mdash; runs on your laptop, claims sessions, spawns the CLI.</span></li>
+          <li><span><span class="ink-strong">Scheduler</span> &mdash; server-side fallback when a daemon is offline, plus orphan reaping.</span></li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- 6. CORE CONCEPTS -->
+  <section class="slide">
+    <div class="eyebrow">Core Concepts</div>
+    <h2>A small vocabulary, <span class="accent">composed</span>.</h2>
+    <div class="concepts" style="margin-top: 1.5rem;">
+      <div class="item"><div class="name">Workspace</div><div class="desc">The company-level place where people, agents, tasks, memory, and review live together.</div></div>
+      <div class="item"><div class="name">Agent</div><div class="desc">A persistent domain expert with a role, hierarchy level, memory, API key, and preferred runtime.</div></div>
+      <div class="item"><div class="name">Task</div><div class="desc">A unit of team work assigned to a person or agent. Tasks spawn children and move through review.</div></div>
+      <div class="item"><div class="name">Mesh</div><div class="desc">The agent-to-agent layer for asking the right teammate, negotiating, responding, and escalating.</div></div>
+      <div class="item"><div class="name">Memory</div><div class="desc">Durable per-agent core memory blocks + vector-searchable facts that compound across team work.</div></div>
+      <div class="item"><div class="name">Runtime</div><div class="desc">A registered <code>(daemon, CLI)</code> pair — usually a user&rsquo;s local <code>claude</code> binary.</div></div>
+      <div class="item"><div class="name">Daemon</div><div class="desc">A local process that claims sessions and spawns CLI runs on a user&rsquo;s machine.</div></div>
+    </div>
+  </section>
+
+  <!-- 7. BYO CLI -->
+  <section class="slide">
+    <div class="eyebrow">BYO CLI</div>
+    <h2>Your tools. Your files. <span class="accent">Your tokens.</span></h2>
+    <div class="grid-2" style="margin-top: 1.5rem; align-items: start;">
+      <div>
+        <p class="lede">
+          Beevibe doesn&rsquo;t take your codebase hostage in a hosted sandbox.
+          Every agent run happens on a developer&rsquo;s own machine, through their
+          own CLI, with their own file system and API keys.
+        </p>
+        <div style="margin-top: 1.2rem; display: flex; gap: 0.5rem; flex-wrap: wrap;">
+          <span class="pill">Local file access</span>
+          <span class="pill">User-owned API keys</span>
+          <span class="pill">Real dev environment</span>
+          <span class="pill">No data exfiltration</span>
+        </div>
+      </div>
+      <pre class="code"><span class="c"># Install the daemon on your laptop</span>
+brew install beevibe-ai/tap/beevibe-daemon
+
+<span class="c"># Point it at your workspace</span>
+beevibe-daemon setup \
+  --api  <span class="s">http://localhost:3000</span> \
+  --user-token <span class="s">bv_u_…</span>
+
+beevibe-daemon <span class="k">start</span>
+<span class="c"># → claims sessions, spawns Claude Code locally</span></pre>
+    </div>
+  </section>
+
+  <!-- 8. SELF-HOSTED -->
+  <section class="slide">
+    <div class="eyebrow">Self-Hosted by Default</div>
+    <h2>You own the database. <br/>You own the daemons. <span class="accent">You own the brain.</span></h2>
+    <div class="grid-3" style="margin-top: 1.8rem;">
+      <div class="card">
+        <h3>Open source</h3>
+        <p>Apache&nbsp;2.0. Read it, fork it, audit it. The whole stack ships from one repo.</p>
+      </div>
+      <div class="card">
+        <h3>Your infra</h3>
+        <p>Postgres, Node services, and CLIs run wherever you want — laptop, on-prem, your cloud.</p>
+      </div>
+      <div class="card">
+        <h3>One-click deploy</h3>
+        <p>Railway template stands up Postgres + api + scheduler + web. Or <code>docker compose up</code>.</p>
+      </div>
+    </div>
+    <p class="small" style="margin-top: 1.6rem;">No vendor lock-in. No mandatory cloud account. The shared brain of your team is a database you control.</p>
+  </section>
+
+  <!-- 9. WHY NOW -->
+  <section class="slide">
+    <div class="eyebrow">Why Now</div>
+    <h2>AI on every laptop is a <span class="accent">2026</span> problem. <br/>Shared coordination is the next one.</h2>
+    <div class="grid-3" style="margin-top: 2rem;">
+      <div class="card">
+        <div class="ic">▲</div>
+        <h3>Adoption</h3>
+        <p>Coding agents went from novelty to daily driver in 18 months. Every engineer is already paying for one.</p>
+      </div>
+      <div class="card">
+        <div class="ic">⇄</div>
+        <h3>Bottleneck</h3>
+        <p>Individual productivity has lapped team-level coordination. The next 10&times; is collective, not personal.</p>
+      </div>
+      <div class="card">
+        <div class="ic">∞</div>
+        <h3>Compounding</h3>
+        <p>Shared memory + agent-to-agent mesh is where institutional knowledge finally accrues to AI, not just humans.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- 10. CTA / GET STARTED -->
+  <section class="slide">
+    <div class="eyebrow">Get Started</div>
+    <h2>Spin up Beevibe in <span class="accent">two minutes</span>.</h2>
+    <div class="cta-box">
+      <div class="grid-2" style="align-items: start;">
+        <div>
+          <h3 style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.18em; color: var(--muted); margin-bottom: 0.7rem;">Option A · Local Docker</h3>
+<pre class="code">git clone https://github.com/beevibe-ai/beevibe.git
+cd beevibe
+
+<span class="k">ANTHROPIC_API_KEY</span>=sk-ant-… \
+<span class="k">OPENAI_API_KEY</span>=sk-… \
+docker compose -f docker-compose.quickstart.yml \
+  up -d --build</pre>
+          <p class="small" style="margin-top: 0.7rem;">Then open <code>http://localhost:3030</code>.</p>
+        </div>
+        <div>
+          <h3 style="font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.18em; color: var(--muted); margin-bottom: 0.7rem;">Option B · One-click Railway</h3>
+          <p style="color: var(--ink); font-size: 1.05rem; margin: 0 0 0.7rem;">
+            Provisions Postgres, api, scheduler, and web in a single click. Drop in your
+            <code>ANTHROPIC_API_KEY</code> and you&rsquo;re live.
+          </p>
+          <ul class="clean">
+            <li>Install <code>beevibe-daemon</code> on each developer&rsquo;s laptop.</li>
+            <li>Register agents from the dashboard.</li>
+            <li>Watch your team&rsquo;s shared brain start to compound.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+    <p style="margin-top: 1.4rem; color: var(--ink); font-size: 1.1rem;">
+      <span class="accent">github.com/beevibe-ai/beevibe</span> &nbsp;·&nbsp; Apache&nbsp;2.0 &nbsp;·&nbsp; self-hosted, agent-native.
+    </p>
+  </section>
+
+</div>
+
+<div class="chrome">
+  <div class="brand"><span class="dot"></span><span>BEEVIBE</span></div>
+  <div class="counter"><span id="cur">1</span><span class="sep">/</span><span id="total">10</span></div>
+  <div class="nav">
+    <button id="prev" aria-label="Previous slide">‹</button>
+    <button id="next" aria-label="Next slide">›</button>
+  </div>
+</div>
+
+<script>
+  (function () {
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const total = slides.length;
+    let idx = 0;
+
+    const cur = document.getElementById('cur');
+    const totalEl = document.getElementById('total');
+    const progress = document.getElementById('progress');
+    totalEl.textContent = total;
+
+    function show(i) {
+      idx = Math.max(0, Math.min(total - 1, i));
+      slides.forEach((s, n) => s.classList.toggle('active', n === idx));
+      cur.textContent = idx + 1;
+      progress.style.width = ((idx + 1) / total * 100) + '%';
+      const url = new URL(location.href);
+      url.hash = String(idx + 1);
+      history.replaceState(null, '', url);
+    }
+
+    document.getElementById('next').addEventListener('click', () => show(idx + 1));
+    document.getElementById('prev').addEventListener('click', () => show(idx - 1));
+
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        e.preventDefault(); show(idx + 1);
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault(); show(idx - 1);
+      } else if (e.key === 'Home') {
+        e.preventDefault(); show(0);
+      } else if (e.key === 'End') {
+        e.preventDefault(); show(total - 1);
+      }
+    });
+
+    // swipe support
+    let touchX = null;
+    document.addEventListener('touchstart', (e) => { touchX = e.touches[0].clientX; }, { passive: true });
+    document.addEventListener('touchend', (e) => {
+      if (touchX === null) return;
+      const dx = e.changedTouches[0].clientX - touchX;
+      if (Math.abs(dx) > 40) show(idx + (dx < 0 ? 1 : -1));
+      touchX = null;
+    }, { passive: true });
+
+    // deep-link via hash
+    const initial = parseInt((location.hash || '').replace('#', ''), 10);
+    if (!isNaN(initial) && initial >= 1 && initial <= total) {
+      show(initial - 1);
+    } else {
+      show(0);
+    }
+  })();
+</script>
+
+</body>
+</html>
