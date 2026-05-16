@@ -1,4 +1,6 @@
 import { fetchJson } from "./http";
+import type { RepoRun, RepoRunStatus } from "@beevibe/core";
+export type { RepoRun, RepoRunStatus };
 import type {
   TaskDetail,
   AgentDetail,
@@ -629,6 +631,14 @@ export const api = {
         method: "POST",
         body: input,
       }),
+  },
+  repoRuns: {
+    list: (opts: ReadOptions = {}) =>
+      fetchJson<{ runs: RepoRun[] }>("/repo-runs", { signal: opts.signal }),
+    get: (id: string, opts: ReadOptions = {}) =>
+      fetchJson<{ run: RepoRun }>(`/repo-runs/${encodeURIComponent(id)}`, { signal: opts.signal }),
+    cancel: (id: string) =>
+      fetchJson<{ run: RepoRun }>(`/repo-runs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
   },
 } as const;
 

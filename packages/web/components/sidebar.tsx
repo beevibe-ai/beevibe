@@ -8,6 +8,7 @@ import {
   ListChecks,
   type LucideIcon,
   MessageSquare,
+  Package,
   PanelLeftClose,
   PanelLeftOpen,
   Users,
@@ -46,6 +47,7 @@ const PRIMARY_MODES: NavItem[] = [
   { href: "/", label: "Chat", icon: MessageSquare, isActive: matchesChat },
   { href: "/rooms", label: "Rooms", icon: Users, isActive: (p) => p.startsWith("/rooms") },
   { href: "/tasks", label: "Tasks", icon: ListChecks, isActive: (p) => p.startsWith("/tasks") },
+  { href: "/capabilities", label: "Capabilities", icon: Package, isActive: (p) => p.startsWith("/capabilities") },
 ];
 
 export function Sidebar() {

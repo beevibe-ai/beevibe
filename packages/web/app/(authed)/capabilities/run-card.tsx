@@ -1,0 +1,50 @@
+"use client";
+
+import Link from "next/link";
+import { CheckCircle, Clock, Loader2, XCircle } from "lucide-react";
+import type { RepoRun } from "@/lib/api/client";
+
+function repoName(url: string) {
+  const parts = url.replace("https://github.com/", "").split("/");
+  return parts.slice(0, 2).join("/");
+}
+
+function statusIcon(status: RepoRun["status"]) {
+  switch (status) {
+    case "succeeded":
+      return <CheckCircle className="h-4 w-4 text-green-500" />;
+    case "failed":
+    case "blocked":
+      return <XCircle className="h-4 w-4 text-red-400" />;
+    case "cancelled":
+      return <XCircle className="h-4 w-4 text-muted-foreground" />;
+    case "running":
+      return <Loader2 className="h-4 w-4 animate-spin text-orange-500" />;
+    default:
+      return <Clock className="h-4 w-4 text-muted-foreground" />;
+  }
+}
+
+export function RunCard({ run }: { run: RepoRun }) {
+  const isLive = run.status === "pending" || run.status === "running";
+  return (
+    <Link
+      href={`/capabilities/runs/${run.id}`}
+      className="flex items-start gap-3 rounded-lg border bg-card hover:bg-muted/50 transition-colors p-4"
+    >
+      <div className="mt-0.5 flex-shrink-0">{statusIcon(run.status)}</div>
+      <div className="flex-1 min-w-0">
+        <p className="text-sm font-medium truncate">{run.goal}</p>
+        <p className="text-xs text-muted-foreground mt-0.5 truncate">{repoName(run.repo_url)}</p>
+        {run.error && (
+          <p className="text-xs text-red-400 mt-1 truncate">{run.error}</p>
+        )}
+      </div>
+      {isLive && (
+        <span className="flex-shrink-0 text-xs text-orange-600 dark:text-orange-400 font-medium">
+          live →
+        </span>
+      )}
+    </Link>
+  );
+}
