@@ -178,10 +178,11 @@ function GestureHint({ transform }: { transform: PanZoomTransform }) {
   }, []);
 
   useEffect(() => {
+    if (dismissed) return;
     const moved =
       transform.x !== 0 || transform.y !== 0 || transform.scale !== 1;
     if (moved) setDismissed(true);
-  }, [transform.x, transform.y, transform.scale]);
+  }, [transform.x, transform.y, transform.scale, dismissed]);
 
   if (dismissed && !visible) return null;
 

@@ -48,7 +48,7 @@ import { createSignupRouter } from "./routes/signup.js";
 import { createSigninRouter } from "./routes/signin.js";
 import { createMeRouter } from "./routes/me.js";
 import { createRoomRouter } from "./routes/room.js";
-import { createStreamAuthMiddleware } from "./auth/middleware.js";
+import { createStreamAuthMiddleware, streamTokenAdapter } from "./auth/middleware.js";
 import { ChatResolver } from "./runtime/chat-resolver.js";
 import { DaemonHub } from "./runtime/hub.js";
 import { createRuntimeRouter } from "./runtime/router.js";
@@ -338,17 +338,11 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   });
   server.getApp().use(signinRouter);
 
-  // SSE auth adapter — must come before viewRouter's root-mounted
-  // authMiddleware, which would otherwise 401 EventSource requests that
-  // can only carry the token in ?token= (browsers can't set headers on
-  // EventSource). This middleware rewrites the request before any
-  // header-only auth middleware downstream sees it.
-  server.getApp().use("/api/stream", (req, _res, next) => {
-    if (!req.headers.authorization && typeof req.query.token === "string") {
-      req.headers.authorization = `Bearer ${req.query.token}`;
-    }
-    next();
-  });
+  // SSE auth adapter — must run ahead of viewRouter's root-mounted
+  // header-only auth, which would otherwise 401 EventSource requests
+  // that can only carry the token in ?token=. Same helper that
+  // createStreamAuthMiddleware uses internally.
+  server.getApp().use("/api/stream", streamTokenAdapter);
 
   // M8.2 read-only view routes — bv_u_ only. Direct-to-pool composers in
   // src/views/* return UI-shaped DTOs; no core repos touched on the read
