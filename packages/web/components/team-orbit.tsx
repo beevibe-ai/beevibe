@@ -2,15 +2,6 @@
 
 import Link from "next/link";
 import { Activity, Bot, Sparkles } from "lucide-react";
-import {
-  ReactFlow,
-  Handle,
-  Position,
-  type Node,
-  type Edge,
-  type NodeProps,
-} from "@xyflow/react";
-import "@xyflow/react/dist/base.css";
 import { Avatar } from "@/components/avatar";
 import { Skeleton } from "@/components/skeleton";
 import { useAgents } from "@/lib/hooks/use-agents";
@@ -75,12 +66,12 @@ const METRICS: Record<TeamOrbitSize, OrbitMetrics> = {
   },
 };
 
-interface OrbitPoint {
+interface Position {
   x: number;
   y: number;
 }
 
-function orbitPositions(count: number, radius: number): OrbitPoint[] {
+function orbitPositions(count: number, radius: number): Position[] {
   if (count === 0) return [];
   return Array.from({ length: count }, (_, i) => {
     const angle = (i / count) * 2 * Math.PI - Math.PI / 2;
@@ -155,42 +146,6 @@ export function SelfTeamOrbit({ size = "large" }: { size?: TeamOrbitSize }) {
   return <TeamOrbit agents={data} size={size} loading={isLoading} />;
 }
 
-// ── React Flow node + edge wiring ─────────────────────────────────────
-
-type AgentNodeData = {
-  agent: AgentDisplay;
-  size: TeamOrbitSize;
-  role: "team" | "ic";
-  onSelect?: AgentSelectHandler;
-};
-
-function AgentPillNode({ data }: NodeProps<Node<AgentNodeData, "agentPill">>) {
-  // Invisible handles so edges have anchor points. The pill itself stays
-  // the same — we just wrap it.
-  return (
-    <>
-      <Handle
-        type="target"
-        position={Position.Top}
-        className="!opacity-0 !pointer-events-none"
-      />
-      <Handle
-        type="source"
-        position={Position.Bottom}
-        className="!opacity-0 !pointer-events-none"
-      />
-      <Pill
-        agent={data.agent}
-        size={data.size}
-        role={data.role}
-        onSelect={data.onSelect}
-      />
-    </>
-  );
-}
-
-const nodeTypes = { agentPill: AgentPillNode } as const;
-
 function Graph({
   team,
   ics,
@@ -204,64 +159,72 @@ function Graph({
 }) {
   const m = METRICS[size];
   const positions = orbitPositions(ics.length, m.radius);
+  const showLabels = size === "large";
   const cx = m.size / 2;
   const cy = m.size / 2;
 
-  // React Flow positions nodes by their top-left corner; we approximate
-  // centering by subtracting half of the pill's max dimensions. The
-  // pill is variable-width, so this lands the visual center near (but
-  // not exactly on) the requested coordinate — close enough that edges
-  // (which connect via Handles) still read correctly.
-  const nodes: Node<AgentNodeData, "agentPill">[] = [
-    {
-      id: team.id,
-      type: "agentPill",
-      position: { x: cx - m.teamMaxWidth / 2, y: cy - m.teamHeight / 2 },
-      data: { agent: team, size, role: "team", onSelect },
-      draggable: false,
-      selectable: false,
-    },
-    ...ics.map((ic, i) => {
-      const pos = positions[i] ?? { x: 0, y: 0 };
-      return {
-        id: ic.id,
-        type: "agentPill" as const,
-        position: {
-          x: cx + pos.x - m.icMaxWidth / 2,
-          y: cy + pos.y - m.icHeight / 2,
-        },
-        data: { agent: ic, size, role: "ic" as const, onSelect },
-        draggable: false,
-        selectable: false,
-      };
-    }),
-  ];
-
-  const edges: Edge[] = ics.map((ic) => ({
-    id: `${team.id}->${ic.id}`,
-    source: team.id,
-    target: ic.id,
-    type: "straight",
-    style: { stroke: "hsl(var(--muted-foreground) / 0.4)", strokeWidth: 1.5 },
-  }));
-
   return (
-    <div className="mx-auto" style={{ width: m.size, height: m.size }}>
-      <ReactFlow
-        nodes={nodes}
-        edges={edges}
-        nodeTypes={nodeTypes}
-        fitView
-        fitViewOptions={{ padding: 0.1 }}
-        panOnDrag={false}
-        zoomOnScroll={false}
-        zoomOnPinch={false}
-        zoomOnDoubleClick={false}
-        nodesDraggable={false}
-        nodesConnectable={false}
-        elementsSelectable={false}
-        proOptions={{ hideAttribution: true }}
-      />
+    <div className="relative mx-auto" style={{ width: m.size, height: m.size }}>
+      <svg
+        className="absolute inset-0 pointer-events-none"
+        viewBox={`0 0 ${m.size} ${m.size}`}
+        aria-hidden
+      >
+        {positions.map((pos, i) => (
+          <line
+            key={i}
+            x1={cx}
+            y1={cy}
+            x2={cx + pos.x}
+            y2={cy + pos.y}
+            stroke="currentColor"
+            strokeWidth={1.25}
+            strokeLinecap="round"
+            className="text-border"
+          />
+        ))}
+      </svg>
+
+      {showLabels
+        ? positions.map((pos, i) => (
+            <span
+              key={i}
+              className="absolute z-[1] text-[9px] uppercase tracking-wider font-medium text-muted-foreground/80 bg-background px-1.5 py-0.5 rounded-full pointer-events-none select-none"
+              style={{
+                left: `calc(50% + ${pos.x / 2}px)`,
+                top: `calc(50% + ${pos.y / 2}px)`,
+                transform: "translate(-50%, -50%)",
+              }}
+            >
+              reports to
+            </span>
+          ))
+        : null}
+
+      <div
+        className="absolute z-[2]"
+        style={{ left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}
+      >
+        <Pill agent={team} size={size} role="team" onSelect={onSelect} />
+      </div>
+
+      {ics.map((ic, i) => {
+        const pos = positions[i];
+        if (!pos) return null;
+        return (
+          <div
+            key={ic.id}
+            className="absolute z-[2]"
+            style={{
+              left: `calc(50% + ${pos.x}px)`,
+              top: `calc(50% + ${pos.y}px)`,
+              transform: "translate(-50%, -50%)",
+            }}
+          >
+            <Pill agent={ic} size={size} role="ic" onSelect={onSelect} />
+          </div>
+        );
+      })}
     </div>
   );
 }
