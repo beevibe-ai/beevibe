@@ -5,6 +5,8 @@ import { ReactQueryDevtools } from "@tanstack/react-query-devtools";
 import { useState, type ReactNode } from "react";
 import { useLiveUpdates } from "@/lib/sse";
 
+const isDev = process.env.NODE_ENV !== "production";
+
 function LiveUpdates() {
   useLiveUpdates();
   return null;
@@ -28,7 +30,7 @@ export function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={client}>
       <LiveUpdates />
       {children}
-      <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" />
+      {isDev ? <ReactQueryDevtools initialIsOpen={false} buttonPosition="bottom-left" /> : null}
     </QueryClientProvider>
   );
 }
