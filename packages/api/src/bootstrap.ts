@@ -338,6 +338,18 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   });
   server.getApp().use(signinRouter);
 
+  // SSE auth adapter — must come before viewRouter's root-mounted
+  // authMiddleware, which would otherwise 401 EventSource requests that
+  // can only carry the token in ?token= (browsers can't set headers on
+  // EventSource). This middleware rewrites the request before any
+  // header-only auth middleware downstream sees it.
+  server.getApp().use("/api/stream", (req, _res, next) => {
+    if (!req.headers.authorization && typeof req.query.token === "string") {
+      req.headers.authorization = `Bearer ${req.query.token}`;
+    }
+    next();
+  });
+
   // M8.2 read-only view routes — bv_u_ only. Direct-to-pool composers in
   // src/views/* return UI-shaped DTOs; no core repos touched on the read
   // path so the agent-execution surface stays uncoupled from web display.
