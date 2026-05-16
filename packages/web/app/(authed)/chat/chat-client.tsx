@@ -247,7 +247,7 @@ function HeroEmptyChat({
           ) : (
             <Avatar initial="?" kind="team" size={56} />
           )}
-          <h1 className="mt-5 text-2xl font-semibold tracking-tight">
+          <h1 className="mt-3 text-2xl font-semibold tracking-tight">
             How can your team help you today?
           </h1>
         </div>
