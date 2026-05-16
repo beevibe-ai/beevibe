@@ -71,6 +71,11 @@ describe("useApproveTask", () => {
         queryKeys.tasks.detail("t_1"),
         queryKeys.tasks.all,
         queryKeys.dashboard.all,
+        // Approve transitions the task out of `review`, which is the
+        // entire population of the inbox's task_review branch. Without
+        // this invalidation the row lingers in the sidebar until the
+        // user navigates away and back.
+        queryKeys.inbox.all,
       ]),
     );
   });

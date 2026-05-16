@@ -15,6 +15,12 @@ function useTaskMutationInvalidations(taskId: string) {
     client.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId) });
     client.invalidateQueries({ queryKey: queryKeys.tasks.all });
     client.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+    // Approve/reject/revise transition tasks out of `review`/`blocked`,
+    // which is the entire population of the inbox's task branches.
+    // Without this, the row lingers in the sidebar until SSE delivers
+    // `task.updated` (already wired, but unreliable behind buffering
+    // proxies) or the user navigates and remounts.
+    client.invalidateQueries({ queryKey: queryKeys.inbox.all });
   };
 }
 
@@ -49,6 +55,9 @@ export function useCancelTask(taskId: string) {
     onSuccess: () => {
       client.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId) });
       client.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      // Cancelled tasks leave both the `review` and `blocked` inbox
+      // branches; refresh so the row disappears immediately.
+      client.invalidateQueries({ queryKey: queryKeys.inbox.all });
     },
   });
 }

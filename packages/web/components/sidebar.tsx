@@ -233,10 +233,11 @@ function renderModePanel(args: ModePanelArgs): React.ReactNode {
     return <RoomsSidebar activeRoomId={extractIdFromPath(pathname, "/rooms/")} />;
   }
   // /tasks rail surfaces the human-attention inbox: review +
-  // blocked + escalation rows with inline approve. It's NOT a
-  // duplicate of the kanban (the old TasksSidebar was). Different
-  // axis: kanban = "all work in flight," inbox = "things waiting
-  // on you specifically."
+  // blocked + escalation rows. It's NOT a duplicate of the kanban
+  // (the old TasksSidebar was). Different axis: kanban = "all work
+  // in flight," inbox = "things waiting on you specifically." Clicking
+  // a row opens the task detail (or escalation surface) where the
+  // human can review and decide — no inline approve.
   if (pathname.startsWith("/tasks")) {
     return (
       <TasksAttentionSidebar
