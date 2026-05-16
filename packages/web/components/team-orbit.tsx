@@ -178,9 +178,9 @@ function Graph({
             x2={cx + pos.x}
             y2={cy + pos.y}
             stroke="currentColor"
-            strokeWidth={1.25}
+            strokeWidth={1.5}
             strokeLinecap="round"
-            className="text-border"
+            className="text-muted-foreground/40"
           />
         ))}
       </svg>
