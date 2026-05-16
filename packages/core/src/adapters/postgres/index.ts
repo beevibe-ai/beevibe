@@ -34,4 +34,5 @@ export {
   PostgresRepoRunRepository,
   PostgresLearnedSkillRepository,
   PostgresSkillOutcomeRepository,
+  newSkillOutcomeId,
 } from "./repo-run-repo.js";

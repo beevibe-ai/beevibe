@@ -317,6 +317,9 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     dispatchService,
     hub: daemonHub,
     pool,
+    workProductRepo,
+    repoRunRepo,
+    skillOutcomeRepo,
   });
   server.getApp().use("/task", taskRouter);
 
