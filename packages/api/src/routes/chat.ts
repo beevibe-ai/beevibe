@@ -107,6 +107,7 @@ export interface ChatSession {
   status: string;
   error?: string;
   created_at: Date;
+  runtime_id?: string;
 }
 
 export interface ConversationChain {
@@ -271,6 +272,23 @@ interface ChatTurnAgent {
   id: string;
   name: string;
   hierarchy_level: string;
+}
+
+async function resolvePinnedRuntimeCli(
+  deps: Pick<ChatRoutesDeps, "runtimeRepo">,
+  sessions: readonly ChatSession[],
+): Promise<KnownCli | undefined> {
+  // Walk newest → oldest so we surface the most recent claim. Legacy
+  // sessions with no runtime_id are skipped; if none in the chain ever
+  // ran on a runtime, the conversation isn't pinned.
+  for (let i = sessions.length - 1; i >= 0; i -= 1) {
+    const runtimeId = sessions[i]?.runtime_id;
+    if (!runtimeId) continue;
+    const runtime = await deps.runtimeRepo.findById(runtimeId);
+    if (runtime && isKnownCli(runtime.cli)) return runtime.cli;
+    return undefined;
+  }
+  return undefined;
 }
 
 async function resolveRuntimeOverride(
@@ -534,6 +552,10 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
     // present but the agent reply slot is empty until SSE auto-recovery
     // (PR #116) lands the response.
     const inFlightSessionId = isInFlightSessionStatus(latest.status) ? latest.id : undefined;
+    // Surface the CLI this conversation is pinned to so the composer can
+    // lock its runtime picker — otherwise the user can pick a different
+    // CLI mid-chat and the next send 409s.
+    const pinnedRuntimeCli = await resolvePinnedRuntimeCli(deps, chain.sessions);
 
     res.json({
       ok: true,
@@ -542,6 +564,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
       prior_session_id: latest.id,
       conversation_id: chain.head_id,
       in_flight_session_id: inFlightSessionId,
+      pinned_runtime_cli: pinnedRuntimeCli,
     });
   });
 

@@ -275,5 +275,11 @@ export function useChat(opts: UseChatOptions = {}) {
     pendingSessionId: inFlightSessionId,
     /** History query state, for showing a "loading prior conversation…" indicator. */
     isLoadingHistory: history.isLoading,
+    /**
+     * CLI this conversation is pinned to (set after the first claimed
+     * turn). The composer locks its runtime picker to this value so the
+     * user can't pick a different CLI and get a 409 on send.
+     */
+    pinnedRuntimeCli: history.data?.pinned_runtime_cli,
   };
 }

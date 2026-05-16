@@ -302,6 +302,13 @@ export interface ChatHistoryResponse {
    * transcript.
    */
   in_flight_session_id?: string;
+  /**
+   * CLI this conversation is pinned to (first turn's runtime cli).
+   * Absent for chains that never claimed a runtime (legacy sessions) or
+   * for empty conversations. The composer uses this to lock the runtime
+   * picker — switching CLIs mid-chat would 409 server-side.
+   */
+  pinned_runtime_cli?: KnownCli;
 }
 
 export interface ChatConversationSummary {
