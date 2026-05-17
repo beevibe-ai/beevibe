@@ -6,11 +6,16 @@ import type {
   RuntimeContext,
   RuntimeHealth,
   RuntimeResult,
-  RuntimeStep,
   RuntimeWorkspaceContext,
   Workspace,
 } from "../../ports/runtime.js";
 import { runCliProcess } from "../claude-code/spawn.js";
+import {
+  extractOpenCodeStepEvents,
+  parseOpenCodeEventLine,
+  parseOpenCodeEvents,
+  type OpenCodeEvent,
+} from "./stream-json.js";
 
 export interface OpenCodeRuntimeConfig {
   /** Override CLI command (defaults to "opencode" on PATH). */
@@ -19,8 +24,6 @@ export interface OpenCodeRuntimeConfig {
   model?: string;
 }
 
-type JsonRecord = Record<string, unknown>;
-
 /**
  * OpenCode CLI subprocess runtime.
  *
@@ -28,6 +31,15 @@ type JsonRecord = Record<string, unknown>;
  * plumbing to OpenCode itself, so Beevibe can support OpenRouter, Ollama,
  * Groq, Cerebras, LM Studio, vLLM, and other OpenAI-compatible endpoints
  * through one CLI adapter.
+ *
+ * Per-event parsing lives in `./stream-json.ts` against the wrapper shape
+ * `emit()` produces in opencode's `run.ts` (`{ type, timestamp, sessionID,
+ * ...payload }`). The runtime itself just owns process lifecycle, MCP
+ * wiring, and workspace handoff.
+ *
+ * Provider auth env vars (OPENROUTER_API_KEY, OPENAI_API_KEY, etc.) are
+ * intentionally NOT stripped — opencode depends on them to know which
+ * provider to route to.
  */
 export class OpenCodeRuntime implements AgentRuntime {
   readonly type = "opencode";
@@ -49,14 +61,16 @@ export class OpenCodeRuntime implements AgentRuntime {
     const env: Record<string, string | undefined> = { ...process.env };
     if (context.env) Object.assign(env, context.env);
 
-    const events: JsonRecord[] = [];
+    const events: OpenCodeEvent[] = [];
     let pending = "";
     const handleLine = (line: string): void => {
-      const evt = parseJsonLine(line);
+      const evt = parseOpenCodeEventLine(line);
       if (!evt) return;
       events.push(evt);
-      const step = eventToStep(evt);
-      if (step) context.onStep?.(step);
+      if (!context.onStep) return;
+      for (const step of extractOpenCodeStepEvents(evt)) {
+        context.onStep(step);
+      }
     };
 
     const result = await runCliProcess({
@@ -95,12 +109,7 @@ export class OpenCodeRuntime implements AgentRuntime {
       };
     }
 
-    const parsed = parseOpenCodeEvents(events, result.stdout, result.exitCode);
-    // Mirror ClaudeCodeRuntime: pass exit_code through (daemon persists it
-    // to session.exit_code; null vs. a real code distinguishes ENOENT-style
-    // spawn failures from "CLI ran and exited N"). Surface stderr tail on
-    // failure so the daemon's /runtime/done payload has something
-    // actionable — without it the user only sees "OpenCode failed."
+    const parsed = parseOpenCodeEvents(events, result.exitCode);
     const STDERR_TAIL_BYTES = 4096;
     const stderrTail =
       parsed.status === "failed" && result.stderr
@@ -183,145 +192,4 @@ export function buildOpenCodeConfig(apiKey: string, mcpServerUrl: string): strin
       2,
     ) + "\n"
   );
-}
-
-function parseJsonLine(line: string): JsonRecord | undefined {
-  const trimmed = line.trim();
-  if (!trimmed) return undefined;
-  try {
-    const value = JSON.parse(trimmed);
-    return isRecord(value) ? value : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-function eventToStep(evt: JsonRecord): RuntimeStep | undefined {
-  const type = String(evt.type ?? evt.event ?? evt.kind ?? "").toLowerCase();
-  const tool = pickString(evt, ["tool", "tool_name", "name"]);
-  if (type.includes("tool") || tool) {
-    return {
-      kind: type.includes("result") ? "tool_result" : "tool_call",
-      tool,
-      description: summarizeTool(evt),
-      timestamp: new Date().toISOString(),
-    };
-  }
-  const text = pickText(evt);
-  if (text && (type.includes("message") || type.includes("assistant") || type.includes("text"))) {
-    return {
-      kind: "agent",
-      description: text,
-      timestamp: new Date().toISOString(),
-    };
-  }
-  return undefined;
-}
-
-function parseOpenCodeEvents(
-  events: JsonRecord[],
-  stdout: string,
-  exitCode: number | null,
-): Omit<RuntimeResult, "process_pid" | "process_group_id"> {
-  const assistantText = events.map(pickText).filter(Boolean).join("\n").trim();
-  const final = [...events].reverse().find((evt) => {
-    const type = String(evt.type ?? evt.event ?? evt.kind ?? "").toLowerCase();
-    return type.includes("result") || type.includes("done") || type.includes("complete");
-  });
-  const output = (final && pickText(final)) || assistantText || fallbackText(stdout);
-  return {
-    status: exitCode === 0 ? "completed" : "failed",
-    output: output || (exitCode === 0 ? "OpenCode completed." : "OpenCode failed."),
-    transcript: stdout || undefined,
-    usage: parseUsage(events),
-    cli_session_id: parseSessionId(events),
-  };
-}
-
-function parseUsage(events: JsonRecord[]): RuntimeResult["usage"] {
-  for (const evt of [...events].reverse()) {
-    const usage = evt.usage;
-    if (!isRecord(usage)) continue;
-    const input = pickNumber(usage, ["input_tokens", "inputTokens", "prompt_tokens", "promptTokens"]);
-    const output = pickNumber(usage, ["output_tokens", "outputTokens", "completion_tokens", "completionTokens"]);
-    const cost = pickNumber(usage, ["cost_usd", "costUSD", "cost"]);
-    const model = pickString(usage, ["model"]) ?? pickString(evt, ["model"]);
-    if (input === undefined && output === undefined && cost === undefined && model === undefined) {
-      continue;
-    }
-    return {
-      input_tokens: input ?? 0,
-      output_tokens: output ?? 0,
-      cache_creation_input_tokens: pickNumber(usage, ["cache_creation_input_tokens"]) ?? 0,
-      cache_read_input_tokens: pickNumber(usage, ["cache_read_input_tokens"]) ?? 0,
-      cost_usd: cost,
-      model,
-    };
-  }
-  const model = [...events].reverse().map((evt) => pickString(evt, ["model"])).find(Boolean);
-  return model ? { input_tokens: 0, output_tokens: 0, model } : undefined;
-}
-
-function parseSessionId(events: JsonRecord[]): string | undefined {
-  for (const evt of [...events].reverse()) {
-    const id =
-      pickString(evt, ["session_id", "sessionID", "sessionId"]) ??
-      (isRecord(evt.session) ? pickString(evt.session, ["id", "session_id"]) : undefined);
-    if (id) return id;
-  }
-  return undefined;
-}
-
-function pickText(evt: JsonRecord): string {
-  const direct = pickString(evt, ["output", "text", "content", "message"]);
-  if (direct) return direct;
-  if (isRecord(evt.message)) {
-    return pickString(evt.message, ["content", "text"]) ?? "";
-  }
-  return "";
-}
-
-function summarizeTool(evt: JsonRecord): string {
-  const input = evt.input ?? evt.arguments ?? evt.args ?? evt.params;
-  if (typeof input === "string") return input.slice(0, 300);
-  if (isRecord(input)) {
-    const path = pickString(input, ["file_path", "path", "file"]);
-    const command = pickString(input, ["command", "cmd"]);
-    if (path) return path;
-    if (command) return command;
-    return JSON.stringify(input).slice(0, 300);
-  }
-  return pickText(evt) || "tool call";
-}
-
-function fallbackText(stdout: string): string {
-  return stdout
-    .split("\n")
-    .map((line) => {
-      const parsed = parseJsonLine(line);
-      return parsed ? pickText(parsed) : line;
-    })
-    .filter(Boolean)
-    .join("\n")
-    .trim();
-}
-
-function pickString(obj: JsonRecord, keys: string[]): string | undefined {
-  for (const key of keys) {
-    const value = obj[key];
-    if (typeof value === "string" && value.length > 0) return value;
-  }
-  return undefined;
-}
-
-function pickNumber(obj: JsonRecord, keys: string[]): number | undefined {
-  for (const key of keys) {
-    const value = obj[key];
-    if (typeof value === "number" && Number.isFinite(value)) return value;
-  }
-  return undefined;
-}
-
-function isRecord(value: unknown): value is JsonRecord {
-  return !!value && typeof value === "object" && !Array.isArray(value);
 }
