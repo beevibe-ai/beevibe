@@ -77,6 +77,15 @@ export class CodexRuntime implements AgentRuntime {
         `mcp_servers.beevibe.url=${tomlString(withBeevibeSession(prepared.mcpServerUrl, sid))}`,
         "-c",
         `mcp_servers.beevibe.bearer_token_env_var=${tomlString("BEEVIBE_AGENT_API_KEY")}`,
+        // Auto-approve every beevibe MCP tool. `--ask-for-approval never`
+        // + `--sandbox workspace-write` does NOT bypass codex's MCP
+        // approval flow — codex auto-approves MCP only when sandbox is
+        // `danger-full-access`. In headless `exec` mode there's no TTY to
+        // answer the elicitation, so the prompt resolves to "cancel" and
+        // every tool call fails with "user cancelled MCP tool call".
+        // Workspace-write keeps filesystem safety; this opens MCP only.
+        "-c",
+        `mcp_servers.beevibe.default_tools_approval_mode=${tomlString("approve")}`,
       );
     }
 

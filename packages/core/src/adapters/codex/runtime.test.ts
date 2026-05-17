@@ -150,6 +150,12 @@ describe("CodexRuntime.execute", () => {
     expect(lastOptions!.args).toContain(
       'mcp_servers.beevibe.bearer_token_env_var="BEEVIBE_AGENT_API_KEY"',
     );
+    // Regression: codex's --ask-for-approval never doesn't extend to MCP
+    // tool calls; without this override every tool call fails with
+    // "user cancelled MCP tool call" in headless exec mode.
+    expect(lastOptions!.args).toContain(
+      'mcp_servers.beevibe.default_tools_approval_mode="approve"',
+    );
   });
 
   it("strips OPENAI_API_KEY / OPENAI_AUTH_TOKEN from the spawned env to preserve subscription auth", async () => {
