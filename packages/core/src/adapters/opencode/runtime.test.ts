@@ -143,6 +143,31 @@ describe("OpenCodeRuntime.execute", () => {
     const result = await new OpenCodeRuntime().execute(ctx());
     expect(result.status).toBe("cancelled");
   });
+
+  it("passes exit_code through so the daemon can persist real spawn outcome", async () => {
+    mockRunCli({ ...MOCK_OK, exitCode: 7, stdout: "" });
+    const result = await new OpenCodeRuntime().execute(ctx());
+    expect(result.exit_code).toBe(7);
+  });
+
+  it("surfaces stderr tail on failure so /runtime/done has something actionable", async () => {
+    mockRunCli({
+      ...MOCK_OK,
+      exitCode: 1,
+      stdout: "",
+      stderr: "Error: provider auth missing\n",
+    });
+    const result = await new OpenCodeRuntime().execute(ctx());
+    expect(result.status).toBe("failed");
+    expect(result.stderr).toBe("Error: provider auth missing\n");
+  });
+
+  it("does not surface stderr on success — only failures populate it", async () => {
+    mockRunCli({ ...MOCK_OK, stderr: "WARN harmless\n" });
+    const result = await new OpenCodeRuntime().execute(ctx());
+    expect(result.status).toBe("completed");
+    expect(result.stderr).toBeUndefined();
+  });
 });
 
 describe("OpenCodeRuntime.healthCheck", () => {

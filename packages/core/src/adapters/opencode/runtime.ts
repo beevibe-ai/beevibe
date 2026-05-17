@@ -96,10 +96,22 @@ export class OpenCodeRuntime implements AgentRuntime {
     }
 
     const parsed = parseOpenCodeEvents(events, result.stdout, result.exitCode);
+    // Mirror ClaudeCodeRuntime: pass exit_code through (daemon persists it
+    // to session.exit_code; null vs. a real code distinguishes ENOENT-style
+    // spawn failures from "CLI ran and exited N"). Surface stderr tail on
+    // failure so the daemon's /runtime/done payload has something
+    // actionable — without it the user only sees "OpenCode failed."
+    const STDERR_TAIL_BYTES = 4096;
+    const stderrTail =
+      parsed.status === "failed" && result.stderr
+        ? result.stderr.slice(-STDERR_TAIL_BYTES)
+        : undefined;
     return {
       ...parsed,
       process_pid: result.pid ?? undefined,
       process_group_id: result.process_group_id ?? undefined,
+      exit_code: result.exitCode,
+      ...(stderrTail ? { stderr: stderrTail } : {}),
     };
   }
 

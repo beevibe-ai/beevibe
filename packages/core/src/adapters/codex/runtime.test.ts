@@ -212,6 +212,36 @@ describe("CodexRuntime.execute", () => {
     expect(result.output).toBe("hello world");
   });
 
+  it("strips OPENAI_API_KEY / OPENAI_AUTH_TOKEN from the spawned env to preserve subscription auth", async () => {
+    mockRunCli();
+    const prior = {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      OPENAI_AUTH_TOKEN: process.env.OPENAI_AUTH_TOKEN,
+    };
+    process.env.OPENAI_API_KEY = "sk-leaked";
+    process.env.OPENAI_AUTH_TOKEN = "token-leaked";
+    try {
+      await new CodexRuntime().execute(ctx());
+    } finally {
+      if (prior.OPENAI_API_KEY === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = prior.OPENAI_API_KEY;
+      if (prior.OPENAI_AUTH_TOKEN === undefined) delete process.env.OPENAI_AUTH_TOKEN;
+      else process.env.OPENAI_AUTH_TOKEN = prior.OPENAI_AUTH_TOKEN;
+    }
+    expect(lastOptions!.env!.OPENAI_API_KEY).toBeUndefined();
+    expect(lastOptions!.env!.OPENAI_AUTH_TOKEN).toBeUndefined();
+  });
+
+  it("warns when stdout was truncated at the spawn cap", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockRunCli({ ...MOCK_OK, truncated: true });
+    await new CodexRuntime().execute(ctx());
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("stdout truncated at 4MB"),
+    );
+    warnSpy.mockRestore();
+  });
+
   it("prefers structured Codex errors over noisy stderr", async () => {
     runCliSpy.mockImplementation(async (options) => {
       lastOptions = options;

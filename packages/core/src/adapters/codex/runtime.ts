@@ -19,6 +19,16 @@ export interface CodexRuntimeConfig {
   model?: string;
 }
 
+/**
+ * OpenAI auth env vars stripped from the spawned Codex subprocess so it
+ * authenticates via its own `~/.codex/` credentials (ChatGPT subscription
+ * when the user has run `codex login`). Mirrors `ANTHROPIC_AUTH_VARS` in
+ * ClaudeCodeRuntime: without this, an `OPENAI_API_KEY` set in the
+ * daemon's shell (or leaked from a stray `.env`) silently overrides
+ * the subscription auth the user had configured and forces API-key billing.
+ */
+const OPENAI_AUTH_VARS = ["OPENAI_API_KEY", "OPENAI_AUTH_TOKEN"] as const;
+
 type JsonRecord = Record<string, unknown>;
 
 interface PreparedWorkspace {
@@ -77,6 +87,7 @@ export class CodexRuntime implements AgentRuntime {
       : [...globalArgs, "exec", ...execArgs, composePrompt(context)];
 
     const env: Record<string, string | undefined> = { ...process.env };
+    for (const key of OPENAI_AUTH_VARS) delete env[key];
     if (context.env) Object.assign(env, context.env);
     if (prepared) env.BEEVIBE_AGENT_API_KEY = prepared.agentApiKey;
 
@@ -110,6 +121,12 @@ export class CodexRuntime implements AgentRuntime {
       },
     });
     if (pending) handleLine(pending);
+
+    if (result.truncated) {
+      console.warn(
+        "[CodexRuntime] stdout truncated at 4MB — result parsing may be incomplete",
+      );
+    }
 
     if (result.aborted) {
       return {
