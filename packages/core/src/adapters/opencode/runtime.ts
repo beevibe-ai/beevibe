@@ -52,6 +52,14 @@ export class OpenCodeRuntime implements AgentRuntime {
       "--format",
       "json",
       "--dangerously-skip-permissions",
+      // `--dir` tells opencode which directory to treat as the project
+      // root for config discovery (and file ops). Setting subprocess cwd
+      // alone is NOT enough — `opencode run` only loads the workspace
+      // `opencode.json` (where our MCP server config lives) when --dir
+      // points at it explicitly. Without this, opencode runs with zero
+      // MCP servers and the agent has no beevibe tools at all.
+      "--dir",
+      context.workspace.path,
     ];
     const model = context.model ?? this.config.model;
     if (model) args.push("--model", model);

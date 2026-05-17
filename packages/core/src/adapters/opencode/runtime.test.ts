@@ -91,12 +91,25 @@ describe("OpenCodeRuntime.execute", () => {
     mockRunCli();
     await new OpenCodeRuntime().execute(ctx({ workspace: { path: "/sandbox/agent_op" } }));
     expect(lastOptions?.cwd).toBe("/sandbox/agent_op");
-    expect(lastOptions?.args?.slice(0, 4)).toEqual([
+    expect(lastOptions?.args?.slice(0, 6)).toEqual([
       "run",
       "--format",
       "json",
       "--dangerously-skip-permissions",
+      "--dir",
+      "/sandbox/agent_op",
     ]);
+  });
+
+  it("passes --dir to opencode so workspace opencode.json is actually loaded", async () => {
+    // Regression: without --dir, opencode run ignores the workspace
+    // opencode.json (the subprocess cwd alone doesn't drive config
+    // discovery), so the agent never sees the beevibe MCP server.
+    mockRunCli();
+    await new OpenCodeRuntime().execute(ctx({ workspace: { path: "/agents/foo" } }));
+    const dirIdx = lastOptions!.args!.indexOf("--dir");
+    expect(dirIdx).toBeGreaterThan(-1);
+    expect(lastOptions!.args![dirIdx + 1]).toBe("/agents/foo");
   });
 
   it("passes context.model as --model in provider/model form", async () => {
