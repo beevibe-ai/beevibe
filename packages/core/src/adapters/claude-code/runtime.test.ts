@@ -57,12 +57,13 @@ afterEach(() => {
 });
 
 describe("ClaudeCodeRuntime.execute", () => {
-  it("sets cwd to workspace.path and derives mcpConfigPath inside it", async () => {
+  it("sets cwd to homedir and derives mcpConfigPath from workspace.path", async () => {
     mockRunCli();
     const runtime = new ClaudeCodeRuntime();
     await runtime.execute(ctx({ workspace: { path: "/sandbox/agent_xyz" } }));
 
-    expect(lastOptions?.cwd).toBe("/sandbox/agent_xyz");
+    const { homedir } = await import("node:os");
+    expect(lastOptions?.cwd).toBe(homedir());
     const mcpIdx = lastOptions!.args!.indexOf("--mcp-config");
     expect(mcpIdx).toBeGreaterThan(-1);
     expect(lastOptions!.args![mcpIdx + 1]).toBe("/sandbox/agent_xyz/mcp-config.json");
