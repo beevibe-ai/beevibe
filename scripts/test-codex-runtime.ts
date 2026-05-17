@@ -194,7 +194,7 @@ async function startEchoMcpServer(): Promise<McpServerHandle> {
       method: req.method ?? "?",
       url: req.url ?? "?",
       auth: auth.slice(0, 30) + "…",
-      bodyHead: bodyStr.slice(0, 200),
+      bodyHead: bodyStr.slice(0, 1200),
     });
 
     const sid = req.headers["mcp-session-id"];
@@ -425,6 +425,149 @@ async function test3Abort(): Promise<void> {
   }
 }
 
+async function test4PerSessionSid(): Promise<void> {
+  banner("Test 4: per-session sid isolation across concurrent spawns");
+  // Two codex spawns running concurrently against the SAME echo server,
+  // each with its own session id. The MCP URL is built per-spawn with
+  // `?beevibe_session=<sid>` baked in, so the server should see each
+  // tool call attributed to the correct sid — no cross-talk.
+  const wsA = mkWorkspace();
+  const wsB = mkWorkspace();
+  const sidA = `sess_${randomUUID().slice(0, 8)}`;
+  const sidB = `sess_${randomUUID().slice(0, 8)}`;
+  let mcp: McpServerHandle | undefined;
+  try {
+    mcp = await startEchoMcpServer();
+    info(`mcp echo server: ${mcp.url}`);
+    info(`spawn A: ws=${wsA} sid=${sidA}`);
+    info(`spawn B: ws=${wsB} sid=${sidB}`);
+
+    const rtA = new CodexRuntime({ model: TEST_MODEL });
+    rtA.prepareWorkspace({
+      workspace: { path: wsA },
+      agentApiKey: "bv_a_token_A",
+      mcpServerUrl: mcp.url,
+    });
+    const rtB = new CodexRuntime({ model: TEST_MODEL });
+    rtB.prepareWorkspace({
+      workspace: { path: wsB },
+      agentApiKey: "bv_a_token_B",
+      mcpServerUrl: mcp.url,
+    });
+
+    const t0 = Date.now();
+    const [resultA, resultB] = await Promise.all([
+      rtA.execute({
+        intent:
+          'Use the `echo` MCP tool with message="from-A". Then reply verbatim with whatever the tool returned.',
+        workspace: { path: wsA },
+        system_prompt_append: "",
+        env: { BEEVIBE_SESSION_ID: sidA, BEEVIBE_AGENT_ID: "agent_A" },
+      }),
+      rtB.execute({
+        intent:
+          'Use the `echo` MCP tool with message="from-B". Then reply verbatim with whatever the tool returned.',
+        workspace: { path: wsB },
+        system_prompt_append: "",
+        env: { BEEVIBE_SESSION_ID: sidB, BEEVIBE_AGENT_ID: "agent_B" },
+      }),
+    ]);
+    const elapsed = Date.now() - t0;
+
+    info(`elapsed: ${elapsed}ms`);
+    info(`A status=${resultA.status} output=${JSON.stringify(resultA.output)}`);
+    info(`B status=${resultB.status} output=${JSON.stringify(resultB.output)}`);
+
+    // Server-side: filter the requestLog to just the tools/call POSTs and
+    // pair them with their inbound URL + bearer.
+    const toolCallRequests = mcp.requestLog.filter((r) =>
+      r.bodyHead?.includes('"method":"tools/call"'),
+    );
+    info(`server saw ${toolCallRequests.length} tools/call POSTs:`);
+    for (const r of toolCallRequests) {
+      info(`  url=${r.url} auth=${r.auth} body=${r.bodyHead?.slice(0, 100)}…`);
+    }
+
+    if (resultA.status !== "completed" || resultB.status !== "completed") {
+      fail(
+        `expected both completed; A=${resultA.status} stderr=${resultA.stderr?.slice(-200)} B=${resultB.status} stderr=${resultB.stderr?.slice(-200)}`,
+      );
+      failures++;
+      return;
+    }
+    ok("both spawns completed");
+
+    if (toolCallRequests.length !== 2) {
+      fail(`expected exactly 2 tools/call requests, got ${toolCallRequests.length}`);
+      failures++;
+      return;
+    }
+    ok("server received exactly 2 tools/call POSTs");
+
+    // The "from-A" call must arrive on the URL stamped with sidA + bearer
+    // bv_a_token_A; the "from-B" call must arrive on sidB + bv_a_token_B.
+    // Decouple by the inbound URL since that's where sid lives.
+    const callA = toolCallRequests.find((r) => r.url.includes(`beevibe_session=${sidA}`));
+    const callB = toolCallRequests.find((r) => r.url.includes(`beevibe_session=${sidB}`));
+
+    // The codex output ROUND-TRIP is the cleanest proof the args reached
+    // the server unmolested: the model replied with the echo tool's
+    // return value verbatim, so message="from-A" must have crossed the
+    // wire as the args (otherwise the server would have echoed "from-B"
+    // or nothing). The bodyHead check below is a redundant sanity gate.
+    if (!callA) {
+      fail(`no tools/call carried sid=${sidA} — spawn A's sid was lost or swapped`);
+      failures++;
+    } else {
+      ok(`spawn A's tools/call carried sid=${sidA}`);
+      if (!callA.auth?.includes("bv_a_token_A")) {
+        fail(`spawn A's tools/call had wrong bearer (auth=${callA.auth})`);
+        failures++;
+      } else {
+        ok("spawn A's bearer token matched (no env leak across spawns)");
+      }
+      if (!resultA.output?.includes("from-A")) {
+        fail(`spawn A's output didn't round-trip "from-A": ${resultA.output}`);
+        failures++;
+      } else {
+        ok('spawn A round-tripped "from-A" through echo tool');
+      }
+    }
+
+    if (!callB) {
+      fail(`no tools/call carried sid=${sidB} — spawn B's sid was lost or swapped`);
+      failures++;
+    } else {
+      ok(`spawn B's tools/call carried sid=${sidB}`);
+      if (!callB.auth?.includes("bv_a_token_B")) {
+        fail(`spawn B's tools/call had wrong bearer (auth=${callB.auth})`);
+        failures++;
+      } else {
+        ok("spawn B's bearer token matched (no env leak across spawns)");
+      }
+      if (!resultB.output?.includes("from-B")) {
+        fail(`spawn B's output didn't round-trip "from-B": ${resultB.output}`);
+        failures++;
+      } else {
+        ok('spawn B round-tripped "from-B" through echo tool');
+      }
+    }
+
+    // Cross-talk check: A's output must NOT contain "from-B" (would mean
+    // the model saw the wrong tool result), and vice versa.
+    if (resultA.output?.includes("from-B") || resultB.output?.includes("from-A")) {
+      fail("cross-talk detected — outputs were swapped between spawns");
+      failures++;
+    } else {
+      ok("no cross-talk between spawns — each output came from its own tool round-trip");
+    }
+  } finally {
+    if (mcp) await mcp.close().catch(() => undefined);
+    cleanup(wsA);
+    cleanup(wsB);
+  }
+}
+
 async function main(): Promise<void> {
   console.log(`${BOLD}CodexRuntime end-to-end test${RESET}`);
   console.log(`${DIM}Requires codex CLI on PATH + \`codex login\` already run.${RESET}`);
@@ -445,6 +588,12 @@ async function main(): Promise<void> {
     await test3Abort();
   } catch (err) {
     fail(`test 3 threw: ${err instanceof Error ? err.stack : String(err)}`);
+    failures++;
+  }
+  try {
+    await test4PerSessionSid();
+  } catch (err) {
+    fail(`test 4 threw: ${err instanceof Error ? err.stack : String(err)}`);
     failures++;
   }
 
