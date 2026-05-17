@@ -1,4 +1,4 @@
-import { tmpdir } from "node:os";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   AgentRuntime,
@@ -69,8 +69,8 @@ export class ClaudeCodeRuntime implements AgentRuntime {
   constructor(private config: ClaudeCodeRuntimeConfig = {}) {}
 
   async execute(context: RuntimeContext): Promise<RuntimeResult> {
-    const cwd = context.workspace.path;
-    const mcpConfigPath = join(cwd, "mcp-config.json");
+    const cwd = homedir();
+    const mcpConfigPath = join(context.workspace.path, "mcp-config.json");
 
     const args = [
       "--print",
@@ -88,6 +88,9 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     const maxTurns = context.max_turns ?? this.config.maxTurns;
     if (maxTurns) args.push("--max-turns", String(maxTurns));
     if (context.resume_session_id) args.push("--resume", context.resume_session_id);
+    if (context.disallowed_tools && context.disallowed_tools.length > 0) {
+      args.push("--disallowedTools", context.disallowed_tools.join(","));
+    }
     if (context.system_prompt_append.length > 0) {
       args.push("--append-system-prompt", context.system_prompt_append);
     }

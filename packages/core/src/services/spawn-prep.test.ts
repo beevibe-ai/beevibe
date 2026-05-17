@@ -7,8 +7,12 @@ import {
 } from "./spawn-prep.js";
 
 describe("teamAgentRoutingDirective", () => {
-  it("returns empty string when there are no specialists", () => {
-    expect(teamAgentRoutingDirective([])).toBe("");
+  it("still fires with no specialists — tells agent to spawn one, not handle work itself", () => {
+    const out = teamAgentRoutingDirective([]);
+    expect(out).toContain("team_agent_routing");
+    expect(out).toContain("TEAM AGENT");
+    expect(out.toLowerCase()).toContain("no specialists");
+    expect(out.toLowerCase()).toContain("do not handle");
   });
 
   it("includes each specialist name as a list item", () => {
@@ -22,7 +26,6 @@ describe("teamAgentRoutingDirective", () => {
     const out = teamAgentRoutingDirective(["frontend"]);
     expect(out).toContain("TEAM AGENT");
     expect(out).toContain("ROUTE");
-    // The "delegate-don't-absorb" anti-pattern is named explicitly.
     expect(out.toLowerCase()).toContain("absorb");
   });
 
@@ -49,12 +52,12 @@ describe("composeSystemPromptAppend with extra", () => {
     );
   });
 
-  it("omits the team-routing block entirely when specialists is empty", () => {
+  it("includes team-routing block even when specialists is empty", () => {
     const out = composeSystemPromptAppend(undefined, "<core_memory/>", {
       sessionKind: "chat",
       extra: teamAgentRoutingDirective([]),
     });
-    expect(out).not.toContain("team_agent_routing");
+    expect(out).toContain("team_agent_routing");
   });
 });
 
@@ -102,9 +105,13 @@ describe("composeSystemPromptAppend lifecycle branching", () => {
   });
 
   it("chat variant still allows create_task for team/org tier", () => {
-    // Discrete work surfaced mid-chat should still be promote-able to
-    // a tracked task — keep the affordance explicit.
     expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT).toContain("create_task");
+  });
+
+  it("chat variant does not tell team agents to assign work to themselves", () => {
+    // The 'or to yourself when it is your specialty' clause was a loophole
+    // that caused team agents to handle specialist work directly.
+    expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT).not.toContain("to yourself");
   });
 
   it("both variants share the outer <beevibe_lifecycle> tag so downstream parsing is stable", () => {

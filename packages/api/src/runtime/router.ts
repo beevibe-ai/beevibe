@@ -427,12 +427,12 @@ async function composeDispatchPayload(
       ? deps.agentRepo.findSubordinates(agent.id)
       : Promise.resolve([]),
   ]);
-  // Team-agent routing only fires post-onboarding (the onboarding
-  // directives drive the build-your-team conversation themselves) and
-  // only when there's at least one specialist to route to.
+  // Team-agent routing fires post-onboarding for all team chat sessions —
+  // whether or not there are specialists yet. With no specialists the
+  // directive tells the agent to spawn one rather than do the work itself.
   const isOnboarding = isChat && !owner?.onboarding_completed_at;
   const teamRouting =
-    isTeamChat && !isOnboarding && subordinates.length > 0
+    isTeamChat && !isOnboarding
       ? teamAgentRoutingDirective(subordinates.map((s) => s.name))
       : "";
 
@@ -468,6 +468,7 @@ async function composeDispatchPayload(
     resume_session_id: priorSession?.cli_session_id,
     model: agent.runtime_config.model,
     max_turns: agent.runtime_config.max_turns,
+    disallowed_tools: isTeamChat ? ["Agent", "Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "NotebookRead", "NotebookEdit", "WebSearch", "WebFetch"] : undefined,
     env: { BEEVIBE_SESSION_ID: session.id, BEEVIBE_AGENT_ID: agent.id },
     type: session.type,
     mcp_server_url: deps.mcpServerUrl,
