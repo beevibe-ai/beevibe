@@ -113,8 +113,27 @@ echo "  Scheduler:     health on http://localhost:${BEEVIBE_SCHEDULER_HEALTH_POR
 echo "  Workspace:     ${WORKSPACE_ROOT:-~/.beevibe/workspaces}"
 echo ""
 
+# ─────────────────── kill stale processes ───────────────────
+# Previous pnpm dev runs leave tsx/node children alive if the terminal
+# was closed rather than Ctrl+C'd. Kill them so the new run gets clean
+# ports and reloads the latest @beevibe/core dist.
+echo "==> Killing any stale beevibe processes..."
+pkill -f "beevibe/(packages|scripts)" 2>/dev/null || true
+pkill -f "daemon/src/main" 2>/dev/null || true
+sleep 1
+
 # Kill all children on exit (Ctrl+C, error, normal end).
 trap 'kill 0' EXIT
+
+# ─────────────────── core watch (compile-on-save) ───────────────────
+# @beevibe/core resolves to dist/ — changes to src/ are invisible to
+# the API and daemon until tsc recompiles. Run tsc --watch in the
+# background so edits land in dist/ automatically.
+pnpm --filter @beevibe/core dev 2>&1 \
+  | sed -u 's/^/[core] /' &
+
+# Give tsc one initial compile pass before starting consumers.
+sleep 3
 
 # Prefix each service's logs so a single terminal stays readable.
 pnpm --filter @beevibe/api dev 2>&1 \
