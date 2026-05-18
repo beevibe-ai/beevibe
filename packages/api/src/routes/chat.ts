@@ -556,6 +556,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         intent: messageRaw,
         reason,
         type: "chat",
+        sessionIdOverride: callerSessionId,
       });
     } catch (err) {
       rateOutcome.release();
