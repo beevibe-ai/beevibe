@@ -66,7 +66,7 @@ export function Transcript({
                       </span>
                     ) : null}
                   </div>
-                  <p className="text-sm leading-relaxed">{entry.content}</p>
+                  <p className="text-sm leading-relaxed break-words [overflow-wrap:anywhere]">{entry.content}</p>
                 </div>
               </div>
               {trailingAsks.map((ath) => (
