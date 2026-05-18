@@ -10,6 +10,7 @@ import {
   RefreshCw,
   Terminal,
   Trash2,
+  type LucideIcon,
 } from "lucide-react";
 import {
   api,
@@ -298,36 +299,57 @@ function NoDaemonsState() {
 
 function AddAnotherMachine() {
   return (
-    <details className="group rounded-lg border border-dashed border-border bg-card/40">
-      <summary className="cursor-pointer px-4 py-3 list-none flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
-        <Plus className="h-3.5 w-3.5" />
-        Set up another machine
-      </summary>
-      <div className="border-t border-border/60 px-4 py-3">
-        <InstallSnippet />
-      </div>
-    </details>
+    <ExpandableHint icon={Plus} label="Set up another machine">
+      <InstallSnippet />
+    </ExpandableHint>
   );
 }
 
 function SyncNewCli() {
   return (
+    <ExpandableHint
+      icon={RefreshCw}
+      label="Installed a new CLI on a machine that's already registered?"
+      bodyClassName="space-y-2.5 text-xs text-muted-foreground"
+    >
+      <p>
+        Run this on the machine where the daemon is set up. It re-detects
+        every supported CLI on <span className="font-mono">PATH</span> and
+        registers any new ones here — no reinstall, no token rotation.
+      </p>
+      <CommandBlock label="On the daemon machine" command="beevibe-daemon sync" />
+      <p>
+        Restart <span className="font-mono">beevibe-daemon start</span>{" "}
+        afterwards so the active poll loop picks up the new runtime.
+      </p>
+    </ExpandableHint>
+  );
+}
+
+/**
+ * Dashed-border `<details>` block for opt-in setup affordances at the
+ * bottom of the runtimes panel. Used by both "Set up another machine"
+ * and "Installed a new CLI…" — same visual treatment, different bodies.
+ */
+function ExpandableHint({
+  icon: Icon,
+  label,
+  bodyClassName,
+  children,
+}: {
+  icon: LucideIcon;
+  label: string;
+  bodyClassName?: string;
+  children: React.ReactNode;
+}) {
+  return (
     <details className="group rounded-lg border border-dashed border-border bg-card/40">
       <summary className="cursor-pointer px-4 py-3 list-none flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
-        <RefreshCw className="h-3.5 w-3.5" />
-        Installed a new CLI on a machine that&apos;s already registered?
+        <Icon className="h-3.5 w-3.5" />
+        {label}
       </summary>
-      <div className="border-t border-border/60 px-4 py-3 space-y-2.5 text-xs text-muted-foreground">
-        <p>
-          Run this on the machine where the daemon is set up. It re-detects
-          every supported CLI on <span className="font-mono">PATH</span> and
-          registers any new ones here — no reinstall, no token rotation.
-        </p>
-        <CommandBlock label="On the daemon machine" command="beevibe-daemon sync" />
-        <p>
-          Restart <span className="font-mono">beevibe-daemon start</span>{" "}
-          afterwards so the active poll loop picks up the new runtime.
-        </p>
+      <div className={cn("border-t border-border/60 px-4 py-3", bodyClassName)}>
+        {children}
       </div>
     </details>
   );
