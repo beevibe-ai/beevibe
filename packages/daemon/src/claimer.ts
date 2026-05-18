@@ -172,10 +172,25 @@ export class Claimer {
    * Drain one runtime's pending queue: keep claiming until /runtime/claim
    * returns 204 or the supervisor is at capacity. Sessions are run
    * concurrently; this loop just hands off and keeps claiming.
+   *
+   * Transient API outages (e.g. an API restart during dev) surface as
+   * fetch rejections from `claim()`. We log and bail this tick — the
+   * interval + WS push will retry. Without this catch, a single
+   * ECONNREFUSED bubbles up as an unhandledRejection and kills the
+   * daemon under Node 20+'s `--unhandled-rejections=throw` default.
    */
   private async pollRuntime(runtimeId: string): Promise<void> {
     while (this.running && this.cfg.supervisor.hasCapacity()) {
-      const payload = await this.cfg.api.claim<DispatchPayload>(runtimeId);
+      let payload: DispatchPayload | undefined;
+      try {
+        payload = await this.cfg.api.claim<DispatchPayload>(runtimeId);
+      } catch (err) {
+        console.warn(
+          `[daemon] claim failed for runtime=${runtimeId}:`,
+          err instanceof Error ? err.message : String(err),
+        );
+        return;
+      }
       if (!payload) return;
       // Visibility: every claim shows up in the daemon's stdout. The
       // spawner logs the matching cwd + exit lines so one session id
