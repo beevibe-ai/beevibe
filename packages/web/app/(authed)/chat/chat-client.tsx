@@ -10,7 +10,7 @@ import {
   ArrowUp,
   MessageSquare,
 } from "lucide-react";
-import type { HierarchyLevel } from "@beevibe/core";
+import type { HierarchyLevel, KnownCli } from "@beevibe/core";
 import { isApiConfigured } from "@/lib/api/config";
 import {
   api,
@@ -68,10 +68,11 @@ export function ChatClient() {
   const conversationParam = searchParams?.get("c") ?? undefined;
   const isFresh = searchParams?.get("new") === "1";
 
-  const { messages, send, isPending, isSubmitting, error, pendingSessionId } = useChat({
-    conversationId: conversationParam,
-    fresh: isFresh,
-  });
+  const { messages, send, isPending, isSubmitting, error, pendingSessionId, runtimeMismatch } =
+    useChat({
+      conversationId: conversationParam,
+      fresh: isFresh,
+    });
 
   const liveSteps = useChatStream(pendingSessionId);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
@@ -151,6 +152,9 @@ export function ChatClient() {
           />
         ) : (
           <>
+            {runtimeMismatch ? (
+              <RuntimeMismatchBanner mismatch={runtimeMismatch} />
+            ) : null}
             <div ref={transcriptRef} className="flex-1 overflow-y-auto px-6 py-8">
               <div className="max-w-3xl mx-auto">
                 {messages.map((m, i) => {
@@ -207,6 +211,35 @@ export function ChatClient() {
           </>
         )}
       </div>
+    </div>
+  );
+}
+
+const RUNTIME_DISPLAY_NAME: Record<KnownCli, string> = {
+  claude: "Claude",
+  codex: "Codex",
+  opencode: "OpenCode",
+};
+
+function RuntimeMismatchBanner({
+  mismatch,
+}: {
+  mismatch: { pinned_cli: KnownCli; current_cli: KnownCli };
+}) {
+  const pinned = RUNTIME_DISPLAY_NAME[mismatch.pinned_cli];
+  const current = RUNTIME_DISPLAY_NAME[mismatch.current_cli];
+  return (
+    <div className="mx-6 mt-3 rounded-lg border border-status-review/40 bg-status-review/5 px-3 py-2 text-xs text-foreground/80">
+      <span className="font-medium">{pinned}</span> is running this conversation
+      because that&apos;s the runtime it started on. Your agent is now set to{" "}
+      <span className="font-medium">{current}</span> — to use it, start a{" "}
+      <Link
+        href="/chat?new=1"
+        className="font-medium text-foreground underline underline-offset-2 hover:text-foreground/80"
+      >
+        new chat
+      </Link>
+      .
     </div>
   );
 }

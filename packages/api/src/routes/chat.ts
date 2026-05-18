@@ -25,8 +25,11 @@ import { randomUUID } from "node:crypto";
 import { Router, type RequestHandler, type Response } from "express";
 import {
   isInFlightSessionStatus,
+  isKnownCli,
   type AgentRepository,
+  type KnownCli,
   type PersonRepository,
+  type RuntimeRepository,
   type SessionRepository,
 } from "@beevibe/core";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
@@ -42,6 +45,8 @@ export interface ChatRoutesDeps {
   authMiddleware: RequestHandler;
   agentRepo: AgentRepository;
   personRepo: PersonRepository;
+  /** Needed by GET /chat to flag conversations pinned to an old CLI. */
+  runtimeRepo: RuntimeRepository;
   sessionRepo: SessionRepository;
   /**
    * Phase 4 daemon-first chat path: dispatchService inserts a pending
@@ -200,12 +205,36 @@ const DAEMON_LOG_POINTER =
   "Couldn't reach your team agent. Check the terminal where you ran " +
   "`beevibe-daemon start` for the failure detail.";
 
+/**
+ * Matches the daemon's spawner throw when it receives a dispatch payload
+ * for a CLI that isn't in its `runtimeRegistry` — for example, the user
+ * uninstalled claude but the conversation is still pinned to a claude
+ * runtime row. The api persists this exact string as `session.error`
+ * via /runtime/done, and we swap it for a user-actionable message.
+ */
+const RUNTIME_MISSING_PATTERN = /No runtime registered for dispatch payload type '([^']+)'/;
+
+function rewriteRuntimeMissingError(raw: string): string | undefined {
+  const match = raw.match(RUNTIME_MISSING_PATTERN);
+  if (!match) return undefined;
+  const cli = match[1];
+  return (
+    `This conversation is pinned to the ${cli} runtime, which isn't installed ` +
+    `on the daemon claiming it. Install ${cli} on the daemon's machine and ` +
+    "run `beevibe-daemon sync`, or start a new chat to use your agent's current runtime."
+  );
+}
+
 export function failureMessageFor(s: {
   result_summary?: string | null;
   error?: string | null;
 }): string {
   const error = s.error?.trim();
-  if (error && !isBareCliExitMessage(error)) return error;
+  if (error) {
+    const rewritten = rewriteRuntimeMissingError(error);
+    if (rewritten) return rewritten;
+    if (!isBareCliExitMessage(error)) return error;
+  }
   const summary = s.result_summary?.trim();
   if (summary && !isBareCliExitMessage(summary)) return summary;
   return DAEMON_LOG_POINTER;
@@ -267,6 +296,25 @@ interface ChatTurnAgent {
   id: string;
   name: string;
   hierarchy_level: string;
+}
+
+export interface RuntimeMismatch {
+  /** CLI this chain is pinned to (the runtime the head session claimed). */
+  pinned_cli: KnownCli;
+  /** Agent's current CLI per `runtime_config.type`. */
+  current_cli: KnownCli;
+}
+
+async function detectRuntimeMismatch(
+  deps: Pick<ChatRoutesDeps, "runtimeRepo">,
+  tailRuntimeId: string | undefined,
+  currentCli: KnownCli,
+): Promise<RuntimeMismatch | undefined> {
+  if (!tailRuntimeId) return undefined;
+  const runtime = await deps.runtimeRepo.findById(tailRuntimeId);
+  if (!runtime || !isKnownCli(runtime.cli)) return undefined;
+  if (runtime.cli === currentCli) return undefined;
+  return { pinned_cli: runtime.cli, current_cli: currentCli };
 }
 
 /**
@@ -464,6 +512,20 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
     // (PR #116) lands the response.
     const inFlightSessionId = isInFlightSessionStatus(latest.status) ? latest.id : undefined;
 
+    // Chains are runtime-pinned: every session in a chain inherits the
+    // head's `runtime_id`, and the dispatchService re-pins each
+    // continuation via `prior.runtime_id`. So any session in the chain
+    // is equivalent for the "what CLI does this chain run on" question.
+    // We surface a mismatch to the UI when the agent's currently-
+    // configured CLI is different — the next turn WILL still run on the
+    // pinned CLI (correct, because resume needs the original .jsonl),
+    // but the user should know why their new runtime isn't being used.
+    const runtimeMismatch = await detectRuntimeMismatch(
+      deps,
+      latest.runtime_id,
+      agent.runtime_config.type,
+    );
+
     res.json({
       ok: true,
       agent: { id: agent.id, name: agent.name, hierarchy: agent.hierarchy_level },
@@ -471,6 +533,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
       prior_session_id: latest.id,
       conversation_id: chain.head_id,
       in_flight_session_id: inFlightSessionId,
+      ...(runtimeMismatch ? { runtime_mismatch: runtimeMismatch } : {}),
     });
   });
 
