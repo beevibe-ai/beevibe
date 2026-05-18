@@ -68,6 +68,18 @@ export async function runStart(): Promise<void> {
   process.on("SIGINT", () => void stop("SIGINT"));
   process.on("SIGTERM", () => void stop("SIGTERM"));
 
+  // Safety net for any fetch/promise that leaks past a call-site catch.
+  // Per-site try/catch is the correct fix; this exists so a single missed
+  // catch doesn't take the whole daemon down — the claimer loop is
+  // self-healing, so logging and continuing is the right behavior under
+  // Node 20+'s default `--unhandled-rejections=throw`.
+  process.on("unhandledRejection", (reason) => {
+    console.warn(
+      "[daemon] unhandledRejection (continuing):",
+      reason instanceof Error ? reason.message : String(reason),
+    );
+  });
+
   // Hold the process open. The `setInterval` in claimer keeps the event
   // loop alive on its own, but make this explicit so an empty
   // run-then-exit isn't possible.

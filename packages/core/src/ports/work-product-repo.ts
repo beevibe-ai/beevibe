@@ -1,4 +1,4 @@
-import type { WorkProduct } from "../domain/work-product.js";
+import type { WorkProduct, WorkProductListItem } from "../domain/work-product.js";
 
 export type NewWorkProduct = Omit<WorkProduct, "created_at" | "updated_at">;
 
@@ -9,15 +9,15 @@ export type NewWorkProduct = Omit<WorkProduct, "created_at" | "updated_at">;
  * `updated_at` are managed by the adapter.
  */
 export type WorkProductPatch = Partial<
-  Pick<WorkProduct, "summary" | "url" | "provider" | "external_id" | "metadata">
+  Pick<WorkProduct, "summary" | "body" | "url" | "provider" | "external_id" | "metadata">
 >;
 
 export interface WorkProductRepository {
   findById(id: string): Promise<WorkProduct | undefined>;
 
-  listByTask(taskId: string): Promise<WorkProduct[]>;
+  listByTask(taskId: string): Promise<WorkProductListItem[]>;
 
-  listByAgent(agentId: string): Promise<WorkProduct[]>;
+  listByAgent(agentId: string): Promise<WorkProductListItem[]>;
 
   create(input: NewWorkProduct): Promise<WorkProduct>;
 

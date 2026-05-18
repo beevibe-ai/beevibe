@@ -308,6 +308,7 @@ function rowToWorkProduct(r: Record<string, unknown>): WorkProduct {
     type: r.type as WorkProduct["type"],
     title: String(r.title),
     summary: (r.summary as string | null) ?? undefined,
+    body: (r.body as string | null) ?? undefined,
     url: (r.url as string | null) ?? undefined,
     provider: (r.provider as string | null) ?? undefined,
     external_id: (r.external_id as string | null) ?? undefined,

@@ -15,6 +15,7 @@ import type {
   Task,
   TaskRepository,
   WorkProduct,
+  WorkProductListItem,
   WorkProductRepository,
 } from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
@@ -67,6 +68,13 @@ function fakeWp(overrides: Partial<WorkProduct> = {}): WorkProduct {
   };
 }
 
+function fakeWpListItem(
+  overrides: Partial<WorkProductListItem> = {},
+): WorkProductListItem {
+  const { body: _body, ...rest } = fakeWp();
+  return { ...rest, body_bytes: 0, ...overrides };
+}
+
 function buildServices(overrides: {
   agentRepo?: Partial<AgentRepository>;
   taskRepo?: Partial<TaskRepository>;
@@ -102,6 +110,7 @@ function buildServices(overrides: {
     reviseTask: vi.fn(async () => fakeTask({ status: "needs_revision" })),
     createWorkProduct: vi.fn(async (input) => fakeWp(input as Partial<WorkProduct>)),
     listWorkProducts: vi.fn(async () => []),
+    getWorkProduct: vi.fn(async () => undefined),
     updateWorkProduct: vi.fn(async (id) => fakeWp({ id })),
     ...overrides.taskService,
   } as unknown as TaskService;
@@ -184,7 +193,7 @@ async function callTool(
 // ── Tier gating ──────────────────────────────────────────────────────────
 
 describe("buildHierarchyTools — IC vs team gating", () => {
-  it("IC tier exposes 8 shared tools (no find_subordinates / find_peers / create_task / check_work_status)", () => {
+  it("IC tier exposes 9 shared tools (no find_subordinates / find_peers / create_task / check_work_status)", () => {
     const tools = buildHierarchyTools(
       { agentId: "agent_ic", hierarchyLevel: "ic" },
       buildServices(),
@@ -195,6 +204,7 @@ describe("buildHierarchyTools — IC vs team gating", () => {
       "find_up",
       "get_agent_profile",
       "get_task",
+      "get_work_product",
       "list_work_products",
       "search_context",
       "update_progress",
@@ -202,13 +212,13 @@ describe("buildHierarchyTools — IC vs team gating", () => {
     ]);
   });
 
-  it("team tier exposes 15 tools (8 shared + 6 team-only + create_subordinate_agent)", () => {
+  it("team tier exposes 16 tools (9 shared + 6 team-only + create_subordinate_agent)", () => {
     const tools = buildHierarchyTools(
       { agentId: "agent_t", hierarchyLevel: "team" },
       buildServices(),
     );
     const names = tools.map((t) => t.name);
-    expect(names.length).toBe(15);
+    expect(names.length).toBe(16);
     expect(names).toContain("find_subordinates");
     expect(names).toContain("find_peers");
     expect(names).toContain("create_task");
@@ -218,12 +228,12 @@ describe("buildHierarchyTools — IC vs team gating", () => {
     expect(names).toContain("create_subordinate_agent");
   });
 
-  it("org tier also gets all 15 (parents have subordinates too)", () => {
+  it("org tier also gets all 16 (parents have subordinates too)", () => {
     const tools = buildHierarchyTools(
       { agentId: "agent_o", hierarchyLevel: "org" },
       buildServices(),
     );
-    expect(tools.length).toBe(15);
+    expect(tools.length).toBe(16);
   });
 });
 
@@ -364,8 +374,8 @@ describe("create_work_product / list_work_products / update_work_product", () =>
     const services = buildServices({
       taskService: {
         listWorkProducts: vi.fn(async () => [
-          fakeWp({ id: "wp_1", title: "first" }),
-          fakeWp({ id: "wp_2", title: "second", url: "https://example.com/x" }),
+          fakeWpListItem({ id: "wp_1", title: "first" }),
+          fakeWpListItem({ id: "wp_2", title: "second", url: "https://example.com/x" }),
         ]),
       } as Partial<TaskService>,
     });
@@ -386,11 +396,77 @@ describe("create_work_product / list_work_products / update_work_product", () =>
     expect(result.isError).toBeFalsy();
     expect(services.taskService.updateWorkProduct).toHaveBeenCalledWith("wp_1", {
       summary: "v2 summary",
+      body: undefined,
       url: "https://example.com/v2",
       provider: undefined,
       external_id: undefined,
       metadata: undefined,
     });
+  });
+
+  it("create_work_product forwards body to taskService", async () => {
+    const services = buildServices();
+    const tools = buildHierarchyTools({ agentId: "a", hierarchyLevel: "ic" }, services);
+    const result = await callTool(tools, "create_work_product", {
+      task_id: "t1",
+      type: "analysis",
+      title: "Extracted tables",
+      body: "| col | val |\n|-----|-----|\n| a   | 1   |\n",
+    });
+    expect(result.isError).toBeFalsy();
+    expect(services.taskService.createWorkProduct).toHaveBeenCalledWith(
+      expect.objectContaining({
+        type: "analysis",
+        title: "Extracted tables",
+        body: "| col | val |\n|-----|-----|\n| a   | 1   |\n",
+      }),
+    );
+  });
+
+  it("list_work_products surfaces body_bytes from the repo's SQL-computed size", async () => {
+    const services = buildServices({
+      taskService: {
+        listWorkProducts: vi.fn(async () => [
+          fakeWpListItem({ id: "wp_1", body_bytes: 5 }),
+          fakeWpListItem({ id: "wp_2", body_bytes: 0 }),
+        ]),
+      } as Partial<TaskService>,
+    });
+    const tools = buildHierarchyTools({ agentId: "a", hierarchyLevel: "ic" }, services);
+    const result = await callTool(tools, "list_work_products", { task_id: "t1" });
+    const wps = (
+      result.content as { work_products: Array<{ id: string; body_bytes: number }> }
+    ).work_products;
+    expect(wps).toEqual([
+      expect.objectContaining({ id: "wp_1", body_bytes: 5 }),
+      expect.objectContaining({ id: "wp_2", body_bytes: 0 }),
+    ]);
+  });
+
+  it("get_work_product returns full body content", async () => {
+    const wp = fakeWp({ id: "wp_1", body: "## Table 1\n\nrow data" });
+    const services = buildServices({
+      taskService: {
+        getWorkProduct: vi.fn(async () => wp),
+      } as Partial<TaskService>,
+    });
+    const tools = buildHierarchyTools({ agentId: "a", hierarchyLevel: "ic" }, services);
+    const result = await callTool(tools, "get_work_product", { id: "wp_1" });
+    expect(result.isError).toBeFalsy();
+    const got = (result.content as { work_product: { id: string; body: string } }).work_product;
+    expect(got.id).toBe("wp_1");
+    expect(got.body).toContain("Table 1");
+  });
+
+  it("get_work_product 404s on missing id", async () => {
+    const services = buildServices({
+      taskService: {
+        getWorkProduct: vi.fn(async () => undefined),
+      } as Partial<TaskService>,
+    });
+    const tools = buildHierarchyTools({ agentId: "a", hierarchyLevel: "ic" }, services);
+    const result = await callTool(tools, "get_work_product", { id: "wp_nope" });
+    expect(result.isError).toBe(true);
   });
 });
 

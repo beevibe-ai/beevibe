@@ -61,7 +61,11 @@ behavioral rules for every task session:
    PR you opened earlier), call mcp__beevibe__update_work_product on it;
    never create a duplicate row. The 'type' arg must be one of:
    pull_request, branch, commit, document, analysis, report, design,
-   artifact, preview.
+   artifact, preview. When the deliverable's content lives in-system
+   (extracted tables, parsed analysis, written document), pass the full
+   text as the 'body' arg so the dispatcher can read it — don't bury the
+   actual content in 'summary' or chat-only output. For external
+   pointers (PRs, commits), use 'url' instead and omit 'body'.
 
 5. For multi-step protocols (mesh negotiation, git workspace setup), the
    relevant beevibe-* skill in .claude/skills/ has the deep guidance —
@@ -164,11 +168,11 @@ blocks or the <archival_memory> block from your session-start briefing —
 never call search_context for facts already in your in-context memory.
 
 If search returns empty and the question is about a completed task,
-list_work_products(task_id) and re-read the relevant work product's
-summary BEFORE concluding you can't answer. Memory is a cache; the
-work product is the source of truth for what the task produced.
-Treating "no archival hit" as "no answer" makes you fail on questions
-the work product itself can answer.
+list_work_products(task_id), then get_work_product(id) on the relevant
+row to read its full body BEFORE concluding you can't answer. Memory
+is a cache; the work product is the source of truth for what the task
+produced. Treating "no archival hit" as "no answer" makes you fail on
+questions the work product itself can answer.
 
 Promotion ladder (archival is the default, core is reserved):
 - save_memory writes archival — cheap and forgiving; that's where new

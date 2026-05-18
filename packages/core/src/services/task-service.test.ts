@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent, ReviewPolicy } from "../domain/agent.js";
 import type { Task } from "../domain/task.js";
-import type { WorkProduct } from "../domain/work-product.js";
+import type { WorkProduct, WorkProductListItem } from "../domain/work-product.js";
 import type { Session } from "../domain/session.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type { SessionRepository } from "../ports/session-repo.js";
@@ -38,6 +38,13 @@ function makeWorkProduct(overrides: Partial<WorkProduct> = {}): WorkProduct {
     updated_at: new Date(),
     ...overrides,
   };
+}
+
+function makeWorkProductListItem(
+  overrides: Partial<WorkProductListItem> = {},
+): WorkProductListItem {
+  const { body: _body, ...rest } = makeWorkProduct();
+  return { ...rest, body_bytes: 0, ...overrides };
 }
 
 function makeSession(overrides: Partial<Session> = {}): Session {
@@ -486,7 +493,9 @@ describe("TaskService.createWorkProduct + listWorkProducts", () => {
   });
 
   it("listWorkProducts delegates to the repo", async () => {
-    vi.mocked(workProductRepo.listByTask).mockResolvedValue([makeWorkProduct()]);
+    vi.mocked(workProductRepo.listByTask).mockResolvedValue([
+      makeWorkProductListItem(),
+    ]);
     const out = await service.listWorkProducts("task_1");
     expect(out).toHaveLength(1);
     expect(workProductRepo.listByTask).toHaveBeenCalledWith("task_1");

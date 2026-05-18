@@ -91,6 +91,27 @@ describe("extractStepEvents", () => {
     });
     expect(step?.description).toBe("the value");
   });
+
+  it("emits a tool_result step with the result content", () => {
+    const step = firstStep({
+      type: "tool_result",
+      tool_use_id: "tu_1",
+      content: "file contents line 1\nline 2",
+    });
+    expect(step?.kind).toBe("tool_result");
+    expect(step?.description).toBe("file contents line 1 line 2");
+  });
+
+  it("tags tool_result with [error] prefix when is_error is true", () => {
+    const step = firstStep({
+      type: "tool_result",
+      tool_use_id: "tu_2",
+      is_error: true,
+      content: "task_id required",
+    });
+    expect(step?.kind).toBe("tool_result");
+    expect(step?.description).toBe("[error] task_id required");
+  });
 });
 
 describe("parseClaudeStreamJson", () => {
