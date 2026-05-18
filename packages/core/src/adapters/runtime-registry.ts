@@ -24,3 +24,22 @@ export function createDefaultRuntimeRegistry(): RuntimeRegistry {
     opencode: new OpenCodeRuntime({}),
   };
 }
+
+/**
+ * Producer-consumer pair for the "daemon got a dispatch for a CLI it
+ * doesn't have registered" error string — daemon throws via
+ * `runtimeMissingError(cli)`; api side parses via `parseRuntimeMissingError`
+ * to swap for a user-actionable message in the chat surface. Co-located
+ * here so the two stay byte-for-byte in sync; mirrors the
+ * `bareCliExitMessage` / `isBareCliExitMessage` pair in claude-code's
+ * stream-json module.
+ */
+export function runtimeMissingError(cli: string): string {
+  return `No runtime registered for dispatch payload type '${cli}'`;
+}
+
+const RUNTIME_MISSING_PATTERN = /^No runtime registered for dispatch payload type '([^']+)'$/;
+
+export function parseRuntimeMissingError(s: string): string | undefined {
+  return s.match(RUNTIME_MISSING_PATTERN)?.[1];
+}

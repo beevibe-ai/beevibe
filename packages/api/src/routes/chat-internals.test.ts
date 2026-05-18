@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { groupIntoConversations, type ChatSession } from "./chat.js";
+import { failureMessageFor, groupIntoConversations, type ChatSession } from "./chat.js";
 
 function makeSession(overrides: Partial<ChatSession> & Pick<ChatSession, "id">): ChatSession {
   return {
@@ -98,5 +98,53 @@ describe("groupIntoConversations", () => {
     const chains = groupIntoConversations([a1, a2, b1]);
     expect(chains).toHaveLength(2);
     expect(chains.map((c) => c.head_id).sort()).toEqual(["sess_a1", "sess_b1"]);
+  });
+});
+
+describe("failureMessageFor", () => {
+  it("returns the error string verbatim for normal failures", () => {
+    const out = failureMessageFor({ error: "ENOMEM: out of memory" });
+    expect(out).toBe("ENOMEM: out of memory");
+  });
+
+  it("falls back to result_summary when error is a bareCliExitMessage", () => {
+    const out = failureMessageFor({
+      error: "CLI exited with code 137",
+      result_summary: "Killed by OOM.",
+    });
+    expect(out).toBe("Killed by OOM.");
+  });
+
+  it("rewrites the daemon's runtime-missing throw to a user-actionable message", () => {
+    const out = failureMessageFor({
+      error: "No runtime registered for dispatch payload type 'claude'",
+    });
+    expect(out).toContain("This conversation is pinned to the claude runtime");
+    expect(out).toContain("beevibe-daemon sync");
+    expect(out).toContain("new chat");
+    // The friendly message should NOT include the raw "No runtime registered…"
+    // wording — that's an internal detail the user doesn't need to see.
+    expect(out).not.toContain("No runtime registered");
+  });
+
+  it("preserves the runtime-missing rewrite even when result_summary is non-empty", () => {
+    const out = failureMessageFor({
+      error: "No runtime registered for dispatch payload type 'codex'",
+      result_summary: "Codex completed.",
+    });
+    expect(out).toContain("pinned to the codex runtime");
+  });
+
+  it("returns the daemon-log pointer when neither field is informative", () => {
+    const out = failureMessageFor({
+      error: "CLI exited with code 1",
+      result_summary: "CLI exited with code 1",
+    });
+    expect(out).toContain("beevibe-daemon start");
+  });
+
+  it("returns the daemon-log pointer when both fields are empty", () => {
+    const out = failureMessageFor({});
+    expect(out).toContain("beevibe-daemon start");
   });
 });

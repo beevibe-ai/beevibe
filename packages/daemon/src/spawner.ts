@@ -9,7 +9,10 @@
  * `<workspace>/.claude/skills/`).
  */
 
-import { createDefaultRuntimeRegistry } from "@beevibe/core/adapters/runtime-registry";
+import {
+  createDefaultRuntimeRegistry,
+  runtimeMissingError,
+} from "@beevibe/core/adapters/runtime-registry";
 import type {
   Agent,
   KnownCli,
@@ -76,7 +79,7 @@ export async function runDispatch(
   const registry = deps.runtimeRegistry ?? createDefaultRuntimeRegistry();
   const runtime = registry[payload.runtime_type];
   if (!runtime) {
-    throw new Error(`No runtime registered for dispatch payload type '${payload.runtime_type}'`);
+    throw new Error(runtimeMissingError(payload.runtime_type));
   }
 
   // Buffer events so the daemon doesn't fire one POST per token. Flushed

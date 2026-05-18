@@ -300,6 +300,17 @@ export interface ChatHistoryResponse {
    * transcript.
    */
   in_flight_session_id?: string;
+  /**
+   * Set when the agent's currently-configured CLI differs from the CLI
+   * the conversation chain is pinned to. The chain still runs on its
+   * pinned CLI (resume needs the original CLI's on-disk state); this
+   * field lets the UI tell the user why their new runtime isn't being
+   * used. Undefined when there's no mismatch.
+   */
+  runtime_mismatch?: {
+    pinned_cli: KnownCli;
+    current_cli: KnownCli;
+  };
 }
 
 export interface ChatConversationSummary {

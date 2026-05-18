@@ -273,5 +273,11 @@ export function useChat(opts: UseChatOptions = {}) {
     pendingSessionId: inFlightSessionId,
     /** History query state, for showing a "loading prior conversation…" indicator. */
     isLoadingHistory: history.isLoading,
+    /**
+     * Set when the agent's currently-configured CLI differs from the CLI
+     * this conversation is pinned to. UI surfaces a banner so the user
+     * knows why their new runtime isn't being used here.
+     */
+    runtimeMismatch: history.data?.runtime_mismatch,
   };
 }
