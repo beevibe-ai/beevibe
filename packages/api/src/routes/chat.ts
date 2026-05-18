@@ -677,6 +677,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         reason,
         type: "chat",
         runtimeIdOverride: runtimeOverride.runtimeIdOverride,
+        sessionIdOverride: callerSessionId,
       });
     } catch (err) {
       rateOutcome.release();
