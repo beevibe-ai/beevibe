@@ -354,10 +354,14 @@ function createWorkProductTool(
     name: "create_work_product",
     description:
       "Record a deliverable produced for a task — a PR, branch, commit, " +
-      "document, design, analysis, report, artifact, or preview. Before " +
-      "creating, call list_work_products(task_id) to check whether the " +
-      "deliverable already exists (use update_work_product to amend an " +
-      "existing one with the same identity, e.g. same PR URL).",
+      "document, design, analysis, report, artifact, or preview. For " +
+      "deliverables whose content lives in this system (extracted tables, " +
+      "parsed analyses, full documents), pass the actual content as `body` " +
+      "so the dispatcher can read it. For external deliverables (PRs, " +
+      "commits), pass `url` instead and skip `body`. Before creating, call " +
+      "list_work_products(task_id) to check whether the deliverable already " +
+      "exists (use update_work_product to amend an existing one with the " +
+      "same identity, e.g. same PR URL).",
     schema: {
       type: "object",
       properties: {
@@ -369,7 +373,8 @@ function createWorkProductTool(
         },
         title: { type: "string", description: "Title of the work product." },
         url: { type: "string", description: "Link to the deliverable (e.g. GitHub PR URL)." },
-        summary: { type: "string", description: "What was produced; capture the why + what changed." },
+        summary: { type: "string", description: "Short description of what was produced — the why + what changed. Distinct from `body`, which holds the actual content." },
+        body: { type: "string", description: "The full deliverable content (markdown, JSON, plain text). Use this when the content itself IS the deliverable — extracted tables, parsed analysis, document text. Omit for external pointers (PRs, commits)." },
         provider: { type: "string", description: "Where it's hosted (github, notion, figma, etc)." },
         external_id: { type: "string", description: "External id (PR number, doc id, etc)." },
         metadata: { type: "object", description: "Additional structured fields." },
@@ -400,6 +405,7 @@ function createWorkProductTool(
           type: type as (typeof WORK_PRODUCT_TYPES)[number],
           title,
           summary: typeof input.summary === "string" ? input.summary : undefined,
+          body: typeof input.body === "string" ? input.body : undefined,
           url: typeof input.url === "string" ? input.url : undefined,
           provider: typeof input.provider === "string" ? input.provider : undefined,
           external_id: typeof input.external_id === "string" ? input.external_id : undefined,
@@ -430,7 +436,8 @@ function listWorkProductsTool(
       "List existing work products for a task in chronological order. Call " +
       "this BEFORE create_work_product to check if you should update an " +
       "existing deliverable (same identity / URL) instead of creating a " +
-      "duplicate row.",
+      "duplicate row. Returns metadata only; use get_work_product(id) to " +
+      "read the full `body` of a deliverable.",
     schema: {
       type: "object",
       properties: {
@@ -451,9 +458,62 @@ function listWorkProductsTool(
               title: w.title,
               url: w.url ?? null,
               summary: w.summary ?? null,
+              body_bytes: w.body_bytes,
               created_at: w.created_at.toISOString(),
               updated_at: w.updated_at.toISOString(),
             })),
+          },
+        };
+      } catch (err) {
+        return asError(err);
+      }
+    },
+  };
+}
+
+function getWorkProductTool(
+  _ctx: HierarchyToolContext,
+  services: HierarchyToolServices,
+): AgentTool {
+  return {
+    name: "get_work_product",
+    description:
+      "Fetch a single work product by id, including its full `body` " +
+      "content. Use after list_work_products(task_id) when you need to " +
+      "read what a subordinate actually produced — the extracted tables, " +
+      "parsed analysis, or document text.",
+    schema: {
+      type: "object",
+      properties: {
+        id: { type: "string", description: "The work_product id to fetch." },
+      },
+      required: ["id"],
+    },
+    handler: async (input) => {
+      try {
+        const id = String(input.id ?? "");
+        if (!id) return { content: { error: "id required" }, isError: true };
+        const wp = await services.taskService.getWorkProduct(id);
+        if (!wp) {
+          return { content: { error: `work_product ${id} not found` }, isError: true };
+        }
+        return {
+          content: {
+            work_product: {
+              id: wp.id,
+              task_id: wp.task_id,
+              agent_id: wp.agent_id,
+              type: wp.type,
+              title: wp.title,
+              summary: wp.summary ?? null,
+              body: wp.body ?? null,
+              url: wp.url ?? null,
+              provider: wp.provider ?? null,
+              external_id: wp.external_id ?? null,
+              metadata: wp.metadata ?? null,
+              created_at: wp.created_at.toISOString(),
+              updated_at: wp.updated_at.toISOString(),
+            },
           },
         };
       } catch (err) {
@@ -473,13 +533,14 @@ function updateWorkProductTool(
       "Amend an existing work product — useful when the same deliverable " +
       "evolved (PR got new commits, doc revised, summary needs updating). " +
       "Identity fields (type, title, task_id, agent_id) are immutable; " +
-      "only summary, url, provider, external_id, and metadata can change. " +
-      "Use list_work_products(task_id) to find the right id first.",
+      "only summary, body, url, provider, external_id, and metadata can " +
+      "change. Use list_work_products(task_id) to find the right id first.",
     schema: {
       type: "object",
       properties: {
         id: { type: "string", description: "The work_product id to amend." },
         summary: { type: "string", description: "Updated summary." },
+        body: { type: "string", description: "Updated full content (replaces existing body)." },
         url: { type: "string", description: "Updated URL." },
         provider: { type: "string", description: "Updated provider." },
         external_id: { type: "string", description: "Updated external id." },
@@ -493,6 +554,7 @@ function updateWorkProductTool(
         if (!id) return { content: { error: "id required" }, isError: true };
         const updated = await services.taskService.updateWorkProduct(id, {
           summary: typeof input.summary === "string" ? input.summary : undefined,
+          body: typeof input.body === "string" ? input.body : undefined,
           url: typeof input.url === "string" ? input.url : undefined,
           provider: typeof input.provider === "string" ? input.provider : undefined,
           external_id:
@@ -961,6 +1023,7 @@ function buildSharedTools(
     getTaskTool(ctx, services),
     createWorkProductTool(ctx, services),
     listWorkProductsTool(ctx, services),
+    getWorkProductTool(ctx, services),
     updateWorkProductTool(ctx, services),
   ];
 }

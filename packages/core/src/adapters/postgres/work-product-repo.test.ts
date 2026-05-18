@@ -65,6 +65,7 @@ describe("PostgresWorkProductRepository", () => {
       newWp({
         id,
         summary: "Summary here",
+        body: "# Extracted tables\n\n| col | val |\n|-----|-----|\n| a   | 1   |\n",
         url: "https://github.com/foo/bar/pull/42",
         provider: "github",
         external_id: "42",
@@ -75,6 +76,7 @@ describe("PostgresWorkProductRepository", () => {
     expect(wp.type).toBe("pull_request");
     expect(wp.provider).toBe("github");
     expect(wp.external_id).toBe("42");
+    expect(wp.body).toContain("Extracted tables");
     expect(wp.metadata).toEqual({ files_changed: 3, lines_added: 120 });
 
     const found = await wps.findById(id);
@@ -84,6 +86,7 @@ describe("PostgresWorkProductRepository", () => {
   it("create without optional fields returns undefined (null→undefined mapping)", async () => {
     const wp = await wps.create(newWp());
     expect(wp.summary).toBeUndefined();
+    expect(wp.body).toBeUndefined();
     expect(wp.url).toBeUndefined();
     expect(wp.provider).toBeUndefined();
     expect(wp.external_id).toBeUndefined();
@@ -108,6 +111,18 @@ describe("PostgresWorkProductRepository", () => {
     const b = await wps.create(newWp({ title: "second" }));
     const list = await wps.listByAgent(agent);
     expect(list.map((w) => w.id)).toEqual([b.id, a.id]);
+  });
+
+  it("listByTask returns body_bytes from SQL and omits body content", async () => {
+    await wps.create(newWp({ title: "with body", body: "hello" }));
+    await wps.create(newWp({ title: "no body" }));
+    const list = await wps.listByTask(task);
+    const byTitle = new Map(list.map((w) => [w.title, w]));
+    expect(byTitle.get("with body")?.body_bytes).toBe(5);
+    expect(byTitle.get("no body")?.body_bytes).toBe(0);
+    // List projection is body-less; the body property is not present on the
+    // returned WorkProductListItem (TypeScript-enforced + runtime).
+    expect("body" in (byTitle.get("with body") as object)).toBe(false);
   });
 
   it("FK to task enforced — missing task rejects", async () => {
@@ -177,5 +192,18 @@ describe("PostgresWorkProductRepository", () => {
     await expect(wps.update("wp_nonexistent", { summary: "x" })).rejects.toThrow(
       /not found/,
     );
+  });
+
+  it("update body replaces previous body", async () => {
+    const wp = await wps.create(newWp({ body: "v1 content" }));
+    const updated = await wps.update(wp.id, { body: "v2 content" });
+    expect(updated.body).toBe("v2 content");
+  });
+
+  it("update with undefined body preserves existing body (COALESCE)", async () => {
+    const wp = await wps.create(newWp({ body: "keep me" }));
+    const updated = await wps.update(wp.id, { summary: "new summary" });
+    expect(updated.body).toBe("keep me");
+    expect(updated.summary).toBe("new summary");
   });
 });

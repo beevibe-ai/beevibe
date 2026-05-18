@@ -69,6 +69,7 @@ const FALLBACK_ALLOWED_HIERARCHY = new Set([
   "get_agent_profile",
   "get_task",
   "list_work_products",
+  "get_work_product",
   "find_subordinates",
   "find_peers",
   "check_work_status",
@@ -81,16 +82,16 @@ const FALLBACK_ALLOWED_HIERARCHY = new Set([
  *
  * Tier breakdown (M9.1 final):
  *
- *   IC (12 tools):
+ *   IC (13 tools):
  *     2 memory: save_memory, update_core_memory
- *     8 hierarchy (shared): search_context, update_progress, find_up,
+ *     9 hierarchy (shared): search_context, update_progress, find_up,
  *       get_agent_profile, get_task, create_work_product,
- *       list_work_products, update_work_product
+ *       list_work_products, get_work_product, update_work_product
  *     2 mesh: respond_ask (when targeted by team-tier `ask`),
  *             report_blocker (escalate up to direct parent)
  *
- *   Team / org (23 tools):
- *     2 memory + 14 hierarchy (8 shared + 6 team-only) +
+ *   Team / org (24 tools):
+ *     2 memory + 15 hierarchy (9 shared + 6 team-only) +
  *     6 mesh (ask, respond_ask, negotiate, respond_negotiate,
  *             report_blocker, escalate_to_humans).
  *

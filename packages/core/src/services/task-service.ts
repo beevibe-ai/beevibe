@@ -1,5 +1,5 @@
 import type { NextDispatchContext, Task, TaskStatus } from "../domain/task.js";
-import type { WorkProduct } from "../domain/work-product.js";
+import type { WorkProduct, WorkProductListItem } from "../domain/work-product.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type { SessionRepository } from "../ports/session-repo.js";
 import type {
@@ -260,16 +260,20 @@ export class TaskService {
     return this.deps.workProductRepo.create(input);
   }
 
-  /** List work products for a task (chronological order is the repo's concern). */
-  async listWorkProducts(taskId: string): Promise<WorkProduct[]> {
+  /** List work products for a task (body content omitted; see WorkProductListItem). */
+  async listWorkProducts(taskId: string): Promise<WorkProductListItem[]> {
     return this.deps.workProductRepo.listByTask(taskId);
+  }
+
+  async getWorkProduct(id: string): Promise<WorkProduct | undefined> {
+    return this.deps.workProductRepo.findById(id);
   }
 
   /**
    * Amend a work product (used by the `update_work_product` MCP tool — see M9
    * for the agent skill that decides between create vs update). Mutable
-   * subset is `summary | url | provider | external_id | metadata`; identity
-   * (`type`, `title`, `task_id`, `agent_id`) is fixed at creation.
+   * subset is `summary | body | url | provider | external_id | metadata`;
+   * identity (`type`, `title`, `task_id`, `agent_id`) is fixed at creation.
    *
    * Bumps `updated_at = NOW()` via the repo. Throws if the row doesn't
    * exist (`work_product <id> not found`).

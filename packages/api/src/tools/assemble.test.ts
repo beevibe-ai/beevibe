@@ -79,20 +79,21 @@ function icCtx(spawnMode?: AssembleToolsContext["spawnMode"]): AssembleToolsCont
 }
 
 describe("assembleTools — daemon (full surface)", () => {
-  it("team caller gets the full team surface (23 tools)", () => {
+  it("team caller gets the full team surface (24 tools)", () => {
     const tools = assembleTools(teamCtx(), buildMinimalServices());
-    expect(tools.length).toBe(23);
+    expect(tools.length).toBe(24);
     const names = new Set(tools.map((t) => t.name));
     expect(names.has("create_task")).toBe(true);
     expect(names.has("update_work_product")).toBe(true);
+    expect(names.has("get_work_product")).toBe(true);
     expect(names.has("revise_task")).toBe(true);
     expect(names.has("add_to_escalation")).toBe(true);
     expect(names.has("create_subordinate_agent")).toBe(true);
   });
 
-  it("ic caller gets the IC surface (12 tools)", () => {
+  it("ic caller gets the IC surface (13 tools)", () => {
     const tools = assembleTools(icCtx(), buildMinimalServices());
-    expect(tools.length).toBe(12);
+    expect(tools.length).toBe(13);
     const names = new Set(tools.map((t) => t.name));
     expect(names.has("create_task")).toBe(false);
     expect(names.has("respond_ask")).toBe(true);

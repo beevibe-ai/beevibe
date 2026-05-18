@@ -95,6 +95,7 @@ export interface WorkProductRow {
   type: string;
   title: string;
   summary: string | null;
+  body: string | null;
   url: string | null;
   provider: string | null;
   external_id: string | null;
@@ -102,6 +103,16 @@ export interface WorkProductRow {
   created_at: Date;
   updated_at: Date;
 }
+
+/**
+ * List-query projection: `body` content is skipped; `body_bytes` carries
+ * the size from `octet_length(body)`. PG returns the latter as bigint, which
+ * the node-postgres driver may surface as either number or string depending
+ * on the parser config — the mapper coerces.
+ */
+export type WorkProductListRow = Omit<WorkProductRow, "body"> & {
+  body_bytes: number | string;
+};
 
 export interface MemoryFactRow {
   id: string;

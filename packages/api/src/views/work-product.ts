@@ -1,11 +1,10 @@
 /**
  * Single work product view — used by the dedicated detail page.
  *
- * For `file://` URLs (the most common case — agents write briefings to
- * their workspace), tries to read the file content from disk and inline
- * it. Fails open: a missing/unreadable file just means `body` is empty
- * and the page falls back to the summary blob. This is per-agent
- * sandboxed already, no extra auth.
+ * `body` is populated from the `work_product.body` column when the
+ * specialist persisted content directly. As a fallback, if the column is
+ * empty and `url` is a `file://` link (older work products written to an
+ * agent workspace), the file is read from disk inline.
  */
 
 import { readFile } from "node:fs/promises";
@@ -27,10 +26,9 @@ export interface WorkProductDetail {
   provider?: string;
   external_id?: string;
   /**
-   * Inlined contents of the file the work product points at, when the
-   * URL is `file://` and the file is readable. Lets the web render the
-   * full briefing/audit/document inline. Truncated to 256 KB (way more
-   * than any reasonable briefing).
+   * Full deliverable content. Sourced from `work_product.body` when set;
+   * otherwise falls back to reading a `file://` URL from disk. Truncated
+   * to 256 KB.
    */
   body?: string;
   /** True when `url` is file:// — UI uses this to suppress an unclickable link. */
@@ -41,8 +39,8 @@ export interface WorkProductDetail {
 
 const SQL = /* sql */ `
 SELECT
-  wp.id, wp.task_id, wp.agent_id, wp.type, wp.title, wp.summary, wp.url,
-  wp.provider, wp.external_id, wp.created_at, wp.updated_at,
+  wp.id, wp.task_id, wp.agent_id, wp.type, wp.title, wp.summary, wp.body,
+  wp.url, wp.provider, wp.external_id, wp.created_at, wp.updated_at,
   t.title AS task_title,
   a.name  AS agent_label
 FROM work_product wp
@@ -58,6 +56,7 @@ interface Row {
   type: WorkProductType;
   title: string;
   summary: string | null;
+  body: string | null;
   url: string | null;
   provider: string | null;
   external_id: string | null;
@@ -73,15 +72,19 @@ function deriveTaskShortId(id: string): string {
   return id.replace(/^[a-z]+_/, "").slice(0, 6);
 }
 
+function truncateToMax(body: string | null | undefined): string | undefined {
+  if (!body) return undefined;
+  if (Buffer.byteLength(body, "utf-8") <= MAX_BODY_BYTES) return body;
+  const buf = Buffer.from(body, "utf-8");
+  return buf.subarray(0, MAX_BODY_BYTES).toString("utf-8") + "\n\n[truncated]";
+}
+
 async function tryReadFileUrl(url: string): Promise<string | undefined> {
   if (!url.startsWith("file://")) return undefined;
   try {
     const path = fileURLToPath(url);
     const buf = await readFile(path);
-    if (buf.byteLength > MAX_BODY_BYTES) {
-      return buf.subarray(0, MAX_BODY_BYTES).toString("utf-8") + "\n\n[truncated]";
-    }
-    return buf.toString("utf-8");
+    return truncateToMax(buf.toString("utf-8"));
   } catch {
     return undefined;
   }
@@ -96,7 +99,8 @@ export async function getWorkProduct(
   if (!row) return undefined;
   const url = row.url ?? undefined;
   const url_is_local = !!url && url.startsWith("file://");
-  const body = url_is_local ? await tryReadFileUrl(url!) : undefined;
+  const body =
+    truncateToMax(row.body) ?? (url_is_local ? await tryReadFileUrl(url!) : undefined);
 
   return {
     id: row.id,
