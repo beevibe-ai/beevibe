@@ -2,14 +2,21 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Bot, Maximize2, Minus, Plus } from "lucide-react";
+import { AlertTriangle, Bot, LayoutGrid, List, Maximize2, Minus, Plus } from "lucide-react";
 import type { PanZoomTransform } from "@/lib/hooks/use-pan-zoom";
 import { useAgentNetwork } from "@/lib/hooks/use-agent-network";
 import { isApiConfigured } from "@/lib/api/config";
 import { EmptyState } from "@/components/empty-state";
 import { TeamOrbit } from "@/components/team-orbit";
 import { AgentDetailPanel } from "@/components/agents/agent-detail-panel";
+import { AgentsListView } from "@/components/agents/agents-list-view";
 import { usePanZoom } from "@/lib/hooks/use-pan-zoom";
+
+type ViewMode = "orbit" | "list";
+
+function parseView(raw: string | null | undefined): ViewMode {
+  return raw === "list" ? "list" : "orbit";
+}
 
 /**
  * /agents — pan/zoom canvas of the agent network.
@@ -28,23 +35,52 @@ export function AgentsClient() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const selectedAgentId = searchParams?.get("p") ?? undefined;
+  const view = parseView(searchParams?.get("view"));
+
+  // Build a URL that preserves the *other* params while overriding one
+  // we care about. Used by both the peek panel toggle (`?p=`) and the
+  // orbit/list view switcher (`?view=`). Without this, swapping views
+  // would clobber the currently-open peek panel and vice versa.
+  const buildHref = useCallback(
+    (patch: Partial<Record<"p" | "view", string | null>>) => {
+      const sp = new URLSearchParams(searchParams?.toString() ?? "");
+      for (const [key, value] of Object.entries(patch)) {
+        if (value === null) sp.delete(key);
+        else if (value !== undefined) sp.set(key, value);
+      }
+      const qs = sp.toString();
+      return qs ? `/agents?${qs}` : "/agents";
+    },
+    [searchParams],
+  );
 
   const openAgent = useCallback(
     (agentId: string) => {
       // Replace, not push — opening the panel shouldn't make the back
       // button bounce through every agent the user clicked. Closing
       // (cleared param) DOES push so back button restores the panel.
-      router.replace(`/agents?p=${encodeURIComponent(agentId)}`, { scroll: false });
+      router.replace(buildHref({ p: agentId }), { scroll: false });
     },
-    [router],
+    [router, buildHref],
   );
 
   const closeAgent = useCallback(() => {
-    router.push("/agents", { scroll: false });
-  }, [router]);
+    router.push(buildHref({ p: null }), { scroll: false });
+  }, [router, buildHref]);
+
+  const setView = useCallback(
+    (next: ViewMode) => {
+      // Default view is orbit, so encode it by *removing* the param.
+      router.replace(buildHref({ view: next === "orbit" ? null : "list" }), {
+        scroll: false,
+      });
+    },
+    [router, buildHref],
+  );
 
   const { data, isLoading, isError } = useAgentNetwork();
   const peers = data?.peers ?? [];
+  const selfAgents = data?.self ?? [];
 
   const panZoom = usePanZoom({ minScale: 0.4, maxScale: 2.5 });
 
@@ -60,67 +96,79 @@ export function AgentsClient() {
         <CenteredShell icon={AlertTriangle} title="Couldn't load the network" />
       ) : (
         <>
-          <Caption hasPeers={peers.length > 0} />
-          <GestureHint transform={panZoom.transform} />
+          <ViewToggle view={view} onChange={setView} />
 
-          {/* Pan/zoom container — captures wheel + pointer, transforms
-              the inner world. Cursor hint reads as "draggable canvas". */}
-          <div
-            ref={panZoom.containerRef}
-            className="absolute inset-0 cursor-grab touch-none select-none"
-            // Touch-action none + select-none keep mobile pan from
-            // scrolling the page or selecting card text mid-drag.
-          >
-            <div
-              className="absolute left-1/2 top-1/2"
-              style={panZoom.style}
-            >
-              {/* Self orbit anchored at world origin (0,0); the parent
-                  div is already centered via left-50%/top-50%, so a
-                  translate(-50%,-50%) on the orbit's wrapper keeps it
-                  visually centered when the canvas is at scale 1 with
-                  zero pan. */}
+          {view === "list" ? (
+            <AgentsListView
+              agents={selfAgents}
+              onSelect={openAgent}
+              selectedAgentId={selectedAgentId}
+            />
+          ) : (
+            <>
+              <Caption hasPeers={peers.length > 0} />
+              <GestureHint transform={panZoom.transform} />
+
+              {/* Pan/zoom container — captures wheel + pointer, transforms
+                  the inner world. Cursor hint reads as "draggable canvas". */}
               <div
-                className="absolute"
-                style={{ left: 0, top: 0, transform: "translate(-50%, -50%)" }}
+                ref={panZoom.containerRef}
+                className="absolute inset-0 cursor-grab touch-none select-none"
+                // Touch-action none + select-none keep mobile pan from
+                // scrolling the page or selecting card text mid-drag.
               >
-                <TeamOrbit
-                  agents={data?.self}
-                  size="large"
-                  loading={isLoading}
-                  onSelect={openAgent}
-                />
-              </div>
-
-              {peers.map((peer, i) => {
-                const pos = satellitePosition(i, peers.length);
-                return (
+                <div
+                  className="absolute left-1/2 top-1/2"
+                  style={panZoom.style}
+                >
+                  {/* Self orbit anchored at world origin (0,0); the parent
+                      div is already centered via left-50%/top-50%, so a
+                      translate(-50%,-50%) on the orbit's wrapper keeps it
+                      visually centered when the canvas is at scale 1 with
+                      zero pan. */}
                   <div
-                    key={peer.owner_id}
-                    className="absolute flex flex-col items-center"
-                    style={{
-                      left: `${pos.x}px`,
-                      top: `${pos.y}px`,
-                      transform: "translate(-50%, -50%)",
-                    }}
+                    className="absolute"
+                    style={{ left: 0, top: 0, transform: "translate(-50%, -50%)" }}
                   >
                     <TeamOrbit
-                      agents={peer.agents}
-                      size="satellite"
+                      agents={data?.self}
+                      size="large"
+                      loading={isLoading}
                       onSelect={openAgent}
                     />
                   </div>
-                );
-              })}
-            </div>
-          </div>
 
-          <CanvasControls
-            scale={panZoom.transform.scale}
-            onZoomIn={() => panZoom.zoomBy(1.25)}
-            onZoomOut={() => panZoom.zoomBy(0.8)}
-            onReset={panZoom.reset}
-          />
+                  {peers.map((peer, i) => {
+                    const pos = satellitePosition(i, peers.length);
+                    return (
+                      <div
+                        key={peer.owner_id}
+                        className="absolute flex flex-col items-center"
+                        style={{
+                          left: `${pos.x}px`,
+                          top: `${pos.y}px`,
+                          transform: "translate(-50%, -50%)",
+                        }}
+                      >
+                        <TeamOrbit
+                          agents={peer.agents}
+                          size="satellite"
+                          onSelect={openAgent}
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <CanvasControls
+                scale={panZoom.transform.scale}
+                onZoomIn={() => panZoom.zoomBy(1.25)}
+                onZoomOut={() => panZoom.zoomBy(0.8)}
+                onReset={panZoom.reset}
+              />
+            </>
+          )}
         </>
       )}
 
@@ -217,6 +265,70 @@ function satellitePosition(i: number, n: number): { x: number; y: number } {
     x: Math.cos(angle) * distance,
     y: Math.sin(angle) * distance,
   };
+}
+
+function ViewToggle({
+  view,
+  onChange,
+}: {
+  view: ViewMode;
+  onChange: (next: ViewMode) => void;
+}) {
+  return (
+    <div
+      className="absolute top-6 right-6 z-10 inline-flex items-center gap-0.5 rounded-full border border-border bg-card/90 backdrop-blur-sm shadow-sm p-0.5"
+      data-pan="ignore"
+    >
+      <ToggleButton
+        active={view === "orbit"}
+        onClick={() => onChange("orbit")}
+        label="Orbit"
+        title="Orbit view — pan and zoom the network"
+      >
+        <LayoutGrid className="h-3.5 w-3.5" />
+      </ToggleButton>
+      <ToggleButton
+        active={view === "list"}
+        onClick={() => onChange("list")}
+        label="List"
+        title="List view — manage runtime, model, review policy"
+      >
+        <List className="h-3.5 w-3.5" />
+      </ToggleButton>
+    </div>
+  );
+}
+
+function ToggleButton({
+  active,
+  onClick,
+  label,
+  title,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-pressed={active}
+      className={
+        "h-7 px-2.5 inline-flex items-center gap-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer " +
+        (active
+          ? "bg-secondary text-foreground"
+          : "text-muted-foreground hover:text-foreground hover:bg-secondary/60")
+      }
+    >
+      {children}
+      <span className="leading-none">{label}</span>
+    </button>
+  );
 }
 
 function CanvasControls({
