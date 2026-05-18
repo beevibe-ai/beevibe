@@ -69,8 +69,6 @@ export interface DispatchPayload {
   max_turns?: number;
   /** Session-scoped env vars; daemon merges with its own when spawning. */
   env: Record<string, string>;
-  /** Tools blocked via --disallowedTools. Set for team-agent chat sessions. */
-  disallowed_tools?: string[];
   type: SessionType;
   /** /mcp endpoint daemon writes into mcp-config.json. */
   mcp_server_url: string;

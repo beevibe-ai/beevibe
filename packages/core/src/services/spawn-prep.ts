@@ -314,28 +314,6 @@ directives the UI understands:
    when there's nothing concrete to choose.
 </chat_directives>`;
 
-/**
- * Tools team agents are blocked from using in chat sessions. Enforced
- * structurally via --disallowedTools so the model cannot self-handle
- * specialist work even if it ignores the routing prompt.
- *
- * Exported so router.ts can pass the same list to the CLI without
- * maintaining a separate copy that could drift.
- */
-export const TEAM_COORDINATOR_DISALLOWED_TOOLS = [
-  "Agent",
-  "Bash",
-  "Read",
-  "Write",
-  "Edit",
-  "MultiEdit",
-  "Glob",
-  "NotebookRead",
-  "NotebookEdit",
-  "WebSearch",
-  "WebFetch",
-] as const;
-
 export function teamAgentRoutingDirective(
   specialistNames: readonly string[],
 ): string {

@@ -72,13 +72,6 @@ export interface RuntimeContext {
   max_turns?: number;
 
   /**
-   * Tools the CLI must not call. When set, passed as `--disallowedTools`
-   * to the Claude Code CLI. Used to prevent team agents from using
-   * file-system / shell tools directly.
-   */
-  disallowed_tools?: string[];
-
-  /**
    * Content appended to Claude Code's baseline system prompt via
    * `--append-system-prompt`. Required: AgentSession composes this from the
    * agent's `runtime_config.system_prompt_addition` baseline plus the memory

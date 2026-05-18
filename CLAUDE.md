@@ -67,17 +67,17 @@ Or just run `pnpm dev` — it does this cleanup at the start now.
 - Sessions spawn with `--dangerously-skip-permissions --strict-mcp-config`
 - MCP config lives in `~/.beevibe/workspaces/<agent_id>/mcp-config.json`
 - Agent cwd is the workspace path (`~/.beevibe/workspaces/<agent_id>`)
-- Team agents in chat get `--disallowedTools Agent,Bash,Read,Write,Edit,Glob,...` to prevent self-handling of specialist work
 
 ## Team agent routing
 
 Team agents (hierarchy_level = 'team') in chat sessions:
-- Are blocked from file/shell/subagent tools via `--disallowedTools`
-- Only have beevibe MCP tools available
+- Keep full tool access — they need to read code, search repos, and write
+  scratch files to ground handoffs in real context
 - Must route work to subordinate specialists or recommend spawning one
 - Routing directive fires post-onboarding, even with zero subordinates
 
-Routing is enforced structurally (tool restriction), not just by prompt.
+Routing is enforced by prompt (`teamAgentRoutingDirective` +
+`BEEVIBE_LIFECYCLE_REMINDER_CHAT`), not by tool restriction.
 
 ## Checking if a change is live
 
@@ -91,16 +91,6 @@ tail -f /tmp/beevibe-daemon.log
 # Verify core dist has your change
 grep "your_symbol" packages/core/dist/adapters/claude-code/runtime.js
 ```
-
-## Claude Code CLI flags — check before using
-
-```bash
-claude --help | grep -A2 "allowed\|disallowed"
-```
-
-- `--allowedTools` / `--disallowedTools`: comma or space-separated tool names
-- Wildcards like `mcp__beevibe__*` are NOT supported — use explicit names or disallow the ones you don't want
-- `Agent` is a tool name (spawns subagents) — disallow it to prevent escape hatches
 
 ## Database
 
