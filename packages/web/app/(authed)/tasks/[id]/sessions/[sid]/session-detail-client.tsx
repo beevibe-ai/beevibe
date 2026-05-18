@@ -14,7 +14,7 @@ import { BriefingComposer } from "@/components/sessions/briefing-composer";
 import { Transcript } from "@/components/sessions/transcript";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
-import { shortId } from "@/lib/format";
+import { formatIntent, shortId } from "@/lib/format";
 import type { SessionDisplay } from "@/lib/types/sessions";
 
 interface Props {
@@ -118,7 +118,7 @@ function SessionDetailBody({ session, taskId: _taskId }: { session: SessionDispl
           />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-base font-semibold leading-tight truncate">{session.intent}</h1>
+              <h1 className="text-base font-semibold leading-tight truncate">{formatIntent(session.intent)}</h1>
               <SessionStatusPill status={session.status} />
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">

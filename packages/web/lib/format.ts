@@ -41,6 +41,24 @@ export function shortId(id: string): string {
 }
 
 /**
+ * Session intents for task work are wrapped as `<task id="...">title\n\ndescription</task>`
+ * (or self-closing `<task id="..."/>` for lifecycle reminders). Strip the
+ * wrapper for display so the UI shows the human-readable title, not raw XML.
+ * Chat intents (no wrapper) pass through unchanged.
+ */
+export function formatIntent(intent: string): string {
+  const selfClosing = intent.match(/^\s*<task id="[^"]*"\/>\s*$/);
+  if (selfClosing) return "Lifecycle reminder";
+  const wrapped = intent.match(/^\s*<task id="[^"]*">\s*([\s\S]*?)\s*<\/task>\s*$/);
+  if (wrapped) {
+    const inner = wrapped[1];
+    const firstBlock = inner.split(/\n\n/)[0] ?? inner;
+    return firstBlock.trim();
+  }
+  return intent;
+}
+
+/**
  * Strip the typed-id prefix and return what's left — used as the
  * stable "@token" form for room mentions and as the short URL
  * fragment in the conversation sidebar. e.g. `agent_kBpTkqiCbsB3` →
