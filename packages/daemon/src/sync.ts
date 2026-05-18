@@ -10,6 +10,7 @@
  */
 
 import { KNOWN_CLIS } from "@beevibe/core";
+import { ApiClient } from "./api-client.js";
 import { loadConfig, saveConfig, CONFIG_PATH, type DaemonConfig } from "./config.js";
 import { detectClis } from "./detect-clis.js";
 
@@ -32,25 +33,23 @@ export async function runSync(): Promise<SyncResult> {
     );
   }
 
-  const detected = detectClis();
+  const detected = await detectClis();
   if (detected.length === 0) {
     throw new Error(
       `No supported CLIs detected on PATH. beevibe currently looks for: ${KNOWN_CLIS.join(", ")}`,
     );
   }
 
-  const res = await fetch(`${config.api_url}/runtime/sync`, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      authorization: `Bearer ${config.daemon_token}`,
-    },
-    body: JSON.stringify({ runtimes: detected }),
+  const api = new ApiClient({
+    apiUrl: config.api_url,
+    daemonToken: config.daemon_token,
   });
-  if (res.status !== 200) {
-    throw new Error(`/runtime/sync failed: ${res.status} ${await res.text()}`);
+  const { status, body } = await api.post<SyncResponse>("/runtime/sync", {
+    runtimes: detected,
+  });
+  if (status !== 200 || !body) {
+    throw new Error(`/runtime/sync failed: ${status}`);
   }
-  const body = (await res.json()) as SyncResponse;
 
   const before = new Set(config.runtimes.map((r) => r.cli));
   const added = body.runtimes.filter((r) => !before.has(r.cli));

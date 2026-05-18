@@ -104,20 +104,14 @@ async function main(): Promise<void> {
   if (command === "sync") {
     const result = await runSync();
     if (result.added.length === 0) {
-      console.log(
-        `No new CLIs detected. Registered runtimes: ${result.runtimes
-          .map((r) => r.cli)
-          .join(", ")}.`,
-      );
+      console.log("No new CLIs detected.");
     } else {
       console.log(
         `Added ${result.added.length} runtime(s): ${result.added
           .map((r) => `${r.cli} (${r.id})`)
           .join(", ")}.`,
       );
-      console.log(
-        "Restart 'beevibe-daemon start' to pick up the new runtime(s).",
-      );
+      console.log("Restart the daemon to pick up the new runtime(s).");
     }
     return;
   }

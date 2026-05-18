@@ -38,7 +38,7 @@ export async function runSetup(options: SetupOptions): Promise<DaemonConfig> {
   const externalId = options.externalId ?? hostname();
   const deviceName =
     options.deviceName ?? `${userInfo().username}@${hostname()}`;
-  const runtimes = options.detectedClis ?? detectClis();
+  const runtimes = options.detectedClis ?? (await detectClis());
   if (runtimes.length === 0) {
     throw new Error(
       `No supported CLIs detected on PATH. beevibe currently looks for: ${KNOWN_CLIS.join(", ")}`,

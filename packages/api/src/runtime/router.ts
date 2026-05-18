@@ -120,12 +120,8 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
     }
   });
 
-  // POST /runtime/sync — bv_d_ auth. Re-detect after the user installed
-  // a new CLI on the daemon's machine. Upserts runtimes against the
-  // caller's existing daemon row; does NOT rotate the daemon token (the
-  // bv_d_ in `req.caller.daemonId` is already proving identity). Returns
-  // the full post-upsert runtime list so the daemon can update its
-  // ~/.beevibe/config.json.
+  // Re-runs CLI detection; upserts runtimes scoped by the bv_d_ — no
+  // token rotation, unlike /register.
   router.post("/sync", async (req, res) => {
     if (!requireDaemon(req, res)) return;
     const body = parseSyncBody(req.body);
@@ -322,30 +318,40 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
 
 /* ─── helpers ────────────────────────────────────────────────────────── */
 
+/**
+ * Shape check for the `runtimes: [{cli, cli_version?}]` array shared by
+ * /register and /sync. Returns the typed array or null on any
+ * structural defect — caller decides whether the surrounding body is
+ * still valid.
+ */
+function parseRuntimesArray(
+  input: unknown,
+): RuntimeRegisterRequest["runtimes"] | null {
+  if (!Array.isArray(input) || input.length === 0) return null;
+  for (const r of input) {
+    if (!r || typeof r !== "object") return null;
+    const e = r as Partial<{ cli: unknown; cli_version: unknown }>;
+    if (typeof e.cli !== "string" || !e.cli) return null;
+    if (e.cli_version !== undefined && typeof e.cli_version !== "string") return null;
+  }
+  return input as RuntimeRegisterRequest["runtimes"];
+}
+
 function parseRegisterBody(body: unknown): RuntimeRegisterRequest | null {
   if (!body || typeof body !== "object") return null;
   const b = body as Partial<RuntimeRegisterRequest>;
   if (typeof b.external_id !== "string" || !b.external_id) return null;
   if (typeof b.device_name !== "string" || !b.device_name) return null;
-  if (!Array.isArray(b.runtimes) || b.runtimes.length === 0) return null;
-  for (const r of b.runtimes) {
-    if (!r || typeof r !== "object") return null;
-    if (typeof r.cli !== "string" || !r.cli) return null;
-    if (r.cli_version !== undefined && typeof r.cli_version !== "string") return null;
-  }
-  return b as RuntimeRegisterRequest;
+  const runtimes = parseRuntimesArray(b.runtimes);
+  if (!runtimes) return null;
+  return { external_id: b.external_id, device_name: b.device_name, runtimes };
 }
 
 function parseSyncBody(body: unknown): RuntimeSyncRequest | null {
   if (!body || typeof body !== "object") return null;
-  const b = body as Partial<RuntimeSyncRequest>;
-  if (!Array.isArray(b.runtimes) || b.runtimes.length === 0) return null;
-  for (const r of b.runtimes) {
-    if (!r || typeof r !== "object") return null;
-    if (typeof r.cli !== "string" || !r.cli) return null;
-    if (r.cli_version !== undefined && typeof r.cli_version !== "string") return null;
-  }
-  return b as RuntimeSyncRequest;
+  const runtimes = parseRuntimesArray((body as Partial<RuntimeSyncRequest>).runtimes);
+  if (!runtimes) return null;
+  return { runtimes };
 }
 
 function isValidEvent(e: unknown): e is RuntimeEventInput {

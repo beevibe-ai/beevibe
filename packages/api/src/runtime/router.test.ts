@@ -268,12 +268,10 @@ describe("/runtime — integration", () => {
         "claude",
         "codex",
       ]);
-      // Existing claude runtime keeps its id (upsert, not replace).
       const claudeRow = res.body.runtimes.find(
         (r: { cli: string }) => r.cli === "claude",
       );
       expect(claudeRow?.id).toBe(rId);
-      // The codex runtime was created fresh.
       const codexRow = res.body.runtimes.find(
         (r: { cli: string }) => r.cli === "codex",
       );
@@ -325,14 +323,11 @@ describe("/runtime — integration", () => {
       const aliceDaemon = await makeRegisteredDaemon(alice.person.id);
       const bobDaemon = await makeRegisteredDaemon(bob.person.id);
 
-      // Alice's daemon syncs — should only touch Alice's runtimes.
       await request(makeApp())
         .post("/runtime/sync")
         .set("Authorization", `Bearer ${aliceDaemon.token}`)
         .send({ runtimes: [{ cli: "codex" }] });
 
-      // Bob's runtimes untouched: still exactly one runtime row (claude, from
-      // makeRegisteredDaemon), no codex row stamped under Bob's daemon.
       const bobRuntime = await runtimeRepo.findById(bobDaemon.runtimeId);
       expect(bobRuntime?.cli).toBe("claude");
       const bobCodex = await runtimeRepo.findByDaemonAndCli(bobDaemon.daemonId, "codex");
