@@ -7,6 +7,7 @@ import {
   Cpu,
   HardDrive,
   Plus,
+  RefreshCw,
   Terminal,
   Trash2,
 } from "lucide-react";
@@ -20,6 +21,7 @@ import { isApiConfigured } from "@/lib/api/config";
 import { describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
+import { CommandBlock } from "@/components/command-block";
 import { DaemonInstallInstructions } from "@/components/daemon-install";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
@@ -113,6 +115,7 @@ function Body({
       {daemons.map((d) => (
         <DaemonCard key={d.id} daemon={d} />
       ))}
+      <SyncNewCli />
       <AddAnotherMachine />
     </div>
   );
@@ -302,6 +305,29 @@ function AddAnotherMachine() {
       </summary>
       <div className="border-t border-border/60 px-4 py-3">
         <InstallSnippet />
+      </div>
+    </details>
+  );
+}
+
+function SyncNewCli() {
+  return (
+    <details className="group rounded-lg border border-dashed border-border bg-card/40">
+      <summary className="cursor-pointer px-4 py-3 list-none flex items-center gap-2 text-xs text-muted-foreground hover:text-foreground transition-colors">
+        <RefreshCw className="h-3.5 w-3.5" />
+        Installed a new CLI on a machine that&apos;s already registered?
+      </summary>
+      <div className="border-t border-border/60 px-4 py-3 space-y-2.5 text-xs text-muted-foreground">
+        <p>
+          Run this on the machine where the daemon is set up. It re-detects
+          every supported CLI on <span className="font-mono">PATH</span> and
+          registers any new ones here — no reinstall, no token rotation.
+        </p>
+        <CommandBlock label="On the daemon machine" command="beevibe-daemon sync" />
+        <p>
+          Restart <span className="font-mono">beevibe-daemon start</span>{" "}
+          afterwards so the active poll loop picks up the new runtime.
+        </p>
       </div>
     </details>
   );

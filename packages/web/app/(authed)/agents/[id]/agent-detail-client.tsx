@@ -511,6 +511,13 @@ function RuntimePicker({ agent }: { agent: AgentDetail }) {
             sessions sit pending until rebound; mesh asks fall back to the
             server.
           </p>
+          <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+            Don&apos;t see a CLI you just installed?{" "}
+            <Link href="/runtimes" className="underline hover:text-foreground">
+              Sync your daemon
+            </Link>
+            .
+          </p>
         </>
       )}
     </section>
