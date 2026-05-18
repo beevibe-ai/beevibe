@@ -39,6 +39,8 @@ import type {
   RuntimeRegisterResponse,
   RuntimeSkill,
   RuntimeSkillsResponse,
+  RuntimeSyncRequest,
+  RuntimeSyncResponse,
 } from "./types.js";
 
 export interface RuntimeRouterDeps {
@@ -115,6 +117,34 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
     } catch (err) {
       console.error("[runtime/register]", err);
       res.status(500).json({ error: "register_failed" });
+    }
+  });
+
+  // POST /runtime/sync — bv_d_ auth. Re-detect after the user installed
+  // a new CLI on the daemon's machine. Upserts runtimes against the
+  // caller's existing daemon row; does NOT rotate the daemon token (the
+  // bv_d_ in `req.caller.daemonId` is already proving identity). Returns
+  // the full post-upsert runtime list so the daemon can update its
+  // ~/.beevibe/config.json.
+  router.post("/sync", async (req, res) => {
+    if (!requireDaemon(req, res)) return;
+    const body = parseSyncBody(req.body);
+    if (!body) {
+      res.status(400).json({
+        error: "invalid_body",
+        message: "expected { runtimes: [{cli, cli_version?}] }",
+      });
+      return;
+    }
+    try {
+      const runtimes = await upsertRuntimes(deps, req.caller!.daemonId, body.runtimes);
+      const response: RuntimeSyncResponse = {
+        runtimes: runtimes.map((r) => ({ id: r.id, cli: r.cli })),
+      };
+      res.status(200).json(response);
+    } catch (err) {
+      console.error("[runtime/sync]", err);
+      res.status(500).json({ error: "sync_failed" });
     }
   });
 
@@ -304,6 +334,18 @@ function parseRegisterBody(body: unknown): RuntimeRegisterRequest | null {
     if (r.cli_version !== undefined && typeof r.cli_version !== "string") return null;
   }
   return b as RuntimeRegisterRequest;
+}
+
+function parseSyncBody(body: unknown): RuntimeSyncRequest | null {
+  if (!body || typeof body !== "object") return null;
+  const b = body as Partial<RuntimeSyncRequest>;
+  if (!Array.isArray(b.runtimes) || b.runtimes.length === 0) return null;
+  for (const r of b.runtimes) {
+    if (!r || typeof r !== "object") return null;
+    if (typeof r.cli !== "string" || !r.cli) return null;
+    if (r.cli_version !== undefined && typeof r.cli_version !== "string") return null;
+  }
+  return b as RuntimeSyncRequest;
 }
 
 function isValidEvent(e: unknown): e is RuntimeEventInput {

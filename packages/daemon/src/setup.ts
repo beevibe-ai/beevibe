@@ -9,9 +9,9 @@
  */
 
 import { hostname, userInfo } from "node:os";
-import { spawnSync } from "node:child_process";
 import { KNOWN_CLIS } from "@beevibe/core";
 import { saveConfig, type DaemonConfig } from "./config.js";
+import { detectClis } from "./detect-clis.js";
 
 export interface SetupOptions {
   apiUrl: string;
@@ -77,17 +77,3 @@ export async function runSetup(options: SetupOptions): Promise<DaemonConfig> {
   return config;
 }
 
-function detectClis(): Array<{ cli: string; cli_version?: string }> {
-  const out: Array<{ cli: string; cli_version?: string }> = [];
-  for (const cli of KNOWN_CLIS) {
-    const which = spawnSync("which", [cli], { encoding: "utf8" });
-    if (which.status !== 0 || !which.stdout.trim()) continue;
-    const version = spawnSync(cli, ["--version"], { encoding: "utf8" });
-    out.push({
-      cli,
-      cli_version:
-        version.status === 0 ? version.stdout.trim().split("\n")[0] : undefined,
-    });
-  }
-  return out;
-}

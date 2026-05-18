@@ -244,6 +244,102 @@ describe("/runtime — integration", () => {
     });
   });
 
+  /* ─── /runtime/sync ───────────────────────────────────────────────── */
+
+  describe("POST /runtime/sync", () => {
+    it("adds a newly-detected CLI to an existing daemon without rotating the token", async () => {
+      const alice = await makeAlice();
+      const { token, daemonId: dId, runtimeId: rId } = await makeRegisteredDaemon(
+        alice.person.id,
+      );
+
+      const res = await request(makeApp())
+        .post("/runtime/sync")
+        .set("Authorization", `Bearer ${token}`)
+        .send({
+          runtimes: [
+            { cli: "claude", cli_version: "1.2.3" },
+            { cli: "codex", cli_version: "0.47.0" },
+          ],
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.runtimes.map((r: { cli: string }) => r.cli).sort()).toEqual([
+        "claude",
+        "codex",
+      ]);
+      // Existing claude runtime keeps its id (upsert, not replace).
+      const claudeRow = res.body.runtimes.find(
+        (r: { cli: string }) => r.cli === "claude",
+      );
+      expect(claudeRow?.id).toBe(rId);
+      // The codex runtime was created fresh.
+      const codexRow = res.body.runtimes.find(
+        (r: { cli: string }) => r.cli === "codex",
+      );
+      expect(codexRow?.id).toMatch(/^rt_/);
+
+      // Token must NOT rotate — that's the whole point of /sync vs /register.
+      const daemon = await daemonRepo.findById(dId);
+      expect(daemon?.token_hash).toBe(hashDaemonToken(token));
+    });
+
+    it("updates cli_version when a re-detected CLI reports a new version", async () => {
+      const alice = await makeAlice();
+      const { token, runtimeId: rId } = await makeRegisteredDaemon(alice.person.id);
+
+      const res = await request(makeApp())
+        .post("/runtime/sync")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ runtimes: [{ cli: "claude", cli_version: "2.0.0" }] });
+
+      expect(res.status).toBe(200);
+      const updated = await runtimeRepo.findById(rId);
+      expect(updated?.cli_version).toBe("2.0.0");
+    });
+
+    it("rejects human callers (only bv_d_ may sync)", async () => {
+      const alice = await makeAlice();
+      const res = await request(makeApp())
+        .post("/runtime/sync")
+        .set("Authorization", `Bearer ${alice.apiKey}`)
+        .send({ runtimes: [{ cli: "claude" }] });
+      expect(res.status).toBe(403);
+      expect(res.body.error).toBe("daemon_required");
+    });
+
+    it("returns 400 when body is malformed", async () => {
+      const alice = await makeAlice();
+      const { token } = await makeRegisteredDaemon(alice.person.id);
+      const res = await request(makeApp())
+        .post("/runtime/sync")
+        .set("Authorization", `Bearer ${token}`)
+        .send({ runtimes: [] });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("invalid_body");
+    });
+
+    it("scopes upsert to the caller's daemon — cannot mutate another daemon's runtimes", async () => {
+      const alice = await makeAlice();
+      const { person: bob } = await makePersonWithAgent("Bob", "bob-sync@example.com");
+      const aliceDaemon = await makeRegisteredDaemon(alice.person.id);
+      const bobDaemon = await makeRegisteredDaemon(bob.person.id);
+
+      // Alice's daemon syncs — should only touch Alice's runtimes.
+      await request(makeApp())
+        .post("/runtime/sync")
+        .set("Authorization", `Bearer ${aliceDaemon.token}`)
+        .send({ runtimes: [{ cli: "codex" }] });
+
+      // Bob's runtimes untouched: still exactly one runtime row (claude, from
+      // makeRegisteredDaemon), no codex row stamped under Bob's daemon.
+      const bobRuntime = await runtimeRepo.findById(bobDaemon.runtimeId);
+      expect(bobRuntime?.cli).toBe("claude");
+      const bobCodex = await runtimeRepo.findByDaemonAndCli(bobDaemon.daemonId, "codex");
+      expect(bobCodex).toBeUndefined();
+    });
+  });
+
   /* ─── /runtime/heartbeat ──────────────────────────────────────────── */
 
   describe("POST /runtime/heartbeat", () => {
