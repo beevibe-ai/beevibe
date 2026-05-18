@@ -437,9 +437,13 @@ function Thinking({
   // Split agent text from tool steps. Agent text is the response being
   // written; tools are the substrate beneath, categorized so the
   // audience can SEE when the agent is asking another agent (mesh) vs
-  // saving memory vs reading a file. Final summary arrives via POST and
-  // replaces this whole block.
-  const toolSteps = steps.filter((s) => s.kind === "tool_call");
+  // saving memory vs reading a file. tool_result rows surface what each
+  // call returned — especially failures, which used to look like an
+  // empty success. Final summary arrives via POST and replaces this
+  // whole block.
+  const toolSteps = steps.filter(
+    (s) => s.kind === "tool_call" || s.kind === "tool_result",
+  );
   const agentSteps = steps.filter((s) => s.kind === "agent");
   // Each Claude turn between tool calls emits one assistant block — full
   // text, not deltas — so concatenating gives the response-so-far.

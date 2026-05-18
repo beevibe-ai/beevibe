@@ -512,7 +512,9 @@ function TypingBubble({ typing: t }: { typing: NonNullable<RoomDetail["typing"]>
     seen.add(s.event_id);
     merged.push(s);
   }
-  const toolSteps = merged.filter((s) => s.kind === "tool_call");
+  const toolSteps = merged.filter(
+    (s) => s.kind === "tool_call" || s.kind === "tool_result",
+  );
   const recentTools = toolSteps.slice(-6);
   const totalSteps = Math.max(toolSteps.length, t.total_steps ?? 0);
 

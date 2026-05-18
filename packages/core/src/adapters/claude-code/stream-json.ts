@@ -39,6 +39,8 @@ export interface StreamJsonMessage {
   name?: string;
   input?: Record<string, unknown>;
   tool_use_id?: string;
+  /** Anthropic tool_result spec: `true` when the tool reported an error. */
+  is_error?: boolean;
   content?: unknown;
   session_id?: string;
   cost_usd?: number;
@@ -70,6 +72,9 @@ export function parseStreamJsonLine(line: string): StreamJsonMessage | null {
  * Convert a parsed stream-json message into 0+ RuntimeSteps.
  *
  * - tool_use messages → one tool_call step.
+ * - tool_result messages → one tool_result step. `[error] ` prefix on
+ *   `description` when the tool reported `is_error: true`, so the UI
+ *   can style failures distinctly.
  * - assistant messages with content blocks → one agent step per non-empty
  *   text block + one tool_call step per inline tool_use block.
  * - everything else → no step.
@@ -83,6 +88,16 @@ export function extractStepEvents(msg: StreamJsonMessage): RuntimeStep[] {
         kind: "tool_call",
         tool: msg.name ?? "unknown",
         description: describeToolInput(msg.input ?? {}),
+        timestamp: now,
+      },
+    ];
+  }
+
+  if (msg.type === STREAM_TYPE.ToolResult) {
+    return [
+      {
+        kind: "tool_result",
+        description: describeToolResult(msg.content, msg.is_error === true),
         timestamp: now,
       },
     ];
@@ -122,6 +137,14 @@ export function extractStepEvents(msg: StreamJsonMessage): RuntimeStep[] {
   }
 
   return [];
+}
+
+function describeToolResult(content: unknown, isError: boolean): string {
+  const text = typeof content === "string" ? content : JSON.stringify(content ?? "");
+  // Trigger truncates to 512 chars; keep the prefix tiny so the UI sees
+  // the actual payload, not just "[error]" overflow.
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  return isError ? `[error] ${collapsed}` : collapsed;
 }
 
 /**
