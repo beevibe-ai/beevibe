@@ -35,6 +35,7 @@ import {
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { ResumeReason } from "@beevibe/core/services/agent-session";
 import { isBareCliExitMessage } from "@beevibe/core/adapters/claude-code";
+import { parseRuntimeMissingError } from "@beevibe/core/adapters/runtime-registry";
 import { requireHuman } from "../auth/middleware.js";
 import type { ChatResolver } from "../runtime/chat-resolver.js";
 import type { DaemonHub } from "../runtime/hub.js";
@@ -206,18 +207,16 @@ const DAEMON_LOG_POINTER =
   "`beevibe-daemon start` for the failure detail.";
 
 /**
- * Matches the daemon's spawner throw when it receives a dispatch payload
- * for a CLI that isn't in its `runtimeRegistry` — for example, the user
- * uninstalled claude but the conversation is still pinned to a claude
- * runtime row. The api persists this exact string as `session.error`
- * via /runtime/done, and we swap it for a user-actionable message.
+ * Rewrites the daemon's runtime-missing throw (e.g. user uninstalled
+ * claude but the conversation is still pinned to a claude runtime row)
+ * into a user-actionable message. The raw string is persisted as
+ * `session.error` by /runtime/done; we recognize it via the shared
+ * `parseRuntimeMissingError` matcher so the producer (`spawner.ts`'s
+ * `runtimeMissingError(cli)`) and this consumer stay in sync.
  */
-const RUNTIME_MISSING_PATTERN = /No runtime registered for dispatch payload type '([^']+)'/;
-
 function rewriteRuntimeMissingError(raw: string): string | undefined {
-  const match = raw.match(RUNTIME_MISSING_PATTERN);
-  if (!match) return undefined;
-  const cli = match[1];
+  const cli = parseRuntimeMissingError(raw);
+  if (!cli) return undefined;
   return (
     `This conversation is pinned to the ${cli} runtime, which isn't installed ` +
     `on the daemon claiming it. Install ${cli} on the daemon's machine and ` +
@@ -230,11 +229,9 @@ export function failureMessageFor(s: {
   error?: string | null;
 }): string {
   const error = s.error?.trim();
-  if (error) {
-    const rewritten = rewriteRuntimeMissingError(error);
-    if (rewritten) return rewritten;
-    if (!isBareCliExitMessage(error)) return error;
-  }
+  const rewritten = error ? rewriteRuntimeMissingError(error) : undefined;
+  if (rewritten) return rewritten;
+  if (error && !isBareCliExitMessage(error)) return error;
   const summary = s.result_summary?.trim();
   if (summary && !isBareCliExitMessage(summary)) return summary;
   return DAEMON_LOG_POINTER;
