@@ -9,6 +9,7 @@ import {
   type ChatTurnResponse,
   type SuggestedAction,
 } from "@/lib/api/client";
+import type { KnownCli } from "@beevibe/core";
 import { isApiConfigured } from "@/lib/api/config";
 import { ApiError } from "@/lib/api/http";
 import { queryKeys } from "./keys";
@@ -134,13 +135,14 @@ export function useChat(opts: UseChatOptions = {}) {
   const mutation = useMutation<
     ChatTurnResponse,
     Error,
-    { message: string; sessionId: string }
+    { message: string; sessionId: string; runtimeType?: KnownCli }
   >({
-    mutationFn: ({ message, sessionId }) =>
+    mutationFn: ({ message, sessionId, runtimeType }) =>
       api.chat.send({
         message,
         session_id: sessionId,
         prior_session_id: priorSessionId,
+        ...(runtimeType ? { runtime_type: runtimeType } : {}),
       }),
     onMutate: ({ message, sessionId }) => {
       // Optimistically append the user's turn AND stamp in_flight_session_id
@@ -222,10 +224,10 @@ export function useChat(opts: UseChatOptions = {}) {
   });
 
   const send = useCallback(
-    (rawMessage: string) => {
+    (rawMessage: string, runtimeType?: KnownCli) => {
       const trimmed = rawMessage.trim();
       if (!trimmed || mutation.isPending) return;
-      mutation.mutate({ message: trimmed, sessionId: mintSessionId() });
+      mutation.mutate({ message: trimmed, sessionId: mintSessionId(), runtimeType });
     },
     [mutation],
   );
@@ -273,5 +275,11 @@ export function useChat(opts: UseChatOptions = {}) {
     pendingSessionId: inFlightSessionId,
     /** History query state, for showing a "loading prior conversation…" indicator. */
     isLoadingHistory: history.isLoading,
+    /**
+     * CLI this conversation is pinned to (set after the first claimed
+     * turn). The composer locks its runtime picker to this value so the
+     * user can't pick a different CLI and get a 409 on send.
+     */
+    pinnedRuntimeCli: history.data?.pinned_runtime_cli,
   };
 }

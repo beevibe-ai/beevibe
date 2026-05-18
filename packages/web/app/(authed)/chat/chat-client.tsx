@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -9,10 +9,17 @@ import {
   ArrowRight,
   ArrowUp,
   MessageSquare,
+  Terminal,
 } from "lucide-react";
-import type { HierarchyLevel } from "@beevibe/core";
+import type { HierarchyLevel, KnownCli } from "@beevibe/core";
+import { isKnownCli, KNOWN_CLIS } from "@beevibe/core/domain";
 import { isApiConfigured } from "@/lib/api/config";
-import { api, type ChatConversationsResponse, type SuggestedAction } from "@/lib/api/client";
+import {
+  api,
+  type ChatConversationsResponse,
+  type RuntimesListResponse,
+  type SuggestedAction,
+} from "@/lib/api/client";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
 import { useMe } from "@/lib/hooks/use-me";
@@ -46,8 +53,22 @@ const ONBOARDING_PROMPT_SUGGESTIONS = [
   "What can you do for me?",
 ];
 
+const RUNTIME_LABELS: Record<KnownCli, string> = {
+  claude: "Claude",
+  codex: "Codex",
+  opencode: "OpenCode",
+};
+
+function runtimeStatusSuffix(counts: { online: number; total: number }): string {
+  if (counts.online > 1) return ` (${counts.online} online)`;
+  if (counts.online === 1) return "";
+  if (counts.total > 0) return " (offline)";
+  return " (not set up)";
+}
+
 export function ChatClient() {
   const [draft, setDraft] = useState("");
+  const [runtimeType, setRuntimeType] = useState<KnownCli>("claude");
   const router = useRouter();
   const searchParams = useSearchParams();
   const { data: me } = useMe();
@@ -64,10 +85,21 @@ export function ChatClient() {
   const conversationParam = searchParams?.get("c") ?? undefined;
   const isFresh = searchParams?.get("new") === "1";
 
-  const { messages, send, isPending, isSubmitting, error, pendingSessionId } = useChat({
-    conversationId: conversationParam,
-    fresh: isFresh,
-  });
+  const { messages, send, isPending, isSubmitting, error, pendingSessionId, pinnedRuntimeCli } =
+    useChat({
+      conversationId: conversationParam,
+      fresh: isFresh,
+    });
+
+  // Once we load a conversation that's already claimed a runtime, mirror
+  // its CLI into the picker so the user sees the pinned value (instead
+  // of the "claude" default) and can't accidentally pick a different
+  // CLI — the server would 409 with `runtime_switch_requires_new_chat`.
+  useEffect(() => {
+    if (pinnedRuntimeCli && pinnedRuntimeCli !== runtimeType) {
+      setRuntimeType(pinnedRuntimeCli);
+    }
+  }, [pinnedRuntimeCli, runtimeType]);
   const liveSteps = useChatStream(pendingSessionId);
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const teamAgent = useTeamAgent();
@@ -115,7 +147,7 @@ export function ChatClient() {
   const submit = (text?: string) => {
     const value = text ?? draft;
     if (value.trim().length === 0) return;
-    send(value);
+    send(value, runtimeType);
     setDraft("");
   };
 
@@ -143,6 +175,8 @@ export function ChatClient() {
             draft={draft}
             setDraft={setDraft}
             onboarding={isOnboardingChat}
+            runtimeType={runtimeType}
+            setRuntimeType={setRuntimeType}
           />
         ) : (
           <>
@@ -186,7 +220,13 @@ export function ChatClient() {
                   disabled={isSubmitting}
                   className="w-full bg-transparent px-4 pt-3 pb-1 text-sm focus:outline-none resize-none placeholder:text-muted-foreground/60 disabled:opacity-60"
                 />
-                <div className="flex items-center justify-end px-3 pb-2">
+                <div className="flex items-center justify-between gap-3 px-3 pb-2">
+                  <RuntimeSelector
+                    value={runtimeType}
+                    onChange={setRuntimeType}
+                    disabled={isSubmitting}
+                    pinned={pinnedRuntimeCli}
+                  />
                   <button
                     type="button"
                     onClick={() => submit()}
@@ -211,11 +251,15 @@ function HeroEmptyChat({
   draft,
   setDraft,
   onboarding,
+  runtimeType,
+  setRuntimeType,
 }: {
   onSubmit: (text?: string) => void;
   draft: string;
   setDraft: (s: string) => void;
   onboarding: boolean;
+  runtimeType: KnownCli;
+  setRuntimeType: (runtimeType: KnownCli) => void;
 }) {
   const agents = useAgents();
   const teamAgent = agents.data?.find((a) => a.hierarchy !== "ic");
@@ -265,7 +309,8 @@ function HeroEmptyChat({
             autoFocus
             className="w-full bg-transparent px-4 pt-3 pb-2 text-sm focus:outline-none resize-none placeholder:text-muted-foreground/60"
           />
-          <div className="flex items-center justify-end px-3 pb-2">
+          <div className="flex items-center justify-between gap-3 px-3 pb-2">
+            <RuntimeSelector value={runtimeType} onChange={setRuntimeType} />
             <button
               type="button"
               onClick={() => onSubmit()}
@@ -325,6 +370,89 @@ function HeroEmptyChat({
         </div>
       </div>
     </div>
+  );
+}
+
+function RuntimeSelector({
+  value,
+  onChange,
+  disabled,
+  pinned,
+}: {
+  value: KnownCli;
+  onChange: (runtimeType: KnownCli) => void;
+  disabled?: boolean;
+  /**
+   * Set when the current conversation has already claimed a runtime —
+   * the picker locks to that CLI because the server pins runtime per
+   * chain (switching mid-chat 409s). Empty conversations leave this
+   * unset and the user can pick freely.
+   */
+  pinned?: KnownCli;
+}) {
+  const runtimesQuery = useQuery<RuntimesListResponse>({
+    queryKey: queryKeys.runtimes.list(),
+    queryFn: ({ signal }) => api.runtimes.list({ signal }),
+    enabled: isApiConfigured,
+    staleTime: 30_000,
+  });
+
+  const runtimeCounts = useMemo(() => {
+    const countsByCli = new Map<KnownCli, { online: number; total: number }>();
+    for (const cli of KNOWN_CLIS) countsByCli.set(cli, { online: 0, total: 0 });
+    for (const daemon of runtimesQuery.data?.daemons ?? []) {
+      for (const runtime of daemon.runtimes) {
+        if (!isKnownCli(runtime.cli)) continue;
+        const counts = countsByCli.get(runtime.cli)!;
+        counts.total += 1;
+        if (runtime.online) counts.online += 1;
+      }
+    }
+    return countsByCli;
+  }, [runtimesQuery.data]);
+
+  // The parent seeds `value` with a hardcoded default ("claude"). On the
+  // first arrival of runtime data, swap to the first online CLI if the
+  // default has none — that's a one-shot default-correction, not an
+  // ongoing override. Switching silently on every poll would steal the
+  // user's deliberate selection if their CLI flickered offline mid-session.
+  // Skip entirely when the conversation is pinned; the parent already
+  // mirrored that CLI into `value`.
+  const didInitialPick = useRef(false);
+  useEffect(() => {
+    if (pinned || didInitialPick.current || !runtimesQuery.data) return;
+    didInitialPick.current = true;
+    if ((runtimeCounts.get(value)?.online ?? 0) > 0) return;
+    const firstOnline = KNOWN_CLIS.find((cli) => (runtimeCounts.get(cli)?.online ?? 0) > 0);
+    if (firstOnline) onChange(firstOnline);
+  }, [pinned, runtimesQuery.data, runtimeCounts, value, onChange]);
+
+  const locked = pinned !== undefined;
+  return (
+    <label className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
+      <Terminal className="h-3.5 w-3.5 shrink-0" />
+      <select
+        value={value}
+        disabled={disabled || locked || runtimesQuery.isLoading}
+        onChange={(e) => onChange(e.target.value as KnownCli)}
+        title={
+          locked
+            ? "This conversation is pinned to this runtime. Start a new chat to switch."
+            : "Choose the runtime for this chat turn"
+        }
+        className="max-w-[160px] rounded-md border border-border bg-background px-2 py-1 text-xs text-foreground outline-none transition-colors hover:border-foreground/30 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        {KNOWN_CLIS.map((cli) => {
+          const counts = runtimeCounts.get(cli) ?? { online: 0, total: 0 };
+          return (
+            <option key={cli} value={cli} disabled={counts.online === 0}>
+              {RUNTIME_LABELS[cli]}
+              {runtimeStatusSuffix(counts)}
+            </option>
+          );
+        })}
+      </select>
+    </label>
   );
 }
 
@@ -482,4 +610,3 @@ function Thinking({
     </div>
   );
 }
-

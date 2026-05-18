@@ -161,6 +161,37 @@ describe("LocalWorkspaceManager", () => {
     ).resolves.toBeUndefined();
   });
 
+  it("calls runtime.prepareWorkspace before syncing skills", async () => {
+    const calls: string[] = [];
+    const runtime = {
+      type: "opencode",
+      prepareWorkspace: ({ workspace }: { workspace: Workspace }) => {
+        calls.push(`prepare:${workspace.path}`);
+        writeFileSync(join(workspace.path, "opencode.json"), "{}\n");
+      },
+      skillsDir: (workspace: Workspace) => {
+        calls.push(`skills:${workspace.path}`);
+        return join(workspace.path, ".opencode", "skills");
+      },
+    } as unknown as AgentRuntime;
+    const m = new LocalWorkspaceManager({
+      workspaceRoot,
+      mcpServerUrl: MCP_URL,
+      runtimeRegistry: { opencode: runtime },
+      skillsSourceDir,
+    });
+
+    const ws = await m.ensureWorkspace({
+      agent: makeAgent({
+        id: "agent_opencode",
+        runtime_config: { type: "opencode", model: "openrouter/qwen/qwen3-coder" },
+      }),
+    });
+
+    expect(existsSync(join(ws.path, "opencode.json"))).toBe(true);
+    expect(calls).toEqual([`prepare:${ws.path}`, `skills:${ws.path}`]);
+  });
+
   it("different agents get isolated dirs", async () => {
     const a = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_a" }) });
     const b = await manager.ensureWorkspace({ agent: makeAgent({ id: "agent_b" }) });

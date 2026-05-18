@@ -67,8 +67,10 @@ interface ActiveMcpSession {
  * adaptations for beevibe:
  *   - No OAuth bridge (Bearer auth via M4's `lookupApiKey` only).
  *   - Per-session beevibe sid: agents pass `X-Beevibe-Session` header (set
- *     before they were spawned); humans get a fresh chat session row + sid
- *     created at initialize, with the cache mapping `mcpSid → beevibeSid`.
+ *     before they were spawned). Runtimes that cannot set custom MCP headers
+ *     may pass `?beevibe_session=...` on the MCP URL instead. Humans get a
+ *     fresh chat session row + sid created at initialize, with the cache
+ *     mapping `mcpSid → beevibeSid`.
  *   - Tools are assembled fresh per session via `assembleTools(ctx, services)`,
  *     closed over the resolved caller + sid (no async-storage threading).
  *
@@ -186,16 +188,23 @@ async function handleMcpRequest(
   let beevibeSid: string;
   if (caller.source === "agent") {
     const fromHeader = req.headers["x-beevibe-session"];
-    if (typeof fromHeader !== "string" || !fromHeader) {
+    const fromQuery = req.query.beevibe_session;
+    const sid =
+      typeof fromHeader === "string" && fromHeader
+        ? fromHeader
+        : typeof fromQuery === "string" && fromQuery
+          ? fromQuery
+          : undefined;
+    if (!sid) {
       res.status(400).json({
         error: "agent_caller_missing_x_beevibe_session",
         message:
-          "Agent callers must pass the X-Beevibe-Session header (set via " +
-          "env-var interpolation in mcp-config.json by the spawner).",
+          "Agent callers must pass the X-Beevibe-Session header or " +
+          "?beevibe_session=... on the MCP URL.",
       });
       return;
     }
-    beevibeSid = fromHeader;
+    beevibeSid = sid;
   } else {
     // Human: mint a fresh chat session row.
     beevibeSid = makeBeevibeSid();

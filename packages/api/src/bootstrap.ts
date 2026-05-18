@@ -399,6 +399,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     authMiddleware: server.getAuthMiddleware(),
     agentRepo,
     personRepo,
+    runtimeRepo,
     sessionRepo,
     dispatchService,
     chatResolver,

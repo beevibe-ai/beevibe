@@ -23,8 +23,12 @@ interface PanZoomOptions {
 export interface PanZoomController {
   /** Attach to the outer (clipping) container. Wheel + pointer down land here. */
   containerRef: React.RefObject<HTMLDivElement>;
-  /** CSS transform string to apply to the inner content. */
-  style: { transform: string; transformOrigin: string };
+  /** CSS transform + will-change to apply to the inner content. */
+  style: {
+    transform: string;
+    transformOrigin: string;
+    willChange: "transform" | "auto";
+  };
   /** Reset to initial transform. */
   reset: () => void;
   /** Programmatically zoom in/out by a step (e.g. for +/- buttons). */
@@ -69,6 +73,34 @@ export function usePanZoom(opts: PanZoomOptions = {}): PanZoomController {
   const transformRef = useRef(transform);
   transformRef.current = transform;
 
+  // `will-change: transform` promotes the inner layer onto the GPU
+  // compositor so pan/zoom is cheap — but the layer is rasterized once
+  // and bitmap-scaled, so text and 1px borders blur at any non-1 scale.
+  // Pin it on only during active interaction; clear it ~200ms after the
+  // last gesture so the browser re-rasterizes at the displayed size and
+  // content snaps pixel-crisp at rest.
+  const [interacting, setInteracting] = useState(false);
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const markInteracting = useCallback(() => {
+    // Pointermove can fire at 120Hz — keep the per-event work minimal.
+    // Only flip state on the leading edge; otherwise just slide the
+    // idle timer forward.
+    if (idleTimerRef.current) {
+      clearTimeout(idleTimerRef.current);
+    } else {
+      setInteracting(true);
+    }
+    idleTimerRef.current = setTimeout(() => {
+      idleTimerRef.current = null;
+      setInteracting(false);
+    }, 200);
+  }, []);
+  useEffect(() => {
+    return () => {
+      if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    };
+  }, []);
+
   // ── Wheel: zoom around cursor ──────────────────────────────────────
   useEffect(() => {
     const el = containerRef.current;
@@ -100,11 +132,12 @@ export function usePanZoom(opts: PanZoomOptions = {}): PanZoomController {
         y: cy - worldY * next,
         scale: next,
       });
+      markInteracting();
     };
 
     el.addEventListener("wheel", onWheel, { passive: false });
     return () => el.removeEventListener("wheel", onWheel);
-  }, [minScale, maxScale]);
+  }, [minScale, maxScale, markInteracting]);
 
   // ── Pointer drag: pan ──────────────────────────────────────────────
   useEffect(() => {
@@ -135,10 +168,12 @@ export function usePanZoom(opts: PanZoomOptions = {}): PanZoomController {
       if (!dragging) return;
       const dx = e.clientX - lastX;
       const dy = e.clientY - lastY;
+      if (dx === 0 && dy === 0) return;
       lastX = e.clientX;
       lastY = e.clientY;
       const cur = transformRef.current;
       setTransform({ x: cur.x + dx, y: cur.y + dy, scale: cur.scale });
+      markInteracting();
     };
 
     const stopDragging = () => {
@@ -164,9 +199,12 @@ export function usePanZoom(opts: PanZoomOptions = {}): PanZoomController {
       el.removeEventListener("pointercancel", stopDragging);
       el.removeEventListener("pointerleave", stopDragging);
     };
-  }, []);
+  }, [markInteracting]);
 
-  const reset = useCallback(() => setTransform(initial), [initial]);
+  const reset = useCallback(() => {
+    setTransform(initial);
+    markInteracting();
+  }, [initial, markInteracting]);
 
   const zoomBy = useCallback(
     (factor: number) => {
@@ -187,8 +225,9 @@ export function usePanZoom(opts: PanZoomOptions = {}): PanZoomController {
         y: cy - worldY * next,
         scale: next,
       });
+      markInteracting();
     },
-    [minScale, maxScale],
+    [minScale, maxScale, markInteracting],
   );
 
   return {
@@ -196,6 +235,7 @@ export function usePanZoom(opts: PanZoomOptions = {}): PanZoomController {
     style: {
       transform: `translate(${transform.x}px, ${transform.y}px) scale(${transform.scale})`,
       transformOrigin: "0 0",
+      willChange: interacting ? "transform" : "auto",
     },
     reset,
     zoomBy,

@@ -88,6 +88,8 @@ export interface HealthResponse {
 
 export interface ChatSendInput {
   message: string;
+  /** Optional per-turn CLI preference. Server resolves this to an online runtime. */
+  runtime_type?: KnownCli;
   /** Previous turn's session id — enables `--resume` continuity. */
   prior_session_id?: string;
   /**
@@ -300,6 +302,13 @@ export interface ChatHistoryResponse {
    * transcript.
    */
   in_flight_session_id?: string;
+  /**
+   * CLI this conversation is pinned to (first turn's runtime cli).
+   * Absent for chains that never claimed a runtime (legacy sessions) or
+   * for empty conversations. The composer uses this to lock the runtime
+   * picker — switching CLIs mid-chat would 409 server-side.
+   */
+  pinned_runtime_cli?: KnownCli;
 }
 
 export interface ChatConversationSummary {
