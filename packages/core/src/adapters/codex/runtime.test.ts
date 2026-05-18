@@ -3,22 +3,38 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { RuntimeContext, RuntimeStep } from "../../ports/runtime.js";
 import { CodexRuntime } from "./runtime.js";
+import { CODEX_EVENT_TYPE, CODEX_ITEM_TYPE } from "./stream-json.js";
 import type { CliProcessOptions, CliProcessResult } from "../claude-code/spawn.js";
 import * as spawnModule from "../claude-code/spawn.js";
 
+/**
+ * Canonical stdout for a clean codex turn — fixtures match the schema in
+ * codex-rs/exec/src/exec_events.rs. The parser unit tests in
+ * ./stream-json.test.ts cover edge cases; this file exercises the
+ * end-to-end runtime wiring (args + env + last-message file + step
+ * streaming) on top of those fixtures.
+ */
+const CANONICAL_STDOUT =
+  JSON.stringify({ type: CODEX_EVENT_TYPE.ThreadStarted, thread_id: "thread_abc" }) +
+  "\n" +
+  JSON.stringify({
+    type: CODEX_EVENT_TYPE.ItemCompleted,
+    item: { id: "item_1", type: CODEX_ITEM_TYPE.AgentMessage, text: "done" },
+  }) +
+  "\n" +
+  JSON.stringify({
+    type: CODEX_EVENT_TYPE.TurnCompleted,
+    usage: {
+      input_tokens: 100,
+      cached_input_tokens: 60,
+      output_tokens: 40,
+      reasoning_output_tokens: 10,
+    },
+  }) +
+  "\n";
+
 const MOCK_OK: CliProcessResult = {
-  stdout:
-    JSON.stringify({
-      type: "thread.started",
-      thread_id: "codex_thread_mock",
-    }) +
-    "\n" +
-    JSON.stringify({
-      type: "item.completed",
-      item: { type: "agent_message", text: "done" },
-      usage: { input_tokens: 100, output_tokens: 50, model: "gpt-5.5" },
-    }) +
-    "\n",
+  stdout: CANONICAL_STDOUT,
   stderr: "",
   exitCode: 0,
   timedOut: false,
@@ -51,7 +67,7 @@ function mockRunCli(result: CliProcessResult = MOCK_OK): void {
 function ctx(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
   return {
     intent: "do a thing",
-    workspace: { path: "/tmp/beevibe-codex-test-ws" },
+    workspace: { path: `/tmp/beevibe-codex-test-${Math.random()}` },
     system_prompt_append: "",
     ...overrides,
   };
@@ -117,11 +133,16 @@ describe("CodexRuntime.execute", () => {
     mockRunCli();
     const runtime = new CodexRuntime();
     runtime.prepareWorkspace({
-      workspace: { path: "/tmp/beevibe-codex-test-ws" },
+      workspace: { path: "/tmp/beevibe-codex-test-mcp" },
       agentApiKey: "bv_a_test",
       mcpServerUrl: "http://api.test/mcp",
     });
-    await runtime.execute(ctx({ env: { BEEVIBE_SESSION_ID: "sess_test_123" } }));
+    await runtime.execute(
+      ctx({
+        workspace: { path: "/tmp/beevibe-codex-test-mcp" },
+        env: { BEEVIBE_SESSION_ID: "sess_test_123" },
+      }),
+    );
     expect(lastOptions!.env!.BEEVIBE_AGENT_API_KEY).toBe("bv_a_test");
     expect(lastOptions!.args).toContain(
       'mcp_servers.beevibe.url="http://api.test/mcp?beevibe_session=sess_test_123"',
@@ -129,41 +150,95 @@ describe("CodexRuntime.execute", () => {
     expect(lastOptions!.args).toContain(
       'mcp_servers.beevibe.bearer_token_env_var="BEEVIBE_AGENT_API_KEY"',
     );
+    // Regression: codex's --ask-for-approval never doesn't extend to MCP
+    // tool calls; without this override every tool call fails with
+    // "user cancelled MCP tool call" in headless exec mode.
+    expect(lastOptions!.args).toContain(
+      'mcp_servers.beevibe.default_tools_approval_mode="approve"',
+    );
   });
 
-  it("parses result events into RuntimeResult and prefers output-last-message", async () => {
+  it("strips OPENAI_API_KEY / OPENAI_AUTH_TOKEN from the spawned env to preserve subscription auth", async () => {
+    mockRunCli();
+    const prior = {
+      OPENAI_API_KEY: process.env.OPENAI_API_KEY,
+      OPENAI_AUTH_TOKEN: process.env.OPENAI_AUTH_TOKEN,
+    };
+    process.env.OPENAI_API_KEY = "sk-leaked";
+    process.env.OPENAI_AUTH_TOKEN = "token-leaked";
+    try {
+      await new CodexRuntime().execute(ctx());
+    } finally {
+      if (prior.OPENAI_API_KEY === undefined) delete process.env.OPENAI_API_KEY;
+      else process.env.OPENAI_API_KEY = prior.OPENAI_API_KEY;
+      if (prior.OPENAI_AUTH_TOKEN === undefined) delete process.env.OPENAI_AUTH_TOKEN;
+      else process.env.OPENAI_AUTH_TOKEN = prior.OPENAI_AUTH_TOKEN;
+    }
+    expect(lastOptions!.env!.OPENAI_API_KEY).toBeUndefined();
+    expect(lastOptions!.env!.OPENAI_AUTH_TOKEN).toBeUndefined();
+  });
+
+  it("warns when stdout was truncated at the spawn cap", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockRunCli({ ...MOCK_OK, truncated: true });
+    await new CodexRuntime().execute(ctx());
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("stdout truncated at 4MB"),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("parses canonical event stream into RuntimeResult and prefers output-last-message", async () => {
     mockRunCli();
     const result = await new CodexRuntime().execute(ctx());
     expect(result.status).toBe("completed");
     expect(result.output).toBe("last message from file");
-    expect(result.cli_session_id).toBe("codex_thread_mock");
+    expect(result.cli_session_id).toBe("thread_abc");
     expect(result.usage).toEqual({
       input_tokens: 100,
       output_tokens: 50,
       cache_creation_input_tokens: 0,
-      cache_read_input_tokens: 0,
-      model: "gpt-5.5",
+      cache_read_input_tokens: 60,
     });
   });
 
-  it("emits tool steps from JSON event shapes", async () => {
+  it("streams tool steps from mcp_tool_call items (started → tool_call, completed → tool_result)", async () => {
     const steps: RuntimeStep[] = [];
     runCliSpy.mockImplementation(async (options) => {
-      options.onLog?.(
-        "stdout",
+      const stdout =
         JSON.stringify({
-          type: "tool_call",
-          tool: "shell",
-          input: { command: "ls" },
-        }) + "\n",
-      );
-      return MOCK_OK;
+          type: CODEX_EVENT_TYPE.ItemStarted,
+          item: {
+            id: "item_t",
+            type: CODEX_ITEM_TYPE.McpToolCall,
+            server: "beevibe",
+            tool: "create_task",
+            arguments: { title: "fix" },
+            status: "in_progress",
+          },
+        }) +
+        "\n" +
+        JSON.stringify({
+          type: CODEX_EVENT_TYPE.ItemCompleted,
+          item: {
+            id: "item_t",
+            type: CODEX_ITEM_TYPE.McpToolCall,
+            server: "beevibe",
+            tool: "create_task",
+            arguments: { title: "fix" },
+            result: { content: [{ type: "text", text: "ok" }] },
+            status: "completed",
+          },
+        }) +
+        "\n";
+      options.onLog?.("stdout", stdout);
+      return { ...MOCK_OK, stdout };
     });
-    await new CodexRuntime().execute(ctx({ onStep: (step) => steps.push(step) }));
-    expect(steps).toHaveLength(1);
-    expect(steps[0]!.kind).toBe("tool_call");
-    expect(steps[0]!.tool).toBe("shell");
-    expect(steps[0]!.description).toBe("ls");
+    await new CodexRuntime().execute(ctx({ onStep: (s) => steps.push(s) }));
+    expect(steps).toEqual([
+      expect.objectContaining({ kind: "tool_call", tool: "create_task" }),
+      expect.objectContaining({ kind: "tool_result", tool: "create_task" }),
+    ]);
   });
 
   it("maps aborted result to cancelled", async () => {
@@ -172,51 +247,26 @@ describe("CodexRuntime.execute", () => {
     expect(result.status).toBe("cancelled");
   });
 
-  it("drops non-JSON log noise from stdout when no assistant text was extracted", async () => {
-    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  it("surfaces stderr tail on failure so /runtime/done has something actionable", async () => {
     runCliSpy.mockImplementation(async (options) => {
       lastOptions = options;
-      // Codex's Rust binary prints `tracing` WARN lines to stdout
-      // alongside JSON events. With no assistant message in events
-      // and no last-message file, the old fallback dumped these
-      // warnings as the chat reply.
-      const stdout =
-        "2026-05-16T16:50:34Z WARN codex_core_skills::loader: ignoring interface.icon_small: icon path must not contain '..'\n" +
-        JSON.stringify({ type: "thread.started", thread_id: "codex_t1" }) +
-        "\n";
-      options.onLog?.("stdout", stdout);
-      return { ...MOCK_OK, stdout, exitCode: 0 };
+      return {
+        ...MOCK_OK,
+        stdout: "",
+        stderr: "Error: rate limited\n",
+        exitCode: 1,
+      };
     });
-    // Unique workspace so a sibling test's last-message file (which
-    // shares a directory and a millisecond-precision filename) can't
-    // bleed in.
-    const result = await new CodexRuntime().execute(
-      ctx({ workspace: { path: `/tmp/beevibe-codex-noise-${Math.random()}` } }),
-    );
-    expect(result.output).toBe("Codex completed.");
-    expect(result.output).not.toContain("WARN");
-    warnSpy.mockRestore();
-  });
-
-  it("extracts text from nested delta objects", async () => {
-    runCliSpy.mockImplementation(async (options) => {
-      lastOptions = options;
-      const stdout =
-        JSON.stringify({ type: "item.delta", delta: { text: "hello world" } }) + "\n";
-      options.onLog?.("stdout", stdout);
-      return { ...MOCK_OK, stdout, exitCode: 0 };
-    });
-    const result = await new CodexRuntime().execute(
-      ctx({ workspace: { path: `/tmp/beevibe-codex-delta-${Math.random()}` } }),
-    );
-    expect(result.output).toBe("hello world");
+    const result = await new CodexRuntime().execute(ctx());
+    expect(result.status).toBe("failed");
+    expect(result.stderr).toBe("Error: rate limited\n");
   });
 
   it("prefers structured Codex errors over noisy stderr", async () => {
     runCliSpy.mockImplementation(async (options) => {
       lastOptions = options;
       const stdout =
-        JSON.stringify({ type: "error", message: "You've hit your usage limit." }) +
+        JSON.stringify({ type: CODEX_EVENT_TYPE.Error, message: "You've hit your usage limit." }) +
         "\n";
       options.onLog?.("stdout", stdout);
       return {
@@ -229,7 +279,6 @@ describe("CodexRuntime.execute", () => {
     const result = await new CodexRuntime().execute(ctx());
     expect(result.status).toBe("failed");
     expect(result.output).toBe("You've hit your usage limit.");
-    expect(result.stderr).toBeUndefined();
   });
 });
 

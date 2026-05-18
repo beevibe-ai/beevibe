@@ -1,18 +1,50 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeContext, RuntimeStep } from "../../ports/runtime.js";
 import { OpenCodeRuntime, buildOpenCodeConfig } from "./runtime.js";
+import { OPENCODE_EVENT_TYPE } from "./stream-json.js";
 import type { CliProcessOptions, CliProcessResult } from "../claude-code/spawn.js";
 import * as spawnModule from "../claude-code/spawn.js";
 
+const SID = "ses_op_mock";
+
+/**
+ * Canonical stdout for a clean opencode turn. Wrapper shape matches
+ * opencode's run.ts `emit()` helper: every event carries top-level
+ * `sessionID`. The parser unit tests in ./stream-json.test.ts cover
+ * edge cases; this file exercises the runtime wiring on top of them.
+ */
+const CANONICAL_STDOUT =
+  JSON.stringify({
+    type: OPENCODE_EVENT_TYPE.Text,
+    timestamp: 1,
+    sessionID: SID,
+    part: {
+      id: "prt_t",
+      sessionID: SID,
+      messageID: "msg_1",
+      type: "text",
+      text: "done",
+      time: { start: 0, end: 1 },
+    },
+  }) +
+  "\n" +
+  JSON.stringify({
+    type: OPENCODE_EVENT_TYPE.StepFinish,
+    timestamp: 2,
+    sessionID: SID,
+    part: {
+      id: "prt_s",
+      sessionID: SID,
+      messageID: "msg_1",
+      type: "step-finish",
+      cost: 0,
+      tokens: { input: 100, output: 50, reasoning: 0, cache: { read: 0, write: 0 } },
+    },
+  }) +
+  "\n";
+
 const MOCK_OK: CliProcessResult = {
-  stdout:
-    JSON.stringify({
-      type: "result",
-      session_id: "opencode_sess_mock",
-      output: "done",
-      model: "openrouter/qwen/qwen3-coder",
-      usage: { input_tokens: 100, output_tokens: 50, cost_usd: 0 },
-    }) + "\n",
+  stdout: CANONICAL_STDOUT,
   stderr: "",
   exitCode: 0,
   timedOut: false,
@@ -55,16 +87,29 @@ afterEach(() => {
 });
 
 describe("OpenCodeRuntime.execute", () => {
-  it("runs opencode non-interactively with raw JSON events", async () => {
+  it("runs opencode non-interactively with the canonical JSON format flags", async () => {
     mockRunCli();
     await new OpenCodeRuntime().execute(ctx({ workspace: { path: "/sandbox/agent_op" } }));
     expect(lastOptions?.cwd).toBe("/sandbox/agent_op");
-    expect(lastOptions?.args?.slice(0, 4)).toEqual([
+    expect(lastOptions?.args?.slice(0, 6)).toEqual([
       "run",
       "--format",
       "json",
       "--dangerously-skip-permissions",
+      "--dir",
+      "/sandbox/agent_op",
     ]);
+  });
+
+  it("passes --dir to opencode so workspace opencode.json is actually loaded", async () => {
+    // Regression: without --dir, opencode run ignores the workspace
+    // opencode.json (the subprocess cwd alone doesn't drive config
+    // discovery), so the agent never sees the beevibe MCP server.
+    mockRunCli();
+    await new OpenCodeRuntime().execute(ctx({ workspace: { path: "/agents/foo" } }));
+    const dirIdx = lastOptions!.args!.indexOf("--dir");
+    expect(dirIdx).toBeGreaterThan(-1);
+    expect(lastOptions!.args![dirIdx + 1]).toBe("/agents/foo");
   });
 
   it("passes context.model as --model in provider/model form", async () => {
@@ -102,31 +147,38 @@ describe("OpenCodeRuntime.execute", () => {
     expect(lastOptions!.env!.BEEVIBE_SESSION_ID).toBe("sess_test_123");
   });
 
-  it("parses result events into RuntimeResult", async () => {
+  it("parses canonical wrapper events into a RuntimeResult", async () => {
     mockRunCli();
     const result = await new OpenCodeRuntime().execute(ctx());
     expect(result.status).toBe("completed");
     expect(result.output).toBe("done");
-    expect(result.cli_session_id).toBe("opencode_sess_mock");
+    expect(result.cli_session_id).toBe(SID);
     expect(result.usage).toEqual({
       input_tokens: 100,
       output_tokens: 50,
       cache_creation_input_tokens: 0,
       cache_read_input_tokens: 0,
       cost_usd: 0,
-      model: "openrouter/qwen/qwen3-coder",
     });
   });
 
-  it("emits tool steps from flexible JSON event shapes", async () => {
+  it("streams a tool_call step from a tool_use wrapper event", async () => {
     const steps: RuntimeStep[] = [];
     runCliSpy.mockImplementation(async (options) => {
       options.onLog?.(
         "stdout",
         JSON.stringify({
-          type: "tool_call",
-          tool: "read",
-          input: { file_path: "/src/x.ts" },
+          type: OPENCODE_EVENT_TYPE.ToolUse,
+          timestamp: 1,
+          sessionID: SID,
+          part: {
+            id: "prt_x",
+            sessionID: SID,
+            messageID: "msg_1",
+            type: "tool",
+            tool: "read",
+            state: { status: "running", input: { file_path: "/src/x.ts" } },
+          },
         }) + "\n",
       );
       return MOCK_OK;
@@ -142,6 +194,31 @@ describe("OpenCodeRuntime.execute", () => {
     mockRunCli({ ...MOCK_OK, aborted: true, stdout: "" });
     const result = await new OpenCodeRuntime().execute(ctx());
     expect(result.status).toBe("cancelled");
+  });
+
+  it("passes exit_code through so the daemon can persist real spawn outcome", async () => {
+    mockRunCli({ ...MOCK_OK, exitCode: 7, stdout: "" });
+    const result = await new OpenCodeRuntime().execute(ctx());
+    expect(result.exit_code).toBe(7);
+  });
+
+  it("surfaces stderr tail on failure so /runtime/done has something actionable", async () => {
+    mockRunCli({
+      ...MOCK_OK,
+      exitCode: 1,
+      stdout: "",
+      stderr: "Error: provider auth missing\n",
+    });
+    const result = await new OpenCodeRuntime().execute(ctx());
+    expect(result.status).toBe("failed");
+    expect(result.stderr).toBe("Error: provider auth missing\n");
+  });
+
+  it("does not surface stderr on success — only failures populate it", async () => {
+    mockRunCli({ ...MOCK_OK, stderr: "WARN harmless\n" });
+    const result = await new OpenCodeRuntime().execute(ctx());
+    expect(result.status).toBe("completed");
+    expect(result.stderr).toBeUndefined();
   });
 });
 
