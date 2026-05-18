@@ -25,12 +25,8 @@ import { randomUUID } from "node:crypto";
 import { Router, type RequestHandler, type Response } from "express";
 import {
   isInFlightSessionStatus,
-  isKnownCli,
-  KNOWN_CLIS,
   type AgentRepository,
-  type KnownCli,
   type PersonRepository,
-  type RuntimeRepository,
   type SessionRepository,
 } from "@beevibe/core";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
@@ -46,7 +42,6 @@ export interface ChatRoutesDeps {
   authMiddleware: RequestHandler;
   agentRepo: AgentRepository;
   personRepo: PersonRepository;
-  runtimeRepo: RuntimeRepository;
   sessionRepo: SessionRepository;
   /**
    * Phase 4 daemon-first chat path: dispatchService inserts a pending
@@ -274,90 +269,6 @@ interface ChatTurnAgent {
   hierarchy_level: string;
 }
 
-async function resolvePinnedRuntimeCli(
-  deps: Pick<ChatRoutesDeps, "runtimeRepo">,
-  sessions: readonly ChatSession[],
-): Promise<KnownCli | undefined> {
-  // Walk newest → oldest so we surface the most recent claim. Legacy
-  // sessions with no runtime_id are skipped; if none in the chain ever
-  // ran on a runtime, the conversation isn't pinned.
-  for (let i = sessions.length - 1; i >= 0; i -= 1) {
-    const runtimeId = sessions[i]?.runtime_id;
-    if (!runtimeId) continue;
-    const runtime = await deps.runtimeRepo.findById(runtimeId);
-    if (runtime && isKnownCli(runtime.cli)) return runtime.cli;
-    return undefined;
-  }
-  return undefined;
-}
-
-async function resolveRuntimeOverride(
-  deps: Pick<ChatRoutesDeps, "runtimeRepo" | "sessionRepo" | "hub">,
-  ownerPersonId: string,
-  runtimeType: KnownCli | undefined,
-  priorSessionId: string | undefined,
-): Promise<
-  | { ok: true; runtimeIdOverride?: string }
-  | { ok: false; status: number; body: Record<string, unknown> }
-> {
-  if (!runtimeType) return { ok: true };
-
-  if (priorSessionId) {
-    const prior = await deps.sessionRepo.findById(priorSessionId);
-    if (prior?.runtime_id) {
-      const priorRuntime = await deps.runtimeRepo.findById(prior.runtime_id);
-      if (priorRuntime?.cli !== runtimeType) {
-        return {
-          ok: false,
-          status: 409,
-          body: {
-            error: "runtime_switch_requires_new_chat",
-            message:
-              "This conversation is already pinned to another runtime. Start a new chat to switch runtimes.",
-          },
-        };
-      }
-      if (!deps.hub.isOnline(prior.runtime_id)) {
-        return {
-          ok: false,
-          status: 503,
-          body: {
-            error: "runtime_offline",
-            message: `The ${runtimeType} runtime for this conversation is offline. Start the same daemon to resume it.`,
-          },
-        };
-      }
-      return { ok: true, runtimeIdOverride: prior.runtime_id };
-    }
-  }
-
-  const runtimes = await deps.runtimeRepo.listByOwnerAndCli(ownerPersonId, runtimeType);
-  if (runtimes.length === 0) {
-    return {
-      ok: false,
-      status: 400,
-      body: {
-        error: "runtime_not_registered",
-        message: `No ${runtimeType} runtime is registered for this account.`,
-      },
-    };
-  }
-
-  const online = runtimes.find((r) => deps.hub.isOnline(r.id));
-  if (!online) {
-    return {
-      ok: false,
-      status: 503,
-      body: {
-        error: "runtime_offline",
-        message: `No online ${runtimeType} runtime is available. Start beevibe-daemon on a machine with ${runtimeType}.`,
-      },
-    };
-  }
-
-  return { ok: true, runtimeIdOverride: online.id };
-}
-
 /**
  * Build the response body for a chat turn — used by both the live
  * POST success path and the idempotent-replay path. `replayed: true`
@@ -552,10 +463,6 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
     // present but the agent reply slot is empty until SSE auto-recovery
     // (PR #116) lands the response.
     const inFlightSessionId = isInFlightSessionStatus(latest.status) ? latest.id : undefined;
-    // Surface the CLI this conversation is pinned to so the composer can
-    // lock its runtime picker — otherwise the user can pick a different
-    // CLI mid-chat and the next send 409s.
-    const pinnedRuntimeCli = await resolvePinnedRuntimeCli(deps, chain.sessions);
 
     res.json({
       ok: true,
@@ -564,7 +471,6 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
       prior_session_id: latest.id,
       conversation_id: chain.head_id,
       in_flight_session_id: inFlightSessionId,
-      pinned_runtime_cli: pinnedRuntimeCli,
     });
   });
 
@@ -582,16 +488,6 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
     }
     const priorSessionId =
       typeof body.prior_session_id === "string" ? body.prior_session_id : undefined;
-    const runtimeTypeRaw = body.runtime_type;
-    const runtimeType =
-      runtimeTypeRaw === undefined ? undefined : isKnownCli(runtimeTypeRaw) ? runtimeTypeRaw : null;
-    if (runtimeType === null) {
-      res.status(400).json({
-        error: "invalid_runtime_type",
-        message: `runtime_type must be one of: ${KNOWN_CLIS.join(", ")}`,
-      });
-      return;
-    }
     const callerSessionId =
       typeof body.session_id === "string" && /^sess_[A-Za-z0-9]{12}$/.test(body.session_id)
         ? body.session_id
@@ -618,10 +514,6 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
     // another Claude Code subprocess. Each turn is real $$; this
     // collapses double-submits, browser-cache POST replays, and
     // network-blip retries to a single charge.
-    //
-    // Check this BEFORE resolving the runtime override — the original
-    // turn already validated and pinned a runtime, so a replay doesn't
-    // need to revalidate, and skipping it spares 1-2 DB hits on retries.
     if (callerSessionId) {
       const replay = await tryReplay(deps, agent, callerSessionId);
       if (replay) {
@@ -630,17 +522,6 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
           return;
         }
       }
-    }
-
-    const runtimeOverride = await resolveRuntimeOverride(
-      deps,
-      req.caller.personId,
-      runtimeType,
-      priorSessionId,
-    );
-    if (!runtimeOverride.ok) {
-      res.status(runtimeOverride.status).json(runtimeOverride.body);
-      return;
     }
 
     // Per-person rate limit (concurrent + sliding window). Compromised
@@ -676,7 +557,6 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         intent: messageRaw,
         reason,
         type: "chat",
-        runtimeIdOverride: runtimeOverride.runtimeIdOverride,
         sessionIdOverride: callerSessionId,
       });
     } catch (err) {
