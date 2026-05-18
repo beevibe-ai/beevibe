@@ -33,7 +33,6 @@ export interface DispatchPayload {
   model?: string;
   max_turns?: number;
   env: Record<string, string>;
-  disallowed_tools?: string[];
   type: "task" | "mesh_ask" | "mesh_negotiate" | "blocker" | "chat";
   mcp_server_url: string;
 }
@@ -133,7 +132,6 @@ export async function runDispatch(
       system_prompt_append: payload.system_prompt_append,
       model: payload.model,
       max_turns: payload.max_turns,
-      disallowed_tools: payload.disallowed_tools,
       env: payload.env,
       resume_session_id: payload.resume_session_id,
       abort_signal: abortSignal,

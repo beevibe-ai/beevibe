@@ -88,9 +88,6 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     const maxTurns = context.max_turns ?? this.config.maxTurns;
     if (maxTurns) args.push("--max-turns", String(maxTurns));
     if (context.resume_session_id) args.push("--resume", context.resume_session_id);
-    if (context.disallowed_tools?.length) {
-      args.push("--disallowedTools", context.disallowed_tools.join(","));
-    }
     if (context.system_prompt_append.length > 0) {
       args.push("--append-system-prompt", context.system_prompt_append);
     }
