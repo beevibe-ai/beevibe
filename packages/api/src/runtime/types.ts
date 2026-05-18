@@ -35,6 +35,25 @@ export interface RuntimeRegisterResponse {
   runtimes: Array<{ id: string; cli: string }>;
 }
 
+/**
+ * `POST /runtime/sync` — bv_d_ auth. Re-runs CLI detection on a daemon
+ * that was already set up. Upserts runtimes against the caller's
+ * daemon row (no `external_id` lookup — the bv_d_ already identifies
+ * the daemon). Used by `beevibe-daemon sync` after the user installs
+ * a new CLI without rotating the daemon's token.
+ */
+export interface RuntimeSyncRequest {
+  runtimes: Array<{
+    cli: string;
+    cli_version?: string;
+  }>;
+}
+
+export interface RuntimeSyncResponse {
+  /** Full list of runtimes for this daemon after the upsert. */
+  runtimes: Array<{ id: string; cli: string }>;
+}
+
 /* ─── Heartbeat ──────────────────────────────────────────────────────── */
 
 export interface RuntimeHeartbeatRequest {

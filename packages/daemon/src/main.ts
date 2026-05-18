@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
- * `beevibe-daemon` CLI entry. Three subcommands:
+ * `beevibe-daemon` CLI entry. Four subcommands:
  *   - setup --api <url> --user-token <bv_u_…> [--device-name <name>]
  *   - start
+ *   - sync       Re-detect CLIs on PATH and register newly-installed ones.
  *   - update [--yes]
  *
  * The daemon owns its own config (~/.beevibe/config.json) and has no
@@ -14,6 +15,7 @@
 
 import { runSetup } from "./setup.js";
 import { runStart } from "./start.js";
+import { runSync } from "./sync.js";
 import { runUpdate } from "./update.js";
 
 interface Flags {
@@ -53,6 +55,7 @@ function printHelp(): void {
       "Commands:",
       "  setup    Register this machine with a beevibe api server.",
       "  start    Run the daemon: claim pending sessions and spawn the CLI.",
+      "  sync     Re-detect CLIs on PATH and register newly-installed ones.",
       "  update   Check for and install a newer daemon binary (brew/curl installs).",
       "",
       "setup flags:",
@@ -95,6 +98,21 @@ async function main(): Promise<void> {
 
   if (command === "start") {
     await runStart();
+    return;
+  }
+
+  if (command === "sync") {
+    const result = await runSync();
+    if (result.added.length === 0) {
+      console.log("No new CLIs detected.");
+    } else {
+      console.log(
+        `Added ${result.added.length} runtime(s): ${result.added
+          .map((r) => `${r.cli} (${r.id})`)
+          .join(", ")}.`,
+      );
+      console.log("Restart the daemon to pick up the new runtime(s).");
+    }
     return;
   }
 

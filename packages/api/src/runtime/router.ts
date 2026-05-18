@@ -39,6 +39,8 @@ import type {
   RuntimeRegisterResponse,
   RuntimeSkill,
   RuntimeSkillsResponse,
+  RuntimeSyncRequest,
+  RuntimeSyncResponse,
 } from "./types.js";
 
 export interface RuntimeRouterDeps {
@@ -115,6 +117,30 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
     } catch (err) {
       console.error("[runtime/register]", err);
       res.status(500).json({ error: "register_failed" });
+    }
+  });
+
+  // Re-runs CLI detection; upserts runtimes scoped by the bv_d_ — no
+  // token rotation, unlike /register.
+  router.post("/sync", async (req, res) => {
+    if (!requireDaemon(req, res)) return;
+    const body = parseSyncBody(req.body);
+    if (!body) {
+      res.status(400).json({
+        error: "invalid_body",
+        message: "expected { runtimes: [{cli, cli_version?}] }",
+      });
+      return;
+    }
+    try {
+      const runtimes = await upsertRuntimes(deps, req.caller!.daemonId, body.runtimes);
+      const response: RuntimeSyncResponse = {
+        runtimes: runtimes.map((r) => ({ id: r.id, cli: r.cli })),
+      };
+      res.status(200).json(response);
+    } catch (err) {
+      console.error("[runtime/sync]", err);
+      res.status(500).json({ error: "sync_failed" });
     }
   });
 
@@ -292,18 +318,40 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
 
 /* ─── helpers ────────────────────────────────────────────────────────── */
 
+/**
+ * Shape check for the `runtimes: [{cli, cli_version?}]` array shared by
+ * /register and /sync. Returns the typed array or null on any
+ * structural defect — caller decides whether the surrounding body is
+ * still valid.
+ */
+function parseRuntimesArray(
+  input: unknown,
+): RuntimeRegisterRequest["runtimes"] | null {
+  if (!Array.isArray(input) || input.length === 0) return null;
+  for (const r of input) {
+    if (!r || typeof r !== "object") return null;
+    const e = r as Partial<{ cli: unknown; cli_version: unknown }>;
+    if (typeof e.cli !== "string" || !e.cli) return null;
+    if (e.cli_version !== undefined && typeof e.cli_version !== "string") return null;
+  }
+  return input as RuntimeRegisterRequest["runtimes"];
+}
+
 function parseRegisterBody(body: unknown): RuntimeRegisterRequest | null {
   if (!body || typeof body !== "object") return null;
   const b = body as Partial<RuntimeRegisterRequest>;
   if (typeof b.external_id !== "string" || !b.external_id) return null;
   if (typeof b.device_name !== "string" || !b.device_name) return null;
-  if (!Array.isArray(b.runtimes) || b.runtimes.length === 0) return null;
-  for (const r of b.runtimes) {
-    if (!r || typeof r !== "object") return null;
-    if (typeof r.cli !== "string" || !r.cli) return null;
-    if (r.cli_version !== undefined && typeof r.cli_version !== "string") return null;
-  }
-  return b as RuntimeRegisterRequest;
+  const runtimes = parseRuntimesArray(b.runtimes);
+  if (!runtimes) return null;
+  return { external_id: b.external_id, device_name: b.device_name, runtimes };
+}
+
+function parseSyncBody(body: unknown): RuntimeSyncRequest | null {
+  if (!body || typeof body !== "object") return null;
+  const runtimes = parseRuntimesArray((body as Partial<RuntimeSyncRequest>).runtimes);
+  if (!runtimes) return null;
+  return { runtimes };
 }
 
 function isValidEvent(e: unknown): e is RuntimeEventInput {
