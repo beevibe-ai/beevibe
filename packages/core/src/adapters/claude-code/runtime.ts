@@ -1,4 +1,4 @@
-import { homedir, tmpdir } from "node:os";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   AgentRuntime,
@@ -69,8 +69,8 @@ export class ClaudeCodeRuntime implements AgentRuntime {
   constructor(private config: ClaudeCodeRuntimeConfig = {}) {}
 
   async execute(context: RuntimeContext): Promise<RuntimeResult> {
-    const cwd = homedir();
-    const mcpConfigPath = join(context.workspace.path, "mcp-config.json");
+    const cwd = context.workspace.path;
+    const mcpConfigPath = join(cwd, "mcp-config.json");
 
     const args = [
       "--print",

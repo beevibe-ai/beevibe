@@ -66,7 +66,7 @@ Or just run `pnpm dev` — it does this cleanup at the start now.
 - The CLI binary is `claude` on PATH
 - Sessions spawn with `--dangerously-skip-permissions --strict-mcp-config`
 - MCP config lives in `~/.beevibe/workspaces/<agent_id>/mcp-config.json`
-- Agent cwd is `homedir()` (not the workspace) — gives file system access like a normal local Claude session
+- Agent cwd is the workspace path (`~/.beevibe/workspaces/<agent_id>`)
 - Team agents in chat get `--disallowedTools Agent,Bash,Read,Write,Edit,Glob,...` to prevent self-handling of specialist work
 
 ## Team agent routing
