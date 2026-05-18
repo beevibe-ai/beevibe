@@ -44,6 +44,7 @@ describe("Claimer.pollRuntime resilience", () => {
       api,
       supervisor: new Supervisor(2),
       workspaceManager: {} as LocalWorkspaceManager,
+      runtimeRegistry: {},
       runtimeIds: ["rt_1"],
       pollIntervalMs: 60_000,
       heartbeatIntervalMs: 60_000,
