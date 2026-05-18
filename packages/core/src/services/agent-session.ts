@@ -19,6 +19,7 @@ export {
   BEEVIBE_MEMORY_REMINDER,
   CHAT_DIRECTIVES,
   ONBOARDING_DIRECTIVES,
+  TEAM_COORDINATOR_DISALLOWED_TOOLS,
   composeIntent,
   composeSystemPromptAppend,
   teamAgentRoutingDirective,

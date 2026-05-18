@@ -25,6 +25,7 @@ import type { MemoryAgent } from "@beevibe/core/services/memory";
 import {
   composeIntent,
   composeSystemPromptAppend,
+  TEAM_COORDINATOR_DISALLOWED_TOOLS,
   teamAgentRoutingDirective,
 } from "@beevibe/core/services/agent-session";
 import { requireDaemon, requireHuman } from "../auth/middleware.js";
@@ -468,7 +469,7 @@ async function composeDispatchPayload(
     resume_session_id: priorSession?.cli_session_id,
     model: agent.runtime_config.model,
     max_turns: agent.runtime_config.max_turns,
-    disallowed_tools: isTeamChat ? ["Agent", "Bash", "Read", "Write", "Edit", "MultiEdit", "Glob", "NotebookRead", "NotebookEdit", "WebSearch", "WebFetch"] : undefined,
+    disallowed_tools: isTeamChat ? [...TEAM_COORDINATOR_DISALLOWED_TOOLS] : undefined,
     env: { BEEVIBE_SESSION_ID: session.id, BEEVIBE_AGENT_ID: agent.id },
     type: session.type,
     mcp_server_url: deps.mcpServerUrl,
