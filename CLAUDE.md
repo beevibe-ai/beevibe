@@ -1,5 +1,31 @@
 # Beevibe — Claude Code Guide
 
+## Parallel sessions: use a worktree
+
+Multiple Claude Code sessions often run against this repo at the same time. If
+you share the main checkout with another session, your edits, builds, and
+stale `git status` snapshots will collide — and a commit can sweep up another
+session's WIP.
+
+**Rule:** before starting work, run `git status` fresh (not the conversation's
+startup snapshot). If files show up that you didn't author this turn, you are
+in another session's working tree. Do one of:
+
+1. **Spawn into a worktree** — for any non-trivial task, launch via the Agent
+   tool with `isolation: "worktree"` so the agent gets its own branch + path.
+2. **Create one manually** if you must work in the shell:
+   ```bash
+   git worktree add ../beevibe-<task-slug> -b <branch-name>
+   cd ../beevibe-<task-slug>
+   ```
+3. **Never** `git add -A` / `git add .` in the shared checkout. Stage files by
+   explicit path so foreign WIP doesn't ride along.
+4. **Never** revert, stash, or delete files you didn't create this turn —
+   they're someone else's in-progress work.
+
+When finishing in a worktree, push the branch and let the user clean it up
+with `git worktree remove`. Don't delete the worktree directory directly.
+
 ## Monorepo structure
 
 ```
