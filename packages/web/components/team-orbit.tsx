@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { Activity, Bot, Sparkles } from "lucide-react";
+import { useRef, useState } from "react";
+import { Bot } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { Skeleton } from "@/components/skeleton";
 import { useAgents } from "@/lib/hooks/use-agents";
-import { cn } from "@/lib/utils";
 import type { AgentDisplay } from "@/lib/types/agents";
 
 /**
@@ -25,44 +25,44 @@ export type TeamOrbitSize = "large" | "compact" | "satellite";
 interface OrbitMetrics {
   size: number;
   radius: number;
+  teamWidth: number;
   teamHeight: number;
+  icWidth: number;
   icHeight: number;
   teamAvatar: number;
   icAvatar: number;
-  teamMaxWidth: number;
-  icMaxWidth: number;
 }
 
 const METRICS: Record<TeamOrbitSize, OrbitMetrics> = {
   large: {
     size: 780,
     radius: 290,
-    teamHeight: 56,
-    icHeight: 48,
-    teamAvatar: 40,
-    icAvatar: 32,
-    teamMaxWidth: 320,
-    icMaxWidth: 280,
+    teamWidth: 260,
+    teamHeight: 132,
+    icWidth: 230,
+    icHeight: 118,
+    teamAvatar: 30,
+    icAvatar: 24,
   },
   compact: {
     size: 580,
     radius: 210,
-    teamHeight: 46,
-    icHeight: 40,
-    teamAvatar: 32,
-    icAvatar: 26,
-    teamMaxWidth: 240,
-    icMaxWidth: 220,
+    teamWidth: 210,
+    teamHeight: 114,
+    icWidth: 190,
+    icHeight: 104,
+    teamAvatar: 26,
+    icAvatar: 22,
   },
   satellite: {
     size: 400,
     radius: 165,
-    teamHeight: 36,
-    icHeight: 32,
-    teamAvatar: 24,
-    icAvatar: 20,
-    teamMaxWidth: 180,
-    icMaxWidth: 160,
+    teamWidth: 160,
+    teamHeight: 88,
+    icWidth: 144,
+    icHeight: 78,
+    teamAvatar: 20,
+    icAvatar: 18,
   },
 };
 
@@ -137,7 +137,7 @@ export function TeamOrbit({
           <ul className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
             {teams.slice(1).map((team) => (
               <li key={team.id}>
-                <Pill agent={team} size="compact" role="team" onSelect={onSelect} />
+                <CyberCard agent={team} size="compact" role="team" onSelect={onSelect} />
               </li>
             ))}
           </ul>
@@ -215,7 +215,7 @@ function Graph({
         className="absolute z-[2]"
         style={{ left: "50%", top: "50%", transform: "translate(-50%, -50%)" }}
       >
-        <Pill agent={team} size={size} role="team" onSelect={onSelect} />
+        <CyberCard agent={team} size={size} role="team" onSelect={onSelect} />
       </div>
 
       {ics.map((ic, i) => {
@@ -231,7 +231,7 @@ function Graph({
               transform: "translate(-50%, -50%)",
             }}
           >
-            <Pill agent={ic} size={size} role="ic" onSelect={onSelect} />
+            <CyberCard agent={ic} size={size} role="ic" onSelect={onSelect} />
           </div>
         );
       })}
@@ -239,12 +239,12 @@ function Graph({
   );
 }
 
-// ── Pill node ────────────────────────────────────────────────────────
+// ── Cyber card node ──────────────────────────────────────────────────
 
 // data-pan="ignore" tells the canvas pan handler to skip drag-starts
-// that begin on a pill. Without it the click still fires but the
+// that begin on a card. Without it the click still fires but the
 // pointer-down also starts a canvas pan, which feels laggy.
-function pillInteractionProps(
+function cardInteractionProps(
   agentId: string,
   onSelect: AgentSelectHandler | undefined,
 ) {
@@ -261,7 +261,7 @@ function pillInteractionProps(
   };
 }
 
-function Pill({
+function CyberCard({
   agent,
   size,
   role,
@@ -274,84 +274,97 @@ function Pill({
 }) {
   const m = METRICS[size];
   const isTeam = role === "team";
-  const initial = (agent.display_name ?? agent.name ?? "?").charAt(0).toUpperCase();
+  const width = isTeam ? m.teamWidth : m.icWidth;
   const height = isTeam ? m.teamHeight : m.icHeight;
   const avatarSize = isTeam ? m.teamAvatar : m.icAvatar;
-  const maxWidth = isTeam ? m.teamMaxWidth : m.icMaxWidth;
-  const showStats = size !== "satellite";
-  const showSubline = size === "large";
+  const initial = (agent.display_name ?? agent.name ?? "?").charAt(0).toUpperCase();
+  const showFooter = size !== "satellite";
 
-  const textSize =
-    size === "large" ? "text-sm" : size === "compact" ? "text-xs" : "text-[11px]";
+  const titleSize =
+    size === "large"
+      ? isTeam ? "text-lg" : "text-base"
+      : size === "compact"
+        ? "text-sm"
+        : "text-xs";
+
+  const cardRef = useRef<HTMLAnchorElement | null>(null);
+  const [tilt, setTilt] = useState({ x: 0, y: 0 });
+
+  const onMove = (e: React.MouseEvent<HTMLAnchorElement>) => {
+    const el = cardRef.current;
+    if (!el) return;
+    const rect = el.getBoundingClientRect();
+    const nx = (e.clientX - rect.left) / rect.width;
+    const ny = (e.clientY - rect.top) / rect.height;
+    setTilt({
+      x: (ny - 0.5) * 18,
+      y: (nx - 0.5) * -18,
+    });
+  };
+  const onLeave = () => setTilt({ x: 0, y: 0 });
 
   return (
     <Link
+      ref={cardRef}
       href={`/agents/${agent.id}`}
-      {...pillInteractionProps(agent.id, onSelect)}
-      className={cn(
-        "group inline-flex items-center gap-2.5 rounded-full border bg-card hover:bg-secondary/60 hover:border-foreground/30 transition-colors shadow-sm cursor-pointer",
-        isTeam
-          ? "pl-1.5 pr-3.5 border-foreground/15 ring-1 ring-foreground/5"
-          : "pl-1.5 pr-3 border-border",
-      )}
-      style={{ height, maxWidth }}
+      {...cardInteractionProps(agent.id, onSelect)}
+      onMouseMove={onMove}
+      onMouseLeave={onLeave}
+      className="cyber-card block cursor-pointer"
+      style={{
+        width,
+        height,
+        transform: `perspective(800px) rotateX(${tilt.x}deg) rotateY(${tilt.y}deg)`,
+      }}
     >
-      <Avatar initial={initial} kind={agent.hierarchy} size={avatarSize} />
-      <span className="flex flex-col min-w-0">
-        <span
-          className={cn(
-            "font-semibold leading-tight truncate",
-            textSize,
-          )}
+      <div className="cyber-glare" />
+      <div className="cyber-lines">
+        <span />
+        <span />
+      </div>
+      <div className="cyber-corners">
+        <span />
+        <span />
+        <span />
+        <span />
+      </div>
+      <div className="cyber-scan" />
+      <div className="relative h-full z-[1]" style={{ padding: 12 }}>
+        <div className="flex items-center gap-2">
+          <Avatar initial={initial} kind={agent.hierarchy} size={avatarSize} />
+          <span className="cyber-badge text-[9px] uppercase tracking-[0.18em] font-mono">
+            {isTeam ? "TEAM" : "AGENT"}
+          </span>
+        </div>
+        {/* Title sits in its own overflow box so `truncate`'s horizontal
+            clipping doesn't pinch the vertical line-box and lop the
+            bottom off bold gradient glyphs. */}
+        <div
+          className="mt-2 overflow-hidden"
+          style={{ paddingBottom: 2 }}
         >
-          {agent.display_name ?? agent.name}
-        </span>
-        {isTeam ? (
-          <span className="text-[9px] uppercase tracking-wider font-mono text-hier-team leading-none mt-1">
-            team
-          </span>
-        ) : showSubline && agent.specialization ? (
-          <span className="text-[10px] leading-tight text-muted-foreground truncate mt-0.5">
-            {agent.specialization}
-          </span>
+          <div
+            className={`cyber-title font-semibold whitespace-nowrap text-ellipsis overflow-hidden ${titleSize}`}
+            style={{ lineHeight: 1.5 }}
+          >
+            {agent.display_name ?? agent.name}
+          </div>
+        </div>
+        {showFooter ? (
+          <div
+            className="cyber-footer absolute flex items-center justify-between text-[10px] uppercase tracking-wider font-mono"
+            style={{ left: 12, right: 12, bottom: 12 }}
+          >
+            <span className="truncate min-w-0">
+              {agent.specialization ?? agent.hierarchy}
+            </span>
+            <span className="cyber-footer-accent tabular-nums shrink-0 ml-2">
+              {agent.sessions_count ?? 0}s · {agent.facts_learned ?? 0}f
+            </span>
+          </div>
         ) : null}
-      </span>
-      {showStats ? (
-        <PillStats
-          sessions={agent.sessions_count}
-          facts={agent.facts_learned}
-          compact={size !== "large"}
-        />
-      ) : null}
+      </div>
     </Link>
-  );
-}
-
-function PillStats({
-  sessions,
-  facts,
-  compact,
-}: {
-  sessions: number | undefined;
-  facts: number | undefined;
-  compact: boolean;
-}) {
-  return (
-    <span
-      className={cn(
-        "flex items-center gap-2.5 ml-auto pl-2.5 border-l border-border text-muted-foreground tabular-nums shrink-0",
-        compact ? "text-[10px]" : "text-[11px]",
-      )}
-    >
-      <span className="inline-flex items-center gap-1">
-        <Activity className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} aria-hidden />
-        {sessions ?? 0}
-      </span>
-      <span className="inline-flex items-center gap-1">
-        <Sparkles className={compact ? "h-2.5 w-2.5" : "h-3 w-3"} aria-hidden />
-        {facts ?? 0}
-      </span>
-    </span>
   );
 }
 
@@ -376,13 +389,13 @@ function OrbitSkeleton({ size }: { size: TeamOrbitSize }) {
       className="mx-auto flex flex-col items-center gap-5"
       style={{ width: m.size }}
     >
-      <div style={{ width: m.teamMaxWidth, height: m.teamHeight }}>
-        <Skeleton className="h-full w-full rounded-full" />
+      <div style={{ width: m.teamWidth, height: m.teamHeight }}>
+        <Skeleton className="h-full w-full rounded-2xl" />
       </div>
       <div className="flex flex-wrap items-center justify-center gap-3">
         {[0, 1, 2].map((i) => (
-          <div key={i} style={{ width: m.icMaxWidth, height: m.icHeight }}>
-            <Skeleton className="h-full w-full rounded-full" />
+          <div key={i} style={{ width: m.icWidth, height: m.icHeight }}>
+            <Skeleton className="h-full w-full rounded-2xl" />
           </div>
         ))}
       </div>
