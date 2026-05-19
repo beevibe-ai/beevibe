@@ -10,6 +10,8 @@ import {
   createFindRepoTool,
   type CommunityRegistryClient,
   type FindRepoCandidate,
+  type TrendingClient,
+  type TrendingPeriod,
 } from "./find-repo.js";
 
 /**
@@ -113,6 +115,42 @@ function emptyCommunityRegistry(): CommunityRegistryClient {
   return { fetch: vi.fn(async () => undefined) };
 }
 
+function emptyTrending(): TrendingClient {
+  return { urlSet: vi.fn(async () => new Set<string>()) };
+}
+
+/**
+ * Build a trending client whose urlSet returns the given URLs for the
+ * specified period (default: daily). Mirrors how the real
+ * HttpTrendingClient normalizes URLs — pass raw GitHub URLs and the
+ * fake normalizes them with the same lowercase + strip-www rules the
+ * production code uses (which is just lowercase + strip `https://www.`,
+ * `.git`, trailing slashes).
+ */
+function trendingWith(
+  urls: string[],
+  period: TrendingPeriod = "daily",
+): TrendingClient {
+  const normalized = new Set<string>(urls.map(normalizeForTest));
+  return {
+    urlSet: vi.fn(async (p: TrendingPeriod) =>
+      p === period ? new Set<string>(normalized) : new Set<string>(),
+    ),
+  };
+}
+
+function normalizeForTest(url: string): string {
+  return url.toLowerCase().replace(/^https?:\/\//, "").replace(/^www\./, "").replace(/\.git$/, "").replace(/\/+$/, "");
+}
+
+function trendingThrows(): TrendingClient {
+  return {
+    urlSet: vi.fn(async () => {
+      throw new Error("trending fetch failed");
+    }),
+  };
+}
+
 describe("find_repo tool", () => {
   it("rejects empty goal", async () => {
     const tool = createFindRepoTool(
@@ -123,6 +161,7 @@ describe("find_repo tool", () => {
         boostList: BOOST,
         fetcher: emptyFetcher(),
         communityRegistry: emptyCommunityRegistry(),
+        trending: emptyTrending(),
       },
     );
     const result = await tool.handler({ goal: "" });
@@ -139,6 +178,7 @@ describe("find_repo tool", () => {
         boostList: BOOST,
         fetcher: emptyFetcher(),
         communityRegistry: emptyCommunityRegistry(),
+        trending: emptyTrending(),
       },
     );
     const result = await tool.handler({ goal: "extract tables from a PDF" });
@@ -155,6 +195,7 @@ describe("find_repo tool", () => {
         boostList: BOOST,
         fetcher: emptyFetcher(),
         communityRegistry: emptyCommunityRegistry(),
+        trending: emptyTrending(),
       },
     );
     const result = await tool.handler({ goal: "extract tables from a PDF" });
@@ -184,6 +225,7 @@ describe("find_repo tool", () => {
         boostList: BOOST,
         fetcher: emptyFetcher(),
         communityRegistry: emptyCommunityRegistry(),
+        trending: emptyTrending(),
       },
     );
     const result = await tool.handler({ goal: "extract tables from a PDF" });
@@ -207,6 +249,7 @@ describe("find_repo tool", () => {
         boostList: BOOST,
         fetcher: emptyFetcher(),
         communityRegistry: emptyCommunityRegistry(),
+        trending: emptyTrending(),
       },
     );
     const result = await tool.handler({ goal: "extract tables from a PDF" });
@@ -267,6 +310,7 @@ describe("find_repo tool", () => {
           },
         ]),
         communityRegistry: emptyCommunityRegistry(),
+        trending: emptyTrending(),
       },
     );
     const result = await tool.handler({ goal: "extract tables from a PDF" });
@@ -291,6 +335,7 @@ describe("find_repo tool", () => {
           throw new Error("ECONNREFUSED");
         }) as unknown as typeof fetch,
         communityRegistry: emptyCommunityRegistry(),
+        trending: emptyTrending(),
       },
     );
     const result = await tool.handler({ goal: "extract tables from a PDF" });
@@ -309,6 +354,7 @@ describe("find_repo tool", () => {
         boostList: BOOST,
         fetcher: emptyFetcher(),
         communityRegistry: emptyCommunityRegistry(),
+        trending: emptyTrending(),
       },
     );
     const result = await tool.handler({ goal: "extract tables from a PDF" });
@@ -334,6 +380,7 @@ describe("find_repo tool", () => {
           },
         ]),
         communityRegistry: emptyCommunityRegistry(),
+        trending: emptyTrending(),
       },
     );
     const result = await tool.handler({ goal: "extract tables from a PDF" });
@@ -365,6 +412,7 @@ describe("find_repo tool", () => {
           })),
         ),
         communityRegistry: emptyCommunityRegistry(),
+        trending: emptyTrending(),
       },
     );
     const result = await tool.handler({ goal: "do something with python", limit: 3 });
@@ -381,11 +429,159 @@ describe("find_repo tool", () => {
         boostList: inMemoryBoostList([]),
         fetcher: githubFetcher([]),
         communityRegistry: emptyCommunityRegistry(),
+        trending: emptyTrending(),
       },
     );
     const result = await tool.handler({ goal: "do something obscure xyzzy" });
     const body = result.content as { candidates: FindRepoCandidate[]; hint: string };
     expect(body.candidates).toHaveLength(0);
     expect(body.hint).toContain("No candidates");
+  });
+
+  /* ─── Tier 5: GitHub trending ─────────────────────────────────── */
+
+  it("trending tier adds +15 when a GitHub-search candidate is in the daily snapshot", async () => {
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        agentRepo: fakeAgentRepo(),
+        learnedSkillRepo: fakeLearnedSkillRepo(),
+        boostList: inMemoryBoostList([]),
+        fetcher: githubFetcher([
+          {
+            html_url: RANDOM,
+            description: "a random pdf thing",
+            stargazers_count: 1000,
+            language: "python",
+          },
+        ]),
+        communityRegistry: emptyCommunityRegistry(),
+        trending: trendingWith([RANDOM], "daily"),
+      },
+    );
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates).toHaveLength(1);
+    const c = candidates[0]!;
+    expect(c.sources).toEqual(expect.arrayContaining(["github", "trending"]));
+    expect(c.source).toBe("trending"); // trending > github in precedence
+    // popularityScore(1000) ≈ 9 + trending +15 = ~24
+    expect(c.score).toBeGreaterThan(20);
+    expect(c.score).toBeLessThan(30);
+    expect(c.reason).toContain("trending");
+  });
+
+  it("trending in weekly counts too (not just daily)", async () => {
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        agentRepo: fakeAgentRepo(),
+        learnedSkillRepo: fakeLearnedSkillRepo(),
+        boostList: inMemoryBoostList([]),
+        fetcher: githubFetcher([
+          { html_url: RANDOM, description: "x", stargazers_count: 500, language: "python" },
+        ]),
+        communityRegistry: emptyCommunityRegistry(),
+        trending: trendingWith([RANDOM], "weekly"),
+      },
+    );
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates[0]!.sources).toContain("trending");
+  });
+
+  it("trending in monthly is NOT counted (only daily + weekly contribute)", async () => {
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        agentRepo: fakeAgentRepo(),
+        learnedSkillRepo: fakeLearnedSkillRepo(),
+        boostList: inMemoryBoostList([]),
+        fetcher: githubFetcher([
+          { html_url: RANDOM, description: "x", stargazers_count: 500, language: "python" },
+        ]),
+        communityRegistry: emptyCommunityRegistry(),
+        trending: trendingWith([RANDOM], "monthly"),
+      },
+    );
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates[0]!.sources).not.toContain("trending");
+  });
+
+  it("trending lookup failure is reported in notes but doesn't fail the call", async () => {
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        agentRepo: fakeAgentRepo(),
+        learnedSkillRepo: fakeLearnedSkillRepo(),
+        boostList: BOOST,
+        fetcher: emptyFetcher(),
+        communityRegistry: emptyCommunityRegistry(),
+        trending: trendingThrows(),
+      },
+    );
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+    const body = result.content as { candidates: FindRepoCandidate[]; notes: string[] };
+    expect(body.candidates.length).toBeGreaterThan(0);
+    expect(body.notes.some((n) => n.includes("trending"))).toBe(true);
+  });
+
+  it("boost + trending stack their scores (sources concatenate, score additive)", async () => {
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        agentRepo: fakeAgentRepo(),
+        learnedSkillRepo: fakeLearnedSkillRepo(),
+        boostList: BOOST,
+        fetcher: emptyFetcher(),
+        communityRegistry: emptyCommunityRegistry(),
+        trending: trendingWith([PDFPLUMBER], "daily"),
+      },
+    );
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates).toHaveLength(1);
+    const top = candidates[0]!;
+    expect(top.sources).toEqual(expect.arrayContaining(["boost", "trending"]));
+    expect(top.source).toBe("boost"); // precedence: boost > trending
+    // boost (~30 from 3 keyword overlap) + trending (+15) = ~45
+    expect(top.score).toBeGreaterThanOrEqual(35);
+    expect(top.score).toBeLessThanOrEqual(50);
+  });
+
+  it("learned > community > boost > trending > github precedence holds when all five sources match", async () => {
+    const learned = makeLearnedSkill({ repo_url: PDFPLUMBER });
+    const registry: CommunityRegistryClient = {
+      fetch: vi.fn(async () => ({
+        skills: [{ repo_url: PDFPLUMBER, goal_pattern: "extract tables from pdfs" }],
+      })),
+    };
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        agentRepo: fakeAgentRepo(),
+        learnedSkillRepo: fakeLearnedSkillRepo([learned]),
+        boostList: BOOST,
+        fetcher: githubFetcher([
+          { html_url: PDFPLUMBER, description: "Plumb a PDF", stargazers_count: 7000, language: "Python" },
+        ]),
+        communityRegistry: registry,
+        trending: trendingWith([PDFPLUMBER], "daily"),
+      },
+    );
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates).toHaveLength(1);
+    const top = candidates[0]!;
+    // Every tier contributed
+    expect(top.sources).toEqual(
+      expect.arrayContaining(["learned", "community", "boost", "trending", "github"]),
+    );
+    // Primary source = highest precedence
+    expect(top.source).toBe("learned");
+    // 50 + 30 + ~30(boost) + 15 = ~125 minimum
+    expect(top.score).toBeGreaterThanOrEqual(100);
   });
 });

@@ -16,6 +16,8 @@
  *   +50  learned_skill match (this team's own proven recipe)
  *   +30  community registry match (proven by other Beevibe instances)
  *   +20  curated boost-list match (day-one reliability)
+ *   +15  GitHub trending — appears in daily or weekly snapshot
+ *        (read from beevibe-ai/beevibe-capabilities, no per-call API)
  *   +0   GitHub search hit, plus log10(stars+1)·3 popularity bonus
  *
  * The agent reads the top N candidates and picks based on
@@ -30,10 +32,23 @@ import type {
 import type { BoostList } from "./boost-list.js";
 import type { AgentTool, AgentToolResult } from "./types.js";
 
+/**
+ * Data layer URLs — all live in the public `beevibe-ai/beevibe-capabilities`
+ * repo at `data/`. Served via raw.githubusercontent.com; no auth, no
+ * hosting cost, no rate limit. Per-source TTL caches inside this module
+ * mean a /mcp roundtrip pays at most three HTTP requests per process
+ * lifetime (one per file per hour).
+ */
+const CAPABILITIES_BASE_URL =
+  process.env.BEEVIBE_CAPABILITIES_BASE_URL ??
+  "https://raw.githubusercontent.com/beevibe-ai/beevibe-capabilities/main/data";
+
 const COMMUNITY_REGISTRY_URL =
   process.env.BEEVIBE_COMMUNITY_REGISTRY_URL ??
-  "https://raw.githubusercontent.com/beevibe-ai/beevibe-capabilities/main/registry.json";
+  `${CAPABILITIES_BASE_URL}/registry.json`;
 const COMMUNITY_REGISTRY_TTL_MS = 60 * 60 * 1000;
+
+const TRENDING_TTL_MS = 60 * 60 * 1000;
 
 /** GitHub stop-words we strip from the query (and from match overlap). */
 const STOP_WORDS = new Set([
@@ -64,7 +79,7 @@ const FIND_REPO_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-export type CandidateSource = "learned" | "community" | "boost" | "github";
+export type CandidateSource = "learned" | "community" | "boost" | "trending" | "github";
 
 export interface FindRepoCandidate {
   repo_url: string;
@@ -104,6 +119,8 @@ export interface FindRepoServices {
   fetcher?: typeof fetch;
   /** Override for tests; defaults to a module-level cache. */
   communityRegistry?: CommunityRegistryClient;
+  /** Override for tests; defaults to an HTTP client against the public capabilities repo. */
+  trending?: TrendingClient;
   /** Optional GitHub PAT; raises rate limit from 60/h to 5000/h. */
   githubToken?: string;
 }
@@ -148,6 +165,71 @@ class HttpCommunityRegistryClient implements CommunityRegistryClient {
   }
 }
 
+/* ─── Trending client (Tier 5) ───────────────────────────────────── */
+
+export type TrendingPeriod = "daily" | "weekly" | "monthly";
+
+interface TrendingRepoEntry {
+  repo_url: string;
+}
+interface TrendingSnapshot {
+  period: TrendingPeriod;
+  repos: TrendingRepoEntry[];
+}
+
+/**
+ * Read-side client for the GitHub trending snapshots in
+ * beevibe-ai/beevibe-capabilities. The ranker calls `urlSet(period)`
+ * once per find_repo invocation per period so candidate checks are
+ * O(1) Set lookups, not per-candidate HTTP requests.
+ *
+ * Default impl is HTTP; tests inject a fake (`{ urlSet: vi.fn(...) }`)
+ * to bypass the network.
+ */
+export interface TrendingClient {
+  urlSet(period: TrendingPeriod): Promise<Set<string>>;
+}
+
+class HttpTrendingClient implements TrendingClient {
+  private cached = new Map<TrendingPeriod, { at: number; urls: Set<string> }>();
+  constructor(private readonly fetcher: typeof fetch) {}
+
+  async urlSet(period: TrendingPeriod): Promise<Set<string>> {
+    const hit = this.cached.get(period);
+    if (hit && Date.now() - hit.at < TRENDING_TTL_MS) return hit.urls;
+
+    const url = `${CAPABILITIES_BASE_URL}/trending-${period}.json`;
+    try {
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), 5000);
+      const res = await this.fetcher(url, { signal: controller.signal });
+      clearTimeout(timer);
+      if (!res.ok) {
+        // Cache the miss so we don't hammer raw.githubusercontent during
+        // a long outage. TTL on the empty set is the same — re-check
+        // after the next hour.
+        const empty = new Set<string>();
+        this.cached.set(period, { at: Date.now(), urls: empty });
+        return empty;
+      }
+      const data = (await res.json()) as TrendingSnapshot;
+      const urls = new Set<string>(
+        Array.isArray(data.repos)
+          ? data.repos.map((r) => normalizeUrl(r.repo_url))
+          : [],
+      );
+      this.cached.set(period, { at: Date.now(), urls });
+      return urls;
+    } catch {
+      const empty = new Set<string>();
+      this.cached.set(period, { at: Date.now(), urls: empty });
+      return empty;
+    }
+  }
+}
+
+/* ─── Tool factory ───────────────────────────────────────────────── */
+
 export function createFindRepoTool(
   ctx: FindRepoContext,
   services: FindRepoServices,
@@ -155,14 +237,16 @@ export function createFindRepoTool(
   const fetcher = services.fetcher ?? globalThis.fetch.bind(globalThis);
   const registry =
     services.communityRegistry ?? new HttpCommunityRegistryClient(fetcher);
+  const trending = services.trending ?? new HttpTrendingClient(fetcher);
   const githubToken = services.githubToken ?? process.env.GITHUB_TOKEN;
 
   return {
     name: "find_repo",
     description:
       "Rank GitHub repos for a goal. Returns the top N candidates from " +
-      "four signal sources (your team's learned skills, the community " +
-      "registry, a curated boost list, and live GitHub search).\n\n" +
+      "five signal sources (your team's learned skills, the community " +
+      "registry, a curated boost list, GitHub trending, and live " +
+      "GitHub search).\n\n" +
       "**Call this when you need a tool you don't have, before deciding " +
       "to report a blocker or shell out to `brew install`.** It's cheap " +
       "(no sandbox boots, no LLM calls — just data lookups + a single " +
@@ -171,7 +255,8 @@ export function createFindRepoTool(
       "goal. Pair with `use_repo` to actually run the chosen repo in a " +
       "sandbox.",
     schema: FIND_REPO_SCHEMA as Record<string, unknown>,
-    handler: async (input) => findRepoHandler(input, ctx, services, fetcher, registry, githubToken),
+    handler: async (input) =>
+      findRepoHandler(input, ctx, services, fetcher, registry, trending, githubToken),
   };
 }
 
@@ -181,6 +266,7 @@ async function findRepoHandler(
   services: FindRepoServices,
   fetcher: typeof fetch,
   registry: CommunityRegistryClient,
+  trending: TrendingClient,
   githubToken: string | undefined,
 ): Promise<AgentToolResult> {
   const goal = typeof input.goal === "string" ? input.goal.trim() : "";
@@ -289,6 +375,27 @@ async function findRepoHandler(
     notes.push(`GitHub search failed: ${errMsg(err)}`);
   }
 
+  // ── Tier 5: GitHub trending (snapshot lookup, no per-candidate I/O) ─
+  // Fetch the daily + weekly url sets once per call (TTL'd in the
+  // client), then check every existing candidate in O(1). Trending +15
+  // sits below boost (+20) so a curated entry still wins for the same
+  // goal — trending is a soft tiebreaker, not an override.
+  try {
+    const [daily, weekly] = await Promise.all([
+      trending.urlSet("daily"),
+      trending.urlSet("weekly"),
+    ]);
+    for (const c of candidates.values()) {
+      const key = normalizeUrl(c.repo_url);
+      if (daily.has(key) || weekly.has(key)) {
+        c.score += 15;
+        c.sources.push("trending");
+      }
+    }
+  } catch (err) {
+    notes.push(`trending lookup failed: ${errMsg(err)}`);
+  }
+
   // Finalize each candidate: primary source + human reason string.
   for (const c of candidates.values()) {
     c.source = pickPrimarySource(c.sources);
@@ -381,9 +488,13 @@ function popularityScore(stars: number): number {
 }
 
 function pickPrimarySource(sources: CandidateSource[]): CandidateSource {
+  // Trust order: a curated/proven match beats trending velocity, which
+  // beats raw GitHub. Trending displays as the primary source only when
+  // nothing more authoritative agrees about the repo.
   if (sources.includes("learned")) return "learned";
   if (sources.includes("community")) return "community";
   if (sources.includes("boost")) return "boost";
+  if (sources.includes("trending")) return "trending";
   return "github";
 }
 
@@ -397,6 +508,9 @@ function formatReason(c: FindRepoCandidate): string {
   }
   if (c.sources.includes("boost") && c.matched_keywords?.length) {
     parts.push(`curated for: ${c.matched_keywords.join(", ")}`);
+  }
+  if (c.sources.includes("trending")) {
+    parts.push("trending on GitHub this week");
   }
   if (c.sources.includes("github") && typeof c.stars === "number") {
     parts.push(`${c.stars.toLocaleString()} stars on GitHub`);

@@ -41,7 +41,7 @@ import { MeshServer } from "./mesh/server.js";
 import { BeevibeApiServer } from "./server.js";
 import { SessionCache } from "./session-cache.js";
 import { createMcpRouter } from "./routes/mcp.js";
-import { loadBoostListFromDisk } from "./tools/boost-list.js";
+import { loadBoostList } from "./tools/boost-list.js";
 import { createTaskRouter } from "./routes/task.js";
 import { createRepoRunsRouter } from "./routes/repo-runs.js";
 import { createLearnedSkillsRouter } from "./routes/learned-skills.js";
@@ -140,12 +140,13 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const learnedSkillRepo = new PostgresLearnedSkillRepository(pool);
   const skillOutcomeRepo = new PostgresSkillOutcomeRepository(pool);
 
-  // Capability Network: load the curated boost list once at startup so
-  // find_repo doesn't pay disk I/O per call. Missing file degrades to
-  // an empty list (the ranker still works via the other three tiers).
+  // Capability Network: resolve the curated boost list at startup.
+  // loadBoostList tries the public beevibe-capabilities repo first,
+  // falls back to the bundled disk copy if the remote is unreachable.
+  // Either way: one-shot at boot, cached for the process lifetime.
   const skillsDir =
     cfg.skillsSourceDir ?? path.resolve(process.cwd(), "skills");
-  const boostList = await loadBoostListFromDisk(path.dirname(skillsDir));
+  const boostList = await loadBoostList({ repoRoot: path.dirname(skillsDir) });
 
   // External services (LLM + embeddings) for memory pipeline
   const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
