@@ -172,25 +172,19 @@ export function createUseRepoTool(
         creator_type: "agent",
       });
 
-      // Pre-mint the session id so we can persist the repo_run row
-      // BEFORE the dispatch fires — composeDispatchPayload reads the
-      // repo_run row by session_id at /runtime/claim time.
+      // Order matters: repo_run.session_id has a FK to session.id, so
+      // the session row has to exist BEFORE the repo_run insert.
+      // dispatchService.dispatchTask creates the session row (under our
+      // pre-minted sessionIdOverride), then we insert repo_run.
+      //
+      // The daemon claims via polling, so the small window between
+      // dispatch returning and the repo_run insert is OK in practice —
+      // if the daemon races us, composeDispatchPayload returns null
+      // (no repo_run found by session_id) and marks the session failed,
+      // which the agent then sees as a retryable error.
       const sessionIdValue = newSessionId();
       const repoRunIdValue = newRepoRunId();
 
-      await services.repoRunRepo.create({
-        id: repoRunIdValue,
-        session_id: sessionIdValue,
-        task_id: containerTask.id,
-        agent_id: agent.id,
-        goal,
-        repo_url: repoUrl,
-        status: "pending",
-      });
-
-      // Hand off to the daemon. type='run_repo' makes the daemon
-      // spawner branch into the sandbox orchestrator. The intent
-      // string mirrors the goal for the existing session_event UI.
       try {
         await services.dispatchService.dispatchTask({
           agentId: agent.id,
@@ -201,16 +195,33 @@ export function createUseRepoTool(
           sessionIdOverride: sessionIdValue,
         });
       } catch (err) {
-        // Mark the repo_run failed so the UI / agent isn't left
-        // waiting on a dispatch that never happened.
-        await services.repoRunRepo.update(repoRunIdValue, {
-          status: "failed",
-          error: err instanceof Error ? err.message : String(err),
-          ended_at: new Date(),
-        });
         return {
           content: {
             error: "dispatch_failed",
+            message: err instanceof Error ? err.message : String(err),
+          },
+          isError: true,
+        };
+      }
+
+      try {
+        await services.repoRunRepo.create({
+          id: repoRunIdValue,
+          session_id: sessionIdValue,
+          task_id: containerTask.id,
+          agent_id: agent.id,
+          goal,
+          repo_url: repoUrl,
+          status: "pending",
+        });
+      } catch (err) {
+        // Session row landed but repo_run insert failed — orphan
+        // session. composeDispatchPayload will find no repo_run and
+        // return null, marking the session failed. Self-recovers, but
+        // surface the error so the agent doesn't silently wait.
+        return {
+          content: {
+            error: "repo_run_create_failed",
             message: err instanceof Error ? err.message : String(err),
           },
           isError: true,
