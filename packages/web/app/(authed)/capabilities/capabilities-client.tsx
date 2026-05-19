@@ -158,12 +158,12 @@ function repoAvatarSrc(repoUrl: string) {
 function RepoAvatar({ repoUrl, size = 28 }: { repoUrl: string; size?: number }) {
   return (
     <span
-      className="agent-avatar-glass inline-block shrink-0"
+      className="agent-avatar-glass inline-flex items-center justify-center shrink-0"
       style={{ width: size, height: size }}
     >
       <span
         aria-hidden
-        className="agent-avatar-glass-avatar"
+        className="dicebear-avatar-image"
         style={{ backgroundImage: `url("${repoAvatarSrc(repoUrl)}")` }}
       />
     </span>
@@ -366,10 +366,8 @@ function TrendingRow({ repo }: { repo: TrendingRepo }) {
           {repo.description ?? "—"}
         </p>
       </div>
-      <div className="relative pointer-events-none hidden md:flex items-center gap-2 shrink-0 pr-2">
-        {repo.language && (
-          <span className="text-[10px] text-muted-foreground/80">{repo.language}</span>
-        )}
+      <div className="relative pointer-events-none hidden md:flex items-center gap-3 shrink-0 pr-2">
+        <LanguageBadge language={repo.language} />
         <span
           className="inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums text-orange-600 dark:text-orange-400"
           title="Stars gained in this window"
@@ -396,6 +394,52 @@ function TrendingRow({ repo }: { repo: TrendingRepo }) {
 function formatStars(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
   return `${n}`;
+}
+
+/**
+ * GitHub Linguist's official language colors (subset of the most common).
+ * Used as the colored dot next to the language name — same visual cue
+ * GitHub itself uses on repo cards.
+ */
+const LANGUAGE_COLORS: Record<string, string> = {
+  Python: "#3572A5",
+  TypeScript: "#3178c6",
+  JavaScript: "#f1e05a",
+  Rust: "#dea584",
+  Go: "#00ADD8",
+  Java: "#b07219",
+  C: "#555555",
+  "C++": "#f34b7d",
+  Swift: "#FA7343",
+  Shell: "#89e051",
+  HTML: "#e34c26",
+  CSS: "#663399",
+  Ruby: "#701516",
+  PHP: "#4F5D95",
+  Kotlin: "#A97BFF",
+  Dart: "#00B4AB",
+  Haskell: "#5e5086",
+  Vue: "#41b883",
+  Svelte: "#ff3e00",
+  Zig: "#ec915c",
+  Lua: "#000080",
+  Elixir: "#6e4a7e",
+  Clojure: "#db5855",
+  MDX: "#fcb32c",
+};
+
+function LanguageBadge({ language }: { language: string | null }) {
+  if (!language) return null;
+  const color = LANGUAGE_COLORS[language] ?? "#8b949e";
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground">
+      <span
+        className="inline-block h-2 w-2 rounded-full"
+        style={{ backgroundColor: color }}
+      />
+      {language}
+    </span>
+  );
 }
 
 function ActivityTab({ runs, isLoading }: { runs: RepoRun[]; isLoading: boolean }) {
