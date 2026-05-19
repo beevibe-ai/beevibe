@@ -32,7 +32,8 @@ const PEERS_LIMIT = 500;
 const SELF_SQL = /* sql */ `
 SELECT
   a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
-  a.review_policy, a.runtime_config, a.created_at, a.updated_at,
+  a.review_policy, a.runtime_config, a.preferred_runtime_id,
+  a.created_at, a.updated_at,
   COALESCE(sc.n, 0)::int  AS sessions_count,
   COALESCE(fc.n, 0)::int  AS facts_learned,
   tl.content              AS tag_line
@@ -57,7 +58,8 @@ ORDER BY
 const PEERS_SQL = /* sql */ `
 SELECT
   a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
-  a.review_policy, a.runtime_config, a.created_at, a.updated_at,
+  a.review_policy, a.runtime_config, a.preferred_runtime_id,
+  a.created_at, a.updated_at,
   p.name AS owner_label,
   COALESCE(sc.n, 0)::int  AS sessions_count,
   COALESCE(fc.n, 0)::int  AS facts_learned,
@@ -85,6 +87,7 @@ interface AgentRow {
   hierarchy_level: "ic" | "team" | "org";
   review_policy: string | null;
   runtime_config: RuntimeConfig;
+  preferred_runtime_id: string | null;
   created_at: Date;
   updated_at: Date;
   sessions_count: string | number;
@@ -119,6 +122,7 @@ function rowToAgentDisplay(row: AgentRow): AgentDisplay {
     model,
     specialization,
     review_policy: (row.review_policy ?? undefined) as AgentDisplay["review_policy"],
+    preferred_runtime_id: row.preferred_runtime_id ?? undefined,
   };
 }
 
