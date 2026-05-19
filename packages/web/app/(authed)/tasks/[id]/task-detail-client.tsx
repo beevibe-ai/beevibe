@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   FileText,
   ListChecks,
+  MessageSquare,
   Package,
   Terminal,
 } from "lucide-react";
@@ -236,6 +237,10 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         ) : null}
       </header>
 
+      {task.status === "blocked" && task.blocker_reason ? (
+        <BlockedReplyBanner task={task} />
+      ) : null}
+
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 space-y-5">
           <section className="rounded-lg border border-border bg-card p-5">
@@ -300,15 +305,6 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         </div>
 
         <aside className="col-span-1 space-y-4">
-          {task.status === "blocked" && task.blocker_reason ? (
-            <section className="rounded-lg border border-status-blocked/40 bg-status-blocked/5 p-4">
-              <h3 className="text-[11px] uppercase tracking-wider text-status-blocked mb-2 font-medium">
-                Blocked
-              </h3>
-              <p className="text-sm text-foreground">{task.blocker_reason}</p>
-            </section>
-          ) : null}
-
           {activeSession ? (
             <section className="rounded-lg border border-border bg-card p-4">
               <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
@@ -357,6 +353,53 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         ) : null}
       </footer>
     </DetailShell>
+  );
+}
+
+/**
+ * Full-width banner shown above the description when a task is blocked.
+ *
+ * The blocker_reason is whatever the child agent wrote in their
+ * `report_blocker` call — frequently structured questions for the human
+ * (Q1/Q2/Q3 with bold markdown), so ChatMarkdown is the right renderer
+ * here rather than the plain `<p>` the right-aside used.
+ *
+ * "Reply to agent" hands the conversation to the Team agent chat with a
+ * pre-filled draft containing the task short_id + the blocker text. The
+ * Team agent is the agent's direct parent in the mesh hierarchy, so
+ * once it reads the user's answer it can call `revise_task` itself to
+ * unblock the child — the same path the autonomous mesh.reportBlocker
+ * spawn would have taken, just now informed by the user's input.
+ */
+function BlockedReplyBanner({ task }: { task: TaskDetail }) {
+  const taskShort = shortId(task.id);
+  const draft =
+    `Unblock task ${taskShort} ("${task.title}"). The agent reported:\n\n` +
+    `${task.blocker_reason ?? ""}\n\n` +
+    `My answer: `;
+  const replyHref = `/chat?new=1&draft=${encodeURIComponent(draft)}`;
+
+  return (
+    <section className="mb-6 rounded-lg border border-status-blocked/40 bg-status-blocked/5 p-4">
+      <div className="flex items-center justify-between gap-3 mb-3">
+        <div className="flex items-center gap-2">
+          <AlertTriangle className="h-3.5 w-3.5 text-status-blocked" />
+          <h3 className="text-[11px] uppercase tracking-wider text-status-blocked font-medium">
+            Blocked — agent is asking you something
+          </h3>
+        </div>
+        <Link
+          href={replyHref}
+          className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium bg-status-blocked/15 text-status-blocked hover:bg-status-blocked/25 transition-colors cursor-pointer shrink-0"
+        >
+          <MessageSquare className="h-3 w-3" />
+          Reply to agent →
+        </Link>
+      </div>
+      <div className="text-sm text-foreground/90">
+        <ChatMarkdown content={task.blocker_reason ?? ""} />
+      </div>
+    </section>
   );
 }
 
