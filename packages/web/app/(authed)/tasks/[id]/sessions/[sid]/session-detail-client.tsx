@@ -113,6 +113,7 @@ function SessionDetailBody({ session, taskId: _taskId }: { session: SessionDispl
           <Avatar
             initial={session.agent_label.charAt(0).toUpperCase()}
             kind={session.agent_hierarchy}
+            label={session.agent_label}
             size={40}
             presence={session.status === "running" ? "running" : "idle"}
           />

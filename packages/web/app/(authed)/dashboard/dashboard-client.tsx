@@ -92,14 +92,14 @@ function Body({
       </div>
 
       <div className="grid grid-cols-3 gap-6">
-        <div className="col-span-2 rounded-lg border border-border bg-card p-5">
+        <div className="col-span-2 rounded-lg glass-surface p-5">
           <StatusBreakdownBar
             entries={data.status_breakdown}
             legend={data.status_legend}
             total={data.status_total}
           />
         </div>
-        <div className="rounded-lg border border-border bg-card p-5">
+        <div className="rounded-lg glass-surface p-5">
           <FleetBars
             bars={data.fleet}
             total={data.fleet_total}
@@ -109,7 +109,7 @@ function Body({
         </div>
       </div>
 
-      <div className="rounded-lg border border-border bg-card p-5">
+      <div className="rounded-lg glass-surface p-5">
         <TrendChart
           days={data.trend}
           total={data.trend_total}

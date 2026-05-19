@@ -62,7 +62,7 @@ export function WelcomeClient() {
             alt="Beevibe"
             className="h-6 w-6 rounded-md object-cover object-center"
           />
-          <span className="text-sm font-semibold tracking-tight">beevibe</span>
+          <span className="text-sm font-semibold tracking-tight">Beevibe</span>
           <Stepper current={step} className="ml-auto" />
         </div>
       </header>

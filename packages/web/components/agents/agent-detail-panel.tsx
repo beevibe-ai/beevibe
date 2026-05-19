@@ -153,6 +153,8 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
           <Avatar
             initial={initial}
             kind={agent.hierarchy}
+            label={agent.display_name}
+            specialization={agent.specialization}
             size={48}
             presence={presence}
           />
@@ -300,4 +302,3 @@ function PanelFooterField({
     </div>
   );
 }
-

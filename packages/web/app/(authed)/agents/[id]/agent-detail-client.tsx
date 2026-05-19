@@ -119,7 +119,14 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
     <DetailShell nav={<AgentsBackLink />}>
       <header className="mb-6">
         <div className="flex items-start gap-4">
-          <Avatar initial={initial} kind={agent.hierarchy} size={56} presence={presence} />
+          <Avatar
+            initial={initial}
+            kind={agent.hierarchy}
+            label={agent.display_name}
+            specialization={agent.specialization}
+            size={56}
+            presence={presence}
+          />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
               <h1 className="text-base font-semibold tracking-tight leading-tight">{agent.display_name}</h1>

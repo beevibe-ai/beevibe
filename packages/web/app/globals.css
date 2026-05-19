@@ -40,7 +40,7 @@
     --status-cancelled: 240 4% 46%;
 
     --hier-ic: 240 4% 46%;
-    --hier-team: 262 83% 58%;
+    --hier-team: var(--primary);
     --hier-org: 38 92% 50%;
 
     --type-belief-bg: 240 5% 92%;
@@ -91,6 +91,22 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-feature-settings: "cv11", "ss01";
+    /* Aurora wallpaper — three offset radial gradients give the body
+       enough varied color for glass-surface elements (sidebar, popovers,
+       composers, message bubbles) to actually look glassy. Without this,
+       backdrop-filter has only flat color to blur and reads as tinted
+       solid. Fixed attachment so the field doesn't scroll with content. */
+    background-image:
+      radial-gradient(ellipse 60vw 50vh at 18% 22%, hsla(48, 95%, 55%, 0.08), transparent 65%),
+      radial-gradient(ellipse 65vw 55vh at 82% 78%, hsla(220, 75%, 55%, 0.07), transparent 65%),
+      radial-gradient(ellipse 50vw 45vh at 50% 50%, hsla(180, 65%, 50%, 0.04), transparent 70%);
+    background-attachment: fixed;
+  }
+  .dark body {
+    background-image:
+      radial-gradient(ellipse 60vw 50vh at 18% 22%, hsla(48, 95%, 55%, 0.10), transparent 65%),
+      radial-gradient(ellipse 65vw 55vh at 82% 78%, hsla(220, 75%, 60%, 0.10), transparent 65%),
+      radial-gradient(ellipse 50vw 45vh at 50% 50%, hsla(160, 70%, 50%, 0.06), transparent 70%);
   }
 
   button:focus-visible,
@@ -245,6 +261,224 @@
 }
 .pearl-button:active {
   transform: translateY(2px);
+}
+
+/* ── Glass surface utilities ──────────────────────────────────────────
+   Frosted-glass treatment that pairs with the .glassy-chip / .glassy-send
+   pearl buttons so the surrounding chrome reads as part of the same
+   material instead of solid blocks against shiny pearls.
+
+   Use `.glass-surface` for popovers, composers, peek panels — anything
+   that hosts content. Use `.glass-bubble-agent` / `.glass-bubble-user`
+   for chat message bubbles. All three need a non-solid backdrop behind
+   them to read correctly; the chat surface's gradient + the sidebar's
+   `bg-card` both qualify. */
+.glass-surface {
+  background-color: hsl(var(--card) / 0.55);
+  /* Apple Liquid Glass cues: heavy blur picks up backdrop variation, the
+     saturate boost makes whatever color is behind read vividly through
+     the glass (the trick that makes Apple Materials look "alive" against
+     wallpapers). Inset top highlight is the refractive lip — 1px white
+     stroke at the top edge simulating light catching the glass. */
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border: 1px solid hsl(var(--border) / 0.55);
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.08);
+}
+.dark .glass-surface {
+  background-color: hsl(var(--card) / 0.4);
+  border-color: hsl(var(--border) / 0.55);
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.06);
+}
+/* Fallback for browsers without backdrop-filter (older Firefox): bump
+   alpha so the surface stays legible without the blur trick. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-surface { background-color: hsl(var(--card) / 0.95); }
+  .dark .glass-surface { background-color: hsl(var(--card) / 0.92); }
+}
+
+/* Agent message — neutral translucent bubble. Drops the solid
+   bg-secondary block in favor of a frosted variant that lets the
+   gradient backdrop bleed through. */
+.glass-bubble-agent {
+  background-color: hsl(var(--secondary) / 0.5);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  color: hsl(var(--foreground));
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.06);
+}
+.dark .glass-bubble-agent {
+  background-color: hsl(var(--secondary) / 0.4);
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.05);
+}
+
+/* User message — replaces the saturated bg-primary yellow with a low-
+   opacity tint + brand-colored border. Brand reads as accent instead
+   of dominating the column; short prompts stop looking like billboards. */
+.glass-bubble-user {
+  background-color: hsl(var(--primary) / 0.14);
+  border: 1px solid hsl(var(--primary) / 0.4);
+  backdrop-filter: blur(20px) saturate(190%);
+  -webkit-backdrop-filter: blur(20px) saturate(190%);
+  color: hsl(var(--foreground));
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.08);
+}
+.dark .glass-bubble-user {
+  background-color: hsl(var(--primary) / 0.12);
+  border-color: hsl(var(--primary) / 0.45);
+  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.06);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-bubble-agent { background-color: hsl(var(--secondary) / 0.9); }
+  .glass-bubble-user { background-color: hsl(var(--primary) / 0.22); }
+}
+
+/* Slide-in for bottom-right toasts (memory-toast-host). Mirrors the
+   iOS notification slide — soft ease, short distance. Disabled under
+   prefers-reduced-motion so the toast still appears, just without the
+   whoosh. */
+@keyframes toast-in {
+  from { transform: translate(8%, 12%); opacity: 0; }
+  to   { transform: translate(0, 0);     opacity: 1; }
+}
+.animate-toast-in {
+  animation: toast-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-toast-in { animation: none; }
+}
+
+/* Agent avatar glass — tiny frosted badges for the custom role marks.
+   Uses a shared treatment with per-hierarchy tint variables so team
+   agents pick up the primary theme color instead of the old purple. */
+.agent-avatar-glass {
+  --agent-avatar-tint: var(--muted-foreground);
+  --agent-avatar-fg: var(--foreground);
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: hsl(var(--agent-avatar-fg));
+  background:
+    linear-gradient(
+      145deg,
+      hsl(0 0% 100% / 0.7) 0%,
+      hsl(var(--agent-avatar-tint) / 0.18) 48%,
+      hsl(var(--card) / 0.32) 100%
+    ),
+    hsl(var(--agent-avatar-tint) / 0.12);
+  border: 1px solid hsl(0 0% 100% / 0.68);
+  backdrop-filter: blur(12px) saturate(165%);
+  -webkit-backdrop-filter: blur(12px) saturate(165%);
+  box-shadow:
+    inset 0 0.16rem 0.32rem hsl(0 0% 100% / 0.72),
+    inset 0 -0.08rem 0.22rem hsl(var(--agent-avatar-tint) / 0.16),
+    0 0.32rem 0.7rem hsl(var(--agent-avatar-tint) / 0.16);
+}
+.agent-avatar-glass::before {
+  content: "";
+  position: absolute;
+  inset: 9% 13% auto;
+  height: 34%;
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    hsl(0 0% 100% / 0.72),
+    hsl(0 0% 100% / 0)
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+.agent-avatar-glass svg {
+  position: relative;
+  z-index: 1;
+  filter: drop-shadow(0 1px 0 hsl(0 0% 100% / 0.46));
+}
+.agent-avatar-glass-ic {
+  --agent-avatar-tint: var(--hier-ic);
+  --agent-avatar-fg: var(--hier-ic);
+}
+.agent-avatar-glass-team {
+  --agent-avatar-tint: var(--primary);
+  --agent-avatar-fg: 36 72% 28%;
+  background:
+    linear-gradient(
+      145deg,
+      hsl(0 0% 100% / 0.52) 0%,
+      hsl(var(--primary) / 0.34) 56%,
+      hsl(var(--card) / 0.18) 100%
+    ),
+    hsl(var(--primary) / 0.3);
+  border-color: hsl(var(--primary) / 0.34);
+  box-shadow:
+    inset 0 0.16rem 0.32rem hsl(0 0% 100% / 0.5),
+    inset 0 -0.08rem 0.22rem hsl(var(--primary) / 0.14),
+    0 0.26rem 0.62rem hsl(var(--primary) / 0.14);
+}
+.agent-avatar-glass-org {
+  --agent-avatar-tint: var(--hier-org);
+  --agent-avatar-fg: var(--hier-org);
+}
+.dark .agent-avatar-glass {
+  background:
+    linear-gradient(
+      145deg,
+      hsl(0 0% 100% / 0.22) 0%,
+      hsl(var(--agent-avatar-tint) / 0.18) 52%,
+      hsl(var(--card) / 0.36) 100%
+    ),
+    hsl(var(--agent-avatar-tint) / 0.13);
+  border-color: hsl(0 0% 100% / 0.14);
+  box-shadow:
+    inset 0 0.18rem 0.36rem hsl(0 0% 100% / 0.18),
+    inset 0 -0.08rem 0.24rem hsl(0 0% 0% / 0.32),
+    0 0.35rem 0.8rem hsl(0 0% 0% / 0.28);
+}
+.dark .agent-avatar-glass-team {
+  color: hsl(var(--agent-avatar-fg));
+  background:
+    linear-gradient(
+      145deg,
+      hsl(0 0% 100% / 0.22) 0%,
+      hsl(var(--primary) / 0.48) 58%,
+      hsl(var(--card) / 0.26) 100%
+    ),
+    hsl(var(--primary) / 0.38);
+  border-color: hsl(var(--primary) / 0.32);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .agent-avatar-glass { background-color: hsl(var(--agent-avatar-tint) / 0.16); }
+  .agent-avatar-glass-team { background-color: hsl(var(--primary) / 0.42); }
+}
+
+/* Orbit map focus — keep a soft primary glow behind the caller's own
+   team without turning the canvas into a literal stacked 3D model. */
+.network-orbit-layer {
+  position: absolute;
+}
+.network-orbit-layer-self {
+  z-index: 20;
+}
+.network-orbit-layer-self::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 9999px;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  width: min(760px, 82vw);
+  height: min(760px, 82vw);
+  background: radial-gradient(circle, hsl(var(--primary) / 0.16), transparent 68%);
+  filter: blur(30px);
+  opacity: 0.72;
+  z-index: -2;
+}
+.network-orbit-layer-peer {
+  z-index: 4;
+}
+.dark .network-orbit-layer-self::before {
+  background: radial-gradient(circle, hsl(var(--primary) / 0.18), transparent 68%);
 }
 
 /* Glassy chip — scaled-down pearl for the active sidebar tab. Same

@@ -94,7 +94,7 @@ export function Sidebar() {
           onClick={toggleCollapsed}
           aria-label="Expand sidebar (⌘\)"
           title="Expand sidebar (⌘\)"
-          className="w-full h-full bg-card border-r border-border/60 hover:bg-secondary/50 flex flex-col items-center pt-3 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
+          className="w-full h-full glass-surface hover:bg-secondary/50 flex flex-col items-center pt-3 text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
         >
           <PanelLeftOpen className="h-4 w-4" />
         </button>
@@ -103,7 +103,7 @@ export function Sidebar() {
   }
 
   return (
-    <aside className="w-[248px] shrink-0 bg-card border-r border-border/60 flex flex-col">
+    <aside className="w-[248px] shrink-0 glass-surface flex flex-col">
       <WorkspaceHeader onCollapse={toggleCollapsed} />
 
       <ModeStrip pathname={pathname} />
@@ -164,7 +164,7 @@ function WorkspaceHeader({ onCollapse }: { onCollapse: () => void }) {
       />
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold tracking-tight leading-tight truncate">
-          beevibe
+          Beevibe
         </div>
       </div>
       <button

@@ -33,9 +33,10 @@ import { ChatLoader } from "@/components/chat/chat-loader";
 function useTeamAgent() {
   const agents = useAgents();
   const teamAgent = agents.data?.find((a) => a.hierarchy !== "ic");
-  const initial = (teamAgent?.display_name ?? teamAgent?.name ?? "?").charAt(0).toUpperCase();
+  const label = teamAgent?.display_name ?? teamAgent?.name;
+  const initial = (label ?? "?").charAt(0).toUpperCase();
   const kind: HierarchyLevel = teamAgent?.hierarchy ?? "team";
-  return { initial, kind };
+  return { initial, kind, label, specialization: teamAgent?.specialization };
 }
 
 const PROMPT_SUGGESTIONS = [
@@ -186,7 +187,7 @@ export function ChatClient() {
             </div>
 
             <div className="px-6 pb-5 pt-2">
-              <div className="max-w-3xl mx-auto rounded-xl border border-border bg-card focus-within:ring-2 focus-within:ring-ring transition-shadow">
+              <div className="max-w-3xl mx-auto rounded-xl glass-surface focus-within:ring-2 focus-within:ring-ring transition-shadow">
                 <textarea
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
@@ -282,9 +283,15 @@ function HeroEmptyChat({
         {/* Hero: avatar + heading. Centered, generous whitespace. */}
         <div className="flex flex-col items-center text-center mb-8">
           {teamAgent ? (
-            <Avatar initial={initial} kind={teamAgent.hierarchy} size={56} />
+            <Avatar
+              initial={initial}
+              kind={teamAgent.hierarchy}
+              label={teamAgent.display_name ?? teamAgent.name}
+              specialization={teamAgent.specialization}
+              size={56}
+            />
           ) : (
-            <Avatar initial="?" kind="team" size={56} />
+            <Avatar initial="?" kind="team" label="Team agent" size={56} />
           )}
           <h1 className="mt-3 text-2xl font-semibold tracking-tight">
             How can your team help you today?
@@ -294,7 +301,7 @@ function HeroEmptyChat({
         {/* Centered input. The composer sits in the middle of the page
             instead of the bottom-stuck position used during a real
             conversation — same shape as Notion's "Do anything with AI..." */}
-        <div className="rounded-xl border border-border bg-card focus-within:ring-2 focus-within:ring-ring transition-shadow">
+        <div className="rounded-xl glass-surface focus-within:ring-2 focus-within:ring-ring transition-shadow">
           <textarea
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
@@ -386,7 +393,12 @@ function Bubble({
   message: ChatMessage;
   showSuggestions?: boolean;
   onSuggest?: (label: string) => void;
-  teamAgent: { initial: string; kind: HierarchyLevel };
+  teamAgent: {
+    initial: string;
+    kind: HierarchyLevel;
+    label?: string;
+    specialization?: string;
+  };
   isFirstInGroup: boolean;
 }) {
   const isUser = message.role === "user";
@@ -403,7 +415,13 @@ function Bubble({
       {!isUser ? (
         <div className="w-7 mr-2 shrink-0 flex justify-center">
           {isFirstInGroup ? (
-            <Avatar initial={teamAgent.initial} kind={teamAgent.kind} size={28} />
+            <Avatar
+              initial={teamAgent.initial}
+              kind={teamAgent.kind}
+              label={teamAgent.label}
+              specialization={teamAgent.specialization}
+              size={28}
+            />
           ) : null}
         </div>
       ) : null}
@@ -411,7 +429,7 @@ function Bubble({
         <div
           className={cn(
             "rounded-2xl px-3.5 py-2",
-            isUser ? "bg-primary text-primary-foreground" : "bg-secondary text-foreground",
+            isUser ? "glass-bubble-user" : "glass-bubble-agent",
           )}
         >
           {isUser ? (
@@ -471,7 +489,12 @@ function Thinking({
   teamAgent,
 }: {
   steps: ChatStreamStep[];
-  teamAgent: { initial: string; kind: HierarchyLevel };
+  teamAgent: {
+    initial: string;
+    kind: HierarchyLevel;
+    label?: string;
+    specialization?: string;
+  };
 }) {
   // Split agent text from tool steps. Agent text is the response being
   // written; tools are the substrate beneath, categorized so the
@@ -511,9 +534,15 @@ function Thinking({
   return (
     <div className="flex w-full justify-start mt-4">
       <div className="w-7 mr-2 shrink-0 flex justify-center">
-        <Avatar initial={teamAgent.initial} kind={teamAgent.kind} size={28} />
+        <Avatar
+          initial={teamAgent.initial}
+          kind={teamAgent.kind}
+          label={teamAgent.label}
+          specialization={teamAgent.specialization}
+          size={28}
+        />
       </div>
-      <div className="max-w-[78%] rounded-2xl px-3.5 py-2 bg-secondary text-foreground">
+      <div className="max-w-[78%] rounded-2xl px-3.5 py-2 glass-bubble-agent">
         {streamingText ? (
           <ChatMarkdown content={streamingText} />
         ) : (

@@ -166,7 +166,7 @@ function OrbitCanvas({
               visually centered when the canvas is at scale 1 with
               zero pan. */}
           <div
-            className="absolute"
+            className="network-orbit-layer network-orbit-layer-self absolute"
             style={{ left: 0, top: 0, transform: "translate(-50%, -50%)" }}
           >
             <TeamOrbit
@@ -182,7 +182,7 @@ function OrbitCanvas({
             return (
               <div
                 key={peer.owner_id}
-                className="absolute flex flex-col items-center"
+                className="network-orbit-layer network-orbit-layer-peer absolute flex flex-col items-center"
                 style={{
                   left: `${pos.x}px`,
                   top: `${pos.y}px`,
