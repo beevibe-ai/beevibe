@@ -65,6 +65,18 @@ function repoName(url: string) {
   return parts[1] ?? parts[0] ?? url;
 }
 
+/**
+ * UI-side defense-in-depth filter. The API + ingestion paths already
+ * drop these entries, but if a user has cached/stale data in their
+ * browser from a previous session, the cached entry can render for a
+ * moment before the fresh fetch resolves. Skipping at render time
+ * guarantees the row never paints regardless of cache state.
+ */
+const HIDE_DESCRIPTION = /\bpropaganda\b/i;
+function shouldHideRepo(description: string | null | undefined): boolean {
+  return !!description && HIDE_DESCRIPTION.test(description);
+}
+
 export function CapabilitiesClient() {
   const runsQuery = useQuery({
     queryKey: ["repo-runs"],
@@ -353,9 +365,12 @@ function DiscoverTab() {
           </p>
         ) : (
           <div>
-            {trendingQuery.data.repos.slice(0, 30).map((repo) => (
-              <TrendingRow key={repo.repo_url} repo={repo} />
-            ))}
+            {trendingQuery.data.repos
+              .filter((r) => !shouldHideRepo(r.description))
+              .slice(0, 30)
+              .map((repo) => (
+                <TrendingRow key={repo.repo_url} repo={repo} />
+              ))}
           </div>
         )}
       </section>
@@ -499,6 +514,11 @@ function SearchResults({
   hint: string;
   error: unknown;
 }) {
+  // UI-side defense-in-depth — even though the API filters before
+  // returning, stale React Query cache or HTTP cache can repaint an
+  // old row briefly. Filter at render so it never shows.
+  const visibleCandidates = candidates.filter((c) => !shouldHideRepo(c.description));
+
   if (isLoading) {
     return (
       <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
@@ -514,7 +534,7 @@ function SearchResults({
       </p>
     );
   }
-  if (candidates.length === 0) {
+  if (visibleCandidates.length === 0) {
     return (
       <div className="flex flex-col items-center justify-center py-16 text-center max-w-md mx-auto">
         <Search className="h-8 w-8 text-muted-foreground/40 mb-3" />
@@ -527,7 +547,7 @@ function SearchResults({
     <div className="space-y-3">
       <div className="flex items-baseline justify-between mb-1">
         <p className="text-xs text-muted-foreground">
-          <span className="font-medium text-foreground">{candidates.length}</span> matches across all sources, ranked.
+          <span className="font-medium text-foreground">{visibleCandidates.length}</span> matches across all sources, ranked.
         </p>
         {notes.length > 0 && (
           <span className="text-[11px] text-muted-foreground/70" title={notes.join("\n")}>
@@ -536,7 +556,7 @@ function SearchResults({
         )}
       </div>
       <div>
-        {candidates.map((c) => (
+        {visibleCandidates.map((c) => (
           <CandidateRow key={c.repo_url} candidate={c} />
         ))}
       </div>
