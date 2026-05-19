@@ -70,6 +70,14 @@ behavioral rules for every task session:
 5. For multi-step protocols (mesh negotiation, git workspace setup), the
    relevant beevibe-* skill in .claude/skills/ has the deep guidance —
    invoke via Skill tool when their description matches your situation.
+
+6. Before reporting a "tool not installed" blocker, check the
+   mcp__beevibe__use_repo and mcp__beevibe__find_repo tools. They run an
+   external GitHub repo inside a fresh Docker sandbox — the host
+   filesystem is never touched, so sandboxed installs do NOT violate any
+   "no auto-install" rule. Use this path for missing CLIs (yt-dlp,
+   ffmpeg, obscure Python libs) instead of blocking on the user to
+   brew/apt/pip-install them.
 </beevibe_lifecycle>`;
 
 /**

@@ -101,15 +101,22 @@ export function createUseRepoTool(
   return {
     name: "use_repo",
     description:
-      "Borrow an external GitHub repo as a one-shot tool inside a fresh " +
-      "Docker sandbox to produce an artifact. The child agent clones the " +
-      "repo, reads its README, installs deps, runs the right command, and " +
-      "exports the result. The host filesystem is never touched — every " +
-      "shell command and file operation goes through sandbox MCP tools. " +
-      "Use this whenever you need a capability you don't have natively " +
-      "(parsing weird file formats, scraping a site, transcoding media, " +
-      "calling an obscure CLI, etc.). The artifact lands as a work_product " +
-      "on a container task for human review.\n\n" +
+      "Run an external GitHub repo as a one-shot tool inside a fresh " +
+      "Docker sandbox. The host filesystem is never touched.\n\n" +
+      "**This is the sandbox alternative to `brew install`, `apt-get " +
+      "install`, `pip install`, etc.** When a tool you need is missing " +
+      "from the host (yt-dlp not on PATH, ffmpeg missing, an obscure " +
+      "Python lib not pip-installed), call use_repo with the repo URL " +
+      "instead of reporting an install blocker — sandboxed installs are " +
+      "NOT system installs and don't violate 'no auto-install' rules.\n\n" +
+      "The child agent inside the sandbox clones the repo, reads its " +
+      "README, installs deps, runs the right command, and exports the " +
+      "result. Every shell command and file operation goes through " +
+      "sandbox MCP tools (Bash/Read/Edit on the host are denied). The " +
+      "artifact lands as a work_product on a container task for human " +
+      "review.\n\n" +
+      "Pair with `find_repo` when you don't already know which repo to " +
+      "use. Otherwise call this directly.\n\n" +
       "Returns { repo_run_id, session_id, task_id, status } immediately. " +
       "Watch the live transcript at /capabilities/runs/<repo_run_id> in " +
       "the UI, or read repo_run.status for completion.",

@@ -162,11 +162,14 @@ export function createFindRepoTool(
     description:
       "Rank GitHub repos for a goal. Returns the top N candidates from " +
       "four signal sources (your team's learned skills, the community " +
-      "registry, a curated boost list, and live GitHub search). The " +
-      "ranking is deterministic; you only need to pick the candidate " +
-      "whose description best matches your goal, then call use_repo " +
-      "with that repo_url. Cheap to call — no sandbox boots, no LLM " +
-      "calls, just data lookups and a GitHub API request.",
+      "registry, a curated boost list, and live GitHub search).\n\n" +
+      "**Call this when you need a tool you don't have, before deciding " +
+      "to report a blocker or shell out to `brew install`.** It's cheap " +
+      "(no sandbox boots, no LLM calls — just data lookups + a single " +
+      "GitHub API request) and the ranking is deterministic, so you " +
+      "only need to pick the candidate whose description matches your " +
+      "goal. Pair with `use_repo` to actually run the chosen repo in a " +
+      "sandbox.",
     schema: FIND_REPO_SCHEMA as Record<string, unknown>,
     handler: async (input) => findRepoHandler(input, ctx, services, fetcher, registry, githubToken),
   };
