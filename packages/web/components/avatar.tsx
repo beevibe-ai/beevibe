@@ -16,9 +16,9 @@ type AgentIconVariant =
   | "generic";
 
 const HIER_BG = {
-  ic: "bg-hier-ic/12 text-hier-ic",
-  team: "bg-primary text-primary-foreground",
-  org: "bg-hier-org/12 text-hier-org",
+  ic: "agent-avatar-glass agent-avatar-glass-ic",
+  team: "agent-avatar-glass agent-avatar-glass-team",
+  org: "agent-avatar-glass agent-avatar-glass-org",
 } as const;
 
 const PRESENCE_BG = {
