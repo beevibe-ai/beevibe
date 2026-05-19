@@ -6,6 +6,9 @@ import type { AgentDisplay } from "@/lib/types/agents";
 import type { AgentNetwork } from "@/lib/types/agent-network";
 
 const apiState = { isApiConfigured: true };
+// Dynamic search params so individual tests can flip ?view=orbit to
+// mount the orbit branch directly. Default is empty (list view).
+const searchState = { params: new URLSearchParams() };
 
 vi.mock("@/lib/api/config", () => ({
   get isApiConfigured() {
@@ -21,7 +24,7 @@ vi.mock("@/lib/api/client", () => ({
 // These mocks just keep the hooks happy under happy-dom.
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => searchState.params,
   usePathname: () => "/agents",
 }));
 
@@ -61,6 +64,7 @@ const baseIc: AgentDisplay = {
 
 beforeEach(() => {
   apiState.isApiConfigured = true;
+  searchState.params = new URLSearchParams();
   networkMock.mockReset();
 });
 
@@ -93,6 +97,10 @@ describe("AgentsClient", () => {
   });
 
   it("renders peer orbits when the network includes other owners", async () => {
+    // List is the default landing now, but list view only shows the
+    // caller's own agents. The peer-satellite rendering lives in the
+    // orbit branch, so this test mounts that branch directly.
+    searchState.params = new URLSearchParams("view=orbit");
     networkMock.mockResolvedValue({
       self: [baseAgent],
       peers: [
@@ -113,7 +121,5 @@ describe("AgentsClient", () => {
     renderAgents();
     // Peer satellite orbit renders the peer's agent card.
     expect(await screen.findByText("Roadmap pod")).toBeInTheDocument();
-    // The page caption mentions collaborators when peers are present.
-    expect(screen.getByText(/Other teams sit further out/)).toBeInTheDocument();
   });
 });

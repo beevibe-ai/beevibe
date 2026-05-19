@@ -31,7 +31,7 @@ export function AgentsListView({
   if (agents.length === 0) {
     return (
       <div className="px-6 py-12 text-center text-sm text-muted-foreground">
-        No agents yet.
+        No agents yet
       </div>
     );
   }
