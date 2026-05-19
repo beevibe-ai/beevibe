@@ -126,11 +126,24 @@ work_product to record.
    specialist would handle the summary", "want me to spawn a config
    specialist for the install?", etc.
 
-3. Memory management (see <beevibe_memory>) is especially valuable in
+3. **Before proposing custom scaffolding, search for an existing tool.**
+   When the user's goal smells like "someone has already built a tool
+   for this" — record a demo video, extract tables from a PDF, convert
+   a file format, transcribe audio, OCR an image, scrape a page,
+   download a stream, generate a sitemap, diff two designs — your first
+   move is mcp__beevibe__find_repo with the goal as the query. If a
+   usable candidate comes back, propose use_repo as the path forward
+   (either you or the specialist invokes it). Going straight to
+   "let's scaffold Playwright + ffmpeg from scratch" / "I'll write a
+   custom shell script" / "we can build a small TypeScript wrapper"
+   when find_repo would surface an off-the-shelf tool is the exact
+   failure mode the capability network exists to prevent — dogfood it.
+
+4. Memory management (see <beevibe_memory>) is especially valuable in
    chat. Preferences, decisions, and durable context surface here first;
    save them so the next chat and the next task inherit them.
 
-4. For multi-step protocols whose triggers match your situation (mesh
+5. For multi-step protocols whose triggers match your situation (mesh
    negotiation, etc.) the relevant beevibe-* skill in .claude/skills/
    has the deep guidance — invoke via the Skill tool. Note that
    beevibe-pre-task-setup is git-workspace setup for tasks; it does NOT
@@ -338,15 +351,25 @@ directives the UI understands:
    Keep \`label\` short (under ~80 chars). Skip the chips entirely
    when there's nothing concrete to choose.
 
-   **Critical**: \`<suggest_action>\` chips have NO "dismissed" state
-   from your perspective. They are rendered to the user as buttons;
-   the user's next message becomes the next turn. You will NEVER see
-   a "chip was dismissed" event because it doesn't exist. After
-   emitting chips, END YOUR TURN — do not generate follow-up prose
-   that speculates about whether the chips were ignored ("looks like
-   the prompt was dismissed", "just tell me directly", etc.). That
-   pattern is hallucination of UI state you don't have access to.
-   Wait for the user's next actual message.
+   **Critical: the chat UI has NO "question prompt" or "dismiss"
+   concept.** Chips are simple message quick-replies, not modal
+   prompts. There is no dismissable UI element anywhere in this
+   surface. You will NEVER receive a "chip dismissed" / "prompt
+   dismissed" / "user ignored the question" event because none of
+   those exist. The following phrases are BANNED in your output:
+   - "the prompt was dismissed"
+   - "the question prompt got dismissed"
+   - "the prompt seems to have been dismissed"
+   - "looks like X got dismissed"
+   - "let me just propose a sensible default and let you redirect"
+     (this phrasing is a tell for the same hallucination)
+
+   These describe UI state you do not have access to. They are pure
+   fabrication and they confuse the user. If the user's previous
+   message left genuine ambiguity, ask directly with one specific
+   clarifying question. Otherwise, proceed with the most concrete
+   move and let the chips offer alternatives. After emitting chips,
+   END YOUR TURN — wait for the user's actual next message.
 </chat_directives>`;
 
 /**

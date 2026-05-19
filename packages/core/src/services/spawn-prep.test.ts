@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   BEEVIBE_LIFECYCLE_REMINDER_CHAT,
   BEEVIBE_LIFECYCLE_REMINDER_TASK,
+  CHAT_DIRECTIVES,
   composeSystemPromptAppend,
   teamAgentRoutingDirective,
 } from "./spawn-prep.js";
@@ -210,6 +211,23 @@ describe("composeSystemPromptAppend lifecycle branching", () => {
     // so the chat reminder shouldn't mention create_task at all.
     expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT).not.toContain("create_task");
     expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT).not.toContain("find_subordinates");
+  });
+
+  it("chat variant tells agents to call find_repo before scaffolding tool-shaped work", () => {
+    // Regression guard for the "team agent reinvents Playwright/ffmpeg
+    // instead of dogfooding the capability network" failure mode.
+    expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT).toContain("find_repo");
+    expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT.toLowerCase()).toContain("before proposing custom scaffolding");
+  });
+
+  it("chat directives explicitly ban the 'prompt dismissed' hallucination phrases", () => {
+    // The agent kept narrating "looks like the prompt got dismissed"
+    // even after we added the first version of this rule. The blacklist
+    // needs to be in-prompt so we can grep for it.
+    expect(CHAT_DIRECTIVES).toContain("the prompt was dismissed");
+    expect(CHAT_DIRECTIVES).toContain("the question prompt got dismissed");
+    expect(CHAT_DIRECTIVES.toLowerCase()).toContain("propose a sensible default and let you redirect");
+    expect(CHAT_DIRECTIVES.toUpperCase()).toContain("BANNED");
   });
 
   it("both variants share the outer <beevibe_lifecycle> tag so downstream parsing is stable", () => {
