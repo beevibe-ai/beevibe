@@ -1,35 +1,34 @@
 /**
- * find_repo MCP tool — code-first replacement for the prompt-driven
- * ranker that used to live in the beevibe-discover-repo skill.
+ * find_repo MCP tool — agentic-search ranker for GitHub repos.
  *
- * The skill prompt had agents fetch a community registry, hit the
- * GitHub search API, score keyword overlap, and merge multiple tiers
- * inside a single context window. Asking an LLM to follow a
- * deterministic algorithm reliably fights its probabilistic nature;
- * this tool moves the algorithm to code and keeps the LLM for the
- * qualitative final pick.
+ * The relevance gate used to be regex keyword-overlap, which is
+ * brittle: "find me some geo or seo repos" yielded weak tokens like
+ * `find` and `me`, which then matched any trending description that
+ * happened to contain those words. Result: noisy candidates the agent
+ * had to filter in prose.
+ *
+ * The fix moves relevance to vector embeddings. The goal is embedded
+ * once; community-registry entries and trending-repo entries are
+ * embedded too (precomputed when available, on-demand otherwise),
+ * cached for the snapshot TTL. Cosine similarity replaces keyword
+ * overlap everywhere it was used.
  *
  * Tool surface:
  *   find_repo({ goal, limit? })  →  { candidates, notes }
  *
  * Ranking tiers (additive scores; multiple sources stack):
- *   +50  learned_skill match (this team's own proven recipe)
- *   +35  GitHub trending — appears in daily or weekly snapshot
- *        (read from beevibe-ai/beevibe-capabilities, refreshed daily)
- *   +30  community registry match (proven by other Beevibe instances —
- *        promoted from skill_outcome, not hand-curated opinion)
- *   +0   GitHub search hit, plus log10(stars+1)·3 popularity bonus
+ *   +50  learned_skill match (this team's own proven recipe — Postgres
+ *        full-text on goal_pattern handles relevance here)
+ *   +35  GitHub trending — appears in daily or weekly snapshot AND has
+ *        cosine similarity to goal ≥ SIM_THRESHOLD
+ *   +30  community registry match (cosine similarity ≥ SIM_THRESHOLD)
+ *   +0   GitHub search hit (raw goal as query), plus
+ *        log10(stars+1)·3 popularity bonus
  *
  * Why trending sits above community: users explicitly want "trendy
  * ones" surfaced first. The community registry has long-tail proof
  * but tends toward stable, slow-moving repos; trending captures what
- * the world is paying attention to right now, which is usually what
- * a fresh "find me a tool" query is looking for.
- *
- * What used to be a "+20 curated boost-list" tier was removed —
- * pdfplumber, yt-dlp, FFmpeg etc. are already in every LLM's training
- * data and didn't need a boost. Curation now comes from real outcomes
- * (registry) and real velocity (trending), not opinion drift.
+ * the world is paying attention to right now.
  *
  * The agent reads the top N candidates and picks based on
  * README/description fit. The ranker handles the volume; the agent
@@ -37,6 +36,7 @@
  */
 import type {
   AgentRepository,
+  EmbeddingService,
   LearnedSkill,
   LearnedSkillRepository,
 } from "@beevibe/core";
@@ -60,14 +60,19 @@ const COMMUNITY_REGISTRY_TTL_MS = 60 * 60 * 1000;
 
 const TRENDING_TTL_MS = 60 * 60 * 1000;
 
-/** GitHub stop-words we strip from the query (and from match overlap). */
-const STOP_WORDS = new Set([
-  "the", "a", "an", "and", "or", "but", "is", "of", "to", "in", "on", "at",
-  "for", "with", "by", "from", "as", "this", "that", "it", "be", "are",
-  "was", "were", "i", "we", "you", "they", "my", "our", "your", "their",
-  "do", "does", "did", "have", "has", "had", "into", "out", "up", "down",
-  "use", "using", "used", "make", "want", "need", "please", "can",
-]);
+/**
+ * Cosine-similarity floor for "this entry is semantically relevant to
+ * the goal." Empirically:
+ *   ≥ 0.6  near-duplicate phrasing
+ *   ≥ 0.4  same topic, different wording
+ *   ≥ 0.3  loosely related (still useful for trending injection)
+ *   < 0.3  not really related
+ *
+ * 0.35 lets a trending repo with description "GEO-first SEO skill for
+ * Claude Code" surface for "find me some geo or seo repos" while
+ * keeping a Linux-kernel trending repo out of the result.
+ */
+const SIM_THRESHOLD = 0.35;
 
 const FIND_REPO_SCHEMA = {
   type: "object",
@@ -122,6 +127,12 @@ export interface FindRepoContext {
 export interface FindRepoServices {
   agentRepo: AgentRepository;
   learnedSkillRepo: LearnedSkillRepository;
+  /**
+   * Embedding service used to compute the goal vector and (on demand)
+   * embed community-registry + trending entries that didn't ship with
+   * precomputed vectors. Same instance the memory layer uses.
+   */
+  embeddings: EmbeddingService;
   /** Override for tests; defaults to global fetch. */
   fetcher?: typeof fetch;
   /** Override for tests; defaults to a module-level cache. */
@@ -136,6 +147,9 @@ interface CommunityRegistryEntry {
   repo_url: string;
   goal_pattern: string;
   invocation?: string;
+  /** Precomputed embedding of `goal_pattern`. Optional — find_repo
+   *  computes it on demand when missing. */
+  embedding?: number[];
 }
 
 interface CommunityRegistry {
@@ -184,6 +198,10 @@ export interface TrendingRepoEntry {
   language?: string | null;
   /** Stars gained in the period (velocity, NOT lifetime). */
   stars_gained?: number;
+  /** Precomputed embedding of `owner/name + description`. When present,
+   *  find_repo skips the runtime embed call. fetch-trending.ts writes
+   *  these into the JSON; old snapshots without the field still work. */
+  embedding?: number[];
 }
 
 interface TrendingSnapshot {
@@ -312,11 +330,23 @@ async function findRepoHandler(
     };
   }
 
-  const goalKeywords = extractKeywords(goal);
   const notes: string[] = [];
   const candidates = new Map<string, FindRepoCandidate>();
 
+  // Single embedding call for the goal — everything else compares
+  // against this vector. If embeddings are unavailable (e.g. provider
+  // outage), drop to GitHub-search-only and emit a note so the agent
+  // knows trending/community didn't run.
+  let goalVec: number[] | undefined;
+  try {
+    goalVec = await services.embeddings.embed(goal);
+  } catch (err) {
+    notes.push(`embedding goal failed (semantic tiers skipped): ${errMsg(err)}`);
+  }
+
   // ── Tier 2: Local learned skills (highest priority signal) ────────
+  // Postgres FTS on goal_pattern handles relevance — no embedding
+  // call needed. Same behavior as before.
   try {
     const skills = await services.learnedSkillRepo.searchByGoal(
       agent.owner_id,
@@ -339,27 +369,38 @@ async function findRepoHandler(
   }
 
   // ── Tier 1: Community registry (best-effort, may 404) ─────────────
-  try {
-    const reg = await registry.fetch();
-    if (reg) {
-      for (const entry of reg.skills) {
-        const overlap = countOverlap(goalKeywords, splitWords(entry.goal_pattern));
-        if (overlap >= 2) {
+  // Cosine similarity of goal vector against each entry's goal_pattern
+  // vector. Entries without precomputed embeddings get embedded in a
+  // single batch call (cached by module-level Map for the process
+  // lifetime; the registry itself is also TTL-cached for an hour).
+  if (goalVec) {
+    try {
+      const reg = await registry.fetch();
+      if (reg) {
+        const entryVecs = await ensureRegistryEmbeddings(reg.skills, services.embeddings);
+        for (const entry of reg.skills) {
+          const vec = entryVecs.get(entry.goal_pattern);
+          if (!vec) continue;
+          const sim = cosineSimilarity(goalVec, vec);
+          if (sim < SIM_THRESHOLD) continue;
           const c = ensureCandidate(candidates, entry.repo_url);
           c.score += 30;
           c.sources.push("community");
         }
+      } else {
+        notes.push("community registry unavailable (proceeding without Tier 1)");
       }
-    } else {
-      notes.push("community registry unavailable (proceeding without Tier 1)");
+    } catch (err) {
+      notes.push(`community registry error: ${errMsg(err)}`);
     }
-  } catch (err) {
-    notes.push(`community registry error: ${errMsg(err)}`);
   }
 
   // ── Tier 4: GitHub search (best-effort, popularity scoring) ───────
+  // GitHub's own search handles the keyword stuff — we pass the raw
+  // goal in. GitHub ranks by its blended relevance + popularity and we
+  // re-rank by stars locally.
   try {
-    const githubResults = await searchGitHub(goalKeywords, fetcher, githubToken);
+    const githubResults = await searchGitHub(goal, fetcher, githubToken);
     for (const repo of githubResults.slice(0, 20)) {
       const url = repo.html_url;
       // Drop self-described propaganda repos — keyword overlap with
@@ -387,62 +428,61 @@ async function findRepoHandler(
   }
 
   // ── Tier 5: GitHub trending (snapshot lookup, no per-candidate I/O) ─
-  // Two passes:
-  //   (a) bump every existing candidate that appears in daily or weekly
-  //       trending by +35 — trending is the dominant "this is the
-  //       moment" signal, sitting above community (+30).
-  //   (b) INJECT trending entries that share keywords with the goal but
-  //       weren't returned by the github-search tier. Without this pass,
-  //       a 7k-star trending repo whose name doesn't match the user's
-  //       exact query (e.g. "geo-seo-claude" for a "find me seo tools"
-  //       search) would never surface. Keyword overlap is the safety
-  //       valve: trending repos are a global pool, not filtered to the
-  //       goal — we need a relevance test so we don't dump unrelated
-  //       trending repos into every find_repo result.
-  try {
-    const [daily, weekly] = await Promise.all([
-      trending.snapshot("daily"),
-      trending.snapshot("weekly"),
-    ]);
-
-    // (a) Bump existing candidates.
-    for (const c of candidates.values()) {
-      const key = normalizeUrl(c.repo_url);
-      if (daily.urls.has(key) || weekly.urls.has(key)) {
-        c.score += 35;
-        c.sources.push("trending");
-      }
-    }
-
-    // (b) Inject trending entries that match the goal's keywords.
-    // Dedup across daily + weekly by canonical URL; daily wins so we
-    // surface today's hot repos first.
-    const seenForInject = new Set<string>();
-    const combined = [...daily.entries, ...weekly.entries];
-    for (const entry of combined) {
-      const key = normalizeUrl(entry.repo_url);
-      if (seenForInject.has(key)) continue;
-      seenForInject.add(key);
-      if (candidates.has(key)) continue; // already counted in pass (a)
-
-      // Relevance filter: stem-aware overlap between goal keywords and
-      // the entry's `owner/name` + description. Bar is intentionally
-      // low (>=1) — trending velocity does the heavy lifting; this just
-      // prevents wholly-unrelated trending repos from polluting results.
-      const haystackWords = splitWords(
-        [entry.owner, entry.name, entry.description ?? ""].filter(Boolean).join(" "),
+  // Two passes, both gated by cosine similarity to the goal vector:
+  //   (a) bump existing candidates that appear in daily or weekly
+  //       trending by +35.
+  //   (b) INJECT trending entries that didn't come up in github-search
+  //       AND have similarity ≥ SIM_THRESHOLD. This is how
+  //       `zubair-trabzada/geo-seo-claude` surfaces for a "find me geo
+  //       or seo repos" query even when github-search's ranking
+  //       doesn't return it.
+  if (goalVec) {
+    try {
+      const [daily, weekly] = await Promise.all([
+        trending.snapshot("daily"),
+        trending.snapshot("weekly"),
+      ]);
+      const allTrending = [...daily.entries, ...weekly.entries];
+      const trendingVecs = await ensureTrendingEmbeddings(
+        allTrending,
+        services.embeddings,
       );
-      const overlap = countOverlap(goalKeywords, haystackWords);
-      if (overlap < 1) continue;
 
-      const c = ensureCandidate(candidates, entry.repo_url);
-      c.score += 35;
-      c.sources.push("trending");
-      if (entry.description) c.description = entry.description;
-      if (entry.language) c.language = entry.language;
+      // (a) Bump existing candidates.
+      for (const c of candidates.values()) {
+        const key = normalizeUrl(c.repo_url);
+        if (daily.urls.has(key) || weekly.urls.has(key)) {
+          c.score += 35;
+          c.sources.push("trending");
+        }
+      }
+
+      // (b) Inject trending entries that semantically match the goal.
+      // Dedup across daily + weekly by canonical URL; daily wins so we
+      // surface today's hot repos first.
+      const seenForInject = new Set<string>();
+      for (const entry of allTrending) {
+        const key = normalizeUrl(entry.repo_url);
+        if (seenForInject.has(key)) continue;
+        seenForInject.add(key);
+        if (candidates.has(key)) continue; // already counted in pass (a)
+
+        const vec = trendingVecs.get(key);
+        if (!vec) continue;
+        const sim = cosineSimilarity(goalVec, vec);
+        if (sim < SIM_THRESHOLD) continue;
+
+        const c = ensureCandidate(candidates, entry.repo_url);
+        // Tiny bonus for higher similarity so a strong match outranks
+        // a marginal one. 35 + 0..15 keeps it within trending's band.
+        c.score += 35 + Math.round(15 * Math.max(0, Math.min(1, sim)));
+        c.sources.push("trending");
+        if (entry.description) c.description = entry.description;
+        if (entry.language) c.language = entry.language;
+      }
+    } catch (err) {
+      notes.push(`trending lookup failed: ${errMsg(err)}`);
     }
-  } catch (err) {
-    notes.push(`trending lookup failed: ${errMsg(err)}`);
   }
 
   // Finalize each candidate: primary source + human reason string.
@@ -498,37 +538,108 @@ function normalizeUrl(url: string): string {
     .replace(/\/+$/, "");
 }
 
-function extractKeywords(goal: string): string[] {
-  return splitWords(goal).filter((w) => !STOP_WORDS.has(w));
-}
+/* ─── Embedding helpers ──────────────────────────────────────────── */
 
-function splitWords(s: string): string[] {
-  return s
-    .toLowerCase()
-    .split(/[^a-z0-9]+/)
-    .filter((w) => w.length >= 2);
+/**
+ * Cosine similarity in [-1, 1]; we treat values < 0 as "not similar"
+ * and only act on scores ≥ SIM_THRESHOLD. NaN-safe — returns 0 for
+ * zero-magnitude inputs so a malformed vector never blocks the call.
+ */
+function cosineSimilarity(a: number[], b: number[]): number {
+  const len = Math.min(a.length, b.length);
+  let dot = 0;
+  let magA = 0;
+  let magB = 0;
+  for (let i = 0; i < len; i++) {
+    const ai = a[i] ?? 0;
+    const bi = b[i] ?? 0;
+    dot += ai * bi;
+    magA += ai * ai;
+    magB += bi * bi;
+  }
+  if (magA === 0 || magB === 0) return 0;
+  return dot / (Math.sqrt(magA) * Math.sqrt(magB));
 }
 
 /**
- * Tiny stemmer: strip common plural-ish suffixes so "tables" ≈ "table",
- * "queries" ≈ "query", "boxes" ≈ "box". Heuristic-only — good enough
- * for boost-list keyword overlap, not a real NLP stemmer. Only strips
- * `-es` after a sibilant cluster so `tables` doesn't collapse to `tabl`.
+ * Module-level embedding cache. Trending + community entries don't
+ * change between find_repo calls within the same process; embedding
+ * once and re-using across requests saves 99% of API spend.
+ *
+ * Keys:
+ *   trendingEmbeddingCache: canonical-normalized repo_url
+ *   communityEmbeddingCache: goal_pattern string (the thing being embedded)
  */
-function stem(w: string): string {
-  if (w.length <= 3) return w;
-  if (w.endsWith("ies") && w.length > 4) return w.slice(0, -3) + "y";
-  if (/(ses|xes|zes|ches|shes)$/.test(w) && w.length > 4) return w.slice(0, -2);
-  if (w.endsWith("s") && !w.endsWith("ss")) return w.slice(0, -1);
-  if (w.endsWith("ing") && w.length > 5) return w.slice(0, -3);
-  return w;
+const trendingEmbeddingCache = new Map<string, number[]>();
+const communityEmbeddingCache = new Map<string, number[]>();
+
+function trendingHaystack(e: TrendingRepoEntry): string {
+  return [e.owner, e.name, e.description ?? ""].filter(Boolean).join(" ");
 }
 
-function countOverlap(a: string[], b: string[]): number {
-  const setB = new Set(b.map(stem));
-  let n = 0;
-  for (const w of a) if (setB.has(stem(w))) n++;
-  return n;
+async function ensureTrendingEmbeddings(
+  entries: TrendingRepoEntry[],
+  embeddings: EmbeddingService,
+): Promise<Map<string, number[]>> {
+  const out = new Map<string, number[]>();
+  const toEmbed: { key: string; text: string }[] = [];
+  for (const e of entries) {
+    const key = normalizeUrl(e.repo_url);
+    if (out.has(key)) continue; // dedup across daily/weekly
+    if (Array.isArray(e.embedding) && e.embedding.length > 0) {
+      out.set(key, e.embedding);
+      continue;
+    }
+    const cached = trendingEmbeddingCache.get(key);
+    if (cached) {
+      out.set(key, cached);
+      continue;
+    }
+    const text = trendingHaystack(e);
+    if (!text) continue;
+    toEmbed.push({ key, text });
+  }
+  if (toEmbed.length === 0) return out;
+  const vecs = await embeddings.embedBatch(toEmbed.map((t) => t.text));
+  for (let i = 0; i < toEmbed.length; i++) {
+    const key = toEmbed[i]!.key;
+    const vec = vecs[i];
+    if (!vec) continue;
+    trendingEmbeddingCache.set(key, vec);
+    out.set(key, vec);
+  }
+  return out;
+}
+
+async function ensureRegistryEmbeddings(
+  entries: CommunityRegistryEntry[],
+  embeddings: EmbeddingService,
+): Promise<Map<string, number[]>> {
+  const out = new Map<string, number[]>();
+  const toEmbed: { key: string; text: string }[] = [];
+  for (const e of entries) {
+    if (out.has(e.goal_pattern)) continue;
+    if (Array.isArray(e.embedding) && e.embedding.length > 0) {
+      out.set(e.goal_pattern, e.embedding);
+      continue;
+    }
+    const cached = communityEmbeddingCache.get(e.goal_pattern);
+    if (cached) {
+      out.set(e.goal_pattern, cached);
+      continue;
+    }
+    toEmbed.push({ key: e.goal_pattern, text: e.goal_pattern });
+  }
+  if (toEmbed.length === 0) return out;
+  const vecs = await embeddings.embedBatch(toEmbed.map((t) => t.text));
+  for (let i = 0; i < toEmbed.length; i++) {
+    const key = toEmbed[i]!.key;
+    const vec = vecs[i];
+    if (!vec) continue;
+    communityEmbeddingCache.set(key, vec);
+    out.set(key, vec);
+  }
+  return out;
 }
 
 function popularityScore(stars: number): number {
@@ -590,12 +701,16 @@ interface GitHubRepo {
 }
 
 async function searchGitHub(
-  keywords: string[],
+  goal: string,
   fetcher: typeof fetch,
   token: string | undefined,
 ): Promise<GitHubRepo[]> {
-  if (keywords.length === 0) return [];
-  const q = keywords.slice(0, 6).join("+");
+  // Pass the raw goal as the query. GitHub's search engine handles
+  // stop-words, stemming, and relevance internally — much smarter
+  // than a hand-rolled regex pipeline ever was. Sorting by stars
+  // keeps the popular hits at the top for the popularity-score blend.
+  const q = goal.trim();
+  if (!q) return [];
   const url = `https://api.github.com/search/repositories?q=${encodeURIComponent(q)}&sort=stars&per_page=20`;
   const headers: Record<string, string> = {
     Accept: "application/vnd.github+json",

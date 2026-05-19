@@ -10,7 +10,11 @@
  * to the caller's owner.
  */
 import { Router, type RequestHandler } from "express";
-import type { AgentRepository, LearnedSkillRepository } from "@beevibe/core";
+import type {
+  AgentRepository,
+  EmbeddingService,
+  LearnedSkillRepository,
+} from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { createFindRepoTool } from "../tools/find-repo.js";
 
@@ -18,6 +22,7 @@ export interface FindRepoRouterDeps {
   authMiddleware: RequestHandler;
   agentRepo: AgentRepository;
   learnedSkillRepo: LearnedSkillRepository;
+  embeddings: EmbeddingService;
 }
 
 export function createFindRepoRouter(deps: FindRepoRouterDeps): Router {
@@ -53,6 +58,7 @@ export function createFindRepoRouter(deps: FindRepoRouterDeps): Router {
         {
           agentRepo: deps.agentRepo,
           learnedSkillRepo: deps.learnedSkillRepo,
+          embeddings: deps.embeddings,
         },
       );
       const result = await tool.handler({ goal, limit });

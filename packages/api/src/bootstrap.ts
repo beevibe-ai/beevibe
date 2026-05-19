@@ -310,6 +310,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     makeMemoryAgent,
     repoRunRepo,
     learnedSkillRepo,
+    embeddings: embed,
   });
   server.getApp().use("/mcp", mcpRouter);
 
@@ -472,6 +473,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     authMiddleware: server.getAuthMiddleware(),
     agentRepo,
     learnedSkillRepo,
+    embeddings: embed,
   });
   server.getApp().use("/find-repo", findRepoRouter);
 

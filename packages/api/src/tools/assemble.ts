@@ -3,6 +3,7 @@ import type {
   AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
+  EmbeddingService,
   LearnedSkillRepository,
   RepoRunRepository,
   SessionSpawnMode,
@@ -43,6 +44,8 @@ export interface AssembleToolsServices {
   repoRunRepo: RepoRunRepository;
   /** Capability Network: backs find_repo's learned-skill tier. */
   learnedSkillRepo: LearnedSkillRepository;
+  /** Capability Network: powers find_repo's semantic relevance gate. */
+  embeddings: EmbeddingService;
 }
 
 /**
@@ -184,6 +187,7 @@ export function assembleTools(
     {
       agentRepo: services.agentRepo,
       learnedSkillRepo: services.learnedSkillRepo,
+      embeddings: services.embeddings,
     },
   );
 

@@ -62,6 +62,11 @@ function buildMinimalServices(): AssembleToolsServices {
     learnedSkillRepo: {
       searchByGoal: vi.fn(async () => []),
     } as unknown as LearnedSkillRepository,
+    embeddings: {
+      type: "fake",
+      embed: vi.fn(async () => [1, 0]),
+      embedBatch: vi.fn(async (texts: string[]) => texts.map(() => [1, 0])),
+    },
   };
 }
 

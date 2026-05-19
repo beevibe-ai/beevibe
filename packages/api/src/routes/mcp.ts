@@ -15,6 +15,7 @@ import type {
   AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
+  EmbeddingService,
   LearnedSkillRepository,
   RepoRunRepository,
   SessionRepository,
@@ -55,6 +56,8 @@ export interface McpRouterDeps {
   repoRunRepo: RepoRunRepository;
   /** Capability Network: backs find_repo's learned-skill tier. */
   learnedSkillRepo: LearnedSkillRepository;
+  /** Capability Network: powers find_repo's semantic relevance gate. */
+  embeddings: EmbeddingService;
 }
 
 /** Tracked per-MCP-session state. mcpSid ↔ transport + server. */
@@ -257,6 +260,7 @@ async function handleMcpRequest(
       memoryAgent,
       repoRunRepo: deps.repoRunRepo,
       learnedSkillRepo: deps.learnedSkillRepo,
+      embeddings: deps.embeddings,
     },
   );
 

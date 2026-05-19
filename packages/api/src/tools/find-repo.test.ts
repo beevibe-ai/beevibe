@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type {
   Agent,
   AgentRepository,
+  EmbeddingService,
   LearnedSkill,
   LearnedSkillRepository,
 } from "@beevibe/core";
@@ -12,6 +13,41 @@ import {
   type TrendingClient,
   type TrendingPeriod,
 } from "./find-repo.js";
+
+/**
+ * Default fake embedding service: every text gets the same vector, so
+ * cosine similarity is always 1.0. This lets pre-existing tests stay
+ * focused on tier-scoring without worrying about relevance gating.
+ *
+ * Tests that DO want to exercise relevance gating (e.g. "trending repo
+ * with unrelated description must NOT inject") pass a predicate-based
+ * fake instead — `fakeEmbeddingsMatching(predicate)`.
+ */
+function fakeEmbeddingsAllMatch(): EmbeddingService {
+  const vec = [1, 0];
+  return {
+    type: "fake:all-match",
+    embed: vi.fn(async () => vec),
+    embedBatch: vi.fn(async (texts: string[]) => texts.map(() => vec)),
+  };
+}
+
+/**
+ * Selective fake: texts matching `predicate` get vector A; everything
+ * else gets the orthogonal vector B. Cosine(A,A)=1, cosine(A,B)=0 —
+ * predicate-true entries cross SIM_THRESHOLD, predicate-false don't.
+ */
+function fakeEmbeddingsMatching(predicate: (text: string) => boolean): EmbeddingService {
+  const match = [1, 0];
+  const noMatch = [0, 1];
+  return {
+    type: "fake:matching",
+    embed: vi.fn(async (text: string) => (predicate(text) ? match : noMatch)),
+    embedBatch: vi.fn(async (texts: string[]) =>
+      texts.map((t) => (predicate(t) ? match : noMatch)),
+    ),
+  };
+}
 
 /**
  * The find_repo tool used to be an 80-line prompt-driven skill. The
@@ -143,6 +179,7 @@ function trendingThrows(): TrendingClient {
 const BASE_SERVICES = () => ({
   agentRepo: fakeAgentRepo(),
   learnedSkillRepo: fakeLearnedSkillRepo(),
+  embeddings: fakeEmbeddingsAllMatch(),
   fetcher: emptyFetcher(),
   communityRegistry: emptyCommunityRegistry(),
   trending: emptyTrending(),
@@ -221,16 +258,21 @@ describe("find_repo tool — tier behavior", () => {
     expect(candidates[0]!.score).toBeLessThan(50);
   });
 
-  it("injects trending repos that github search missed when keywords overlap", async () => {
+  it("injects trending repos that github search missed when goal is semantically related", async () => {
     // Regression: github search ranks by its own relevance and may skip
     // a 7k-star trending repo whose name/description doesn't match the
     // user's exact query. The trending tier should still surface it as
-    // long as keywords overlap.
+    // long as the goal embedding lines up with the entry embedding.
     const TRENDING_GEO_SEO = "https://github.com/zubair-trabzada/geo-seo-claude";
     const tool = createFindRepoTool(
       { agentId: AGENT_ID },
       {
         ...BASE_SERVICES(),
+        // Semantic fake: only texts containing "seo" embed to the
+        // match vector. So the goal ("find me some SEO tools") and the
+        // entry's haystack ("zubair-trabzada geo-seo-claude GEO-first
+        // SEO skill...") both match — cosine 1.0.
+        embeddings: fakeEmbeddingsMatching((text) => /seo/i.test(text)),
         // GitHub search returns nothing — simulates the case where the
         // hot trending repo didn't make github's top results.
         fetcher: githubFetcher([]),
@@ -258,13 +300,17 @@ describe("find_repo tool — tier behavior", () => {
     expect(candidates[0]!.language).toBe("Python");
   });
 
-  it("does NOT inject trending repos with zero keyword overlap", async () => {
+  it("does NOT inject trending repos with no semantic relation to the goal", async () => {
     // The injection pass must keep a relevance filter or trending
     // dumps unrelated repos into every find_repo response.
     const tool = createFindRepoTool(
       { agentId: AGENT_ID },
       {
         ...BASE_SERVICES(),
+        // Selective fake: only "seo"-containing texts match. The
+        // "Linux kernel hacks" trending entry below embeds to the
+        // orthogonal vector → cosine 0 → below SIM_THRESHOLD → skip.
+        embeddings: fakeEmbeddingsMatching((text) => /seo/i.test(text)),
         fetcher: githubFetcher([]),
         trending: trendingWithEntries(
           [
