@@ -400,7 +400,7 @@
 }
 .agent-avatar-glass-team {
   --agent-avatar-tint: var(--primary);
-  --agent-avatar-fg: var(--primary-foreground);
+  --agent-avatar-fg: 36 72% 28%;
   background:
     linear-gradient(
       145deg,
@@ -435,7 +435,7 @@
     0 0.35rem 0.8rem hsl(0 0% 0% / 0.28);
 }
 .dark .agent-avatar-glass-team {
-  color: hsl(var(--primary-foreground));
+  color: hsl(var(--agent-avatar-fg));
   background:
     linear-gradient(
       145deg,
