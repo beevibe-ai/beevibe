@@ -374,7 +374,27 @@
     inset 0 -0.08rem 0.22rem hsl(var(--agent-avatar-tint) / 0.16),
     0 0.32rem 0.7rem hsl(var(--agent-avatar-tint) / 0.16);
 }
-.agent-avatar-glass::before {
+.person-avatar-glass {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border-radius: 999px;
+  background:
+    linear-gradient(
+      145deg,
+      hsl(0 0% 100% / 0.7) 0%,
+      hsl(211 70% 55% / 0.14) 50%,
+      hsl(var(--primary) / 0.18) 100%
+    ),
+    hsl(var(--secondary));
+  border: 1px solid hsl(0 0% 100% / 0.62);
+  box-shadow:
+    inset 0 0.14rem 0.3rem hsl(0 0% 100% / 0.62),
+    inset 0 -0.08rem 0.2rem hsl(220 20% 20% / 0.12),
+    0 0.28rem 0.64rem hsl(220 28% 30% / 0.12);
+}
+.agent-avatar-glass::before,
+.person-avatar-glass::before {
   content: "";
   position: absolute;
   inset: 9% 13% auto;
@@ -388,13 +408,13 @@
   pointer-events: none;
   z-index: 2;
 }
-.agent-avatar-glass-avatar {
+.dicebear-avatar-image {
   position: relative;
   z-index: 1;
   display: block;
   width: 100%;
   height: 100%;
-  border-radius: calc(0.55rem - 1px);
+  border-radius: inherit;
   background-position: center;
   background-repeat: no-repeat;
   background-size: cover;
@@ -436,6 +456,21 @@
     inset 0 0.18rem 0.36rem hsl(0 0% 100% / 0.18),
     inset 0 -0.08rem 0.24rem hsl(0 0% 0% / 0.32),
     0 0.35rem 0.8rem hsl(0 0% 0% / 0.28);
+}
+.dark .person-avatar-glass {
+  background:
+    linear-gradient(
+      145deg,
+      hsl(0 0% 100% / 0.18) 0%,
+      hsl(211 70% 55% / 0.16) 52%,
+      hsl(var(--primary) / 0.16) 100%
+    ),
+    hsl(var(--secondary));
+  border-color: hsl(0 0% 100% / 0.14);
+  box-shadow:
+    inset 0 0.18rem 0.34rem hsl(0 0% 100% / 0.16),
+    inset 0 -0.08rem 0.24rem hsl(0 0% 0% / 0.3),
+    0 0.35rem 0.8rem hsl(0 0% 0% / 0.24);
 }
 .dark .agent-avatar-glass-team {
   background:

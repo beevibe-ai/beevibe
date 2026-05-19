@@ -1,5 +1,5 @@
 import { createAvatar } from "@dicebear/core";
-import { botttsNeutral } from "@dicebear/collection";
+import { botttsNeutral, thumbs } from "@dicebear/collection";
 import { cn } from "@/lib/utils";
 import type { HierarchyLevel } from "@beevibe/core";
 
@@ -35,6 +35,10 @@ const AVATAR_MOUTH: Array<"diagram" | "smile01" | "smile02" | "square01" | "squa
   "square01",
   "square02",
 ];
+
+const PERSON_BACKGROUND = ["fef3c7", "dbeafe", "e2e8f0", "fed7aa"];
+const PERSON_SHAPE = ["f88c49", "1c799f", "facc15", "0a5b83", "f1f4dc"];
+const PERSON_FEATURE = ["111827", "ffffff"];
 const avatarSrcCache = new Map<string, string>();
 
 interface Props {
@@ -59,8 +63,8 @@ export function Avatar({
   const baseStyle = { width: size, height: size, fontSize: Math.max(9, Math.round(size * 0.39)) };
   const dotSize = Math.max(6, Math.round(size * 0.32));
   const isPerson = kind === "person";
-  const agentAvatarSrc = isPerson
-    ? undefined
+  const avatarSrc = isPerson
+    ? createPersonAvatarSrc({ initial, label, specialization })
     : createAgentAvatarSrc({ initial, kind, label, specialization });
 
   return (
@@ -70,17 +74,15 @@ export function Avatar({
         className={cn(
           "inline-flex items-center justify-center font-semibold shrink-0",
           isPerson
-            ? "rounded-full bg-secondary text-foreground border border-border"
+            ? "person-avatar-glass"
             : HIER_BG[kind],
         )}
       >
-        {isPerson ? initial : (
-          <span
-            aria-hidden
-            className="agent-avatar-glass-avatar"
-            style={{ backgroundImage: `url("${agentAvatarSrc}")` }}
-          />
-        )}
+        <span
+          aria-hidden
+          className="dicebear-avatar-image"
+          style={{ backgroundImage: `url("${avatarSrc}")` }}
+        />
       </span>
       {presence ? (
         <span
@@ -119,6 +121,34 @@ function createAgentAvatarSrc({
     mouth: AVATAR_MOUTH,
     radius: 18,
     scale: 84,
+  }).toDataUri();
+  avatarSrcCache.set(cacheKey, avatarSrc);
+
+  return avatarSrc;
+}
+
+function createPersonAvatarSrc({
+  initial,
+  label,
+  specialization,
+}: {
+  initial: string;
+  label?: string;
+  specialization?: string;
+}) {
+  const seed = ["person", label || initial, specialization].filter(Boolean).join(":");
+  const cacheKey = `person:${seed}`;
+  const cachedSrc = avatarSrcCache.get(cacheKey);
+  if (cachedSrc) return cachedSrc;
+
+  const avatarSrc = createAvatar(thumbs, {
+    seed,
+    backgroundColor: PERSON_BACKGROUND,
+    shapeColor: PERSON_SHAPE,
+    eyesColor: PERSON_FEATURE,
+    mouthColor: PERSON_FEATURE,
+    radius: 50,
+    scale: 86,
   }).toDataUri();
   avatarSrcCache.set(cacheKey, avatarSrc);
 
