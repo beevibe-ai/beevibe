@@ -4,7 +4,7 @@ export type Hierarchy = "ic" | "team" | "org";
 
 const HIER_CLASS: Record<Hierarchy, string> = {
   ic: "bg-hier-ic/15 text-hier-ic",
-  team: "bg-hier-team/10 text-hier-team",
+  team: "bg-primary text-primary-foreground",
   // org is OUTLINE-only — disambiguates from review (amber tint)
   org: "border border-hier-org text-hier-org",
 };

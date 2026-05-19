@@ -40,7 +40,7 @@
     --status-cancelled: 240 4% 46%;
 
     --hier-ic: 240 4% 46%;
-    --hier-team: 262 83% 58%;
+    --hier-team: var(--primary);
     --hier-org: 38 92% 50%;
 
     --type-belief-bg: 240 5% 92%;

@@ -17,7 +17,7 @@ type AgentIconVariant =
 
 const HIER_BG = {
   ic: "bg-hier-ic/12 text-hier-ic",
-  team: "bg-hier-team/12 text-hier-team",
+  team: "bg-primary text-primary-foreground",
   org: "bg-hier-org/12 text-hier-org",
 } as const;
 
