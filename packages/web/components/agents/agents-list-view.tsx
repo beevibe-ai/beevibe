@@ -4,9 +4,9 @@ import Link from "next/link";
 import { ExternalLink } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { HierChip } from "@/components/hier-chip";
-import { RuntimeSelect } from "@/components/agents/pickers/runtime-picker";
-import { ModelSelect } from "@/components/agents/pickers/model-picker";
-import { ReviewPolicySelect } from "@/components/agents/pickers/review-policy-picker";
+import { RuntimeChip } from "@/components/agents/pickers/runtime-picker";
+import { ModelChip } from "@/components/agents/pickers/model-picker";
+import { ReviewPolicyChip } from "@/components/agents/pickers/review-policy-picker";
 import type { AgentDisplay } from "@/lib/api/types";
 
 /**
@@ -44,9 +44,9 @@ export function AgentsListView({
             <th className="font-medium pb-2 pr-3">Agent</th>
             <th className="font-medium pb-2 pr-3">Hierarchy</th>
             <th className="font-medium pb-2 pr-3 tabular-nums">Sessions</th>
-            <th className="font-medium pb-2 pr-3 min-w-[180px]">Runtime</th>
-            <th className="font-medium pb-2 pr-3 min-w-[140px]">Model</th>
-            <th className="font-medium pb-2 pr-3 min-w-[160px]">Review policy</th>
+            <th className="font-medium pb-2 pr-3 min-w-[160px]">Runtime</th>
+            <th className="font-medium pb-2 pr-3 min-w-[110px]">Model</th>
+            <th className="font-medium pb-2 pr-3 min-w-[140px]">Review policy</th>
             <th className="font-medium pb-2 w-8" aria-label="Open detail" />
           </tr>
         </thead>
@@ -116,13 +116,13 @@ function AgentRow({
         {agent.sessions_count ?? 0}
       </td>
       <td className="py-2.5 pr-3">
-        <RuntimeSelect agent={agent} />
+        <RuntimeChip agent={agent} />
       </td>
       <td className="py-2.5 pr-3">
-        <ModelSelect agent={agent} allowCustom={false} />
+        <ModelChip agent={agent} />
       </td>
       <td className="py-2.5 pr-3">
-        <ReviewPolicySelect agent={agent} />
+        <ReviewPolicyChip agent={agent} />
       </td>
       <td className="py-2.5">
         <Link
