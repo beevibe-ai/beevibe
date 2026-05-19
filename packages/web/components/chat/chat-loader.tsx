@@ -1,51 +1,31 @@
 /**
- * Honeycomb loader shown in the agent reply column before the first
- * streamed text or tool step lands. 37 hex cells in 4 concentric rings
- * pulse-scale on staggered delays so the comb breathes outward — a
- * single deliberate "agent is starting" moment in place of three-dot
- * flicker. Styles live in globals.css under `.bv-chat-loader` because
- * the cell positions use 37 individual `:nth-child`-style class hooks
- * (Tailwind can't express that compactly).
+ * Spinning icosahedron loader shown in the agent reply column before
+ * the first streamed text or tool step lands. 20 triangular faces
+ * built from CSS borders; the whole solid rotates on three axes via a
+ * single `spin` keyframe. Styles live in globals.css under
+ * `.bv-chat-loader` (the `.solid` / `.side` selectors are scoped by
+ * that ancestor so they can't leak).
  *
- * Bricks pull their color from `--foreground`, so the loader reads
- * correctly on both cream (light) and near-black (dark) backgrounds.
+ * Adapted from a Uiverse loader by an anonymous author; the original
+ * was authored against styled-components, ported here to plain CSS so
+ * it slots into the project's globals.css pattern with no new dep.
  */
-const RING_1_CELLS = [1, 2, 3, 4, 5, 6];
-const RING_2_CELLS = [7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18];
-// Original Uiverse markup skips c27 — the outermost ring has 18 cells
-// numbered c19..c26 + c28..c37. Keeping the gap preserves the exact
-// positioning of every other cell.
-const RING_3_CELLS = [
-  19, 20, 21, 22, 23, 24, 25, 26, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37,
-];
+const FACES = Array.from({ length: 20 }, (_, i) => i + 1);
 
-function Cell({ className }: { className: string }) {
-  return (
-    <div className={`gel ${className}`}>
-      <div className="hex-brick h1" />
-      <div className="hex-brick h2" />
-      <div className="hex-brick h3" />
-    </div>
-  );
-}
-
-export function ChatLoader() {
+/**
+ * @param compact - 18px variant for the inline "thinking…" indicator
+ *   next to tool steps. Default 40px is for the empty reply column.
+ */
+export function ChatLoader({ compact = false }: { compact?: boolean }) {
   return (
     <div
-      className="bv-chat-loader"
+      className={`bv-chat-loader${compact ? " compact" : ""}`}
       role="status"
       aria-label="Agent is thinking"
     >
-      <div className="bv-chat-loader-inner">
-        <Cell className="center-gel" />
-        {RING_1_CELLS.map((c) => (
-          <Cell key={c} className={`c${c} r1`} />
-        ))}
-        {RING_2_CELLS.map((c) => (
-          <Cell key={c} className={`c${c} r2`} />
-        ))}
-        {RING_3_CELLS.map((c) => (
-          <Cell key={c} className={`c${c} r3`} />
+      <div className="solid">
+        {FACES.map((n) => (
+          <div key={n} className="side" />
         ))}
       </div>
     </div>
