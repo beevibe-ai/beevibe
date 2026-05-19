@@ -371,36 +371,66 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
  * unblock the child — the same path the autonomous mesh.reportBlocker
  * spawn would have taken, just now informed by the user's input.
  */
+const LIST_ITEM_RE = /^(?:\d+[.)]\s+|[-*•]\s+)(.+)$/;
+
 /**
- * Try to extract trailing answer options from a blocker_reason —
- * numbered ("1. yes\n2. no") or bulleted ("- yes\n- no") lists are
- * common patterns when an agent calls report_blocker with multiple
- * choices. We split each match into a short `label` (for the chip)
- * and the full `option` text (for the outbound message).
+ * Extract a list of answer options from a blocker_reason. Agents
+ * frequently call report_blocker with one or more multiple-choice
+ * questions like:
  *
- * Returns [] when nothing list-shaped is found at the tail; the
- * banner then falls back to its free-form "Reply →" + "Cancel" chips.
- * Capped at 4 to match the runtime's existing `<suggest_action>`
- * convention.
+ *     Q1 — Where does the canonical CLAUDE.md live?
+ *     - (a) Global ~/.claude/CLAUDE.md
+ *     - (b) A specific project's ./CLAUDE.md
+ *     - (c) Both — layered setup
+ *     - (d) Neither — greenfield
+ *
+ *     Q2 — ...prose follow-up...
+ *
+ * We can't anchor to the tail because Q2 / closing prose comes AFTER
+ * the options. Instead: find every contiguous run of list items in
+ * the text and take the FIRST run that's chip-sized (2–4 items).
+ * That naturally captures the canonical answer set for the first
+ * multiple-choice question; the user can hit "Reply in chat →" for
+ * any free-form follow-ups (Q2/Q3) that don't fit the chip pattern.
+ *
+ * Each item splits into a short `label` (for the chip button) and the
+ * full `option` text (for the outbound message to the team agent).
  */
 function parseBlockerOptions(reason: string | undefined): Array<{ label: string; option: string }> {
   if (!reason) return [];
-  const lines = reason.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
-  const out: Array<{ label: string; option: string }> = [];
-  // Walk from the bottom up — options always sit at the tail.
-  for (let i = lines.length - 1; i >= 0 && out.length < 4; i--) {
-    const line = lines[i]!;
-    const numbered = line.match(/^\s*(?:\d+[.)]\s+|[-*•]\s+)(.+)$/);
-    if (!numbered || !numbered[1]) break; // run ended
-    const text = numbered[1].trim();
-    // Drop trailing markdown emphasis around the label (**bold**).
-    const cleaned = text.replace(/^\*\*(.+)\*\*$/, "$1");
-    // First sentence / clause for the chip label; full text gets sent.
-    const labelEnd = cleaned.search(/[.—–:]/);
-    const label = (labelEnd === -1 ? cleaned : cleaned.slice(0, labelEnd)).trim().slice(0, 64);
-    out.unshift({ label, option: cleaned });
+  const lines = reason.split("\n").map((l) => l.trim());
+
+  // Find all contiguous list-item groups, picking the first 2-4 sized.
+  let target: string[] | undefined;
+  let current: string[] = [];
+  for (const line of lines) {
+    if (LIST_ITEM_RE.test(line)) {
+      current.push(line);
+    } else {
+      if (current.length >= 2 && current.length <= 4) {
+        target = current;
+        break;
+      }
+      current = [];
+    }
   }
-  return out.length >= 2 ? out : [];
+  if (!target && current.length >= 2 && current.length <= 4) target = current;
+  if (!target) return [];
+
+  return target
+    .map((line) => {
+      const m = LIST_ITEM_RE.exec(line);
+      if (!m || !m[1]) return null;
+      const text = m[1].trim().replace(/^\*\*(.+)\*\*$/, "$1");
+      // For the chip label: take the first clause up to a clear
+      // separator, strip markdown formatting (backticks especially —
+      // they look ugly on a chip).
+      const labelEnd = text.search(/[.—–]/);
+      const labelRaw = (labelEnd === -1 ? text : text.slice(0, labelEnd)).trim();
+      const label = labelRaw.replace(/`/g, "").trim().slice(0, 64);
+      return label.length > 0 ? { label, option: text } : null;
+    })
+    .filter((x): x is { label: string; option: string } => x !== null);
 }
 
 function BlockedReplyBanner({ task }: { task: TaskDetail }) {
