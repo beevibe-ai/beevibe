@@ -97,7 +97,7 @@ function emptyCommunityRegistry(): CommunityRegistryClient {
 }
 
 function emptyTrending(): TrendingClient {
-  return { urlSet: vi.fn(async () => new Set<string>()) };
+  return { snapshot: vi.fn(async () => ({ urls: new Set<string>(), entries: [] })) };
 }
 
 function normalizeForTest(url: string): string {
@@ -107,15 +107,34 @@ function normalizeForTest(url: string): string {
 function trendingWith(urls: string[], period: TrendingPeriod = "daily"): TrendingClient {
   const normalized = new Set<string>(urls.map(normalizeForTest));
   return {
-    urlSet: vi.fn(async (p: TrendingPeriod) =>
-      p === period ? new Set<string>(normalized) : new Set<string>(),
+    snapshot: vi.fn(async (p: TrendingPeriod) =>
+      p === period
+        ? { urls: new Set<string>(normalized), entries: [] }
+        : { urls: new Set<string>(), entries: [] },
+    ),
+  };
+}
+
+/**
+ * Trending fake with rich entries — used to test the injection pass
+ * (a trending repo that wasn't in github search still surfaces as a
+ * candidate when its description shares keywords with the goal).
+ */
+function trendingWithEntries(
+  entries: Array<{ repo_url: string; owner?: string; name?: string; description?: string | null; language?: string | null; stars_gained?: number }>,
+  period: TrendingPeriod = "daily",
+): TrendingClient {
+  const urls = new Set<string>(entries.map((e) => normalizeForTest(e.repo_url)));
+  return {
+    snapshot: vi.fn(async (p: TrendingPeriod) =>
+      p === period ? { urls, entries } : { urls: new Set<string>(), entries: [] },
     ),
   };
 }
 
 function trendingThrows(): TrendingClient {
   return {
-    urlSet: vi.fn(async () => {
+    snapshot: vi.fn(async () => {
       throw new Error("trending fetch failed");
     }),
   };
@@ -200,6 +219,70 @@ describe("find_repo tool — tier behavior", () => {
     // +35 trending + popularityScore(500) ≈ +8 = ~43
     expect(candidates[0]!.score).toBeGreaterThan(40);
     expect(candidates[0]!.score).toBeLessThan(50);
+  });
+
+  it("injects trending repos that github search missed when keywords overlap", async () => {
+    // Regression: github search ranks by its own relevance and may skip
+    // a 7k-star trending repo whose name/description doesn't match the
+    // user's exact query. The trending tier should still surface it as
+    // long as keywords overlap.
+    const TRENDING_GEO_SEO = "https://github.com/zubair-trabzada/geo-seo-claude";
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        ...BASE_SERVICES(),
+        // GitHub search returns nothing — simulates the case where the
+        // hot trending repo didn't make github's top results.
+        fetcher: githubFetcher([]),
+        trending: trendingWithEntries(
+          [
+            {
+              repo_url: TRENDING_GEO_SEO,
+              owner: "zubair-trabzada",
+              name: "geo-seo-claude",
+              description: "GEO-first SEO skill for Claude Code. AI search optimization.",
+              language: "Python",
+              stars_gained: 7400,
+            },
+          ],
+          "daily",
+        ),
+      },
+    );
+    const result = await tool.handler({ goal: "find me some SEO tools" });
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.repo_url).toBe(TRENDING_GEO_SEO);
+    expect(candidates[0]!.source).toBe("trending");
+    expect(candidates[0]!.description).toContain("GEO-first SEO");
+    expect(candidates[0]!.language).toBe("Python");
+  });
+
+  it("does NOT inject trending repos with zero keyword overlap", async () => {
+    // The injection pass must keep a relevance filter or trending
+    // dumps unrelated repos into every find_repo response.
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        ...BASE_SERVICES(),
+        fetcher: githubFetcher([]),
+        trending: trendingWithEntries(
+          [
+            {
+              repo_url: "https://github.com/totally/unrelated",
+              owner: "totally",
+              name: "unrelated",
+              description: "Linux kernel hacks for embedded devices.",
+              language: "C",
+            },
+          ],
+          "daily",
+        ),
+      },
+    );
+    const result = await tool.handler({ goal: "find me some SEO tools" });
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates).toHaveLength(0);
   });
 
   it("trending in weekly counts, monthly does NOT", async () => {

@@ -176,9 +176,16 @@ class HttpCommunityRegistryClient implements CommunityRegistryClient {
 
 export type TrendingPeriod = "daily" | "weekly" | "monthly";
 
-interface TrendingRepoEntry {
+export interface TrendingRepoEntry {
   repo_url: string;
+  owner?: string;
+  name?: string;
+  description?: string | null;
+  language?: string | null;
+  /** Stars gained in the period (velocity, NOT lifetime). */
+  stars_gained?: number;
 }
+
 interface TrendingSnapshot {
   period: TrendingPeriod;
   repos: TrendingRepoEntry[];
@@ -186,24 +193,37 @@ interface TrendingSnapshot {
 
 /**
  * Read-side client for the GitHub trending snapshots in
- * beevibe-ai/beevibe-capabilities. The ranker calls `urlSet(period)`
- * once per find_repo invocation per period so candidate checks are
- * O(1) Set lookups, not per-candidate HTTP requests.
+ * beevibe-ai/beevibe-capabilities. Returns both the O(1) URL set (used
+ * to bump existing candidates) and the rich entries (used to INJECT
+ * fresh candidates when the github-search tier missed a hot repo —
+ * e.g. a repo with strong velocity but a name that doesn't match the
+ * user's exact keywords).
  *
- * Default impl is HTTP; tests inject a fake (`{ urlSet: vi.fn(...) }`)
+ * Default impl is HTTP; tests inject a fake (`{ snapshot: vi.fn(...) }`)
  * to bypass the network.
  */
 export interface TrendingClient {
-  urlSet(period: TrendingPeriod): Promise<Set<string>>;
+  snapshot(period: TrendingPeriod): Promise<{
+    urls: Set<string>;
+    entries: TrendingRepoEntry[];
+  }>;
 }
 
 class HttpTrendingClient implements TrendingClient {
-  private cached = new Map<TrendingPeriod, { at: number; urls: Set<string> }>();
+  private cached = new Map<
+    TrendingPeriod,
+    { at: number; urls: Set<string>; entries: TrendingRepoEntry[] }
+  >();
   constructor(private readonly fetcher: typeof fetch) {}
 
-  async urlSet(period: TrendingPeriod): Promise<Set<string>> {
+  async snapshot(period: TrendingPeriod): Promise<{
+    urls: Set<string>;
+    entries: TrendingRepoEntry[];
+  }> {
     const hit = this.cached.get(period);
-    if (hit && Date.now() - hit.at < TRENDING_TTL_MS) return hit.urls;
+    if (hit && Date.now() - hit.at < TRENDING_TTL_MS) {
+      return { urls: hit.urls, entries: hit.entries };
+    }
 
     const url = `${CAPABILITIES_BASE_URL}/trending-${period}.json`;
     try {
@@ -213,23 +233,20 @@ class HttpTrendingClient implements TrendingClient {
       clearTimeout(timer);
       if (!res.ok) {
         // Cache the miss so we don't hammer raw.githubusercontent during
-        // a long outage. TTL on the empty set is the same — re-check
+        // a long outage. TTL on the empty cache is the same — re-check
         // after the next hour.
-        const empty = new Set<string>();
-        this.cached.set(period, { at: Date.now(), urls: empty });
+        const empty = { urls: new Set<string>(), entries: [] as TrendingRepoEntry[] };
+        this.cached.set(period, { at: Date.now(), ...empty });
         return empty;
       }
       const data = (await res.json()) as TrendingSnapshot;
-      const urls = new Set<string>(
-        Array.isArray(data.repos)
-          ? data.repos.map((r) => normalizeUrl(r.repo_url))
-          : [],
-      );
-      this.cached.set(period, { at: Date.now(), urls });
-      return urls;
+      const entries = Array.isArray(data.repos) ? data.repos : [];
+      const urls = new Set<string>(entries.map((r) => normalizeUrl(r.repo_url)));
+      this.cached.set(period, { at: Date.now(), urls, entries });
+      return { urls, entries };
     } catch {
-      const empty = new Set<string>();
-      this.cached.set(period, { at: Date.now(), urls: empty });
+      const empty = { urls: new Set<string>(), entries: [] as TrendingRepoEntry[] };
+      this.cached.set(period, { at: Date.now(), ...empty });
       return empty;
     }
   }
@@ -370,23 +387,59 @@ async function findRepoHandler(
   }
 
   // ── Tier 5: GitHub trending (snapshot lookup, no per-candidate I/O) ─
-  // Fetch the daily + weekly url sets once per call (TTL'd in the
-  // client), then check every existing candidate in O(1). Trending +35
-  // is the dominant "this is the moment" signal, sitting above
-  // community (+30) per the user's explicit "prefer trendy ones"
-  // preference. A trending repo with even modest stars (+8 popularity)
-  // will outrank a community-only proof.
+  // Two passes:
+  //   (a) bump every existing candidate that appears in daily or weekly
+  //       trending by +35 — trending is the dominant "this is the
+  //       moment" signal, sitting above community (+30).
+  //   (b) INJECT trending entries that share keywords with the goal but
+  //       weren't returned by the github-search tier. Without this pass,
+  //       a 7k-star trending repo whose name doesn't match the user's
+  //       exact query (e.g. "geo-seo-claude" for a "find me seo tools"
+  //       search) would never surface. Keyword overlap is the safety
+  //       valve: trending repos are a global pool, not filtered to the
+  //       goal — we need a relevance test so we don't dump unrelated
+  //       trending repos into every find_repo result.
   try {
     const [daily, weekly] = await Promise.all([
-      trending.urlSet("daily"),
-      trending.urlSet("weekly"),
+      trending.snapshot("daily"),
+      trending.snapshot("weekly"),
     ]);
+
+    // (a) Bump existing candidates.
     for (const c of candidates.values()) {
       const key = normalizeUrl(c.repo_url);
-      if (daily.has(key) || weekly.has(key)) {
+      if (daily.urls.has(key) || weekly.urls.has(key)) {
         c.score += 35;
         c.sources.push("trending");
       }
+    }
+
+    // (b) Inject trending entries that match the goal's keywords.
+    // Dedup across daily + weekly by canonical URL; daily wins so we
+    // surface today's hot repos first.
+    const seenForInject = new Set<string>();
+    const combined = [...daily.entries, ...weekly.entries];
+    for (const entry of combined) {
+      const key = normalizeUrl(entry.repo_url);
+      if (seenForInject.has(key)) continue;
+      seenForInject.add(key);
+      if (candidates.has(key)) continue; // already counted in pass (a)
+
+      // Relevance filter: stem-aware overlap between goal keywords and
+      // the entry's `owner/name` + description. Bar is intentionally
+      // low (>=1) — trending velocity does the heavy lifting; this just
+      // prevents wholly-unrelated trending repos from polluting results.
+      const haystackWords = splitWords(
+        [entry.owner, entry.name, entry.description ?? ""].filter(Boolean).join(" "),
+      );
+      const overlap = countOverlap(goalKeywords, haystackWords);
+      if (overlap < 1) continue;
+
+      const c = ensureCandidate(candidates, entry.repo_url);
+      c.score += 35;
+      c.sources.push("trending");
+      if (entry.description) c.description = entry.description;
+      if (entry.language) c.language = entry.language;
     }
   } catch (err) {
     notes.push(`trending lookup failed: ${errMsg(err)}`);
