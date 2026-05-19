@@ -156,9 +156,12 @@ function NewChatButton({ onClick }: { onClick: () => void }) {
 function WorkspaceHeader({ onCollapse }: { onCollapse: () => void }) {
   return (
     <div className="flex items-center gap-2 h-12 px-3 mx-2 mt-2">
-      <div className="h-6 w-6 rounded-md bg-primary flex items-center justify-center shrink-0">
-        <span className="text-primary-foreground text-[13px] font-bold leading-none">b</span>
-      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/logo.png"
+        alt="Beevibe"
+        className="h-6 w-6 rounded-md object-cover object-center shrink-0"
+      />
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold tracking-tight leading-tight truncate">
           beevibe

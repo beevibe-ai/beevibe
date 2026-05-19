@@ -56,9 +56,12 @@ export function WelcomeClient() {
     <div className="min-h-screen flex flex-col">
       <header className="border-b border-border/60 px-6 py-3">
         <div className="max-w-3xl mx-auto flex items-center gap-2">
-          <div className="h-6 w-6 rounded-md bg-primary flex items-center justify-center">
-            <span className="text-primary-foreground text-[13px] font-bold leading-none">b</span>
-          </div>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/logo.png"
+            alt="Beevibe"
+            className="h-6 w-6 rounded-md object-cover object-center"
+          />
           <span className="text-sm font-semibold tracking-tight">beevibe</span>
           <Stepper current={step} className="ml-auto" />
         </div>
