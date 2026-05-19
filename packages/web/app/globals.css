@@ -446,6 +446,81 @@
   .agent-avatar-glass-team { background-color: hsl(var(--primary) / 0.64); }
 }
 
+/* Orbit map depth — the caller's own team sits on a subtle raised
+   glass plinth while peer teams recede onto a lower plane. The surface
+   is intentionally soft so the graph remains the main object. */
+.network-orbit-layer {
+  position: absolute;
+  transform-style: preserve-3d;
+}
+.network-orbit-layer-self {
+  z-index: 20;
+}
+.network-orbit-layer-self::before,
+.network-orbit-layer-self::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 9999px;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+}
+.network-orbit-layer-self::before {
+  width: min(920px, 96vw);
+  height: min(920px, 96vw);
+  background:
+    radial-gradient(circle at 50% 42%, hsl(var(--primary) / 0.1), transparent 38%),
+    radial-gradient(circle, hsl(var(--card) / 0.34), hsl(var(--card) / 0.08) 58%, transparent 72%);
+  border: 1px solid hsl(0 0% 100% / 0.08);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.08),
+    0 42px 110px hsl(0 0% 0% / 0.34);
+  z-index: -2;
+}
+.network-orbit-layer-self::after {
+  width: min(760px, 82vw);
+  height: min(760px, 82vw);
+  background: radial-gradient(circle, hsl(var(--primary) / 0.12), transparent 66%);
+  filter: blur(26px);
+  opacity: 0.72;
+  z-index: -3;
+}
+.network-orbit-layer-peer {
+  z-index: 4;
+  opacity: 0.78;
+  filter: saturate(0.72) brightness(0.82);
+}
+.network-orbit-layer-peer::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 420px;
+  height: 420px;
+  border-radius: 9999px;
+  pointer-events: none;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, hsl(var(--card) / 0.12), transparent 70%);
+  filter: blur(18px);
+  z-index: -2;
+}
+.dark .network-orbit-layer-self::before {
+  background:
+    radial-gradient(circle at 50% 42%, hsl(var(--primary) / 0.12), transparent 38%),
+    radial-gradient(circle, hsl(var(--card) / 0.26), hsl(var(--card) / 0.06) 58%, transparent 72%);
+  box-shadow:
+    inset 0 1px 0 hsl(0 0% 100% / 0.07),
+    0 48px 120px hsl(0 0% 0% / 0.46);
+}
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .network-orbit-layer-self::before {
+    background: radial-gradient(circle, hsl(var(--card) / 0.16), transparent 72%);
+  }
+}
+
 /* Glassy chip — scaled-down pearl for the active sidebar tab. Same
    cream body and sheen as .pearl-button, but with the chrome dialed
    back so it sits comfortably inline next to icon-only inactive
