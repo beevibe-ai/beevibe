@@ -17,7 +17,6 @@ import type {
   TaskRepository,
   WorkProductRepository,
 } from "@beevibe/core";
-import { inMemoryBoostList } from "./boost-list.js";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type {
   CoreMemory,
@@ -63,7 +62,6 @@ function buildMinimalServices(): AssembleToolsServices {
     learnedSkillRepo: {
       searchByGoal: vi.fn(async () => []),
     } as unknown as LearnedSkillRepository,
-    boostList: inMemoryBoostList([]),
   };
 }
 

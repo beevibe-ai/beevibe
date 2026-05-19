@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { createAvatar } from "@dicebear/core";
 import { glass } from "@dicebear/collection";
-import { Bot, Clock, ExternalLink, Package, Sparkles, Zap } from "lucide-react";
+import { Bot, Clock, ExternalLink, Flame, Package, Sparkles, Zap } from "lucide-react";
 import { api, type LearnedSkill, type RepoRun } from "@/lib/api/client";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
@@ -13,31 +13,38 @@ import { RunCard } from "./run-card";
 
 type Tab = "yours" | "discover" | "activity";
 
-/** Boost-list entry shape (mirrors skills/beevibe-discover-repo/boost-list.json). */
-interface BoostEntry {
+type TrendingWindow = "daily" | "weekly" | "monthly";
+
+interface TrendingRepo {
   repo_url: string;
-  goal_keywords: string[];
-  language: string;
-  category: string;
-  /** Example goal the agent can run — seeds the chat draft when the card is clicked. */
-  example_goal: string;
+  owner: string;
+  name: string;
+  description: string | null;
+  language: string | null;
+  stars: number;
+  rank: number;
+}
+interface TrendingSnapshot {
+  fetched_at: string;
+  period: TrendingWindow;
+  source: string;
+  repos: TrendingRepo[];
 }
 
-const CURATED: BoostEntry[] = [
-  { repo_url: "https://github.com/jsvine/pdfplumber", goal_keywords: ["pdf", "extract", "table"], language: "python", category: "data", example_goal: "extract tables from a PDF" },
-  { repo_url: "https://github.com/yt-dlp/yt-dlp", goal_keywords: ["youtube", "video", "download", "audio"], language: "python", category: "media", example_goal: "download the audio from a YouTube video" },
-  { repo_url: "https://github.com/microsoft/playwright", goal_keywords: ["screenshot", "browser", "scrape", "web"], language: "javascript", category: "web", example_goal: "take a screenshot of a website" },
-  { repo_url: "https://github.com/FFmpeg/FFmpeg", goal_keywords: ["video", "convert", "audio", "codec"], language: "c", category: "media", example_goal: "convert a video to a different format" },
-  { repo_url: "https://github.com/huggingface/transformers", goal_keywords: ["nlp", "summarize", "classify", "translate"], language: "python", category: "ml", example_goal: "summarize a long article" },
-];
+const TRENDING_BASE_URL =
+  "https://raw.githubusercontent.com/beevibe-ai/beevibe-capabilities/main/data";
+
+async function fetchTrending(period: TrendingWindow): Promise<TrendingSnapshot> {
+  const res = await fetch(`${TRENDING_BASE_URL}/trending-${period}.json`, {
+    cache: "no-store",
+  });
+  if (!res.ok) throw new Error(`trending fetch ${res.status}`);
+  return (await res.json()) as TrendingSnapshot;
+}
 
 function repoName(url: string) {
   const parts = url.replace("https://github.com/", "").split("/");
   return parts[1] ?? parts[0] ?? url;
-}
-
-function repoOwner(url: string) {
-  return url.replace("https://github.com/", "").split("/")[0] ?? "";
 }
 
 export function CapabilitiesClient() {
@@ -181,13 +188,13 @@ function YoursTab({
         <p className="text-sm font-medium">No capabilities saved yet</p>
         <p className="text-sm text-muted-foreground mt-1">
           When an agent uses a repo to finish a task, you can save the recipe so future
-          runs are faster. Start by trying one of the curated repos in Discover.
+          runs are faster. Start by trying something from Discover.
         </p>
         <button
           onClick={onBrowseCurated}
           className="mt-4 inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors cursor-pointer"
         >
-          Browse curated repos →
+          Browse trending repos →
         </button>
       </div>
     );
@@ -230,20 +237,56 @@ function SkillRow({ skill }: { skill: LearnedSkill }) {
 }
 
 function DiscoverTab() {
+  const [window, setWindow] = useState<TrendingWindow>("weekly");
+  const trendingQuery = useQuery({
+    queryKey: ["trending", window],
+    queryFn: () => fetchTrending(window),
+    staleTime: 60 * 60 * 1000, // 1h — matches the daily refresh cadence
+  });
+
   return (
     <div className="space-y-10">
       <section>
-        <div className="flex items-baseline justify-between mb-2">
-          <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
-            Curated for common goals
-          </h2>
-          <p className="text-xs text-muted-foreground">Click a row to try it in chat.</p>
+        <div className="flex items-baseline justify-between mb-2 flex-wrap gap-2">
+          <div className="flex items-center gap-1.5">
+            <Flame className="h-3.5 w-3.5 text-orange-500" />
+            <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
+              Trending on GitHub
+            </h2>
+          </div>
+          <div className="flex items-center gap-1 text-[11px]">
+            {(["daily", "weekly", "monthly"] as const).map((w) => (
+              <button
+                key={w}
+                onClick={() => setWindow(w)}
+                className={cn(
+                  "h-6 px-2 rounded transition-colors cursor-pointer",
+                  window === w
+                    ? "bg-secondary text-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
+                )}
+              >
+                {w}
+              </button>
+            ))}
+          </div>
         </div>
-        <div>
-          {CURATED.map((entry) => (
-            <CuratedRow key={entry.repo_url} entry={entry} />
-          ))}
-        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Refreshed daily from the GitHub Search API. Click a row to try it in chat.
+        </p>
+        {trendingQuery.isLoading ? (
+          <p className="text-sm text-muted-foreground">Loading…</p>
+        ) : trendingQuery.error || !trendingQuery.data ? (
+          <p className="text-sm text-muted-foreground">
+            Couldn&apos;t load trending data. Try again in a moment.
+          </p>
+        ) : (
+          <div>
+            {trendingQuery.data.repos.slice(0, 30).map((repo) => (
+              <TrendingRow key={repo.repo_url} repo={repo} />
+            ))}
+          </div>
+        )}
       </section>
 
       <section>
@@ -282,44 +325,46 @@ function DiscoverTab() {
   );
 }
 
-function CuratedRow({ entry }: { entry: BoostEntry }) {
-  const name = repoName(entry.repo_url);
-  const owner = repoOwner(entry.repo_url);
-  const draft = `Use ${entry.repo_url} to ${entry.example_goal}`;
+function TrendingRow({ repo }: { repo: TrendingRepo }) {
+  // Seed the chat draft with the repo's own description as the implicit
+  // goal hint. Often the description IS the goal in natural language
+  // ("A library to detect deepfakes in videos" → "Use [repo] to detect
+  // deepfakes in videos"). User edits before sending if the
+  // description doesn't quite match their actual intent.
+  const goalSeed = repo.description?.trim()
+    ? repo.description.replace(/^[:🌐📚🎉🤖💎🚀✨🔥]+\s*/u, "").trim()
+    : "explore this project";
+  const draft = `Use ${repo.repo_url} to ${goalSeed}`;
+  const label = `${repo.owner}/${repo.name}`;
   return (
-    // The Link covers the whole row via absolute inset-0; the GitHub
-    // `source` link sits above it (z-10) as a sibling so it never nests
-    // an <a> inside another <a> and clicks route correctly.
     <div className="group relative flex items-center gap-2.5 py-2.5 border-b border-border/40 hover:bg-secondary/20 transition-colors">
       <Link
         href={`/chat?new=1&draft=${encodeURIComponent(draft)}`}
         className="absolute inset-0 z-0"
-        aria-label={`Try ${name} in chat`}
+        aria-label={`Try ${label} in chat`}
       />
       <div className="relative pointer-events-none">
-        <RepoAvatar repoUrl={entry.repo_url} />
+        <RepoAvatar repoUrl={repo.repo_url} />
       </div>
       <div className="relative pointer-events-none min-w-0 flex-1">
         <div className="flex items-center gap-2">
-          <span className="font-medium text-sm truncate">{name}</span>
-          <span className="text-xs text-muted-foreground truncate">{owner}</span>
+          <span className="font-medium text-sm truncate">{repo.name}</span>
+          <span className="text-xs text-muted-foreground truncate">{repo.owner}</span>
         </div>
-        <p className="text-xs text-muted-foreground/90 italic line-clamp-1">
-          “{entry.example_goal}”
+        <p className="text-xs text-muted-foreground/90 line-clamp-1">
+          {repo.description ?? "—"}
         </p>
       </div>
-      <div className="relative pointer-events-none hidden md:flex flex-wrap gap-1 shrink-0 justify-end pr-2">
-        {entry.goal_keywords.slice(0, 3).map((kw) => (
-          <span
-            key={kw}
-            className="inline-flex items-center rounded-sm bg-secondary/70 px-1.5 py-0.5 text-[10px] text-muted-foreground"
-          >
-            {kw}
-          </span>
-        ))}
+      <div className="relative pointer-events-none hidden md:flex items-center gap-2 shrink-0 pr-2">
+        {repo.language && (
+          <span className="text-[10px] text-muted-foreground/80">{repo.language}</span>
+        )}
+        <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground tabular-nums">
+          ★ {formatStars(repo.stars)}
+        </span>
       </div>
       <a
-        href={entry.repo_url}
+        href={repo.repo_url}
         target="_blank"
         rel="noopener noreferrer"
         title="Open repo on GitHub"
@@ -332,6 +377,11 @@ function CuratedRow({ entry }: { entry: BoostEntry }) {
       </span>
     </div>
   );
+}
+
+function formatStars(n: number): string {
+  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
+  return `${n}`;
 }
 
 function ActivityTab({ runs, isLoading }: { runs: RepoRun[]; isLoading: boolean }) {

@@ -21,7 +21,6 @@ import { createSaveMemoryTool } from "./save-memory.js";
 import { createUpdateCoreMemoryTool } from "./update-core-memory.js";
 import { createUseRepoTool } from "./use-repo.js";
 import { createFindRepoTool } from "./find-repo.js";
-import type { BoostList } from "./boost-list.js";
 import type { AgentTool } from "./types.js";
 
 export interface AssembleToolsServices {
@@ -44,8 +43,6 @@ export interface AssembleToolsServices {
   repoRunRepo: RepoRunRepository;
   /** Capability Network: backs find_repo's learned-skill tier. */
   learnedSkillRepo: LearnedSkillRepository;
-  /** Capability Network: curated boost list for find_repo's Tier 3. */
-  boostList: BoostList;
 }
 
 /**
@@ -187,7 +184,6 @@ export function assembleTools(
     {
       agentRepo: services.agentRepo,
       learnedSkillRepo: services.learnedSkillRepo,
-      boostList: services.boostList,
     },
   );
 

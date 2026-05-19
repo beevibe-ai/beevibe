@@ -2,23 +2,28 @@
  * find_repo MCP tool — code-first replacement for the prompt-driven
  * ranker that used to live in the beevibe-discover-repo skill.
  *
- * The skill prompt had agents fetch a community registry, parse a boost
- * list, hit the GitHub search API, score keyword overlap, and merge
- * four tiers — all inside a single context window. Asking an LLM to
- * follow a deterministic algorithm reliably fights its probabilistic
- * nature; this tool moves the algorithm to code and keeps the LLM for
- * the qualitative final pick.
+ * The skill prompt had agents fetch a community registry, hit the
+ * GitHub search API, score keyword overlap, and merge multiple tiers
+ * inside a single context window. Asking an LLM to follow a
+ * deterministic algorithm reliably fights its probabilistic nature;
+ * this tool moves the algorithm to code and keeps the LLM for the
+ * qualitative final pick.
  *
  * Tool surface:
  *   find_repo({ goal, limit? })  →  { candidates, notes }
  *
  * Ranking tiers (additive scores; multiple sources stack):
  *   +50  learned_skill match (this team's own proven recipe)
- *   +30  community registry match (proven by other Beevibe instances)
- *   +20  curated boost-list match (day-one reliability)
- *   +15  GitHub trending — appears in daily or weekly snapshot
- *        (read from beevibe-ai/beevibe-capabilities, no per-call API)
+ *   +30  community registry match (proven by other Beevibe instances —
+ *        promoted from skill_outcome, not hand-curated opinion)
+ *   +25  GitHub trending — appears in daily or weekly snapshot
+ *        (read from beevibe-ai/beevibe-capabilities, refreshed daily)
  *   +0   GitHub search hit, plus log10(stars+1)·3 popularity bonus
+ *
+ * What used to be a "+20 curated boost-list" tier was removed —
+ * pdfplumber, yt-dlp, FFmpeg etc. are already in every LLM's training
+ * data and didn't need a boost. Curation now comes from real outcomes
+ * (registry) and real velocity (trending), not opinion drift.
  *
  * The agent reads the top N candidates and picks based on
  * README/description fit. The ranker handles the volume; the agent
@@ -29,7 +34,6 @@ import type {
   LearnedSkill,
   LearnedSkillRepository,
 } from "@beevibe/core";
-import type { BoostList } from "./boost-list.js";
 import type { AgentTool, AgentToolResult } from "./types.js";
 
 /**
@@ -79,12 +83,12 @@ const FIND_REPO_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-export type CandidateSource = "learned" | "community" | "boost" | "trending" | "github";
+export type CandidateSource = "learned" | "community" | "trending" | "github";
 
 export interface FindRepoCandidate {
   repo_url: string;
   score: number;
-  /** Highest-precedence source (learned > community > boost > github). */
+  /** Highest-precedence source (learned > community > trending > github). */
   source: CandidateSource;
   /** Every source that contributed to the score. Useful for debugging. */
   sources: CandidateSource[];
@@ -94,10 +98,8 @@ export interface FindRepoCandidate {
   stars?: number;
   /** GitHub description when available. */
   description?: string;
-  /** Programming language inferred from boost list or GitHub. */
+  /** Programming language inferred from GitHub. */
   language?: string;
-  /** Boost-list keywords that overlapped with the goal. */
-  matched_keywords?: string[];
   /** Hydrated learned_skill row when source includes "learned". */
   learned_skill?: {
     id: string;
@@ -114,7 +116,6 @@ export interface FindRepoContext {
 export interface FindRepoServices {
   agentRepo: AgentRepository;
   learnedSkillRepo: LearnedSkillRepository;
-  boostList: BoostList;
   /** Override for tests; defaults to global fetch. */
   fetcher?: typeof fetch;
   /** Override for tests; defaults to a module-level cache. */
@@ -244,9 +245,9 @@ export function createFindRepoTool(
     name: "find_repo",
     description:
       "Rank GitHub repos for a goal. Returns the top N candidates from " +
-      "five signal sources (your team's learned skills, the community " +
-      "registry, a curated boost list, GitHub trending, and live " +
-      "GitHub search).\n\n" +
+      "four signal sources (your team's learned skills, the community " +
+      "registry of proven outcomes, GitHub trending this week, and " +
+      "live GitHub search).\n\n" +
       "**Call this when you need a tool you don't have, before deciding " +
       "to report a blocker or shell out to `brew install`.** It's cheap " +
       "(no sandbox boots, no LLM calls — just data lookups + a single " +
@@ -333,22 +334,6 @@ async function findRepoHandler(
     notes.push(`community registry error: ${errMsg(err)}`);
   }
 
-  // ── Tier 3: Curated boost list (in-memory, deterministic) ─────────
-  const goalKeywordSet = new Set(goalKeywords.map(stem));
-  for (const entry of services.boostList.entries()) {
-    const matched = entry.goal_keywords.filter((kw) =>
-      goalKeywordSet.has(stem(kw.toLowerCase())),
-    );
-    if (matched.length === 0) continue;
-    const c = ensureCandidate(candidates, entry.repo_url);
-    // 20 base + 5 per extra keyword overlap (capped at +20 so boost
-    // can't outrank a learned-skill match).
-    c.score += 20 + Math.min(matched.length - 1, 4) * 5;
-    c.sources.push("boost");
-    c.matched_keywords = matched;
-    c.language = entry.language;
-  }
-
   // ── Tier 4: GitHub search (best-effort, popularity scoring) ───────
   try {
     const githubResults = await searchGitHub(goalKeywords, fetcher, githubToken);
@@ -377,9 +362,11 @@ async function findRepoHandler(
 
   // ── Tier 5: GitHub trending (snapshot lookup, no per-candidate I/O) ─
   // Fetch the daily + weekly url sets once per call (TTL'd in the
-  // client), then check every existing candidate in O(1). Trending +15
-  // sits below boost (+20) so a curated entry still wins for the same
-  // goal — trending is a soft tiebreaker, not an override.
+  // client), then check every existing candidate in O(1). Trending +25
+  // is the primary "this is the moment" signal now that the boost-list
+  // tier is gone. Sits below community (+30) which is for repos
+  // already proven across beevibe instances, but above raw GitHub
+  // popularity so a hot new repo can outrank a generic high-star match.
   try {
     const [daily, weekly] = await Promise.all([
       trending.urlSet("daily"),
@@ -388,7 +375,7 @@ async function findRepoHandler(
     for (const c of candidates.values()) {
       const key = normalizeUrl(c.repo_url);
       if (daily.has(key) || weekly.has(key)) {
-        c.score += 15;
+        c.score += 25;
         c.sources.push("trending");
       }
     }
@@ -488,12 +475,12 @@ function popularityScore(stars: number): number {
 }
 
 function pickPrimarySource(sources: CandidateSource[]): CandidateSource {
-  // Trust order: a curated/proven match beats trending velocity, which
-  // beats raw GitHub. Trending displays as the primary source only when
-  // nothing more authoritative agrees about the repo.
+  // Trust order: this team's own proven recipes beat community-proven,
+  // which beats current trending velocity, which beats raw GitHub
+  // popularity. Trending is the primary surfacing signal for novel
+  // capabilities — exactly the gap a static curated list would miss.
   if (sources.includes("learned")) return "learned";
   if (sources.includes("community")) return "community";
-  if (sources.includes("boost")) return "boost";
   if (sources.includes("trending")) return "trending";
   return "github";
 }
@@ -505,9 +492,6 @@ function formatReason(c: FindRepoCandidate): string {
   }
   if (c.sources.includes("community")) {
     parts.push("registered in the community registry");
-  }
-  if (c.sources.includes("boost") && c.matched_keywords?.length) {
-    parts.push(`curated for: ${c.matched_keywords.join(", ")}`);
   }
   if (c.sources.includes("trending")) {
     parts.push("trending on GitHub this week");
