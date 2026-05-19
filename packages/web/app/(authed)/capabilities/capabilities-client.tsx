@@ -327,15 +327,25 @@ function DiscoverTab() {
 }
 
 function TrendingRow({ repo }: { repo: TrendingRepo }) {
-  // Seed the chat draft with the repo's own description as the implicit
-  // goal hint. Often the description IS the goal in natural language
-  // ("A library to detect deepfakes in videos" → "Use [repo] to detect
-  // deepfakes in videos"). User edits before sending if the
-  // description doesn't quite match their actual intent.
-  const goalSeed = repo.description?.trim()
-    ? repo.description.replace(/^[:🌐📚🎉🤖💎🚀✨🔥]+\s*/u, "").trim()
-    : "explore this project";
-  const draft = `Use ${repo.repo_url} to ${goalSeed}`;
+  // Seed the chat draft so the user has a starting line they can edit.
+  //
+  // Trending descriptions are usually noun phrases ("A library to...",
+  // ":books: Free programming books", "🤖 Your AI assistant"), not
+  // verb phrases. So the previous "Use ${url} to ${description}"
+  // template produced grammatically broken sentences like
+  // "Use X to A single CLAUDE.md file...". The em-dash separator works
+  // regardless: "Try X — <description>" reads cleanly whether the
+  // description leads with a verb or a noun.
+  //
+  // We also strip leading emoji noise from the description so the line
+  // doesn't open with ":books:" / "🤖" / "🔥" / etc.
+  const cleanedDesc = repo.description
+    ?.replace(/^[\s\p{Extended_Pictographic}]+/u, "") // emoji + leading whitespace
+    .replace(/^:[a-z_]+:\s*/i, "") // gemoji shortcodes like `:books:`
+    .trim();
+  const draft = cleanedDesc
+    ? `Try ${repo.repo_url} — ${cleanedDesc}`
+    : `Try ${repo.repo_url}`;
   const label = `${repo.owner}/${repo.name}`;
   return (
     <div className="group relative flex items-center gap-2.5 py-2.5 border-b border-border/40 hover:bg-secondary/20 transition-colors">
