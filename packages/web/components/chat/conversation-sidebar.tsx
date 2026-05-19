@@ -27,6 +27,8 @@ const BUCKET_LABELS: Record<Bucket, string> = {
 const BUCKET_ORDER: readonly Bucket[] = ["today", "yesterday", "this_week", "older"];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const TASK_ID_RE = /\btask_[A-Za-z0-9_-]+\b/g;
+const GITHUB_URL_RE = /https:\/\/github\.com\/([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+)/i;
 
 function bucketOf(iso: string, now: number): Bucket {
   const t = new Date(iso).getTime();
@@ -48,6 +50,41 @@ function bucketize(list: readonly ChatConversationSummary[]): Record<Bucket, Cha
   };
   for (const c of list) out[bucketOf(c.last_at, now)].push(c);
   return out;
+}
+
+function compactTitle(title: string): string {
+  const text = title.trim();
+  const github = text.match(GITHUB_URL_RE);
+  if (github) return `${github[1]}/${github[2]}`;
+
+  if (/^\(?interactive\)?$/i.test(text)) return "Interactive session";
+  if (/^reply to task_/i.test(text)) return "Task reply";
+  if (/^use task_/i.test(text)) return "Task follow-up";
+  if (/^try task_/i.test(text)) return "Task attempt";
+
+  return text
+    .replace(TASK_ID_RE, "task")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([?.!,])/g, "$1");
+}
+
+function compactPreview(preview: string): string {
+  const text = preview.trim();
+  if (!text) return "";
+
+  const github = text.match(GITHUB_URL_RE);
+  if (/^CLI exited with code null$/i.test(text)) return "Session ended";
+  if (/^Dispatched:\s*task_/i.test(text)) return "Dispatched to an agent";
+  if (/^Spawned\s+task_/i.test(text)) return "Spawned an agent task";
+  if (/^Task\s+task_.*\bis live\b/i.test(text)) return "Task is live";
+  if (/^Unblocked\s+task_/i.test(text)) return "Task unblocked";
+  if (github) return text.replace(GITHUB_URL_RE, `${github[1]}/${github[2]}`);
+
+  return text
+    .replace(TASK_ID_RE, "task")
+    .replace(/\*\*/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /**
@@ -115,7 +152,7 @@ function BucketedList({
         const stale = bucket === "older";
         return (
           <section key={bucket} className="mb-1.5 last:mb-0">
-            <div className="px-3 pt-2.5 pb-1 text-[10px] uppercase tracking-wider font-semibold text-muted-foreground/60">
+            <div className="px-4 pt-3 pb-1 text-[11px] font-medium text-muted-foreground/55">
               {BUCKET_LABELS[bucket]}
             </div>
             <ul>
@@ -147,6 +184,8 @@ function ConversationRow({
   const router = useRouter();
   const queryClient = useQueryClient();
   const [confirming, setConfirming] = useState(false);
+  const title = compactTitle(c.title);
+  const preview = compactPreview(c.last_preview);
   const deleteMutation = useMutation({
     mutationFn: () => api.chat.deleteConversation(c.head_id),
     onSuccess: () => {
@@ -172,33 +211,42 @@ function ConversationRow({
     <li>
       <div
         className={cn(
-          "group relative block px-3 py-1.5 mx-1 my-0.5 rounded",
-          active ? "glassy-chip" : "hover:bg-secondary/60 transition-colors",
-          stale && !active && "opacity-60",
+          "group relative block mx-2 my-0.5 rounded-md transition-colors",
+          active
+            ? "bg-secondary/70 ring-1 ring-border/70"
+            : "hover:bg-secondary/45",
+          stale && !active && "opacity-55",
           deleteMutation.isPending && "opacity-50 pointer-events-none",
         )}
       >
         <Link
           href={`/chat?c=${encodeURIComponent(c.head_id)}`}
-          className="block"
+          className="block px-2.5 py-1.5"
           onClick={() => setConfirming(false)}
         >
-          <div className="flex items-baseline gap-1.5">
+          <div className="flex items-center gap-2">
             <div
               className={cn(
-                "text-xs truncate flex-1 min-w-0",
-                active ? "text-foreground font-semibold" : "text-foreground/85 font-medium",
+                "text-[13px] leading-5 truncate flex-1 min-w-0",
+                active ? "text-foreground font-medium" : "text-foreground/82",
               )}
             >
-              {c.title}
+              {title}
             </div>
-            <span className="text-[10px] tabular-nums text-muted-foreground/70 shrink-0 group-hover:invisible">
+            <span className="text-[11px] tabular-nums text-muted-foreground/55 shrink-0 group-hover:invisible">
               {formatRelativeTime(c.last_at)}
             </span>
           </div>
-          <div className="mt-0.5 text-[11px] text-muted-foreground line-clamp-1 leading-snug">
-            {c.last_preview}
-          </div>
+          {preview ? (
+            <div
+              className={cn(
+                "mt-0.5 text-[11px] text-muted-foreground/75 line-clamp-1 leading-snug",
+                active ? "block" : "hidden group-hover:block",
+              )}
+            >
+              {preview}
+            </div>
+          ) : null}
         </Link>
         <button
           type="button"
