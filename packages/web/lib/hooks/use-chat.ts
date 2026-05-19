@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   api,
@@ -111,19 +111,36 @@ export function useChat(opts: UseChatOptions = {}) {
   // draft from a prior /chat?new=1 visit doesn't reappear. Depends on
   // primitives only — `queryKey` is a fresh array every render, which
   // would re-fire this effect and clobber optimistic updates.
+  //
+  // `freshSeeded` flips to true once the seed has run for the current
+  // fresh entry. The `messages` memo below uses it to suppress stale
+  // cache reads on the FIRST render of a fresh surface (see comment
+  // there for the cleanup-effect-strips-`new=1` symptom this prevents).
+  const [freshSeeded, setFreshSeeded] = useState(false);
   useEffect(() => {
-    if (!fresh) return;
+    if (!fresh) {
+      setFreshSeeded(false);
+      return;
+    }
     queryClient.setQueryData<ChatHistoryResponse>(
       queryKeys.chat.history(FRESH_CACHE_ID),
       FRESH_HISTORY,
     );
+    setFreshSeeded(true);
     // Run on entry only — onMutate/onSuccess own the slot from then on.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fresh]);
 
+  // First render of a fresh surface reads the cache *before* the seed
+  // effect above has cleared it, so a draft left behind by a prior
+  // /chat?new=1 visit would appear here as `messages.length > 0`.
+  // ChatClient's cleanup useEffect interprets that as "user has sent
+  // something on this fresh surface" and immediately strips `?new=1`
+  // from the URL — first click looks like a no-op, second click works.
+  // Suppress the stale read until the seed has fired this entry.
   const messages = useMemo<ChatMessage[]>(
-    () => (history.data?.messages ?? []).map(fromHistory),
-    [history.data],
+    () => (fresh && !freshSeeded ? [] : (history.data?.messages ?? []).map(fromHistory)),
+    [fresh, freshSeeded, history.data],
   );
 
   // Derived from the cache, not duplicated in component state. Whoever
