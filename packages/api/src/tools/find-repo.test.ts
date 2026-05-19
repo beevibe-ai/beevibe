@@ -413,4 +413,30 @@ describe("find_repo tool — output shape", () => {
     expect(body.candidates).toHaveLength(0);
     expect(body.hint).toContain("No candidates");
   });
+
+  it("drops github candidates whose description self-describes as such", async () => {
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        ...BASE_SERVICES(),
+        fetcher: githubFetcher([
+          {
+            html_url: "https://github.com/some-org/their-archive",
+            description: "An archive of state propaganda we collect for study",
+            stargazers_count: 1000,
+          },
+          {
+            html_url: "https://github.com/legit/tool",
+            description: "An actual tool for the user's goal",
+            stargazers_count: 500,
+          },
+        ]),
+      },
+    );
+    const result = await tool.handler({ goal: "anything" });
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates.map((c) => c.repo_url)).toEqual([
+      "https://github.com/legit/tool",
+    ]);
+  });
 });

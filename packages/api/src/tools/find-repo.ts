@@ -339,6 +339,9 @@ async function findRepoHandler(
     const githubResults = await searchGitHub(goalKeywords, fetcher, githubToken);
     for (const repo of githubResults.slice(0, 20)) {
       const url = repo.html_url;
+      // Drop self-described propaganda repos — keyword overlap with
+      // legitimate tools is incidental; they aren't tools.
+      if (isFilteredOutContent(repo.description)) continue;
       const existing = candidates.get(normalizeUrl(url));
       if (existing) {
         // Enrich existing candidate with GitHub metadata.
@@ -472,6 +475,18 @@ function countOverlap(a: string[], b: string[]): number {
 function popularityScore(stars: number): number {
   if (!Number.isFinite(stars) || stars <= 0) return 0;
   return Math.min(15, Math.log10(stars + 1) * 3);
+}
+
+/**
+ * Description-level content filter for the GitHub-search tier. Single
+ * neutral word — keyword overlap on this term reliably picks up repos
+ * that self-describe as such, which by definition aren't tools.
+ */
+const FILTERED_DESCRIPTION_PATTERN = /\bpropaganda\b/i;
+
+function isFilteredOutContent(description: string | null | undefined): boolean {
+  if (!description) return false;
+  return FILTERED_DESCRIPTION_PATTERN.test(description);
 }
 
 function pickPrimarySource(sources: CandidateSource[]): CandidateSource {
