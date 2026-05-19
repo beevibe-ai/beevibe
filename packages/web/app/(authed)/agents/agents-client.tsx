@@ -15,8 +15,13 @@ import { usePanZoom } from "@/lib/hooks/use-pan-zoom";
 
 type ViewMode = "orbit" | "list";
 
+// List is the default — most visits to /agents are about checking or
+// changing per-agent config (runtime, model, review policy), which the
+// list view exposes directly. The orbit view is the spatial alternative
+// for "look at the shape of my team," kept one click away behind
+// ?view=orbit.
 function parseView(raw: string | null | undefined): ViewMode {
-  return raw === "list" ? "list" : "orbit";
+  return raw === "orbit" ? "orbit" : "list";
 }
 
 /**
@@ -71,8 +76,9 @@ export function AgentsClient() {
 
   const setView = useCallback(
     (next: ViewMode) => {
-      // Default view is orbit, so encode it by *removing* the param.
-      router.replace(buildHref({ view: next === "orbit" ? null : "list" }), {
+      // List is the default; encode it by *removing* the param so the
+      // common case has a clean URL.
+      router.replace(buildHref({ view: next === "list" ? null : "orbit" }), {
         scroll: false,
       });
     },
@@ -259,20 +265,20 @@ function ViewToggle({
       data-pan="ignore"
     >
       <ToggleButton
-        active={view === "orbit"}
-        onClick={() => onChange("orbit")}
-        label="Orbit"
-        title="Orbit view — pan and zoom the network"
-      >
-        <LayoutGrid className="h-3.5 w-3.5" />
-      </ToggleButton>
-      <ToggleButton
         active={view === "list"}
         onClick={() => onChange("list")}
         label="List"
         title="List view — manage runtime, model, review policy"
       >
         <List className="h-3.5 w-3.5" />
+      </ToggleButton>
+      <ToggleButton
+        active={view === "orbit"}
+        onClick={() => onChange("orbit")}
+        label="Orbit"
+        title="Orbit view — pan and zoom the network"
+      >
+        <LayoutGrid className="h-3.5 w-3.5" />
       </ToggleButton>
     </div>
   );
