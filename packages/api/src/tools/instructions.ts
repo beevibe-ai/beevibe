@@ -1,3 +1,8 @@
+import type { AgentRepository } from "@beevibe/core";
+import {
+  composeSystemPromptAppend,
+  teamAgentRoutingDirective,
+} from "@beevibe/core/services/agent-session";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 import type { McpCaller } from "./assemble.js";
 
@@ -6,32 +11,40 @@ import type { McpCaller } from "./assemble.js";
  *
  * Branch on `caller.source`:
  *   - "agent" → empty string. The agent's CLI was spawned by the executor
- *     (or a mesh tool handler), which already injected the briefing via
- *     `--append-system-prompt` (system) + intent prefix (user) — duplicating
- *     either as `instructions` would waste tokens.
- *   - "human" → full briefing (BOTH halves joined). The user ran `claude`
- *     themselves; no system-prompt arg was passed and no way to prepend to
- *     their first user message, so we deliver everything through the MCP
- *     `instructions` field. M9.4's split-by-stability optimization is
- *     agent-only — humans get the consolidated briefing because their path
- *     can't host the per-message prefix.
- *
- * Takes the already-built `MemoryAgent` (constructed once per session at
- * the call site) rather than the factory — avoids rebuilding it just to
- * call `prepareBriefing`.
+ *     (or a mesh tool handler), which already injected the full prompt
+ *     stack via `--append-system-prompt` (system) + intent prefix (user).
+ *     Duplicating either as `instructions` would waste tokens.
+ *   - "human" → the team agent's full chat-flavored prompt stack
+ *     (lifecycle reminder, memory reminder, team_agent_routing,
+ *     per-agent baseline, core_memory). The human's local CLI consumes
+ *     the team agent's identity over MCP, so we ship the same prompt
+ *     content a team chat session would get — minus the beevibe chat UI
+ *     grammar (the local CLI can't render our suggest_action chips) and
+ *     minus archival memory (no intent yet — the CLI uses
+ *     `search_context` on demand instead).
  */
 export async function buildInstructions(
   caller: McpCaller,
   memoryAgent: MemoryAgent,
+  agentRepo: AgentRepository,
 ): Promise<string> {
   if (caller.source === "agent") {
     return "";
   }
-  const briefing = await memoryAgent.prepareBriefing("(interactive)");
-  // Join system + user halves with a blank line so the human's session sees
-  // both core_memory and archival_memory contextually adjacent in the
-  // initial system prompt.
-  return [briefing.systemPromptAppend, briefing.userMessagePrefix]
-    .filter((s) => s.length > 0)
-    .join("\n\n");
+  const [briefing, agent, subordinates] = await Promise.all([
+    memoryAgent.prepareCoreOnly(),
+    agentRepo.findById(caller.agentId),
+    caller.hierarchyLevel === "team"
+      ? agentRepo.findSubordinates(caller.agentId)
+      : Promise.resolve([]),
+  ]);
+  const teamRouting =
+    caller.hierarchyLevel === "team"
+      ? teamAgentRoutingDirective(subordinates.map((s) => s.name))
+      : "";
+  return composeSystemPromptAppend(
+    agent?.runtime_config.system_prompt_addition,
+    briefing.systemPromptAppend,
+    { sessionKind: "human_mcp", extra: teamRouting },
+  );
 }

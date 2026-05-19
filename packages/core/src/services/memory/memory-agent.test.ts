@@ -206,6 +206,41 @@ describe("MemoryAgent.prepareBriefing", () => {
   });
 });
 
+describe("MemoryAgent.prepareCoreOnly", () => {
+  it("returns core memory with an empty archival half (no embed / no fact search)", async () => {
+    vi.mocked(coreMemory.read).mockResolvedValue([
+      makeBlock("persona", "You are the team agent."),
+    ]);
+
+    const briefing = await agent.prepareCoreOnly();
+
+    expect(briefing.systemPromptAppend).toContain("<core_memory>");
+    expect(briefing.systemPromptAppend).toContain(
+      "You are the team agent.",
+    );
+    // No archival half — human MCP path uses search_context on demand
+    // instead of pre-loading hits against a placeholder intent.
+    expect(briefing.userMessagePrefix).toBe("");
+    expect(briefing.snapshot.fact_count).toBe(0);
+    expect(briefing.snapshot.facts).toEqual([]);
+    // Embed + fact search are the wasted-work pieces this method exists
+    // to avoid — keep this assertion to lock that property in.
+    expect(embed.embed).not.toHaveBeenCalled();
+    expect(factStore.search).not.toHaveBeenCalled();
+  });
+
+  it("renders an empty <core_memory> envelope when the agent has no blocks", async () => {
+    vi.mocked(coreMemory.read).mockResolvedValue([]);
+
+    const briefing = await agent.prepareCoreOnly();
+
+    expect(briefing.systemPromptAppend).toBe(
+      "<core_memory>\n</core_memory>",
+    );
+    expect(briefing.snapshot.block_count).toBe(0);
+  });
+});
+
 describe("MemoryAgent.searchArchival", () => {
   it("vector-searches with the query and returns archival envelope only", async () => {
     vi.mocked(embed.embed).mockResolvedValue([0.7, 0.8]);

@@ -104,6 +104,62 @@ describe("composeSystemPromptAppend with extra", () => {
   });
 });
 
+describe("composeSystemPromptAppend with sessionKind: 'human_mcp'", () => {
+  // Human MCP sessions: human's local CLI consumes the team agent's
+  // identity over MCP. Same prompt content as a team chat session —
+  // minus the beevibe chat UI grammar (the local CLI can't render
+  // suggest_action chips) and minus onboarding directives (not a
+  // first-touch surface).
+
+  it("uses the chat-variant lifecycle reminder (interactive, not task-tracked)", () => {
+    const out = composeSystemPromptAppend(undefined, "<core_memory/>", {
+      sessionKind: "human_mcp",
+    });
+    expect(out).toContain(BEEVIBE_LIFECYCLE_REMINDER_CHAT);
+    expect(out).not.toContain(BEEVIBE_LIFECYCLE_REMINDER_TASK);
+  });
+
+  it("skips CHAT_DIRECTIVES (chat UI grammar is beevibe-surface-only)", () => {
+    const out = composeSystemPromptAppend(undefined, "<core_memory/>", {
+      sessionKind: "human_mcp",
+      extra: teamAgentRoutingDirective(["frontend"]),
+    });
+    expect(out).not.toContain("chat_directives");
+    expect(out).not.toContain("<suggest_action");
+    expect(out).not.toContain("<open_view");
+  });
+
+  it("still threads team_agent_routing extra (universal directive)", () => {
+    const out = composeSystemPromptAppend(undefined, "<core_memory/>", {
+      sessionKind: "human_mcp",
+      extra: teamAgentRoutingDirective(["frontend"]),
+    });
+    expect(out).toContain("team_agent_routing");
+    expect(out).toContain("- frontend");
+  });
+
+  it("preserves stability ordering minus the chat_directives slot", () => {
+    const teamRouting = teamAgentRoutingDirective(["frontend"]);
+    const out = composeSystemPromptAppend(
+      "<agent_baseline_marker/>",
+      "<briefing_marker/>",
+      { sessionKind: "human_mcp", extra: teamRouting },
+    );
+    expect(out.indexOf("beevibe_lifecycle")).toBeLessThan(
+      out.indexOf("beevibe_memory"),
+    );
+    expect(out.indexOf("beevibe_memory")).toBeLessThan(
+      out.indexOf("team_agent_routing"),
+    );
+    expect(out.indexOf("team_agent_routing")).toBeLessThan(
+      out.indexOf("agent_baseline_marker"),
+    );
+    expect(out.indexOf("agent_baseline_marker")).toBeLessThan(
+      out.indexOf("briefing_marker"),
+    );
+  });
+});
+
 describe("composeSystemPromptAppend lifecycle branching", () => {
   // Production bug pre-fix: chat sessions got the task-only lifecycle
   // reminder telling them to "call update_progress with task_id from

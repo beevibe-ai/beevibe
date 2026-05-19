@@ -380,7 +380,7 @@ function rosterSection(names: readonly string[]): string {
  *   6. briefing            — changes per-session (memory blocks update)
  *   7. onboarding          — one-shot, never re-fires (tail slot is fine)
  */
-export type SessionSurfaceKind = "task" | "chat";
+export type SessionSurfaceKind = "task" | "chat" | "human_mcp";
 
 export function composeSystemPromptAppend(
   agentSystemPromptAddition: string | undefined,
@@ -389,14 +389,19 @@ export function composeSystemPromptAppend(
     /**
      * Which session surface is being spawned. Drives both the
      * lifecycle reminder variant AND whether CHAT_DIRECTIVES is
-     * appended — the two are coupled by definition (chat surface
-     * implies chat lifecycle and display tokens; task surface implies
-     * task lifecycle and no display tokens). Defaults to "task" so
-     * existing task-side callers don't need to pass the flag.
+     * appended.
      *
-     * When mesh-ask / blocker-response sessions eventually need their
-     * own surface treatment, extend this union — don't reintroduce
-     * orthogonal flags.
+     *   "task"      — task lifecycle, no display tokens.
+     *   "chat"      — chat lifecycle + display tokens (the beevibe
+     *                 chat surface renders id-hydration, open_view,
+     *                 suggest_action chips).
+     *   "human_mcp" — chat lifecycle (interactive conversation, no
+     *                 task tracking) but NO display tokens — the
+     *                 human's local CLI runs in their terminal and
+     *                 can't render our chips.
+     *
+     * Defaults to "task" so existing task-side callers don't need
+     * to pass the flag.
      */
     sessionKind?: SessionSurfaceKind;
     appendOnboardingDirectives?: boolean;
@@ -404,14 +409,19 @@ export function composeSystemPromptAppend(
     extra?: string;
   } = {},
 ): string {
-  const isChat = options.sessionKind === "chat";
-  const lifecycleReminder = isChat
+  const usesChatLifecycle =
+    options.sessionKind === "chat" || options.sessionKind === "human_mcp";
+  const lifecycleReminder = usesChatLifecycle
     ? BEEVIBE_LIFECYCLE_REMINDER_CHAT
     : BEEVIBE_LIFECYCLE_REMINDER_TASK;
+  // CHAT_DIRECTIVES is the beevibe chat UI grammar — only fires for
+  // sessions actually rendered in our chat surface. human_mcp uses
+  // chat lifecycle but skips this block.
+  const isChatSurface = options.sessionKind === "chat";
   return [
     lifecycleReminder,
     BEEVIBE_MEMORY_REMINDER,
-    isChat ? CHAT_DIRECTIVES : "",
+    isChatSurface ? CHAT_DIRECTIVES : "",
     options.extra ?? "",
     agentSystemPromptAddition ?? "",
     briefingSystemPromptAppend,
