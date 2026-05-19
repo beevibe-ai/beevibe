@@ -759,7 +759,7 @@ function Composer({
             onClick={submit}
             disabled={isPending || draft.trim().length === 0}
             aria-label="Send"
-            className="h-9 w-9 inline-flex items-center justify-center rounded bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+            className="glassy-send h-9 w-9 inline-flex items-center justify-center rounded cursor-pointer"
           >
             {isPending ? (
               <Loader2 className="h-4 w-4 animate-spin" />

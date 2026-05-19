@@ -12,9 +12,7 @@ import {
   PanelLeftOpen,
   Users,
 } from "lucide-react";
-import { useAgents } from "@/lib/hooks/use-agents";
 import { useCollapsible } from "@/lib/hooks/use-collapsible";
-import { Avatar } from "./avatar";
 import { ConversationSidebar } from "./chat/conversation-sidebar";
 import { LiveStatusDot } from "./chat/live-panel";
 import { AgentsSidebar, RoomsSidebar, TasksAttentionSidebar } from "./mode-sidebars";
@@ -134,33 +132,22 @@ export function Sidebar() {
 }
 
 function NewChatButton({ onClick }: { onClick: () => void }) {
-  // Pinned-bottom global affordance — always one click (or ⌘O) away
-  // regardless of mode. Same role as Notion's "+ New chat ⌘O" pill.
-  // Uses the team-agent avatar leading icon so the button reads as
-  // "talk to your team", not a generic "create" — but at a size that
-  // doesn't dominate non-chat modes (tasks/agents/rooms) where the
-  // CTA is contextually secondary.
-  const agents = useAgents();
-  const teamAgent = agents.data?.find((a) => a.hierarchy !== "ic");
-  const initial = (teamAgent?.display_name ?? teamAgent?.name ?? "?").charAt(0).toUpperCase();
   return (
-    <div className="px-2 py-2 border-t border-border/60">
+    <div className="px-3 py-3 border-t border-border/60">
       <button
         type="button"
         onClick={onClick}
         title="New chat (⌘O)"
         aria-label="New chat (⌘O)"
-        className="w-full inline-flex items-center gap-2 h-8 pl-1.5 pr-2.5 rounded-full bg-secondary/40 hover:bg-secondary text-foreground text-[13px] font-medium transition-colors cursor-pointer"
+        className="pearl-button w-full"
       >
-        <Avatar
-          initial={initial}
-          kind={teamAgent?.hierarchy ?? "team"}
-          size={18}
-        />
-        <span className="flex-1 text-left">New chat</span>
-        <kbd className="text-[11px] font-mono text-muted-foreground/70 tabular-nums">
-          ⌘O
-        </kbd>
+        <div className="wrap">
+          <p>
+            <span>✧</span>
+            <span>✦</span>
+            New chat
+          </p>
+        </div>
       </button>
     </div>
   );
@@ -169,9 +156,12 @@ function NewChatButton({ onClick }: { onClick: () => void }) {
 function WorkspaceHeader({ onCollapse }: { onCollapse: () => void }) {
   return (
     <div className="flex items-center gap-2 h-12 px-3 mx-2 mt-2">
-      <div className="h-6 w-6 rounded-md bg-primary flex items-center justify-center shrink-0">
-        <span className="text-primary-foreground text-[13px] font-bold leading-none">b</span>
-      </div>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/logo.png"
+        alt="Beevibe"
+        className="h-6 w-6 rounded-md object-cover object-center shrink-0"
+      />
       <div className="flex-1 min-w-0">
         <div className="text-sm font-semibold tracking-tight leading-tight truncate">
           beevibe
@@ -268,7 +258,7 @@ function ModeStrip({ pathname }: { pathname: string }) {
               key={item.href}
               href={item.href}
               aria-current="page"
-              className="inline-flex items-center gap-1.5 h-8 pl-2 pr-3 rounded-full bg-secondary text-foreground text-sm font-medium transition-colors"
+              className="glassy-chip inline-flex items-center gap-1.5 h-8 pl-2.5 pr-3.5 rounded-full text-sm font-medium"
             >
               <item.icon className="h-4 w-4 shrink-0" />
               <span className="leading-none">{item.label}</span>

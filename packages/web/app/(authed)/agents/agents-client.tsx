@@ -86,10 +86,7 @@ export function AgentsClient() {
   );
 
   const { data, isLoading, isError } = useAgentNetwork();
-  const peers = data?.peers ?? [];
   const selfAgents = data?.self ?? [];
-
-  const panZoom = usePanZoom({ minScale: 0.4, maxScale: 2.5 });
 
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden bg-gradient-to-b from-background to-secondary/20">
@@ -109,79 +106,14 @@ export function AgentsClient() {
         />
       ) : isError ? (
         <CenteredShell icon={AlertTriangle} title="Couldn't load the network" />
+      ) : view === "list" ? (
+        <AgentsListView
+          agents={selfAgents}
+          onSelect={openAgent}
+          selectedAgentId={selectedAgentId}
+        />
       ) : (
-        <>
-          {view === "list" ? (
-            <AgentsListView
-              agents={selfAgents}
-              onSelect={openAgent}
-              selectedAgentId={selectedAgentId}
-            />
-          ) : (
-            <>
-              <GestureHint transform={panZoom.transform} />
-
-              {/* Pan/zoom container — captures wheel + pointer, transforms
-                  the inner world. Cursor hint reads as "draggable canvas". */}
-              <div
-                ref={panZoom.containerRef}
-                className="absolute inset-0 cursor-grab touch-none select-none"
-                // Touch-action none + select-none keep mobile pan from
-                // scrolling the page or selecting card text mid-drag.
-              >
-                <div
-                  className="absolute left-1/2 top-1/2"
-                  style={panZoom.style}
-                >
-                  {/* Self orbit anchored at world origin (0,0); the parent
-                      div is already centered via left-50%/top-50%, so a
-                      translate(-50%,-50%) on the orbit's wrapper keeps it
-                      visually centered when the canvas is at scale 1 with
-                      zero pan. */}
-                  <div
-                    className="absolute"
-                    style={{ left: 0, top: 0, transform: "translate(-50%, -50%)" }}
-                  >
-                    <TeamOrbit
-                      agents={data?.self}
-                      size="large"
-                      loading={isLoading}
-                      onSelect={openAgent}
-                    />
-                  </div>
-
-                  {peers.map((peer, i) => {
-                    const pos = satellitePosition(i, peers.length);
-                    return (
-                      <div
-                        key={peer.owner_id}
-                        className="absolute flex flex-col items-center"
-                        style={{
-                          left: `${pos.x}px`,
-                          top: `${pos.y}px`,
-                          transform: "translate(-50%, -50%)",
-                        }}
-                      >
-                        <TeamOrbit
-                          agents={peer.agents}
-                          size="satellite"
-                          onSelect={openAgent}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <CanvasControls
-                scale={panZoom.transform.scale}
-                onZoomIn={() => panZoom.zoomBy(1.25)}
-                onZoomOut={() => panZoom.zoomBy(0.8)}
-                onReset={panZoom.reset}
-              />
-            </>
-          )}
-        </>
+        <OrbitCanvas data={data} isLoading={isLoading} onSelect={openAgent} />
       )}
 
       {selectedAgentId ? (
@@ -189,6 +121,92 @@ export function AgentsClient() {
       ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * Orbit canvas — extracted so `usePanZoom` is only instantiated when
+ * orbit is the active view. Keeping the hook at the parent level meant
+ * its mount-time useEffects ran with `containerRef.current === null`
+ * (because the list was the default branch), so wheel/pointer handlers
+ * were never bound — making the canvas un-draggable until you forced a
+ * remount.
+ */
+function OrbitCanvas({
+  data,
+  isLoading,
+  onSelect,
+}: {
+  data: ReturnType<typeof useAgentNetwork>["data"];
+  isLoading: boolean;
+  onSelect: (agentId: string) => void;
+}) {
+  const panZoom = usePanZoom({ minScale: 0.4, maxScale: 2.5 });
+  const peers = data?.peers ?? [];
+
+  return (
+    <>
+      <GestureHint transform={panZoom.transform} />
+
+      {/* Pan/zoom container — captures wheel + pointer, transforms
+          the inner world. Cursor hint reads as "draggable canvas". */}
+      <div
+        ref={panZoom.containerRef}
+        className="absolute inset-0 cursor-grab touch-none select-none"
+        // Touch-action none + select-none keep mobile pan from
+        // scrolling the page or selecting card text mid-drag.
+      >
+        <div
+          className="absolute left-1/2 top-1/2"
+          style={panZoom.style}
+        >
+          {/* Self orbit anchored at world origin (0,0); the parent
+              div is already centered via left-50%/top-50%, so a
+              translate(-50%,-50%) on the orbit's wrapper keeps it
+              visually centered when the canvas is at scale 1 with
+              zero pan. */}
+          <div
+            className="absolute"
+            style={{ left: 0, top: 0, transform: "translate(-50%, -50%)" }}
+          >
+            <TeamOrbit
+              agents={data?.self}
+              size="large"
+              loading={isLoading}
+              onSelect={onSelect}
+            />
+          </div>
+
+          {peers.map((peer, i) => {
+            const pos = satellitePosition(i, peers.length);
+            return (
+              <div
+                key={peer.owner_id}
+                className="absolute flex flex-col items-center"
+                style={{
+                  left: `${pos.x}px`,
+                  top: `${pos.y}px`,
+                  transform: "translate(-50%, -50%)",
+                }}
+              >
+                <TeamOrbit
+                  agents={peer.agents}
+                  size="satellite"
+                  onSelect={onSelect}
+                />
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      <CanvasControls
+        scale={panZoom.transform.scale}
+        onZoomIn={() => panZoom.zoomBy(1.25)}
+        onZoomOut={() => panZoom.zoomBy(0.8)}
+        onReset={panZoom.reset}
+      />
+    </>
   );
 }
 
@@ -304,10 +322,10 @@ function ToggleButton({
       title={title}
       aria-pressed={active}
       className={
-        "h-7 px-2.5 inline-flex items-center gap-1.5 rounded-full text-xs font-medium transition-colors cursor-pointer " +
+        "h-7 px-2.5 inline-flex items-center gap-1.5 rounded-full text-xs font-medium cursor-pointer " +
         (active
-          ? "bg-secondary text-foreground"
-          : "text-muted-foreground hover:text-foreground hover:bg-secondary/60")
+          ? "glassy-chip"
+          : "text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors")
       }
     >
       {children}
