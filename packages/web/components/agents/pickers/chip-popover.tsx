@@ -89,7 +89,13 @@ export function ChipPopover({
           id={menuId}
           role="menu"
           className={cn(
-            "absolute top-full mt-1.5 z-50 min-w-[220px] max-w-[320px] rounded-md border border-border bg-popover shadow-lg py-1 text-sm",
+            "absolute top-full mt-1.5 z-50 min-w-[220px] max-w-[320px] rounded-md border border-border py-1 text-sm",
+            // bg-card resolves via Tailwind config; bg-popover is not
+            // wired (see tailwind.config.ts colors map) and renders
+            // transparent, which causes the rows below the chip to
+            // bleed through. Pair with shadow-xl so the popover reads
+            // as floating above the table, not inline with it.
+            "bg-card shadow-xl",
             align === "right" ? "right-0" : "left-0",
           )}
         >
