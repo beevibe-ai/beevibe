@@ -242,11 +242,16 @@ function CuratedCard({ entry }: { entry: BoostEntry }) {
   const owner = repoOwner(entry.repo_url);
   const draft = `Use ${entry.repo_url} to ${entry.example_goal}`;
   return (
+    // The Link covers the whole card via absolute inset-0; the GitHub
+    // `source ↗` link sits above it (z-10) as a sibling so it never
+    // nests an <a> inside another <a> and clicks route correctly.
     <div className="group relative rounded-lg border bg-card hover:bg-muted/50 transition-colors">
       <Link
         href={`/chat?new=1&draft=${encodeURIComponent(draft)}`}
-        className="block p-4 pb-3"
-      >
+        className="absolute inset-0 z-0"
+        aria-label={`Try ${name} in chat`}
+      />
+      <div className="relative p-4 pb-3 pointer-events-none">
         <p className="font-medium text-sm group-hover:text-foreground truncate">{name}</p>
         <p className="text-xs text-muted-foreground truncate">{owner}</p>
         <p className="text-xs text-muted-foreground/80 mt-2 line-clamp-2 italic">
@@ -262,8 +267,8 @@ function CuratedCard({ entry }: { entry: BoostEntry }) {
             </span>
           ))}
         </div>
-      </Link>
-      <div className="border-t px-4 py-2 flex items-center justify-between">
+      </div>
+      <div className="relative border-t px-4 py-2 flex items-center justify-between pointer-events-none">
         <span className="text-xs text-foreground/80 group-hover:text-foreground">
           Try in chat →
         </span>
@@ -271,8 +276,7 @@ function CuratedCard({ entry }: { entry: BoostEntry }) {
           href={entry.repo_url}
           target="_blank"
           rel="noopener noreferrer"
-          onClick={(e) => e.stopPropagation()}
-          className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+          className="pointer-events-auto relative z-10 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
         >
           source ↗
         </a>
