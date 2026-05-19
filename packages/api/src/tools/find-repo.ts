@@ -14,11 +14,17 @@
  *
  * Ranking tiers (additive scores; multiple sources stack):
  *   +50  learned_skill match (this team's own proven recipe)
+ *   +35  GitHub trending — appears in daily or weekly snapshot
+ *        (read from beevibe-ai/beevibe-capabilities, refreshed daily)
  *   +30  community registry match (proven by other Beevibe instances —
  *        promoted from skill_outcome, not hand-curated opinion)
- *   +25  GitHub trending — appears in daily or weekly snapshot
- *        (read from beevibe-ai/beevibe-capabilities, refreshed daily)
  *   +0   GitHub search hit, plus log10(stars+1)·3 popularity bonus
+ *
+ * Why trending sits above community: users explicitly want "trendy
+ * ones" surfaced first. The community registry has long-tail proof
+ * but tends toward stable, slow-moving repos; trending captures what
+ * the world is paying attention to right now, which is usually what
+ * a fresh "find me a tool" query is looking for.
  *
  * What used to be a "+20 curated boost-list" tier was removed —
  * pdfplumber, yt-dlp, FFmpeg etc. are already in every LLM's training
@@ -365,11 +371,11 @@ async function findRepoHandler(
 
   // ── Tier 5: GitHub trending (snapshot lookup, no per-candidate I/O) ─
   // Fetch the daily + weekly url sets once per call (TTL'd in the
-  // client), then check every existing candidate in O(1). Trending +25
-  // is the primary "this is the moment" signal now that the boost-list
-  // tier is gone. Sits below community (+30) which is for repos
-  // already proven across beevibe instances, but above raw GitHub
-  // popularity so a hot new repo can outrank a generic high-star match.
+  // client), then check every existing candidate in O(1). Trending +35
+  // is the dominant "this is the moment" signal, sitting above
+  // community (+30) per the user's explicit "prefer trendy ones"
+  // preference. A trending repo with even modest stars (+8 popularity)
+  // will outrank a community-only proof.
   try {
     const [daily, weekly] = await Promise.all([
       trending.urlSet("daily"),
@@ -378,7 +384,7 @@ async function findRepoHandler(
     for (const c of candidates.values()) {
       const key = normalizeUrl(c.repo_url);
       if (daily.has(key) || weekly.has(key)) {
-        c.score += 25;
+        c.score += 35;
         c.sources.push("trending");
       }
     }
@@ -490,13 +496,13 @@ function isFilteredOutContent(description: string | null | undefined): boolean {
 }
 
 function pickPrimarySource(sources: CandidateSource[]): CandidateSource {
-  // Trust order: this team's own proven recipes beat community-proven,
-  // which beats current trending velocity, which beats raw GitHub
-  // popularity. Trending is the primary surfacing signal for novel
-  // capabilities — exactly the gap a static curated list would miss.
+  // Trust order: learned > trending > community > github. The user's
+  // explicit preference is "prefer trendy ones", so trending wins the
+  // label when a candidate has both trending velocity and community
+  // proof — it's the more time-relevant signal for fresh queries.
   if (sources.includes("learned")) return "learned";
-  if (sources.includes("community")) return "community";
   if (sources.includes("trending")) return "trending";
+  if (sources.includes("community")) return "community";
   return "github";
 }
 

@@ -20,8 +20,8 @@ import {
  *
  * Four tiers (no curated boost list — removed as opinion-drift theater):
  *   learned   +50  this team's own proven recipe
+ *   trending  +35  on GitHub trending daily or weekly
  *   community +30  proven across other beevibe instances
- *   trending  +25  on GitHub trending daily or weekly
  *   github    ~0   raw search + popularity bonus
  */
 
@@ -181,7 +181,7 @@ describe("find_repo tool — tier behavior", () => {
     expect(candidates[0]!.score).toBe(30);
   });
 
-  it("trending match scores +25 and surfaces when no curated tier hits", async () => {
+  it("trending match scores +35 and surfaces when no curated tier hits", async () => {
     const tool = createFindRepoTool(
       { agentId: AGENT_ID },
       {
@@ -197,9 +197,9 @@ describe("find_repo tool — tier behavior", () => {
     expect(candidates).toHaveLength(1);
     expect(candidates[0]!.source).toBe("trending");
     expect(candidates[0]!.sources).toEqual(expect.arrayContaining(["github", "trending"]));
-    // +25 trending + popularityScore(500) ≈ +8 = ~33
-    expect(candidates[0]!.score).toBeGreaterThan(30);
-    expect(candidates[0]!.score).toBeLessThan(40);
+    // +35 trending + popularityScore(500) ≈ +8 = ~43
+    expect(candidates[0]!.score).toBeGreaterThan(40);
+    expect(candidates[0]!.score).toBeLessThan(50);
   });
 
   it("trending in weekly counts, monthly does NOT", async () => {
@@ -286,8 +286,8 @@ describe("find_repo tool — score stacking and precedence", () => {
       expect.arrayContaining(["learned", "community", "trending", "github"]),
     );
     expect(top.source).toBe("learned"); // precedence: highest wins
-    // 50 + 30 + 25 + ~11(popularity for 7000 stars) ≈ 116
-    expect(top.score).toBeGreaterThanOrEqual(100);
+    // 50 + 35 + 30 + ~11(popularity for 7000 stars) ≈ 126
+    expect(top.score).toBeGreaterThanOrEqual(110);
   });
 
   it("when only trending + github match, trending wins the source field", async () => {
