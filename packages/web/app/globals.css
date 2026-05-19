@@ -349,25 +349,24 @@
   .animate-toast-in { animation: none; }
 }
 
-/* Agent avatar glass — tiny frosted badges for the custom role marks.
-   Uses a shared treatment with per-hierarchy tint variables so team
-   agents pick up the primary theme color instead of the old purple. */
+/* Agent avatar glass — tiny frosted badges for the generated DiceBear
+   robot marks. Uses per-hierarchy tint variables so team agents pick
+   up the primary theme color. */
 .agent-avatar-glass {
   --agent-avatar-tint: var(--muted-foreground);
-  --agent-avatar-fg: var(--foreground);
   position: relative;
   isolation: isolate;
   overflow: hidden;
-  color: hsl(var(--agent-avatar-fg));
+  border-radius: 0.55rem;
   background:
     linear-gradient(
       145deg,
-      hsl(0 0% 100% / 0.7) 0%,
-      hsl(var(--agent-avatar-tint) / 0.18) 48%,
-      hsl(var(--card) / 0.32) 100%
+      hsl(0 0% 100% / 0.76) 0%,
+      hsl(var(--agent-avatar-tint) / 0.18) 52%,
+      hsl(var(--card) / 0.42) 100%
     ),
     hsl(var(--agent-avatar-tint) / 0.12);
-  border: 1px solid hsl(0 0% 100% / 0.68);
+  border: 1px solid hsl(0 0% 100% / 0.7);
   backdrop-filter: blur(12px) saturate(165%);
   -webkit-backdrop-filter: blur(12px) saturate(165%);
   box-shadow:
@@ -387,37 +386,41 @@
     hsl(0 0% 100% / 0)
   );
   pointer-events: none;
-  z-index: 0;
+  z-index: 2;
 }
-.agent-avatar-glass svg {
+.agent-avatar-glass-avatar {
   position: relative;
   z-index: 1;
-  filter: drop-shadow(0 1px 0 hsl(0 0% 100% / 0.46));
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: calc(0.55rem - 1px);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  filter: saturate(0.96) contrast(1.02) drop-shadow(0 1px 0 hsl(0 0% 100% / 0.34));
 }
 .agent-avatar-glass-ic {
-  --agent-avatar-tint: var(--hier-ic);
-  --agent-avatar-fg: var(--hier-ic);
+  --agent-avatar-tint: 211 70% 55%;
 }
 .agent-avatar-glass-team {
   --agent-avatar-tint: var(--primary);
-  --agent-avatar-fg: 36 72% 28%;
   background:
     linear-gradient(
       145deg,
-      hsl(0 0% 100% / 0.52) 0%,
-      hsl(var(--primary) / 0.34) 56%,
-      hsl(var(--card) / 0.18) 100%
+      hsl(50 100% 88% / 0.9) 0%,
+      hsl(var(--primary) / 0.42) 58%,
+      hsl(38 92% 46% / 0.18) 100%
     ),
-    hsl(var(--primary) / 0.3);
-  border-color: hsl(var(--primary) / 0.34);
+    hsl(var(--primary) / 0.26);
+  border-color: hsl(42 90% 42% / 0.38);
   box-shadow:
-    inset 0 0.16rem 0.32rem hsl(0 0% 100% / 0.5),
-    inset 0 -0.08rem 0.22rem hsl(var(--primary) / 0.14),
-    0 0.26rem 0.62rem hsl(var(--primary) / 0.14);
+    inset 0 0.16rem 0.32rem hsl(0 0% 100% / 0.56),
+    inset 0 -0.08rem 0.22rem hsl(35 90% 30% / 0.18),
+    0 0.26rem 0.62rem hsl(var(--primary) / 0.18);
 }
 .agent-avatar-glass-org {
-  --agent-avatar-tint: var(--hier-org);
-  --agent-avatar-fg: var(--hier-org);
+  --agent-avatar-tint: 32 92% 52%;
 }
 .dark .agent-avatar-glass {
   background:
@@ -435,16 +438,15 @@
     0 0.35rem 0.8rem hsl(0 0% 0% / 0.28);
 }
 .dark .agent-avatar-glass-team {
-  color: hsl(var(--agent-avatar-fg));
   background:
     linear-gradient(
       145deg,
-      hsl(0 0% 100% / 0.22) 0%,
-      hsl(var(--primary) / 0.48) 58%,
-      hsl(var(--card) / 0.26) 100%
+      hsl(50 100% 84% / 0.28) 0%,
+      hsl(var(--primary) / 0.46) 58%,
+      hsl(var(--card) / 0.28) 100%
     ),
-    hsl(var(--primary) / 0.38);
-  border-color: hsl(var(--primary) / 0.32);
+    hsl(var(--primary) / 0.28);
+  border-color: hsl(var(--primary) / 0.36);
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .agent-avatar-glass { background-color: hsl(var(--agent-avatar-tint) / 0.16); }
@@ -540,44 +542,64 @@
   cursor: not-allowed;
 }
 
-/* Cyber agent card — sci-fi treatment for orbit-canvas nodes.
-   Adapted from Uiverse by hpaccol. 3D tilt is driven by a React
-   mousemove handler (cleaner than the 25-tracker grid in the
-   original — fewer DOM nodes when the orbit has many cards).
-   Light mode: cool blue-gray body, purple corner brackets,
-   teal-to-cobalt title gradient. Dark mode: near-black body with
-   the original neon cyan/blue accents. */
+/* Cyber agent card — compact system card for orbit-canvas nodes.
+   The palette follows Beevibe's honey primary with blue/slate support
+   colors. */
 .cyber-card {
+  --cyber-edge: hsl(var(--primary) / 0.5);
+  --cyber-edge-strong: hsl(var(--primary) / 0.86);
+  --cyber-blue: 96 165 250;
+  --cyber-text: hsl(224 24% 17%);
+  --cyber-muted: hsl(218 16% 42%);
+  --cyber-title-start: hsl(38 92% 32%);
+  --cyber-title-end: hsl(211 78% 42%);
   position: relative;
   border-radius: 14px;
-  background: linear-gradient(135deg, #f4f6fa, #e3e9f1);
-  border: 1.5px solid rgba(92, 103, 255, 0.18);
+  background:
+    radial-gradient(circle at 14% 12%, hsl(var(--primary) / 0.22), transparent 34%),
+    radial-gradient(circle at 85% 78%, hsl(var(--cyber-blue) / 0.18), transparent 42%),
+    linear-gradient(135deg, hsl(40 25% 97% / 0.98), hsl(213 22% 91% / 0.94));
+  border: 1.5px solid hsl(var(--primary) / 0.22);
   overflow: hidden;
-  color: hsl(240, 10%, 18%);
+  color: var(--cyber-text);
   box-shadow:
-    0 4px 16px rgba(92, 103, 255, 0.10),
-    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+    0 10px 24px hsl(220 28% 30% / 0.12),
+    inset 0 1px 0 hsl(0 0% 100% / 0.72),
+    inset 0 -1px 0 hsl(var(--primary) / 0.1);
   transition: transform 150ms ease-out, box-shadow 300ms, filter 300ms;
   transform-style: preserve-3d;
 }
 .cyber-card:hover {
   box-shadow:
-    0 6px 22px rgba(92, 103, 255, 0.18),
-    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+    0 14px 30px hsl(220 28% 30% / 0.16),
+    0 0 18px hsl(var(--primary) / 0.16),
+    inset 0 1px 0 hsl(0 0% 100% / 0.82);
 }
 .dark .cyber-card {
-  background: linear-gradient(45deg, #1a1a1a, #262626);
-  border: 1.5px solid rgba(255, 255, 255, 0.08);
-  color: rgba(255, 255, 255, 0.85);
+  --cyber-edge: hsl(var(--primary) / 0.42);
+  --cyber-edge-strong: hsl(var(--primary) / 0.9);
+  --cyber-blue: 59 130 246;
+  --cyber-text: hsl(0 0% 98% / 0.88);
+  --cyber-muted: hsl(220 14% 72% / 0.68);
+  --cyber-title-start: hsl(var(--primary));
+  --cyber-title-end: hsl(205 90% 72%);
+  background:
+    radial-gradient(circle at 14% 12%, hsl(var(--primary) / 0.14), transparent 34%),
+    radial-gradient(circle at 85% 80%, hsl(var(--cyber-blue) / 0.14), transparent 42%),
+    linear-gradient(145deg, hsl(220 18% 15% / 0.96), hsl(220 16% 9% / 0.96));
+  border: 1.5px solid hsl(var(--primary) / 0.18);
+  color: var(--cyber-text);
   box-shadow:
-    0 0 20px rgba(0, 0, 0, 0.35),
-    inset 0 0 20px rgba(0, 0, 0, 0.2);
+    0 16px 30px hsl(0 0% 0% / 0.36),
+    inset 0 1px 0 hsl(0 0% 100% / 0.08),
+    inset 0 0 20px hsl(0 0% 0% / 0.16);
 }
 .dark .cyber-card:hover {
-  filter: brightness(1.12);
+  filter: brightness(1.08);
   box-shadow:
-    0 0 20px rgba(0, 0, 0, 0.35),
-    inset 0 0 20px rgba(0, 0, 0, 0.2);
+    0 16px 30px hsl(0 0% 0% / 0.38),
+    0 0 20px hsl(var(--primary) / 0.12),
+    inset 0 1px 0 hsl(0 0% 100% / 0.1);
 }
 .cyber-card::before {
   content: "";
@@ -585,8 +607,8 @@
   inset: -25%;
   background: radial-gradient(
     circle at center,
-    rgba(92, 103, 255, 0.18) 0%,
-    rgba(0, 162, 255, 0.08) 50%,
+    hsl(var(--primary) / 0.22) 0%,
+    hsl(var(--cyber-blue) / 0.1) 50%,
     transparent 100%
   );
   filter: blur(20px);
@@ -600,8 +622,8 @@
 .dark .cyber-card::before {
   background: radial-gradient(
     circle at center,
-    rgba(0, 255, 170, 0.15) 0%,
-    rgba(0, 162, 255, 0.08) 50%,
+    hsl(var(--primary) / 0.15) 0%,
+    hsl(var(--cyber-blue) / 0.1) 50%,
     transparent 100%
   );
 }
@@ -627,9 +649,9 @@
   background: linear-gradient(
     125deg,
     rgba(255, 255, 255, 0) 0%,
-    rgba(255, 255, 255, 0.05) 45%,
-    rgba(255, 255, 255, 0.12) 50%,
-    rgba(255, 255, 255, 0.05) 55%,
+    rgba(255, 255, 255, 0.04) 45%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.04) 55%,
     rgba(255, 255, 255, 0) 100%
   );
 }
@@ -640,20 +662,20 @@
   position: absolute;
   width: 10px;
   height: 10px;
-  border: 1.5px solid rgba(92, 103, 255, 0.55);
+  border: 1.5px solid var(--cyber-edge);
   transition: border-color 0.3s ease, box-shadow 0.3s ease;
   pointer-events: none;
 }
 .cyber-card:hover .cyber-corners span {
-  border-color: rgba(92, 103, 255, 1);
-  box-shadow: 0 0 8px rgba(92, 103, 255, 0.5);
+  border-color: var(--cyber-edge-strong);
+  box-shadow: 0 0 8px hsl(var(--primary) / 0.36);
 }
 .dark .cyber-card .cyber-corners span {
-  border-color: rgba(92, 103, 255, 0.45);
+  border-color: var(--cyber-edge);
 }
 .dark .cyber-card:hover .cyber-corners span {
-  border-color: rgba(92, 103, 255, 0.95);
-  box-shadow: 0 0 8px rgba(92, 103, 255, 0.5);
+  border-color: var(--cyber-edge-strong);
+  box-shadow: 0 0 8px hsl(var(--primary) / 0.36);
 }
 .cyber-card .cyber-corners span:nth-child(1) {
   top: 6px;
@@ -685,7 +707,7 @@
   background: linear-gradient(
     to bottom,
     transparent,
-    rgba(92, 103, 255, 0.14),
+    hsl(var(--primary) / 0.12),
     transparent
   );
   transform: translateY(-100%);
@@ -699,7 +721,7 @@
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(92, 103, 255, 0.5),
+    hsl(var(--cyber-blue) / 0.34),
     transparent
   );
 }
@@ -707,7 +729,7 @@
   background: linear-gradient(
     90deg,
     transparent,
-    rgba(92, 103, 255, 0.35),
+    hsl(var(--cyber-blue) / 0.32),
     transparent
   );
 }
@@ -728,13 +750,13 @@
   animation: cyber-line 4s linear infinite 2s;
 }
 .cyber-card .cyber-title {
-  background: linear-gradient(45deg, #00997a, #0066cc);
+  background: linear-gradient(45deg, var(--cyber-title-start), var(--cyber-title-end));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 .dark .cyber-card .cyber-title {
-  background: linear-gradient(45deg, #00ffaa, #00a2ff);
+  background: linear-gradient(45deg, var(--cyber-title-start), var(--cyber-title-end));
   -webkit-background-clip: text;
   background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -743,20 +765,20 @@
    cyber backgrounds. The accent variant is used for the right-side
    stats so they pop slightly against the muted body text. */
 .cyber-card .cyber-badge {
-  color: rgba(0, 90, 180, 0.85);
+  color: hsl(38 92% 34%);
 }
 .cyber-card .cyber-footer {
-  color: hsl(220, 12%, 38%);
+  color: var(--cyber-muted);
 }
 .cyber-card .cyber-footer-accent {
-  color: rgba(0, 90, 180, 0.9);
+  color: hsl(211 78% 38%);
 }
 .dark .cyber-card .cyber-badge,
 .dark .cyber-card .cyber-footer-accent {
-  color: rgba(103, 232, 249, 0.7);
+  color: hsl(var(--primary) / 0.76);
 }
 .dark .cyber-card .cyber-footer {
-  color: rgba(255, 255, 255, 0.55);
+  color: var(--cyber-muted);
 }
 @keyframes cyber-scan {
   0% { transform: translateY(-100%); }
