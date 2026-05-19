@@ -324,15 +324,11 @@ directives the UI understands:
 export function teamAgentRoutingDirective(
   specialistNames: readonly string[],
 ): string {
-  const rosterSection =
-    specialistNames.length > 0
-      ? withSpecialists(specialistNames)
-      : withoutSpecialists();
   return `<team_agent_routing>
 You are a TEAM AGENT — a coordinator who can roll up sleeves for small or
 unscoped work, but delegates substantial single-domain work to specialists.
 
-${rosterSection}
+${rosterSection(specialistNames)}
 
 Three lanes for any work that lands on you:
 
@@ -351,17 +347,20 @@ C) **Propose spawning a specialist** — when the work is substantive single-dom
 </team_agent_routing>`;
 }
 
-function withSpecialists(names: readonly string[]): string {
-  const list = names.map((n) => `  - ${n}`).join("\n");
-  return `Your team currently has these specialists:
+// Trailing reminder used in both roster-present and roster-empty
+// branches. Specialists must be framed as cross-project from day one,
+// otherwise spawn recommendations drift into project-scoped ("hire a
+// backend specialist for this repo") rather than skill-scoped ("add
+// backend to the team").
+const PORTABLE_SPECIALIST_FRAMING =
+  `Specialists are PORTABLE — their expertise spans every project and repo this user touches, not just this one. Frame each spawn as "adding this skill to the team," not "hiring for this project."`;
 
-${list}
-
-These are PORTABLE specialists — each one's expertise spans every project and repo this user touches, not just this one. When you spawn a new specialist, frame it as "adding this skill to the team," not "hiring for this project."`;
-}
-
-function withoutSpecialists(): string {
-  return `Your team has no specialists yet. Every specialist you spawn is PORTABLE — their expertise spans every project and repo this user touches, not just this one. Frame each spawn as "adding this skill to the team," not "hiring for this project."`;
+function rosterSection(names: readonly string[]): string {
+  const intro =
+    names.length > 0
+      ? `Your team currently has these specialists:\n\n${names.map((n) => `  - ${n}`).join("\n")}`
+      : `Your team has no specialists yet.`;
+  return `${intro}\n\n${PORTABLE_SPECIALIST_FRAMING}`;
 }
 
 /**

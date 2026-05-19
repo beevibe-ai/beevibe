@@ -480,10 +480,8 @@ async function composeDispatchPayload(
       ? deps.agentRepo.findSubordinates(agent.id)
       : Promise.resolve([]),
   ]);
-  // Team-agent routing is universal across chat AND task sessions for
-  // team-tier agents — the three-lane rubric (handle / delegate / spawn)
-  // doesn't depend on surface. Suppressed during onboarding so the
-  // wizard directives drive the build-your-team conversation themselves.
+  // Routing is suppressed during onboarding so the wizard directives
+  // drive the build-your-team conversation themselves.
   const isOnboarding = isChat && !owner?.onboarding_completed_at;
   const teamRouting =
     isTeamAgent && !isOnboarding
