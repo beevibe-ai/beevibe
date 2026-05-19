@@ -140,12 +140,20 @@ function AgentIconMark({
     >
       {variant === "team" ? (
         <>
-          <circle cx="12" cy="12" r="3.2" fill="currentColor" stroke="none" opacity="0.2" />
-          <circle cx="12" cy="12" r="2.2" fill="currentColor" stroke="none" />
-          <circle cx="7" cy="7.4" r="1.8" />
-          <circle cx="17" cy="7.4" r="1.8" />
-          <circle cx="12" cy="18" r="1.8" />
-          <path d="M8.4 8.8 10.3 10.4M15.6 8.8 13.7 10.4M12 15.2v1" />
+          <path
+            d="M8.8 10.8c-2.1-1.2-4.1-.3-4.4 1.5-.3 1.9 1.6 3.1 3.6 2.1"
+            fill="currentColor"
+            opacity="0.14"
+          />
+          <path
+            d="M15.2 10.8c2.1-1.2 4.1-.3 4.4 1.5.3 1.9-1.6 3.1-3.6 2.1"
+            fill="currentColor"
+            opacity="0.14"
+          />
+          <path d="M8.7 12.7c0-2.6 1.3-4.6 3.3-4.6s3.3 2 3.3 4.6-1.3 4.8-3.3 4.8-3.3-2.2-3.3-4.8Z" />
+          <path d="M9.4 11h5.2M9.3 13.3h5.4M10.2 15.4h3.6" />
+          <circle cx="12" cy="6.3" r="1.45" fill="currentColor" stroke="none" />
+          <path d="M11 5.2 9.8 3.8M13 5.2l1.2-1.4M10.8 8l-1 1.1M13.2 8l1 1.1" />
         </>
       ) : variant === "org" ? (
         <>

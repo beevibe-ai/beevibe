@@ -404,12 +404,16 @@
   background:
     linear-gradient(
       145deg,
-      hsl(0 0% 100% / 0.74) 0%,
-      hsl(var(--primary) / 0.56) 54%,
-      hsl(var(--primary) / 0.34) 100%
+      hsl(0 0% 100% / 0.52) 0%,
+      hsl(var(--primary) / 0.34) 56%,
+      hsl(var(--card) / 0.18) 100%
     ),
-    hsl(var(--primary) / 0.52);
-  border-color: hsl(0 0% 100% / 0.76);
+    hsl(var(--primary) / 0.3);
+  border-color: hsl(var(--primary) / 0.34);
+  box-shadow:
+    inset 0 0.16rem 0.32rem hsl(0 0% 100% / 0.5),
+    inset 0 -0.08rem 0.22rem hsl(var(--primary) / 0.14),
+    0 0.26rem 0.62rem hsl(var(--primary) / 0.14);
 }
 .agent-avatar-glass-org {
   --agent-avatar-tint: var(--hier-org);
@@ -435,29 +439,27 @@
   background:
     linear-gradient(
       145deg,
-      hsl(0 0% 100% / 0.34) 0%,
-      hsl(var(--primary) / 0.68) 56%,
-      hsl(var(--primary) / 0.42) 100%
+      hsl(0 0% 100% / 0.22) 0%,
+      hsl(var(--primary) / 0.48) 58%,
+      hsl(var(--card) / 0.26) 100%
     ),
-    hsl(var(--primary) / 0.58);
+    hsl(var(--primary) / 0.38);
+  border-color: hsl(var(--primary) / 0.32);
 }
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
   .agent-avatar-glass { background-color: hsl(var(--agent-avatar-tint) / 0.16); }
-  .agent-avatar-glass-team { background-color: hsl(var(--primary) / 0.64); }
+  .agent-avatar-glass-team { background-color: hsl(var(--primary) / 0.42); }
 }
 
-/* Orbit map depth — the caller's own team sits on a subtle raised
-   glass plinth while peer teams recede onto a lower plane. The surface
-   is intentionally soft so the graph remains the main object. */
+/* Orbit map focus — keep a soft primary glow behind the caller's own
+   team without turning the canvas into a literal stacked 3D model. */
 .network-orbit-layer {
   position: absolute;
-  transform-style: preserve-3d;
 }
 .network-orbit-layer-self {
   z-index: 20;
 }
-.network-orbit-layer-self::before,
-.network-orbit-layer-self::after {
+.network-orbit-layer-self::before {
   content: "";
   position: absolute;
   left: 50%;
@@ -465,60 +467,18 @@
   border-radius: 9999px;
   pointer-events: none;
   transform: translate(-50%, -50%);
-}
-.network-orbit-layer-self::before {
-  width: min(920px, 96vw);
-  height: min(920px, 96vw);
-  background:
-    radial-gradient(circle at 50% 42%, hsl(var(--primary) / 0.1), transparent 38%),
-    radial-gradient(circle, hsl(var(--card) / 0.34), hsl(var(--card) / 0.08) 58%, transparent 72%);
-  border: 1px solid hsl(0 0% 100% / 0.08);
-  backdrop-filter: blur(18px) saturate(150%);
-  -webkit-backdrop-filter: blur(18px) saturate(150%);
-  box-shadow:
-    inset 0 1px 0 hsl(0 0% 100% / 0.08),
-    0 42px 110px hsl(0 0% 0% / 0.34);
-  z-index: -2;
-}
-.network-orbit-layer-self::after {
   width: min(760px, 82vw);
   height: min(760px, 82vw);
-  background: radial-gradient(circle, hsl(var(--primary) / 0.12), transparent 66%);
-  filter: blur(26px);
+  background: radial-gradient(circle, hsl(var(--primary) / 0.16), transparent 68%);
+  filter: blur(30px);
   opacity: 0.72;
-  z-index: -3;
+  z-index: -2;
 }
 .network-orbit-layer-peer {
   z-index: 4;
-  opacity: 0.78;
-  filter: saturate(0.72) brightness(0.82);
-}
-.network-orbit-layer-peer::before {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 420px;
-  height: 420px;
-  border-radius: 9999px;
-  pointer-events: none;
-  transform: translate(-50%, -50%);
-  background: radial-gradient(circle, hsl(var(--card) / 0.12), transparent 70%);
-  filter: blur(18px);
-  z-index: -2;
 }
 .dark .network-orbit-layer-self::before {
-  background:
-    radial-gradient(circle at 50% 42%, hsl(var(--primary) / 0.12), transparent 38%),
-    radial-gradient(circle, hsl(var(--card) / 0.26), hsl(var(--card) / 0.06) 58%, transparent 72%);
-  box-shadow:
-    inset 0 1px 0 hsl(0 0% 100% / 0.07),
-    0 48px 120px hsl(0 0% 0% / 0.46);
-}
-@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .network-orbit-layer-self::before {
-    background: radial-gradient(circle, hsl(var(--card) / 0.16), transparent 72%);
-  }
+  background: radial-gradient(circle, hsl(var(--primary) / 0.18), transparent 68%);
 }
 
 /* Glassy chip — scaled-down pearl for the active sidebar tab. Same
