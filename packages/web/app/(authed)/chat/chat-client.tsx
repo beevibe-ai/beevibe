@@ -94,18 +94,29 @@ export function ChatClient() {
     }
   }, [isFresh, messages.length, isSubmitting, searchParams, router]);
 
-  // `?draft=<text>` seeds the input — used by the Capabilities page to send
-  // the user into chat with a starter prompt already filled in. Consumed
-  // once on first mount of a fresh chat; we then drop the param so reloads
-  // don't re-prefill an input the user may have intentionally cleared.
+  // `?draft=<text>` seeds the input — used by the Capabilities page and
+  // by the blocked-task banner to drop the user into chat with a
+  // pre-written message. `?send=1` additionally auto-submits the seeded
+  // draft on mount so chip-style quick replies skip the "type and press
+  // enter" step entirely. Both params are consumed once and stripped
+  // from the URL so reloads don't repeat the auto-send.
   const draftSeed = searchParams?.get("draft");
+  const autoSend = searchParams?.get("send") === "1";
   useEffect(() => {
     if (!draftSeed) return;
     setDraft(draftSeed);
     const sp = new URLSearchParams(searchParams?.toString() ?? "");
     sp.delete("draft");
+    sp.delete("send");
     const qs = sp.toString();
     router.replace(qs ? `/chat?${qs}` : "/chat");
+    if (autoSend && draftSeed.trim().length > 0) {
+      // Fire on next tick so React Query / chat send wiring is settled.
+      const id = setTimeout(() => {
+        submit(draftSeed);
+      }, 0);
+      return () => clearTimeout(id);
+    }
     // Run once per draftSeed value; intentionally narrow deps.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [draftSeed]);

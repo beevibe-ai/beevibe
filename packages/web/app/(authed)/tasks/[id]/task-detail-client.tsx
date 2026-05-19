@@ -371,34 +371,82 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
  * unblock the child — the same path the autonomous mesh.reportBlocker
  * spawn would have taken, just now informed by the user's input.
  */
+/**
+ * Try to extract trailing answer options from a blocker_reason —
+ * numbered ("1. yes\n2. no") or bulleted ("- yes\n- no") lists are
+ * common patterns when an agent calls report_blocker with multiple
+ * choices. We split each match into a short `label` (for the chip)
+ * and the full `option` text (for the outbound message).
+ *
+ * Returns [] when nothing list-shaped is found at the tail; the
+ * banner then falls back to its free-form "Reply →" + "Cancel" chips.
+ * Capped at 4 to match the runtime's existing `<suggest_action>`
+ * convention.
+ */
+function parseBlockerOptions(reason: string | undefined): Array<{ label: string; option: string }> {
+  if (!reason) return [];
+  const lines = reason.split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+  const out: Array<{ label: string; option: string }> = [];
+  // Walk from the bottom up — options always sit at the tail.
+  for (let i = lines.length - 1; i >= 0 && out.length < 4; i--) {
+    const line = lines[i]!;
+    const numbered = line.match(/^\s*(?:\d+[.)]\s+|[-*•]\s+)(.+)$/);
+    if (!numbered || !numbered[1]) break; // run ended
+    const text = numbered[1].trim();
+    // Drop trailing markdown emphasis around the label (**bold**).
+    const cleaned = text.replace(/^\*\*(.+)\*\*$/, "$1");
+    // First sentence / clause for the chip label; full text gets sent.
+    const labelEnd = cleaned.search(/[.—–:]/);
+    const label = (labelEnd === -1 ? cleaned : cleaned.slice(0, labelEnd)).trim().slice(0, 64);
+    out.unshift({ label, option: cleaned });
+  }
+  return out.length >= 2 ? out : [];
+}
+
 function BlockedReplyBanner({ task }: { task: TaskDetail }) {
-  // Prefill is intentionally minimal — just the full task id so the
-  // team agent (and the UI's id-hydration directive) can resolve the
-  // context automatically. The blocker_reason is already rendered in
-  // THIS banner; dumping it into the textarea makes the user scroll
-  // through what they just read.
-  const draft = `Reply to ${task.id}: `;
-  const replyHref = `/chat?new=1&draft=${encodeURIComponent(draft)}`;
+  const blocker = task.blocker_reason ?? "";
+  const options = parseBlockerOptions(blocker);
+
+  // Each chip click drops the user into chat with a one-line reply
+  // already drafted AND auto-sent. The chat client reads the `send=1`
+  // param and submits on mount. The team agent dereferences the task
+  // id from the message, fetches the blocker context, and routes the
+  // answer back to the blocked specialist via revise_task.
+  const chipHref = (option: string) => {
+    const draft = `Reply to ${task.id}: ${option}`;
+    return `/chat?new=1&send=1&draft=${encodeURIComponent(draft)}`;
+  };
+  const freeFormHref = `/chat?new=1&draft=${encodeURIComponent(`Reply to ${task.id}: `)}`;
 
   return (
     <section className="mb-6 rounded-lg border border-status-blocked/40 bg-status-blocked/5 p-4">
-      <div className="flex items-center justify-between gap-3 mb-3">
-        <div className="flex items-center gap-2">
-          <AlertTriangle className="h-3.5 w-3.5 text-status-blocked" />
-          <h3 className="text-[11px] uppercase tracking-wider text-status-blocked font-medium">
-            Blocked — agent is asking you something
-          </h3>
-        </div>
-        <Link
-          href={replyHref}
-          className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium bg-status-blocked/15 text-status-blocked hover:bg-status-blocked/25 transition-colors cursor-pointer shrink-0"
-        >
-          <MessageSquare className="h-3 w-3" />
-          Reply to agent →
-        </Link>
+      <div className="flex items-center gap-2 mb-3">
+        <AlertTriangle className="h-3.5 w-3.5 text-status-blocked" />
+        <h3 className="text-[11px] uppercase tracking-wider text-status-blocked font-medium">
+          Blocked — agent is asking you something
+        </h3>
       </div>
       <div className="text-sm text-foreground/90">
-        <ChatMarkdown content={task.blocker_reason ?? ""} />
+        <ChatMarkdown content={blocker} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {options.map((opt) => (
+          <Link
+            key={opt.option}
+            href={chipHref(opt.option)}
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium bg-status-blocked/15 text-status-blocked hover:bg-status-blocked/25 transition-colors cursor-pointer"
+            title={opt.option}
+          >
+            {opt.label}
+          </Link>
+        ))}
+        <Link
+          href={freeFormHref}
+          className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium text-status-blocked/80 hover:text-status-blocked hover:bg-status-blocked/10 transition-colors cursor-pointer"
+        >
+          <MessageSquare className="h-3 w-3" />
+          {options.length > 0 ? "Or reply in chat →" : "Reply in chat →"}
+        </Link>
       </div>
     </section>
   );
