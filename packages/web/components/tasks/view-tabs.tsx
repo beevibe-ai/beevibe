@@ -4,6 +4,7 @@ import { useRef } from "react";
 import { Archive, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSlashFocus } from "@/lib/hooks/use-slash-focus";
+import { PageHeader } from "@/components/page-header";
 
 // Header for /tasks. The earlier strip had "All tasks / My tasks"
 // tabs but "My tasks" was a placebo — the backend treated mine = all,
@@ -32,25 +33,21 @@ export function ViewTabs({
   onToggleArchived,
 }: Props) {
   return (
-    <div className="flex items-center gap-3 px-6 pt-5 pb-4 border-b border-border/60">
-      <h1 className="text-base font-semibold tracking-tight leading-none">Tasks</h1>
-      <p className="text-xs text-muted-foreground leading-none flex-1 min-w-0 truncate">
-        Work the team is moving through, grouped by status.
-      </p>
-
-      <div className="shrink-0 flex items-center gap-2">
-        {/* Archive toggle — always rendered so the affordance is
-            discoverable even when there's nothing archived yet. Failed
-            and cancelled tasks would otherwise dominate Done, so they're
-            hidden by default behind this toggle. */}
-        <ArchiveToggle
-          count={archivedCount}
-          showing={showArchived}
-          onToggle={onToggleArchived}
-        />
-        <SearchBox query={query} onChange={onQueryChange} onFocus={onSearch} />
-      </div>
-    </div>
+    <PageHeader
+      title="Tasks"
+      subtitle="Work the team is moving through, grouped by status."
+    >
+      {/* Archive toggle — always rendered so the affordance is
+          discoverable even when there's nothing archived yet. Failed
+          and cancelled tasks would otherwise dominate Done, so they're
+          hidden by default behind this toggle. */}
+      <ArchiveToggle
+        count={archivedCount}
+        showing={showArchived}
+        onToggle={onToggleArchived}
+      />
+      <SearchBox query={query} onChange={onQueryChange} onFocus={onSearch} />
+    </PageHeader>
   );
 }
 

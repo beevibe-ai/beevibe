@@ -1,21 +1,24 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, AlertTriangle, Bot, Archive } from "lucide-react";
 import { useAgent } from "@/lib/hooks/use-agents";
 import { useIsOwner, useMe } from "@/lib/hooks/use-me";
 import { isApiConfigured } from "@/lib/api/config";
 import { formatReviewPolicy } from "@/lib/format";
-import { api, type RuntimesListResponse } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/hooks/keys";
 import { Avatar } from "@/components/avatar";
 import { CliMcpInstructions } from "@/components/cli-mcp-instructions";
 import { HierChip } from "@/components/hier-chip";
 import { CoreBlockCard } from "@/components/agents/core-block-card";
 import { RecentSessionRow } from "@/components/agents/recent-session-row";
+import { RuntimePicker } from "@/components/agents/pickers/runtime-picker";
+import { ModelPicker } from "@/components/agents/pickers/model-picker";
+import { ReviewPolicyPicker } from "@/components/agents/pickers/review-policy-picker";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
@@ -24,7 +27,6 @@ import { FooterField } from "@/components/detail/footer-field";
 import { Metric } from "@/components/detail/metric";
 import { cn } from "@/lib/utils";
 import type { AgentDetail } from "@/lib/api/types";
-import type { ReviewPolicy } from "@beevibe/core";
 
 const AgentsBackLink = () => (
   <Link
@@ -283,243 +285,5 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         ) : null}
       </footer>
     </DetailShell>
-  );
-}
-
-// Common Claude model aliases the CLI accepts. Users can also pick "Other"
-// to type a pinned model ID (e.g. claude-opus-4-7). The empty-string sentinel
-// represents "CLI default" — clears `runtime_config.model` server-side.
-const MODEL_PRESETS: ReadonlyArray<{ value: string; label: string }> = [
-  { value: "", label: "CLI default (recommended)" },
-  { value: "opus", label: "opus" },
-  { value: "sonnet", label: "sonnet" },
-  { value: "haiku", label: "haiku" },
-];
-
-function ModelPicker({ agent }: { agent: AgentDetail }) {
-  const queryClient = useQueryClient();
-  const current = agent.model ?? "";
-  const isPreset = MODEL_PRESETS.some((p) => p.value === current);
-  // Lazy initializers so we don't recompute MODEL_PRESETS.some on every
-  // render — useState only consumes the seed on mount.
-  const [customMode, setCustomMode] = useState(() => !isPreset && current !== "");
-  const [customValue, setCustomValue] = useState(() => (isPreset ? "" : current));
-
-  // Resync local state when agent.model changes underneath us (SSE refresh,
-  // user navigates to a different agent without unmounting, etc.). Without
-  // this, the custom-input field would show stale text after an external
-  // update.
-  useEffect(() => {
-    const nextIsPreset = MODEL_PRESETS.some((p) => p.value === current);
-    setCustomMode(!nextIsPreset && current !== "");
-    setCustomValue(nextIsPreset ? "" : current);
-  }, [current]);
-
-  const mutation = useMutation({
-    mutationFn: (model: string | null) => api.agents.setModel(agent.id, model),
-    onSuccess: () => {
-      // Targeted invalidation — only this agent's detail. Was previously
-      // queryKeys.agents.all which refetches every agent list across the
-      // app, which is unnecessary for a per-agent model change.
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.agents.detail(agent.id),
-      });
-    },
-  });
-
-  return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
-        Model
-      </h3>
-      <select
-        value={customMode ? "__custom" : current}
-        disabled={mutation.isPending}
-        onChange={(e) => {
-          const v = e.target.value;
-          if (v === "__custom") {
-            setCustomMode(true);
-            return;
-          }
-          setCustomMode(false);
-          // "" means CLI default → null clears the field server-side.
-          mutation.mutate(v === "" ? null : v);
-        }}
-        className="w-full text-sm rounded border border-border bg-background px-2 py-1.5 cursor-pointer disabled:opacity-50"
-      >
-        {MODEL_PRESETS.map((p) => (
-          <option key={p.value || "__default"} value={p.value}>
-            {p.label}
-          </option>
-        ))}
-        <option value="__custom">Other (pinned model ID)…</option>
-      </select>
-      {customMode ? (
-        <form
-          className="mt-2 flex gap-1"
-          onSubmit={(e) => {
-            e.preventDefault();
-            const v = customValue.trim();
-            if (v) mutation.mutate(v);
-          }}
-        >
-          <input
-            type="text"
-            value={customValue}
-            onChange={(e) => setCustomValue(e.target.value)}
-            placeholder="e.g. claude-opus-4-7"
-            className="flex-1 text-sm rounded border border-border bg-background px-2 py-1.5"
-          />
-          <button
-            type="submit"
-            disabled={mutation.isPending || !customValue.trim()}
-            className="h-7 px-3 rounded text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50"
-          >
-            Set
-          </button>
-        </form>
-      ) : null}
-      {mutation.isError ? (
-        <p className="text-xs text-destructive mt-1.5">
-          Couldn&apos;t update model.
-        </p>
-      ) : null}
-      <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
-        Model alias passed to the CLI via <span className="font-mono">--model</span>.
-        Leave on &quot;CLI default&quot; to inherit whatever you&apos;ve
-        configured in <span className="font-mono">~/.claude</span>.
-      </p>
-    </section>
-  );
-}
-
-function ReviewPolicyPicker({ agent }: { agent: AgentDetail }) {
-  const queryClient = useQueryClient();
-  // Legacy agents (provisioned before this column had a default) carry
-  // review_policy=null; behaviorally that's identical to 'auto_done' in
-  // TaskService, so render it that way too.
-  const current: ReviewPolicy =
-    agent.review_policy === "require_human" ? "require_human" : "auto_done";
-  const mutation = useMutation({
-    mutationFn: (policy: ReviewPolicy) => api.agents.setReviewPolicy(agent.id, policy),
-    // Invalidate all agent queries: the list view's AgentDisplay also
-    // carries review_policy, so a single agent's flip can affect
-    // /agents cards + the peek panel, not just this detail page.
-    // Mirrors RuntimePicker's invalidation scope.
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
-    },
-  });
-
-  return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
-        Review policy
-      </h3>
-      <select
-        value={current}
-        disabled={mutation.isPending}
-        onChange={(e) => mutation.mutate(e.target.value as ReviewPolicy)}
-        className="w-full text-sm rounded border border-border bg-background px-2 py-1.5 cursor-pointer disabled:opacity-50"
-      >
-        <option value="auto_done">Auto-done (default)</option>
-        <option value="require_human">Require human review</option>
-      </select>
-      {mutation.isError ? (
-        <p className="text-xs text-destructive mt-1.5">
-          Couldn&apos;t update review policy.
-        </p>
-      ) : null}
-      <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
-        When the agent declares a task <span className="font-mono">done</span>,
-        auto-done closes it. Require-human routes it through{" "}
-        <span className="font-mono">review</span> so you sign off first.
-      </p>
-    </section>
-  );
-}
-
-function RuntimePicker({ agent }: { agent: AgentDetail }) {
-  const queryClient = useQueryClient();
-  const runtimesQuery = useQuery<RuntimesListResponse>({
-    queryKey: queryKeys.runtimes.list(),
-    queryFn: ({ signal }) => api.runtimes.list({ signal }),
-    staleTime: 30_000,
-  });
-  const mutation = useMutation({
-    mutationFn: (runtimeId: string | null) => api.agents.setRuntime(agent.id, runtimeId),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
-    },
-  });
-
-  const allRuntimes =
-    runtimesQuery.data?.daemons.flatMap((d) =>
-      d.runtimes.map((r) => ({
-        id: r.id,
-        cli: r.cli,
-        cli_version: r.cli_version,
-        online: r.online,
-        device: d.device_name ?? d.external_id,
-      })),
-    ) ?? [];
-
-  const value = agent.preferred_runtime_id ?? "";
-
-  return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
-        Runtime
-      </h3>
-      {runtimesQuery.isLoading ? (
-        <p className="text-xs text-muted-foreground italic">Loading runtimes…</p>
-      ) : allRuntimes.length === 0 ? (
-        <p className="text-xs text-muted-foreground">
-          No daemons registered yet.{" "}
-          <Link href="/runtimes" className="underline hover:text-foreground">
-            Set up a daemon
-          </Link>
-          .
-        </p>
-      ) : (
-        <>
-          <select
-            value={value}
-            disabled={mutation.isPending}
-            onChange={(e) => {
-              const next = e.target.value === "" ? null : e.target.value;
-              mutation.mutate(next);
-            }}
-            className="w-full text-sm rounded border border-border bg-background px-2 py-1.5 cursor-pointer disabled:opacity-50"
-          >
-            <option value="">— unbound —</option>
-            {allRuntimes.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.device} · {r.cli}
-                {r.cli_version ? ` ${r.cli_version}` : ""}
-                {r.online ? " (online)" : " (offline)"}
-              </option>
-            ))}
-          </select>
-          {mutation.isError ? (
-            <p className="text-xs text-destructive mt-1.5">
-              Couldn&apos;t update runtime.
-            </p>
-          ) : null}
-          <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
-            The agent runs on this daemon&apos;s CLI. Unbinding makes task / chat
-            sessions sit pending until rebound; mesh asks fall back to the
-            server.
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
-            Don&apos;t see a CLI you just installed?{" "}
-            <Link href="/runtimes" className="underline hover:text-foreground">
-              Sync your daemon
-            </Link>
-            .
-          </p>
-        </>
-      )}
-    </section>
   );
 }

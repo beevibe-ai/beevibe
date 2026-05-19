@@ -9,6 +9,7 @@ export type {
   TaskDetail,
   TaskDetailSessionRow,
   AgentDetail,
+  AgentDisplay,
   DashboardSummary,
   MeshOverview,
 } from "@beevibe/api/views/types";
