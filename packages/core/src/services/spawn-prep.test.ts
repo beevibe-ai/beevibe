@@ -55,6 +55,19 @@ describe("teamAgentRoutingDirective", () => {
     const out = teamAgentRoutingDirective(["frontend"]);
     expect(out).not.toContain("<suggest_action");
   });
+
+  it("instructs the agent to check task state via MCP tools before stating progress", () => {
+    // Failure mode this guards against: user (or the agent itself)
+    // refers to a previously-delegated task, agent answers from chat
+    // history or memory without re-checking, gets stale state
+    // ("both still running" when one finished an hour ago). The rule
+    // is firm: call check_work_status or get_task first, never infer.
+    const out = teamAgentRoutingDirective(["frontend"]);
+    expect(out).toContain("Tracking delegated work");
+    expect(out).toContain("mcp__beevibe__check_work_status");
+    expect(out).toContain("mcp__beevibe__get_task");
+    expect(out.toLowerCase()).toContain("never infer");
+  });
 });
 
 describe("composeSystemPromptAppend with extra", () => {
