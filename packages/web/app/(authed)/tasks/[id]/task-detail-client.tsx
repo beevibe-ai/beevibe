@@ -372,11 +372,12 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
  * spawn would have taken, just now informed by the user's input.
  */
 function BlockedReplyBanner({ task }: { task: TaskDetail }) {
-  const taskShort = shortId(task.id);
-  const draft =
-    `Unblock task ${taskShort} ("${task.title}"). The agent reported:\n\n` +
-    `${task.blocker_reason ?? ""}\n\n` +
-    `My answer: `;
+  // Prefill is intentionally minimal — just the full task id so the
+  // team agent (and the UI's id-hydration directive) can resolve the
+  // context automatically. The blocker_reason is already rendered in
+  // THIS banner; dumping it into the textarea makes the user scroll
+  // through what they just read.
+  const draft = `Reply to ${task.id}: `;
   const replyHref = `/chat?new=1&draft=${encodeURIComponent(draft)}`;
 
   return (
