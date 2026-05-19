@@ -10,6 +10,7 @@ import { EmptyState } from "@/components/empty-state";
 import { TeamOrbit } from "@/components/team-orbit";
 import { AgentDetailPanel } from "@/components/agents/agent-detail-panel";
 import { AgentsListView } from "@/components/agents/agents-list-view";
+import { PageHeader } from "@/components/page-header";
 import { usePanZoom } from "@/lib/hooks/use-pan-zoom";
 
 type ViewMode = "orbit" | "list";
@@ -86,12 +87,12 @@ export function AgentsClient() {
 
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden bg-gradient-to-b from-background to-secondary/20">
-      {/* Persistent header — only the view toggle. Orbit mode shows its
-          own top-left Caption overlay, list mode lets the table column
-          headers identify the surface, so no duplicate page title here. */}
-      <header className="shrink-0 flex items-center justify-end px-6 h-12 border-b border-border/60">
+      <PageHeader
+        title="Agents"
+        subtitle="Your team and how each one is configured."
+      >
         <ViewToggle view={view} onChange={setView} />
-      </header>
+      </PageHeader>
 
       <div className="relative flex-1 overflow-hidden">
       {!isApiConfigured ? (
@@ -112,7 +113,6 @@ export function AgentsClient() {
             />
           ) : (
             <>
-              <Caption hasPeers={peers.length > 0} />
               <GestureHint transform={panZoom.transform} />
 
               {/* Pan/zoom container — captures wheel + pointer, transforms
@@ -182,34 +182,6 @@ export function AgentsClient() {
         <AgentDetailPanel agentId={selectedAgentId} onClose={closeAgent} />
       ) : null}
       </div>
-    </div>
-  );
-}
-
-function Caption({ hasPeers }: { hasPeers: boolean }) {
-  // Top-left overlay framing what the user is looking at the first
-  // time they land. `pointer-events-none` so it never absorbs a pan
-  // start. The pan handler also skips children with data-pan="ignore"
-  // but pointer-events-none is the cheaper guarantee.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
-  return (
-    <div
-      className={`absolute top-6 left-6 max-w-[260px] pointer-events-none z-10 transition-all duration-500 ease-out motion-reduce:transition-none ${
-        mounted ? "opacity-100 translate-y-0" : "opacity-0 -translate-y-1"
-      }`}
-      data-pan="ignore"
-    >
-      <h1 className="text-sm font-semibold tracking-tight">Your team</h1>
-      <div className="mt-1.5 h-px w-6 bg-border/80" aria-hidden />
-      <p className="mt-2 text-[13px] text-muted-foreground leading-relaxed">
-        {hasPeers
-          ? "Lead in the middle, specialists around them. Other teams sit further out."
-          : "Lead in the middle, specialists around them."}
-      </p>
     </div>
   );
 }
