@@ -1,12 +1,29 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { createAvatar } from "@dicebear/core";
 import { glass } from "@dicebear/collection";
-import { Bot, Clock, ExternalLink, Flame, Package, Sparkles, Zap } from "lucide-react";
-import { api, type LearnedSkill, type RepoRun } from "@/lib/api/client";
+import {
+  Bot,
+  Clock,
+  ExternalLink,
+  Flame,
+  Loader2,
+  Package,
+  Search,
+  Sparkles,
+  X,
+  Zap,
+} from "lucide-react";
+import {
+  api,
+  type FindRepoCandidate,
+  type FindRepoSource,
+  type LearnedSkill,
+  type RepoRun,
+} from "@/lib/api/client";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 import { RunCard } from "./run-card";
@@ -75,6 +92,24 @@ export function CapabilitiesClient() {
     { key: "activity", label: "Activity", count: runs.length },
   ];
 
+  // Search across all 4 find_repo tiers. Debounced 350ms so we don't
+  // hammer the GitHub Search API on every keystroke. When the
+  // debounced query is non-empty we render unified results in the
+  // tab body instead of the tab content.
+  const [searchInput, setSearchInput] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+  useEffect(() => {
+    const id = setTimeout(() => setDebouncedQuery(searchInput.trim()), 350);
+    return () => clearTimeout(id);
+  }, [searchInput]);
+  const searchQuery = useQuery({
+    queryKey: ["find-repo", debouncedQuery],
+    queryFn: () => api.findRepo.search(debouncedQuery, { limit: 10 }),
+    enabled: debouncedQuery.length >= 2,
+    staleTime: 60_000,
+  });
+  const isSearching = debouncedQuery.length >= 2;
+
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden bg-gradient-to-b from-background to-secondary/20">
       <PageHeader
@@ -92,42 +127,77 @@ export function CapabilitiesClient() {
         ) : null}
       </PageHeader>
 
-      <div className="px-6 pt-4 flex items-center gap-1.5 text-xs shrink-0">
-        {tabs.map((t) => {
-          const active = effectiveTab === t.key;
-          return (
+      <div className="px-6 pt-4 flex items-center justify-between gap-3 shrink-0">
+        <div className="flex items-center gap-1.5 text-xs">
+          {tabs.map((t) => {
+            const active = effectiveTab === t.key;
+            return (
+              <button
+                key={t.key}
+                type="button"
+                onClick={() => setTab(t.key)}
+                disabled={isSearching}
+                className={cn(
+                  "inline-flex items-center gap-1.5 h-7 px-2.5 rounded transition-colors cursor-pointer",
+                  active && !isSearching
+                    ? "bg-secondary text-foreground font-medium"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
+                  isSearching && "opacity-50 cursor-not-allowed",
+                )}
+              >
+                <span>{t.label}</span>
+                {typeof t.count === "number" && t.count > 0 ? (
+                  <span className="font-mono tabular-nums text-muted-foreground">
+                    {t.count}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+
+        <div className="relative w-full max-w-xs">
+          <Search className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <input
+            type="text"
+            value={searchInput}
+            onChange={(e) => setSearchInput(e.target.value)}
+            placeholder="Search a capability — e.g. extract tables from a PDF"
+            className="w-full h-7 pl-7 pr-7 rounded-md bg-secondary/50 border border-transparent focus:border-border focus:bg-background focus:outline-none text-xs placeholder:text-muted-foreground/70"
+          />
+          {searchInput && (
             <button
-              key={t.key}
               type="button"
-              onClick={() => setTab(t.key)}
-              className={cn(
-                "inline-flex items-center gap-1.5 h-7 px-2.5 rounded transition-colors cursor-pointer",
-                active
-                  ? "bg-secondary text-foreground font-medium"
-                  : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
-              )}
+              onClick={() => setSearchInput("")}
+              className="absolute right-1.5 top-1/2 -translate-y-1/2 h-5 w-5 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer"
+              title="Clear search"
             >
-              <span>{t.label}</span>
-              {typeof t.count === "number" && t.count > 0 ? (
-                <span className="font-mono tabular-nums text-muted-foreground">
-                  {t.count}
-                </span>
-              ) : null}
+              <X className="h-3 w-3" />
             </button>
-          );
-        })}
+          )}
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto px-6 pt-5 pb-8">
-        {effectiveTab === "yours" && (
+        {isSearching ? (
+          <SearchResults
+            query={debouncedQuery}
+            isLoading={searchQuery.isLoading || (searchQuery.isFetching && !searchQuery.data)}
+            candidates={searchQuery.data?.candidates ?? []}
+            notes={searchQuery.data?.notes ?? []}
+            hint={searchQuery.data?.hint ?? ""}
+            error={searchQuery.error}
+          />
+        ) : null}
+        {!isSearching && effectiveTab === "yours" && (
           <YoursTab
             skills={skills}
             isLoading={skillsQuery.isLoading}
             onBrowseCurated={() => setTab("discover")}
           />
         )}
-        {effectiveTab === "discover" && <DiscoverTab />}
-        {effectiveTab === "activity" && (
+        {!isSearching && effectiveTab === "discover" && <DiscoverTab />}
+        {!isSearching && effectiveTab === "activity" && (
           <ActivityTab runs={runs} isLoading={runsQuery.isLoading} />
         )}
       </div>
@@ -394,6 +464,140 @@ function TrendingRow({ repo }: { repo: TrendingRepo }) {
 function formatStars(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
   return `${n}`;
+}
+
+/* ─── Search results (unified across all 4 find_repo tiers) ─── */
+
+const SOURCE_STYLES: Record<FindRepoSource, { label: string; classes: string }> = {
+  learned:   { label: "your team",  classes: "bg-purple-500/15 text-purple-600 dark:text-purple-300" },
+  community: { label: "community",  classes: "bg-blue-500/15 text-blue-600 dark:text-blue-300" },
+  trending:  { label: "trending",   classes: "bg-orange-500/15 text-orange-600 dark:text-orange-400" },
+  github:    { label: "github",     classes: "bg-secondary/70 text-muted-foreground" },
+};
+
+function SourceBadge({ source }: { source: FindRepoSource }) {
+  const s = SOURCE_STYLES[source];
+  return (
+    <span className={cn("inline-flex items-center rounded-sm px-1.5 py-0.5 text-[10px] font-medium", s.classes)}>
+      {s.label}
+    </span>
+  );
+}
+
+function SearchResults({
+  query,
+  isLoading,
+  candidates,
+  notes,
+  hint,
+  error,
+}: {
+  query: string;
+  isLoading: boolean;
+  candidates: FindRepoCandidate[];
+  notes: string[];
+  hint: string;
+  error: unknown;
+}) {
+  if (isLoading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-muted-foreground py-8">
+        <Loader2 className="h-4 w-4 animate-spin" />
+        Searching across learned, community, trending, and GitHub…
+      </div>
+    );
+  }
+  if (error) {
+    return (
+      <p className="text-sm text-muted-foreground py-8">
+        Search failed. Try a different query or refresh the page.
+      </p>
+    );
+  }
+  if (candidates.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center max-w-md mx-auto">
+        <Search className="h-8 w-8 text-muted-foreground/40 mb-3" />
+        <p className="text-sm font-medium">No matches for &quot;{query}&quot;</p>
+        <p className="text-sm text-muted-foreground mt-1">{hint || "Try rephrasing with more concrete nouns or verbs."}</p>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-3">
+      <div className="flex items-baseline justify-between mb-1">
+        <p className="text-xs text-muted-foreground">
+          <span className="font-medium text-foreground">{candidates.length}</span> matches across all sources, ranked.
+        </p>
+        {notes.length > 0 && (
+          <span className="text-[11px] text-muted-foreground/70" title={notes.join("\n")}>
+            {notes.length} source{notes.length === 1 ? "" : "s"} unavailable
+          </span>
+        )}
+      </div>
+      <div>
+        {candidates.map((c) => (
+          <CandidateRow key={c.repo_url} candidate={c} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CandidateRow({ candidate }: { candidate: FindRepoCandidate }) {
+  const name = repoName(candidate.repo_url);
+  const owner = candidate.repo_url.replace("https://github.com/", "").split("/")[0] ?? "";
+  const cleanedDesc = candidate.description
+    ?.replace(/^[\s\p{Extended_Pictographic}]+/u, "")
+    .replace(/^:[a-z_]+:\s*/i, "")
+    .trim();
+  // For learned skills, use the saved goal_pattern as the draft seed;
+  // otherwise use the GitHub description. Same em-dash separator as
+  // TrendingRow so the prefill reads cleanly.
+  const seed = candidate.learned_skill?.goal_pattern ?? cleanedDesc ?? "";
+  const draft = seed ? `Try ${candidate.repo_url} — ${seed}` : `Try ${candidate.repo_url}`;
+  return (
+    <div className="group relative flex items-center gap-2.5 py-2.5 border-b border-border/40 hover:bg-secondary/20 transition-colors">
+      <Link
+        href={`/chat?new=1&draft=${encodeURIComponent(draft)}`}
+        className="absolute inset-0 z-0"
+        aria-label={`Try ${owner}/${name} in chat`}
+      />
+      <div className="relative pointer-events-none">
+        <RepoAvatar repoUrl={candidate.repo_url} />
+      </div>
+      <div className="relative pointer-events-none min-w-0 flex-1">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-sm truncate">{name}</span>
+          <span className="text-xs text-muted-foreground truncate">{owner}</span>
+          <SourceBadge source={candidate.source} />
+        </div>
+        <p className="text-xs text-muted-foreground/90 line-clamp-1 mt-0.5">
+          {cleanedDesc ?? candidate.reason}
+        </p>
+      </div>
+      <div className="relative pointer-events-none hidden md:flex items-center gap-3 shrink-0 pr-2">
+        <LanguageBadge language={candidate.language ?? null} />
+        {typeof candidate.stars === "number" && (
+          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground tabular-nums">
+            ★ {formatStars(candidate.stars)}
+          </span>
+        )}
+      </div>
+      <a
+        href={candidate.repo_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        title="Open repo on GitHub"
+        className="pointer-events-auto relative z-10 h-7 w-7 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors shrink-0"
+      >
+        <ExternalLink className="h-3.5 w-3.5" />
+      </a>
+      <span className="relative pointer-events-none text-xs text-muted-foreground group-hover:text-foreground transition-colors shrink-0 pr-1">
+        Try →
+      </span>
+    </div>
+  );
 }
 
 /**

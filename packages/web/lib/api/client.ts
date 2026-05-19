@@ -656,6 +656,45 @@ export const api = {
         instructions?: string;
       }>(`/learned-skills/${encodeURIComponent(id)}/publish`, { method: "POST" }),
   },
+  findRepo: {
+    /** Ranked search across all 4 find_repo tiers. Empty `goal` is a 400. */
+    search: (goal: string, opts: ReadOptions & { limit?: number } = {}) => {
+      const params = new URLSearchParams({ goal });
+      if (opts.limit) params.set("limit", String(opts.limit));
+      return fetchJson<{
+        goal: string;
+        candidates: FindRepoCandidate[];
+        notes: string[];
+        hint: string;
+      }>(`/find-repo?${params.toString()}`, { signal: opts.signal });
+    },
+  },
 } as const;
+
+/**
+ * Mirrors the candidate shape that `packages/api/src/tools/find-repo.ts`
+ * returns. Duplicating the type rather than importing it avoids
+ * pulling the whole api package into the web bundle — the shape is
+ * small + stable enough that a UI-side copy is cheaper than the
+ * cross-package coupling.
+ */
+export type FindRepoSource = "learned" | "community" | "trending" | "github";
+
+export interface FindRepoCandidate {
+  repo_url: string;
+  score: number;
+  source: FindRepoSource;
+  sources: FindRepoSource[];
+  reason: string;
+  stars?: number;
+  description?: string;
+  language?: string;
+  learned_skill?: {
+    id: string;
+    name: string;
+    goal_pattern: string;
+    invocation: string;
+  };
+}
 
 export type Api = typeof api;
