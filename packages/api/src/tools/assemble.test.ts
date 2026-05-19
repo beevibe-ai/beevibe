@@ -13,9 +13,11 @@ import type {
   AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
+  LearnedSkillRepository,
   TaskRepository,
   WorkProductRepository,
 } from "@beevibe/core";
+import { inMemoryBoostList } from "./boost-list.js";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type {
   CoreMemory,
@@ -58,6 +60,10 @@ function buildMinimalServices(): AssembleToolsServices {
     pool: {} as unknown as Pool,
     memoryAgent: {} as unknown as MemoryAgent,
     repoRunRepo: {} as unknown as import("@beevibe/core").RepoRunRepository,
+    learnedSkillRepo: {
+      searchByGoal: vi.fn(async () => []),
+    } as unknown as LearnedSkillRepository,
+    boostList: inMemoryBoostList([]),
   };
 }
 
@@ -80,9 +86,9 @@ function icCtx(spawnMode?: AssembleToolsContext["spawnMode"]): AssembleToolsCont
 }
 
 describe("assembleTools — daemon (full surface)", () => {
-  it("team caller gets the full team surface (25 tools, includes use_repo)", () => {
+  it("team caller gets the full team surface (26 tools, includes find_repo + use_repo)", () => {
     const tools = assembleTools(teamCtx(), buildMinimalServices());
-    expect(tools.length).toBe(25);
+    expect(tools.length).toBe(26);
     const names = new Set(tools.map((t) => t.name));
     expect(names.has("create_task")).toBe(true);
     expect(names.has("update_work_product")).toBe(true);
@@ -90,16 +96,18 @@ describe("assembleTools — daemon (full surface)", () => {
     expect(names.has("revise_task")).toBe(true);
     expect(names.has("add_to_escalation")).toBe(true);
     expect(names.has("create_subordinate_agent")).toBe(true);
+    expect(names.has("find_repo")).toBe(true);
     expect(names.has("use_repo")).toBe(true);
   });
 
-  it("ic caller gets the IC surface (14 tools, includes use_repo)", () => {
+  it("ic caller gets the IC surface (15 tools, includes find_repo + use_repo)", () => {
     const tools = assembleTools(icCtx(), buildMinimalServices());
-    expect(tools.length).toBe(14);
+    expect(tools.length).toBe(15);
     const names = new Set(tools.map((t) => t.name));
     expect(names.has("create_task")).toBe(false);
     expect(names.has("respond_ask")).toBe(true);
     expect(names.has("report_blocker")).toBe(true);
+    expect(names.has("find_repo")).toBe(true);
     expect(names.has("use_repo")).toBe(true);
   });
 });

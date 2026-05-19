@@ -3,6 +3,7 @@ import type {
   AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
+  LearnedSkillRepository,
   RepoRunRepository,
   SessionSpawnMode,
   TaskRepository,
@@ -19,6 +20,8 @@ import { buildHierarchyTools } from "./hierarchy.js";
 import { createSaveMemoryTool } from "./save-memory.js";
 import { createUpdateCoreMemoryTool } from "./update-core-memory.js";
 import { createUseRepoTool } from "./use-repo.js";
+import { createFindRepoTool } from "./find-repo.js";
+import type { BoostList } from "./boost-list.js";
 import type { AgentTool } from "./types.js";
 
 export interface AssembleToolsServices {
@@ -39,6 +42,10 @@ export interface AssembleToolsServices {
   agentProvisionEventRepo: AgentProvisionEventRepository;
   /** Capability Network: backs use_repo (creates repo_run rows). */
   repoRunRepo: RepoRunRepository;
+  /** Capability Network: backs find_repo's learned-skill tier. */
+  learnedSkillRepo: LearnedSkillRepository;
+  /** Capability Network: curated boost list for find_repo's Tier 3. */
+  boostList: BoostList;
 }
 
 /**
@@ -86,20 +93,20 @@ const FALLBACK_ALLOWED_HIERARCHY = new Set([
  *
  * Tier breakdown (M9.1 final):
  *
- *   IC (14 tools):
+ *   IC (15 tools):
  *     2 memory: save_memory, update_core_memory
  *     9 hierarchy (shared): search_context, update_progress, find_up,
  *       get_agent_profile, get_task, create_work_product,
  *       list_work_products, get_work_product, update_work_product
  *     2 mesh: respond_ask (when targeted by team-tier `ask`),
  *             report_blocker (escalate up to direct parent)
- *     1 capability network: use_repo
+ *     2 capability network: find_repo, use_repo
  *
- *   Team / org (25 tools):
+ *   Team / org (26 tools):
  *     2 memory + 15 hierarchy (9 shared + 6 team-only) +
  *     6 mesh (ask, respond_ask, negotiate, respond_negotiate,
  *             report_blocker, escalate_to_humans) +
- *     1 capability network: use_repo.
+ *     2 capability network: find_repo, use_repo.
  *
  * Team-only hierarchy adds: find_subordinates, find_peers, create_task,
  *   check_work_status, revise_task, add_to_escalation.
@@ -163,8 +170,9 @@ export function assembleTools(
       ? buildIcMeshTools(meshCtx, meshServices)
       : buildTeamMeshTools(meshCtx, meshServices);
 
-  // Capability Network: use_repo is available to every agent regardless
-  // of tier. Trust boundary is the sandbox, not a per-agent grant.
+  // Capability Network: use_repo + find_repo are available to every
+  // agent regardless of tier. Trust boundary is the sandbox + the
+  // read-only ranker, not a per-agent grant.
   const useRepoTool = createUseRepoTool(
     { agentId: ctx.caller.agentId },
     {
@@ -174,8 +182,22 @@ export function assembleTools(
       dispatchService: services.dispatchService,
     },
   );
+  const findRepoTool = createFindRepoTool(
+    { agentId: ctx.caller.agentId },
+    {
+      agentRepo: services.agentRepo,
+      learnedSkillRepo: services.learnedSkillRepo,
+      boostList: services.boostList,
+    },
+  );
 
-  const all = [...memoryTools, ...hierarchyTools, ...meshTools, useRepoTool];
+  const all = [
+    ...memoryTools,
+    ...hierarchyTools,
+    ...meshTools,
+    findRepoTool,
+    useRepoTool,
+  ];
   if (ctx.spawnMode === "server_fallback_mesh") {
     return filterForServerFallback(all);
   }

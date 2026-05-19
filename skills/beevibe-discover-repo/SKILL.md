@@ -3,81 +3,58 @@ name: beevibe-discover-repo
 description: >
   Find the best GitHub repo for a goal, then call use_repo to run it in
   a sandbox. Use whenever the user's goal requires a capability you don't
-  have natively and you haven't been given a specific repo. Returns a ranked
-  list of candidates with one-line fit descriptions, or fires use_repo
-  directly when confident.
+  have natively and you haven't been given a specific repo.
 ---
 
 # Discover Repo
 
-You are choosing an open-source GitHub repo to borrow as a tool for the user's goal. The repo will run inside an isolated Docker sandbox — you don't need to install it on the host.
+You are choosing an open-source GitHub repo to borrow as a tool for the
+user's goal. The repo runs inside an isolated Docker sandbox — you
+don't need to install it on the host.
 
 ## When to use this skill
 
-- The user's goal requires a tool or library you don't have natively (PDF parsing, video conversion, web scraping, ML inference, file format conversion, CLI tools, etc.)
-- You haven't been told which repo to use
-- The goal is concrete enough to yield a meaningful search query
+The user's goal needs a tool you don't have natively (PDF parsing, video
+conversion, web scraping, ML inference, format conversion, an obscure
+CLI). You haven't been told which repo to use. The goal has enough
+concrete nouns/verbs to drive a search.
 
-## Ranking algorithm (follow this order)
+## How
 
-**Tier 1 — Community registry** (highest trust; real outcomes from other instances):
-Fetch `https://raw.githubusercontent.com/beevibe-ai/beevibe-capabilities/main/registry.json`. Parse `skills[]`. If any entry's `goal_pattern` overlaps with the user's goal by ≥ 2 significant words, include it with a +30 boost. Use the entry's `repo_url` and `invocation` in your recommendation.
+1. **Call `find_repo({ goal })`** — pass the user's goal in plain
+   language. The tool returns the top 5 candidates already ranked by
+   four signals you don't need to manage yourself:
 
-**Tier 2 — Local learned skills** (your instance's own history):
-Check if the Beevibe instance has any saved skills matching this goal — if the `beevibe-use-repo` skill mentions reusing a saved skill, check if there is already a matching goal pattern. Add +50 for matches.
+   - **`learned`** — this team has saved this recipe before (highest trust)
+   - **`community`** — the beevibe community registry has a proven match
+   - **`boost`** — curated for common task families (day-one reliability)
+   - **`github`** — raw GitHub search with popularity score
 
-**Tier 3 — Curated boost list** (day-one reliability):
-The boost list is embedded in this skill's directory at `boost-list.json`. Parse it and apply +20 to any entry whose `goal_keywords` overlap with the user's goal. Known-good repos for common task families.
+   Each candidate comes with `repo_url`, `score`, `source`, `reason`,
+   and (when GitHub-enriched) `description` and `stars`.
 
-**Tier 4 — GitHub search** (the open-source ocean):
-Search GitHub for repos matching the goal. Add +0 (raw score from GitHub stars + recency).
+2. **Pick the best fit.** Read the `description` and `reason` for the
+   top candidates. Your judgment is the qualitative match between the
+   description and the user's actual goal. The ranker already filtered
+   the volume; you just choose between a handful of good options.
 
-## GitHub search (Tier 4)
+3. **Call `use_repo({ goal, repo_url })`** with your pick. The sandbox
+   loop takes over from there.
 
-Use WebFetch to hit the GitHub search API. Construct a query from the core nouns/verbs in the user's goal:
+If `find_repo` returns no candidates, tell the user the goal is too
+vague for a meaningful search and ask for more specifics (concrete
+input format, output format, or a tool name they've heard of).
 
-```
-GET https://api.github.com/search/repositories?q=<keywords>&sort=stars&per_page=10
-```
+## What `find_repo` does NOT do
 
-Add an auth header if `GITHUB_TOKEN` env var is set (higher rate limit — 5000/hr vs 60/hr):
-```
-Authorization: token <GITHUB_TOKEN>
-```
-
-Parse `items[]`. For each result, fetch its README briefly (`GET https://raw.githubusercontent.com/<owner>/<repo>/HEAD/README.md`, first 3000 chars) and check for keyword overlap with the user's goal. Discard repos whose README doesn't mention any of the goal's core terms.
-
-## Rate limits
-
-Without a token: 60 API calls/hr per IP. That's fine for one-agent dev setups. For shared instances or active teams, set `GITHUB_TOKEN` in the daemon's environment to use the 5000/hr authenticated rate.
-
-## Produce candidates
-
-Rank the remaining candidates. Take the top 3. For each, write:
-- Repo URL
-- One sentence: what the repo does + why it fits this goal
-- Estimated fit: Excellent / Good / Uncertain
-
-Example output:
-```
-1. https://github.com/jsvine/pdfplumber — extracts tables and text from PDFs using computer vision; built exactly for this use case. Fit: Excellent (curated)
-2. https://github.com/camelot-dev/camelot — similar scope, lattice-mode for bordered tables. Fit: Good
-3. https://github.com/pymupdf/PyMuPDF — general-purpose PDF library; covers tables with more effort. Fit: Uncertain
-```
-
-## Fire use_repo
-
-If you have one Excellent-fit candidate, call `use_repo` immediately without asking:
-
-```
-use_repo({
-  goal: "<user's original goal>",
-  repo_url: "<chosen repo url>"
-})
-```
-
-If the best fit is Good or Uncertain, present the candidates and ask which to try. If none exceed a confidence threshold (< 2 keyword overlaps and no README match), say so and ask the user for more specifics.
+It does not fetch READMEs or read code. It surfaces ranked candidates
+based on metadata. The README-fit judgment is yours — and if your pick
+turns out to be wrong, the sandbox run itself is the real test: a
+fundamentally unsuitable repo will fail to install or fail to produce
+an artifact, and the next attempt should try a different candidate.
 
 ## Security note
 
-The sandbox gives the cloned repo write access to /sandbox only. It cannot touch the user's host filesystem, secrets, or browser session. Every command goes through sandbox_exec. The trust boundary is Docker.
+The sandbox gives the cloned repo write access to /sandbox only. It
+cannot touch the user's host filesystem, secrets, or browser session.
+Every command goes through `sandbox_exec`. The trust boundary is Docker.

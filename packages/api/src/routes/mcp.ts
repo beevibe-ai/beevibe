@@ -15,6 +15,7 @@ import type {
   AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
+  LearnedSkillRepository,
   RepoRunRepository,
   SessionRepository,
   TaskRepository,
@@ -27,6 +28,7 @@ import type { EscalationService } from "@beevibe/core/services/escalation-servic
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { MeshServer } from "../mesh/server.js";
 import { assembleTools } from "../tools/assemble.js";
+import type { BoostList } from "../tools/boost-list.js";
 import { buildInstructions } from "../tools/instructions.js";
 import type { AgentTool } from "../tools/types.js";
 import type { SessionCache } from "../session-cache.js";
@@ -52,6 +54,10 @@ export interface McpRouterDeps {
   makeMemoryAgent: (agentId: string) => MemoryAgent;
   /** Capability Network: backs the use_repo MCP tool. */
   repoRunRepo: RepoRunRepository;
+  /** Capability Network: backs find_repo's learned-skill tier. */
+  learnedSkillRepo: LearnedSkillRepository;
+  /** Capability Network: curated boost list for find_repo's Tier 3. */
+  boostList: BoostList;
 }
 
 /** Tracked per-MCP-session state. mcpSid ↔ transport + server. */
@@ -253,6 +259,8 @@ async function handleMcpRequest(
       pool: deps.pool,
       memoryAgent,
       repoRunRepo: deps.repoRunRepo,
+      learnedSkillRepo: deps.learnedSkillRepo,
+      boostList: deps.boostList,
     },
   );
 
