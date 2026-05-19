@@ -557,142 +557,81 @@
   .animate-row-flash {
     animation: none !important;
   }
-  .bv-chat-loader .gel,
-  .bv-chat-loader .hex-brick {
+  .bv-chat-loader .solid {
     animation: none !important;
   }
 }
 
-/* ── Chat honeycomb loader — see components/chat/chat-loader.tsx ──────
-   37 hexagons arranged in 4 concentric rings, each cell built from 3
-   rotated bars. Rings pulse-scale on staggered delays so the comb
-   breathes outward. Bricks use --foreground so the loader reads
-   correctly on cream (light) and near-black (dark) backgrounds.
-   Adapted from an anonymous Uiverse loader, scoped to .bv-chat-loader.
 
-   Two-layer scaling: outer reserves layout space at the scaled size,
-   inner keeps the original 220×200 grid and is visually shrunk via
-   transform. Tweak --bv-chat-loader-scale to resize without touching
-   any of the 37 cell positions. */
+/* ── Chat icosahedron loader — see components/chat/chat-loader.tsx ─────
+   20-sided polyhedron built from CSS-border triangles. Each face is an
+   absolutely-positioned 0×0 div with a tall solid border-bottom and
+   transparent left/right borders, then rotated into place around the
+   centre. The whole solid spins on three axes via the `bv-solid-spin`
+   keyframe.
+
+   Scoped under `.bv-chat-loader` so `.solid` / `.side` can't leak
+   into other surfaces. Adapted from a Uiverse loader; ported off
+   styled-components to fit the project's globals.css pattern. */
 .bv-chat-loader {
-  --bv-chat-loader-scale: 0.4;
+  /* --bv-loader-s drives every internal dimension via calc(); set it
+     once and the whole solid scales. Default 40px works at the empty
+     reply-column entry; compact variant below shrinks to 18px for the
+     inline "thinking…" indicator. */
+  --bv-loader-s: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--bv-loader-s);
+  height: var(--bv-loader-s);
+  perspective: calc(var(--bv-loader-s) * 6);
+  pointer-events: none;
+}
+.bv-chat-loader.compact { --bv-loader-s: 18px; }
+.bv-chat-loader .solid {
   position: relative;
-  width: calc(220px * var(--bv-chat-loader-scale));
-  height: calc(200px * var(--bv-chat-loader-scale));
+  width: var(--bv-loader-s);
+  height: var(--bv-loader-s);
+  transform-style: preserve-3d;
+  animation: bv-solid-spin 16s infinite linear;
 }
-
-.bv-chat-loader-inner {
+.bv-chat-loader .side {
   position: absolute;
-  top: 0;
   left: 0;
-  width: 220px;
-  height: 200px;
-  transform: scale(var(--bv-chat-loader-scale));
-  transform-origin: top left;
+  bottom: 50%;
+  border-bottom: calc(var(--bv-loader-s) * 0.866) solid black;
+  border-left: calc(var(--bv-loader-s) * 0.5) solid transparent;
+  border-right: calc(var(--bv-loader-s) * 0.5) solid transparent;
+  transform-origin: 50% 0%;
+}
+/* Top cap — 5 faces meeting at the apex. */
+.bv-chat-loader .side:nth-child(1)  { transform: translateY(calc(var(--bv-loader-s) * -0.0925)) rotateY(72deg)  rotateX(52.62deg); border-bottom-color: rgba(134,   7, 147, 0.4); }
+.bv-chat-loader .side:nth-child(2)  { transform: translateY(calc(var(--bv-loader-s) * -0.0925)) rotateY(144deg) rotateX(52.62deg); border-bottom-color: rgba( 42, 160,  39, 0.4); }
+.bv-chat-loader .side:nth-child(3)  { transform: translateY(calc(var(--bv-loader-s) * -0.0925)) rotateY(216deg) rotateX(52.62deg); border-bottom-color: rgba(209,  83,  84, 0.4); }
+.bv-chat-loader .side:nth-child(4)  { transform: translateY(calc(var(--bv-loader-s) * -0.0925)) rotateY(288deg) rotateX(52.62deg); border-bottom-color: rgba(244, 202, 236, 0.4); }
+.bv-chat-loader .side:nth-child(5)  { transform: translateY(calc(var(--bv-loader-s) * -0.0925)) rotateY(360deg) rotateX(52.62deg); border-bottom-color: rgba( 73, 232, 200, 0.4); }
+/* Bottom cap — mirrored 5 faces. */
+.bv-chat-loader .side:nth-child(6)  { transform: translateY(calc(var(--bv-loader-s) * 1.809)) rotateY(468deg) rotateX(127.38deg); border-bottom-color: rgba(105,  77,   3, 0.4); }
+.bv-chat-loader .side:nth-child(7)  { transform: translateY(calc(var(--bv-loader-s) * 1.809)) rotateY(540deg) rotateX(127.38deg); border-bottom-color: rgba(255,  45,  71, 0.4); }
+.bv-chat-loader .side:nth-child(8)  { transform: translateY(calc(var(--bv-loader-s) * 1.809)) rotateY(612deg) rotateX(127.38deg); border-bottom-color: rgba(177, 172,   3, 0.4); }
+.bv-chat-loader .side:nth-child(9)  { transform: translateY(calc(var(--bv-loader-s) * 1.809)) rotateY(684deg) rotateX(127.38deg); border-bottom-color: rgba(175, 200, 228, 0.4); }
+.bv-chat-loader .side:nth-child(10) { transform: translateY(calc(var(--bv-loader-s) * 1.809)) rotateY(756deg) rotateX(127.38deg); border-bottom-color: rgba(187, 195, 141, 0.4); }
+/* Equator band — 5 upward + 5 downward triangles. */
+.bv-chat-loader .side:nth-child(11) { transform: translateY(calc(var(--bv-loader-s) * 0.433))  rotateY(828deg)  translateZ(calc(var(--bv-loader-s) * 0.8505)) rotateX(-10.81deg); border-bottom-color: rgba(212, 249,   1, 0.4); }
+.bv-chat-loader .side:nth-child(12) { transform: translateY(calc(var(--bv-loader-s) * 0.433))  rotateY(900deg)  translateZ(calc(var(--bv-loader-s) * 0.8505)) rotateX(-10.81deg); border-bottom-color: rgba( 85, 161,  43, 0.4); }
+.bv-chat-loader .side:nth-child(13) { transform: translateY(calc(var(--bv-loader-s) * 0.433))  rotateY(972deg)  translateZ(calc(var(--bv-loader-s) * 0.8505)) rotateX(-10.81deg); border-bottom-color: rgba( 15, 209,  47, 0.4); }
+.bv-chat-loader .side:nth-child(14) { transform: translateY(calc(var(--bv-loader-s) * 0.433))  rotateY(1044deg) translateZ(calc(var(--bv-loader-s) * 0.8505)) rotateX(-10.81deg); border-bottom-color: rgba(131,  69,  22, 0.4); }
+.bv-chat-loader .side:nth-child(15) { transform: translateY(calc(var(--bv-loader-s) * 0.433))  rotateY(1116deg) translateZ(calc(var(--bv-loader-s) * 0.8505)) rotateX(-10.81deg); border-bottom-color: rgba( 43,  13, 170, 0.4); }
+.bv-chat-loader .side:nth-child(16) { transform: translateY(calc(var(--bv-loader-s) * 1.2835)) rotateY(1152deg) rotateZ(180deg) translateZ(calc(var(--bv-loader-s) * 0.8505)) rotateX(-10.81deg); border-bottom-color: rgba( 68,  85,  95, 0.4); }
+.bv-chat-loader .side:nth-child(17) { transform: translateY(calc(var(--bv-loader-s) * 1.2835)) rotateY(1224deg) rotateZ(180deg) translateZ(calc(var(--bv-loader-s) * 0.8505)) rotateX(-10.81deg); border-bottom-color: rgba(159,  76, 176, 0.4); }
+.bv-chat-loader .side:nth-child(18) { transform: translateY(calc(var(--bv-loader-s) * 1.2835)) rotateY(1296deg) rotateZ(180deg) translateZ(calc(var(--bv-loader-s) * 0.8505)) rotateX(-10.81deg); border-bottom-color: rgba( 54,  95, 172, 0.4); }
+.bv-chat-loader .side:nth-child(19) { transform: translateY(calc(var(--bv-loader-s) * 1.2835)) rotateY(1368deg) rotateZ(180deg) translateZ(calc(var(--bv-loader-s) * 0.8505)) rotateX(-10.81deg); border-bottom-color: rgba(162,  92, 204, 0.4); }
+.bv-chat-loader .side:nth-child(20) { transform: translateY(calc(var(--bv-loader-s) * 1.2835)) rotateY(1440deg) rotateZ(180deg) translateZ(calc(var(--bv-loader-s) * 0.8505)) rotateX(-10.81deg); border-bottom-color: rgba(218,   1, 139, 0.4); }
+@keyframes bv-solid-spin {
+  0%   { transform: rotateX(0deg)   rotateY(0deg)   rotateZ(0deg); }
+  100% { transform: rotateX(360deg) rotateY(720deg) rotateZ(1080deg); }
 }
 
-.bv-chat-loader .hex-brick {
-  background: hsl(var(--foreground));
-  width: 30px;
-  height: 17px;
-  position: absolute;
-  top: 5px;
-  animation: bv-chat-fade 2s infinite;
-}
-
-.bv-chat-loader .h2 { transform: rotate(60deg); }
-.bv-chat-loader .h3 { transform: rotate(-60deg); }
-
-.bv-chat-loader .gel {
-  height: 30px;
-  width: 30px;
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transition: all .3s;
-}
-
-.bv-chat-loader .center-gel {
-  margin-left: -15px;
-  margin-top: -15px;
-  animation: bv-chat-pulse 2s infinite;
-}
-
-.bv-chat-loader .c1  { margin-left: -47px; margin-top: -15px; }
-.bv-chat-loader .c2  { margin-left: -31px; margin-top: -43px; }
-.bv-chat-loader .c3  { margin-left:   1px; margin-top: -43px; }
-.bv-chat-loader .c4  { margin-left:  17px; margin-top: -15px; }
-.bv-chat-loader .c5  { margin-left: -31px; margin-top:  13px; }
-.bv-chat-loader .c6  { margin-left:   1px; margin-top:  13px; }
-.bv-chat-loader .c7  { margin-left: -63px; margin-top: -43px; }
-.bv-chat-loader .c8  { margin-left:  33px; margin-top: -43px; }
-.bv-chat-loader .c9  { margin-left: -15px; margin-top:  41px; }
-.bv-chat-loader .c10 { margin-left: -63px; margin-top:  13px; }
-.bv-chat-loader .c11 { margin-left:  33px; margin-top:  13px; }
-.bv-chat-loader .c12 { margin-left: -15px; margin-top: -71px; }
-.bv-chat-loader .c13 { margin-left: -47px; margin-top: -71px; }
-.bv-chat-loader .c14 { margin-left:  17px; margin-top: -71px; }
-.bv-chat-loader .c15 { margin-left: -47px; margin-top:  41px; }
-.bv-chat-loader .c16 { margin-left:  17px; margin-top:  41px; }
-.bv-chat-loader .c17 { margin-left: -79px; margin-top: -15px; }
-.bv-chat-loader .c18 { margin-left:  49px; margin-top: -15px; }
-.bv-chat-loader .c19 { margin-left: -63px; margin-top: -99px; }
-.bv-chat-loader .c20 { margin-left:  33px; margin-top: -99px; }
-.bv-chat-loader .c21 { margin-left:   1px; margin-top: -99px; }
-.bv-chat-loader .c22 { margin-left: -31px; margin-top: -99px; }
-.bv-chat-loader .c23 { margin-left: -63px; margin-top:  69px; }
-.bv-chat-loader .c24 { margin-left:  33px; margin-top:  69px; }
-.bv-chat-loader .c25 { margin-left:   1px; margin-top:  69px; }
-.bv-chat-loader .c26 { margin-left: -31px; margin-top:  69px; }
-.bv-chat-loader .c28 { margin-left: -95px; margin-top: -43px; }
-.bv-chat-loader .c29 { margin-left: -95px; margin-top:  13px; }
-.bv-chat-loader .c30 { margin-left:  49px; margin-top:  41px; }
-.bv-chat-loader .c31 { margin-left: -79px; margin-top: -71px; }
-.bv-chat-loader .c32 { margin-left: -111px; margin-top: -15px; }
-.bv-chat-loader .c33 { margin-left:  65px; margin-top: -43px; }
-.bv-chat-loader .c34 { margin-left:  65px; margin-top:  13px; }
-.bv-chat-loader .c35 { margin-left: -79px; margin-top:  41px; }
-.bv-chat-loader .c36 { margin-left:  49px; margin-top: -71px; }
-.bv-chat-loader .c37 { margin-left:  81px; margin-top: -15px; }
-
-.bv-chat-loader .r1 {
-  animation: bv-chat-pulse 2s infinite;
-  animation-delay: .2s;
-}
-.bv-chat-loader .r1 > .hex-brick {
-  animation: bv-chat-fade 2s infinite;
-  animation-delay: .2s;
-}
-
-.bv-chat-loader .r2 {
-  animation: bv-chat-pulse 2s infinite;
-  animation-delay: .4s;
-}
-.bv-chat-loader .r2 > .hex-brick {
-  animation: bv-chat-fade 2s infinite;
-  animation-delay: .4s;
-}
-
-.bv-chat-loader .r3 {
-  animation: bv-chat-pulse 2s infinite;
-  animation-delay: .6s;
-}
-.bv-chat-loader .r3 > .hex-brick {
-  animation: bv-chat-fade 2s infinite;
-  animation-delay: .6s;
-}
-
-@keyframes bv-chat-pulse {
-  0%   { transform: scale(1); }
-  50%  { transform: scale(0.01); }
-  100% { transform: scale(1); }
-}
-
-@keyframes bv-chat-fade {
-  0%   { opacity: 0.75; }
-  50%  { opacity: 1; }
-  100% { opacity: 0.85; }
-}
 
 /* ── Chat markdown — see components/chat/markdown.tsx ───────────────────
    Rhythm tuned for long agent replies (multi-paragraph, nested lists,

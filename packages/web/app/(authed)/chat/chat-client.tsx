@@ -518,11 +518,7 @@ function Thinking({
           <ChatMarkdown content={streamingText} />
         ) : (
           <div className="flex items-center gap-2 text-muted-foreground italic text-sm">
-            <span className="inline-flex items-center gap-1">
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse" />
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:200ms]" />
-              <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-pulse [animation-delay:400ms]" />
-            </span>
+            <ChatLoader compact />
             <span>thinking…</span>
           </div>
         )}
