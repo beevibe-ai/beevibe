@@ -7,12 +7,18 @@ import {
 } from "./spawn-prep.js";
 
 describe("teamAgentRoutingDirective", () => {
-  it("still fires with no specialists — tells agent to spawn one, not handle work itself", () => {
+  it("emits the three-lane rubric with no specialists (lane A still applies)", () => {
     const out = teamAgentRoutingDirective([]);
     expect(out).toContain("team_agent_routing");
     expect(out).toContain("TEAM AGENT");
-    expect(out.toLowerCase()).toContain("no specialists");
-    expect(out.toLowerCase()).toContain("do not handle");
+    // All three lanes must be addressable in the empty-roster case too —
+    // lane A (small/exploratory/coordination) doesn't require a roster.
+    expect(out).toContain("A) **Handle it yourself**");
+    expect(out).toContain("B) **Delegate to one specialist**");
+    expect(out).toContain("C) **Propose spawning a specialist**");
+    // Empty-roster framing should still mention portability of spawns,
+    // so the agent recommends cross-project specialists, not project-bound.
+    expect(out.toLowerCase()).toContain("portable");
   });
 
   it("includes each specialist name as a list item", () => {
@@ -22,33 +28,70 @@ describe("teamAgentRoutingDirective", () => {
     expect(out).toContain("- data");
   });
 
-  it("frames the agent as a coordinator and warns against absorbing work", () => {
+  it("frames specialists as portable across projects, not project-bound", () => {
+    // Cross-project specialty is load-bearing: spawned specialists serve
+    // every repo this user touches, not just the current project.
     const out = teamAgentRoutingDirective(["frontend"]);
-    expect(out).toContain("TEAM AGENT");
-    expect(out).toContain("ROUTE");
-    expect(out.toLowerCase()).toContain("absorb");
+    expect(out).toContain("PORTABLE");
+    expect(out.toLowerCase()).toContain("every project and repo");
   });
 
-  it("provides suggest_action examples the chat UI knows how to render", () => {
+  it("carries a stop signal against absorbing substantial single-domain work", () => {
     const out = teamAgentRoutingDirective(["frontend"]);
-    expect(out).toContain("<suggest_action");
+    expect(out).toContain("Stop signal");
+    expect(out.toLowerCase()).toContain("substantial single-domain deliverable");
+  });
+
+  it("warns against create_task on self (avoids parallel session for the same agent)", () => {
+    const out = teamAgentRoutingDirective(["frontend"]);
+    expect(out).toContain("Do NOT");
+    expect(out).toMatch(/create_task on yourself/);
+  });
+
+  it("contains no chat-only UI grammar (suggest_action chips live in CHAT_DIRECTIVES)", () => {
+    // team_agent_routing is universal across chat AND task sessions —
+    // suggest_action is a chat-only display token and belongs in
+    // CHAT_DIRECTIVES, not here.
+    const out = teamAgentRoutingDirective(["frontend"]);
+    expect(out).not.toContain("<suggest_action");
   });
 });
 
 describe("composeSystemPromptAppend with extra", () => {
-  it("threads the team-routing directive at the tail (most-volatile slot)", () => {
+  it("orders blocks by stability: static cross-agent → static surface → roster-stable → per-agent → per-session", () => {
     const teamRouting = teamAgentRoutingDirective(["frontend", "backend"]);
-    const out = composeSystemPromptAppend(undefined, "<core_memory/>", {
-      sessionKind: "chat",
-      extra: teamRouting,
-    });
-    // Cache-friendly order: most-stable first. Lifecycle reminder leads.
-    expect(out.indexOf("beevibe_lifecycle")).toBeLessThan(
-      out.indexOf("core_memory"),
+    // Use distinctive markers so indexOf can't collide with the memory
+    // reminder's prose mentions of "core_memory" / "persona".
+    const out = composeSystemPromptAppend(
+      "<agent_baseline_marker/>",
+      "<briefing_marker/>",
+      {
+        sessionKind: "chat",
+        extra: teamRouting,
+      },
     );
-    // CHAT_DIRECTIVES come before extra (extra is the most-volatile tail).
+    // Tier 1: static cross-agent constants lead.
+    expect(out.indexOf("beevibe_lifecycle")).toBeLessThan(
+      out.indexOf("beevibe_memory"),
+    );
+    // Tier 2 → Tier 3: memory reminder before surface-specific static.
+    expect(out.indexOf("beevibe_memory")).toBeLessThan(
+      out.indexOf("chat_directives"),
+    );
+    // Tier 3 → Tier 4: chat directives before the roster-stable team
+    // routing block — adding a new specialist invalidates everything
+    // after this point, so it sits below the fully-static blocks.
     expect(out.indexOf("chat_directives")).toBeLessThan(
       out.indexOf("team_agent_routing"),
+    );
+    // Tier 4 → Tier 5: team routing before per-agent baseline (operator
+    // edits invalidate baseline + briefing; roster changes are rarer).
+    expect(out.indexOf("team_agent_routing")).toBeLessThan(
+      out.indexOf("agent_baseline_marker"),
+    );
+    // Tier 5 → Tier 6: per-agent baseline before per-session briefing.
+    expect(out.indexOf("agent_baseline_marker")).toBeLessThan(
+      out.indexOf("briefing_marker"),
     );
   });
 
@@ -104,14 +147,13 @@ describe("composeSystemPromptAppend lifecycle branching", () => {
     expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT).toMatch(/NO\s+work_product/);
   });
 
-  it("chat variant still allows create_task for team/org tier", () => {
-    expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT).toContain("create_task");
-  });
-
-  it("chat variant does not tell team agents to assign work to themselves", () => {
-    // The 'or to yourself when it is your specialty' clause was a loophole
-    // that caused team agents to handle specialist work directly.
-    expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT).not.toContain("to yourself");
+  it("chat variant does not duplicate routing guidance from team_agent_routing", () => {
+    // The chat reminder used to carry a create_task / routing bullet
+    // that overlapped with <team_agent_routing>. Routing is now the
+    // sole responsibility of that block (universal across chat + task),
+    // so the chat reminder shouldn't mention create_task at all.
+    expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT).not.toContain("create_task");
+    expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT).not.toContain("find_subordinates");
   });
 
   it("both variants share the outer <beevibe_lifecycle> tag so downstream parsing is stable", () => {

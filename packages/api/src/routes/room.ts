@@ -577,18 +577,17 @@ async function runMentionedAgents(
         agent.id,
         roomId,
       );
-      // Team agents in rooms ALSO get the routing directive (delegate-don't-
-      // absorb) on top of room directives — same reasoning as in the chat
-      // path: a team agent's job is to route work, even when collaborating
-      // with peers from other teams in a shared room.
-      const subordinates =
-        agent.hierarchy_level === "team"
-          ? await deps.agentRepo.findSubordinates(agent.id)
-          : [];
-      const teamRouting =
-        subordinates.length > 0
-          ? teamAgentRoutingDirective(subordinates.map((s) => s.name))
-          : "";
+      // Team agents in rooms ALSO get the routing directive on top of
+      // room directives — same three-lane rubric (handle / delegate /
+      // spawn) applies whether the team agent is in a 1:1 chat, a task
+      // session, or collaborating in a room.
+      const isTeamAgent = agent.hierarchy_level === "team";
+      const subordinates = isTeamAgent
+        ? await deps.agentRepo.findSubordinates(agent.id)
+        : [];
+      const teamRouting = isTeamAgent
+        ? teamAgentRoutingDirective(subordinates.map((s) => s.name))
+        : "";
       const session = await agentSession.run({
         agentId: agent.id,
         intent,

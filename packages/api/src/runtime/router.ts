@@ -466,26 +466,27 @@ async function composeDispatchPayload(
 
   const memoryAgent = deps.makeMemoryAgent(agent.id);
   const isChat = session.type === "chat";
-  const isTeamChat = isChat && agent.hierarchy_level === "team";
+  const isTeamAgent = agent.hierarchy_level === "team";
   // Briefing, prior-session, (for chat) onboarding-state, and (for team
-  // chat) subordinate roster lookups are independent — overlap them so
-  // the resume-chain hot path doesn't pay all round-trips serially.
+  // agents) subordinate roster lookups are independent — overlap them
+  // so the resume-chain hot path doesn't pay all round-trips serially.
   const [briefing, priorSession, owner, subordinates] = await Promise.all([
     memoryAgent.prepareBriefing(session.intent),
     session.prior_session_id
       ? deps.sessionRepo.findById(session.prior_session_id)
       : Promise.resolve(undefined),
     isChat ? deps.personRepo.findById(agent.owner_id) : Promise.resolve(undefined),
-    isTeamChat
+    isTeamAgent
       ? deps.agentRepo.findSubordinates(agent.id)
       : Promise.resolve([]),
   ]);
-  // Team-agent routing fires post-onboarding for all team chat sessions —
-  // whether or not there are specialists yet. With no specialists the
-  // directive tells the agent to spawn one rather than do the work itself.
+  // Team-agent routing is universal across chat AND task sessions for
+  // team-tier agents — the three-lane rubric (handle / delegate / spawn)
+  // doesn't depend on surface. Suppressed during onboarding so the
+  // wizard directives drive the build-your-team conversation themselves.
   const isOnboarding = isChat && !owner?.onboarding_completed_at;
   const teamRouting =
-    isTeamChat && !isOnboarding
+    isTeamAgent && !isOnboarding
       ? teamAgentRoutingDirective(subordinates.map((s) => s.name))
       : "";
 
