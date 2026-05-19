@@ -334,6 +334,21 @@
   .glass-bubble-user { background-color: hsl(var(--primary) / 0.22); }
 }
 
+/* Slide-in for bottom-right toasts (memory-toast-host). Mirrors the
+   iOS notification slide — soft ease, short distance. Disabled under
+   prefers-reduced-motion so the toast still appears, just without the
+   whoosh. */
+@keyframes toast-in {
+  from { transform: translate(8%, 12%); opacity: 0; }
+  to   { transform: translate(0, 0);     opacity: 1; }
+}
+.animate-toast-in {
+  animation: toast-in 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-toast-in { animation: none; }
+}
+
 /* Agent avatar glass — tiny frosted badges for the custom role marks.
    Uses a shared treatment with per-hierarchy tint variables so team
    agents pick up the primary theme color instead of the old purple. */
