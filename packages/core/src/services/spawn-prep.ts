@@ -337,6 +337,16 @@ directives the UI understands:
 
    Keep \`label\` short (under ~80 chars). Skip the chips entirely
    when there's nothing concrete to choose.
+
+   **Critical**: \`<suggest_action>\` chips have NO "dismissed" state
+   from your perspective. They are rendered to the user as buttons;
+   the user's next message becomes the next turn. You will NEVER see
+   a "chip was dismissed" event because it doesn't exist. After
+   emitting chips, END YOUR TURN — do not generate follow-up prose
+   that speculates about whether the chips were ignored ("looks like
+   the prompt was dismissed", "just tell me directly", etc.). That
+   pattern is hallucination of UI state you don't have access to.
+   Wait for the user's next actual message.
 </chat_directives>`;
 
 /**
