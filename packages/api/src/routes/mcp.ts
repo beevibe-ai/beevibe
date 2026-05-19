@@ -221,7 +221,7 @@ async function handleMcpRequest(
   // MemoryAgent (closed over caller.agentId) so search_context queries hit
   // the right agent's archival memory.
   const memoryAgent = deps.makeMemoryAgent(caller.agentId);
-  const instructions = await buildInstructions(caller, memoryAgent);
+  const instructions = await buildInstructions(caller, memoryAgent, deps.agentRepo);
   // Look up the bound beevibe session so we can branch the tool surface for
   // server-fallback-mesh spawns (restricted set; see assembleTools). Failure
   // to load is non-fatal — we default to the full surface and the caller

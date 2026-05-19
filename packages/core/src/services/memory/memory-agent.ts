@@ -51,6 +51,18 @@ export interface MemoryAgent {
    */
   prepareBriefing(intent: string): Promise<BriefingResult>;
   /**
+   * Session-start briefing for surfaces that have no intent at init time
+   * (human MCP — the user hasn't said anything yet). Returns the same
+   * `BriefingResult` shape as `prepareBriefing` but with an empty
+   * `userMessagePrefix` and zero facts in the snapshot.
+   *
+   * Skips the OpenAI embed + pgvector query entirely — there's no signal
+   * to query against, so any retrieval would be noise. The caller's CLI
+   * uses the `search_context` MCP tool to pull archival facts on demand
+   * when it realizes it needs them.
+   */
+  prepareCoreOnly(): Promise<BriefingResult>;
+  /**
    * Mid-session: vector-search the agent's archival facts by `query` and
    * return ONLY the `<archival_memory>...</archival_memory>` XML envelope.
    * Used by the `search_context` MCP tool — the agent already has its
@@ -114,6 +126,11 @@ export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
         searchFacts(intent),
       ]);
       return composeBriefing(blocks, facts);
+    },
+
+    async prepareCoreOnly(): Promise<BriefingResult> {
+      const blocks = await deps.coreMemory.read(deps.agentId);
+      return composeBriefing(blocks, []);
     },
 
     async searchArchival(query: string): Promise<string> {

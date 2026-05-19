@@ -97,19 +97,11 @@ work_product to record.
    don't summarize what they just said back at them, don't open with a
    meta-acknowledgement of the question.
 
-2. If the user describes a discrete unit of work (a deliverable, a fix,
-   a research goal) and you are team or org tier, you may call
-   mcp__beevibe__create_task to spawn it as a tracked task — always to a
-   subordinate specialist (call mcp__beevibe__find_subordinates first to
-   pick a matching specialty). Team agents do not take on specialist work
-   themselves; if no subordinate fits, name the gap and recommend spawning
-   one.
-
-3. Memory management (see <beevibe_memory>) is especially valuable in
+2. Memory management (see <beevibe_memory>) is especially valuable in
    chat. Preferences, decisions, and durable context surface here first;
    save them so the next chat and the next task inherit them.
 
-4. For multi-step protocols whose triggers match your situation (mesh
+3. For multi-step protocols whose triggers match your situation (mesh
    negotiation, etc.) the relevant beevibe-* skill in .claude/skills/
    has the deep guidance — invoke via the Skill tool. Note that
    beevibe-pre-task-setup is git-workspace setup for tasks; it does NOT
@@ -318,59 +310,77 @@ directives the UI understands:
    when there's nothing concrete to choose.
 </chat_directives>`;
 
+/**
+ * Universal routing directive for team-tier agents. Injected for every
+ * team-agent session (chat AND task) — the three-lane rubric is the
+ * same regardless of surface. Chat-specific affordances (suggest_action
+ * chips, clarifying-question framing) live in CHAT_DIRECTIVES and the
+ * chat lifecycle reminder, not here.
+ *
+ * Empty roster is a normal state, not a failure mode: the agent can
+ * still lane-A small work and lane-C propose spawns. The roster section
+ * varies; the lane rubric is identical for both shapes.
+ */
 export function teamAgentRoutingDirective(
   specialistNames: readonly string[],
 ): string {
-  const rosterSection =
-    specialistNames.length > 0
-      ? withSpecialists(specialistNames)
-      : withoutSpecialists();
   return `<team_agent_routing>
-You are a TEAM AGENT — a coordinator, not a specialist. ${rosterSection}
+You are a TEAM AGENT — a coordinator who can roll up sleeves for small or
+unscoped work, but delegates substantial single-domain work to specialists.
 
-3. **You don't do specialist work yourself.** If you find yourself drafting the actual deliverable (writing the code, the copy, the analysis), stop — that's the signal that this request needs a specialist. Your job is recognizing whose domain this is, recommending the handoff or the gap, and getting the human to a fast next click.
+${rosterSection(specialistNames)}
 
-Clarifying questions are fine and encouraged — but ask them in service of *routing* the work, not in service of you doing it.
+Three lanes for any work that lands on you:
+
+A) **Handle it yourself** — when:
+   - The work is ambiguous and needs exploration (read code, look up docs, sketch the shape of the problem) before anyone can do it well.
+   - It's small enough that handing off costs more than doing — a quick lookup, a one-line fix.
+   - It's cross-cutting coordination work that doesn't decompose into a single domain (you produce a plan, a summary, or a decision — not single-domain code).
+
+   You have full tool access (Read, Glob, Grep, Bash, Write, WebFetch, …). Use it freely to scope, investigate, and land the work. Do NOT call mcp__beevibe__create_task on yourself — that spawns a separate session for the same agent, wasteful when you can just do the work here.
+
+B) **Delegate to one specialist** — when the work is a substantive single-domain deliverable AND a subordinate's specialty clearly fits. Route via mcp__beevibe__create_task to that subordinate; call mcp__beevibe__find_subordinates first to pick by specialty.
+
+C) **Propose spawning a specialist** — when the work is substantive single-domain work AND no subordinate fits. Name the gap plainly ("you have X, Y, Z — but nobody owns <domain>"), and recommend a concrete name + cross-project scope for the new specialist.
+
+**Stop signal:** if you find yourself producing a substantial single-domain deliverable yourself (writing real production code, a full design doc, a finished analysis for one domain), you slipped into lane B without realizing — pull back and route.
 </team_agent_routing>`;
 }
 
-function withSpecialists(names: readonly string[]): string {
-  const list = names.map((n) => `  - ${n}`).join("\n");
-  return `Your team currently has these specialists:
+// Trailing reminder used in both roster-present and roster-empty
+// branches. Specialists must be framed as cross-project from day one,
+// otherwise spawn recommendations drift into project-scoped ("hire a
+// backend specialist for this repo") rather than skill-scoped ("add
+// backend to the team").
+const PORTABLE_SPECIALIST_FRAMING =
+  `Specialists are PORTABLE — their expertise spans every project and repo this user touches, not just this one. Frame each spawn as "adding this skill to the team," not "hiring for this project."`;
 
-${list}
-
-When the user brings work, your default move is to ROUTE it, not do it yourself:
-
-1. **Match the request's primary skill axis to an existing specialist.** Frontend? backend? data? comms? design? mobile? Look at the names above. If one fits, propose handing off — append a chip like:
-
-   \`<suggest_action label="Hand off to backend specialist" prompt="hand this off to the backend specialist" />\`
-
-2. **If no specialist owns it, name the gap.** Don't paper over it by absorbing the work yourself. Say plainly: "you have X, Y, Z — but nobody owns <domain>." Recommend spawning a new specialist with a concrete name + scope, and append:
-
-   \`<suggest_action label="Spawn <name> specialist" prompt="yes, draft the spec and spawn the specialist" />\``;
-}
-
-function withoutSpecialists(): string {
-  return `You have no specialists yet. **Do not handle this request yourself.** Your only move is to identify what kind of specialist is needed, recommend spawning one with a concrete name and scope, and append:
-
-   \`<suggest_action label="Spawn <name> specialist" prompt="yes, draft the spec and spawn the specialist" />\``;
+function rosterSection(names: readonly string[]): string {
+  const intro =
+    names.length > 0
+      ? `Your team currently has these specialists:\n\n${names.map((n) => `  - ${n}`).join("\n")}`
+      : `Your team has no specialists yet.`;
+  return `${intro}\n\n${PORTABLE_SPECIALIST_FRAMING}`;
 }
 
 /**
  * Compose the `--append-system-prompt` value. Cache-friendly order:
- * most-stable first (cross-agent constants → agent baseline → per-agent
- * core-memory briefing). archival_memory rides on the user message via
- * `composeIntent`, not here, because it's the per-session bit that breaks
- * cache.
+ * most-stable first (cross-agent constants → surface-specific static
+ * directives → roster-stable team routing → per-agent baseline →
+ * per-session briefing → one-shot onboarding). archival_memory rides
+ * on the user message via `composeIntent`, not here, because it's the
+ * per-session bit that breaks cache.
  *
- * For chat sessions, pass `appendChatDirectives: true` so the static
- * UI-format directives land at the tail (most-volatile slot — they
- * don't affect cache for non-chat sessions). When also onboarding,
- * `appendOnboardingDirectives: true` adds the one-time wizard directives
- * after CHAT_DIRECTIVES.
+ * Stability tiers (highest to lowest):
+ *   1. lifecycle reminder  — fully static per surface
+ *   2. memory reminder     — fully static
+ *   3. chat directives     — fully static, chat-only
+ *   4. team routing extra  — changes only when team roster changes
+ *   5. per-agent baseline  — changes only when operator edits the agent
+ *   6. briefing            — changes per-session (memory blocks update)
+ *   7. onboarding          — one-shot, never re-fires (tail slot is fine)
  */
-export type SessionSurfaceKind = "task" | "chat";
+export type SessionSurfaceKind = "task" | "chat" | "human_mcp";
 
 export function composeSystemPromptAppend(
   agentSystemPromptAddition: string | undefined,
@@ -379,14 +389,19 @@ export function composeSystemPromptAppend(
     /**
      * Which session surface is being spawned. Drives both the
      * lifecycle reminder variant AND whether CHAT_DIRECTIVES is
-     * appended — the two are coupled by definition (chat surface
-     * implies chat lifecycle and display tokens; task surface implies
-     * task lifecycle and no display tokens). Defaults to "task" so
-     * existing task-side callers don't need to pass the flag.
+     * appended.
      *
-     * When mesh-ask / blocker-response sessions eventually need their
-     * own surface treatment, extend this union — don't reintroduce
-     * orthogonal flags.
+     *   "task"      — task lifecycle, no display tokens.
+     *   "chat"      — chat lifecycle + display tokens (the beevibe
+     *                 chat surface renders id-hydration, open_view,
+     *                 suggest_action chips).
+     *   "human_mcp" — chat lifecycle (interactive conversation, no
+     *                 task tracking) but NO display tokens — the
+     *                 human's local CLI runs in their terminal and
+     *                 can't render our chips.
+     *
+     * Defaults to "task" so existing task-side callers don't need
+     * to pass the flag.
      */
     sessionKind?: SessionSurfaceKind;
     appendOnboardingDirectives?: boolean;
@@ -394,18 +409,23 @@ export function composeSystemPromptAppend(
     extra?: string;
   } = {},
 ): string {
-  const isChat = options.sessionKind === "chat";
-  const lifecycleReminder = isChat
+  const usesChatLifecycle =
+    options.sessionKind === "chat" || options.sessionKind === "human_mcp";
+  const lifecycleReminder = usesChatLifecycle
     ? BEEVIBE_LIFECYCLE_REMINDER_CHAT
     : BEEVIBE_LIFECYCLE_REMINDER_TASK;
+  // CHAT_DIRECTIVES is the beevibe chat UI grammar — only fires for
+  // sessions actually rendered in our chat surface. human_mcp uses
+  // chat lifecycle but skips this block.
+  const isChatSurface = options.sessionKind === "chat";
   return [
     lifecycleReminder,
     BEEVIBE_MEMORY_REMINDER,
+    isChatSurface ? CHAT_DIRECTIVES : "",
+    options.extra ?? "",
     agentSystemPromptAddition ?? "",
     briefingSystemPromptAppend,
-    isChat ? CHAT_DIRECTIVES : "",
     options.appendOnboardingDirectives ? ONBOARDING_DIRECTIVES : "",
-    options.extra ?? "",
   ]
     .filter((s) => s.length > 0)
     .join("\n\n");
