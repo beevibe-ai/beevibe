@@ -82,6 +82,10 @@
       "types": "./dist/services/skills/index.d.ts",
       "default": "./dist/services/skills/index.js"
     },
+    "./services/referenced-repos": {
+      "types": "./dist/services/referenced-repos.d.ts",
+      "default": "./dist/services/referenced-repos.js"
+    },
     "./auth": {
       "types": "./dist/auth/index.d.ts",
       "default": "./dist/auth/index.js"

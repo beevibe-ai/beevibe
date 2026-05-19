@@ -669,7 +669,32 @@ export const api = {
       }>(`/find-repo?${params.toString()}`, { signal: opts.signal });
     },
   },
+  capabilities: {
+    /** GitHub repos referenced inside a task's transcript/work products. */
+    referencedRepos: (taskId: string, opts: ReadOptions = {}) =>
+      fetchJson<{ repos: ReferencedRepo[] }>(
+        `/capabilities/referenced-repos?task_id=${encodeURIComponent(taskId)}`,
+        { signal: opts.signal },
+      ),
+    /** Trigger a use_repo sandbox run from a human caller. Returns 202. */
+    use: (input: { repo_url: string; goal: string }) =>
+      fetchJson<{
+        repo_run_id: string;
+        session_id: string;
+        task_id: string;
+        status: string;
+        watch_url: string;
+      }>("/capabilities/use", { method: "POST", body: input }),
+  },
 } as const;
+
+export interface ReferencedRepo {
+  owner: string;
+  name: string;
+  url: string;
+  occurrences: number;
+  already_saved: boolean;
+}
 
 /**
  * Mirrors the candidate shape that `packages/api/src/tools/find-repo.ts`

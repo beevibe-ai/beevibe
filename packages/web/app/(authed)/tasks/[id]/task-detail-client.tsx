@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   AlertTriangle,
@@ -32,6 +32,7 @@ import { Skeleton } from "@/components/skeleton";
 import { richTextToMarkdown } from "@/components/rich-text";
 import { formatRelativeTime, shortId } from "@/lib/format";
 import type { TaskDetail, TaskDetailSessionRow } from "@/lib/api/types";
+import type { ReferencedRepo } from "@/lib/api/client";
 import type { WorkProduct } from "@beevibe/core";
 
 const TasksBackLink = () => (
@@ -287,6 +288,8 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
             )}
           </section>
 
+          {isTerminal ? <ReferencedReposCard taskId={task.id} taskTitle={task.title} /> : null}
+
           <section>
             <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
               Sessions{" "}
@@ -479,6 +482,89 @@ function BlockedReplyBanner({ task }: { task: TaskDetail }) {
         </Link>
       </div>
     </section>
+  );
+}
+
+/**
+ * Renders on terminal tasks when the agent referenced GitHub repos
+ * inside the transcript but never called `use_repo` itself (audit-style
+ * tasks). Clicking "Validate & save" kicks off a real use_repo sandbox
+ * run so the repo can be promoted to a learned skill.
+ */
+function ReferencedReposCard({ taskId, taskTitle }: { taskId: string; taskTitle: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["task", taskId, "referenced-repos"],
+    queryFn: ({ signal }) => api.capabilities.referencedRepos(taskId, { signal }),
+    staleTime: 60_000,
+  });
+
+  if (isLoading || !data || data.repos.length === 0) return null;
+
+  return (
+    <section>
+      <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
+        Save as team capability{" "}
+        <span className="text-muted-foreground/70 tabular-nums">{data.repos.length}</span>
+      </h2>
+      <p className="text-xs text-muted-foreground mb-3">
+        Repos this task touched. Validate and save one so future agents can pick it up.
+      </p>
+      <ul className="space-y-2">
+        {data.repos.map((repo) => (
+          <ReferencedRepoRow key={repo.url} repo={repo} taskTitle={taskTitle} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ReferencedRepoRow({ repo, taskTitle }: { repo: ReferencedRepo; taskTitle: string }) {
+  const [runUrl, setRunUrl] = useState<string | null>(null);
+  const run = useMutation({
+    mutationFn: () =>
+      api.capabilities.use({
+        repo_url: repo.url,
+        goal: taskTitle,
+      }),
+    onSuccess: (res) => setRunUrl(res.watch_url),
+  });
+
+  return (
+    <li className="rounded-lg border border-border bg-card p-3 flex items-center gap-3">
+      <Package className="h-4 w-4 text-muted-foreground shrink-0" />
+      <div className="flex-1 min-w-0">
+        <Link
+          href={repo.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm font-medium hover:underline"
+        >
+          {repo.owner}/{repo.name}
+        </Link>
+        <p className="text-[11px] text-muted-foreground">
+          {repo.occurrences === 1 ? "1 mention" : `${repo.occurrences} mentions`}
+          {repo.already_saved ? " · already saved" : ""}
+        </p>
+      </div>
+      {repo.already_saved ? (
+        <span className="text-[11px] text-muted-foreground shrink-0">Saved</span>
+      ) : runUrl ? (
+        <Link
+          href={runUrl}
+          className="shrink-0 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity"
+        >
+          Watch run →
+        </Link>
+      ) : (
+        <button
+          onClick={() => run.mutate()}
+          disabled={run.isPending}
+          className="shrink-0 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+        >
+          {run.isPending ? "Starting…" : "Validate & save"}
+        </button>
+      )}
+    </li>
   );
 }
 

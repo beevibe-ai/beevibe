@@ -45,6 +45,7 @@ import { createTaskRouter } from "./routes/task.js";
 import { createRepoRunsRouter } from "./routes/repo-runs.js";
 import { createLearnedSkillsRouter } from "./routes/learned-skills.js";
 import { createFindRepoRouter } from "./routes/find-repo.js";
+import { createCapabilitiesRouter } from "./routes/capabilities.js";
 import { createEscalationRouter } from "./routes/escalation.js";
 import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
@@ -473,6 +474,22 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     learnedSkillRepo,
   });
   server.getApp().use("/find-repo", findRepoRouter);
+
+  // Capability Network — UI-driven persistence: mine a closed task's
+  // transcript for referenced repos, and let the user kick off a
+  // use_repo sandbox run from the Save-as-capability card.
+  const capabilitiesRouter = createCapabilitiesRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    agentRepo,
+    taskRepo,
+    sessionRepo,
+    sessionEventRepo,
+    workProductRepo,
+    repoRunRepo,
+    learnedSkillRepo,
+    dispatchService,
+  });
+  server.getApp().use("/capabilities", capabilitiesRouter);
 
   // Phase 8 — onboarding/identity surface (bv_u_).
   // GET /me, POST /me/onboarding/complete, GET /health/runtime.
