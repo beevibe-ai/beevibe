@@ -247,6 +247,66 @@
   transform: translateY(2px);
 }
 
+/* ── Glass surface utilities ──────────────────────────────────────────
+   Frosted-glass treatment that pairs with the .glassy-chip / .glassy-send
+   pearl buttons so the surrounding chrome reads as part of the same
+   material instead of solid blocks against shiny pearls.
+
+   Use `.glass-surface` for popovers, composers, peek panels — anything
+   that hosts content. Use `.glass-bubble-agent` / `.glass-bubble-user`
+   for chat message bubbles. All three need a non-solid backdrop behind
+   them to read correctly; the chat surface's gradient + the sidebar's
+   `bg-card` both qualify. */
+.glass-surface {
+  background-color: hsl(var(--card) / 0.65);
+  backdrop-filter: blur(16px) saturate(160%);
+  -webkit-backdrop-filter: blur(16px) saturate(160%);
+  border: 1px solid hsl(var(--border) / 0.55);
+}
+.dark .glass-surface {
+  background-color: hsl(var(--card) / 0.55);
+  border-color: hsl(var(--border) / 0.45);
+}
+/* Fallback for browsers without backdrop-filter (older Firefox): bump
+   alpha so the surface stays legible without the blur trick. */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-surface { background-color: hsl(var(--card) / 0.95); }
+  .dark .glass-surface { background-color: hsl(var(--card) / 0.92); }
+}
+
+/* Agent message — neutral translucent bubble. Drops the solid
+   bg-secondary block in favor of a frosted variant that lets the
+   gradient backdrop bleed through. */
+.glass-bubble-agent {
+  background-color: hsl(var(--secondary) / 0.55);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  color: hsl(var(--foreground));
+}
+.dark .glass-bubble-agent {
+  background-color: hsl(var(--secondary) / 0.5);
+}
+
+/* User message — replaces the saturated bg-primary yellow with a low-
+   opacity tint + brand-colored border. Brand reads as accent instead
+   of dominating the column; short prompts stop looking like billboards. */
+.glass-bubble-user {
+  background-color: hsl(var(--primary) / 0.14);
+  border: 1px solid hsl(var(--primary) / 0.4);
+  backdrop-filter: blur(14px) saturate(160%);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  color: hsl(var(--foreground));
+}
+.dark .glass-bubble-user {
+  background-color: hsl(var(--primary) / 0.12);
+  border-color: hsl(var(--primary) / 0.45);
+}
+
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .glass-bubble-agent { background-color: hsl(var(--secondary) / 0.9); }
+  .glass-bubble-user { background-color: hsl(var(--primary) / 0.22); }
+}
+
 /* Glassy chip — scaled-down pearl for the active sidebar tab. Same
    cream body and sheen as .pearl-button, but with the chrome dialed
    back so it sits comfortably inline next to icon-only inactive

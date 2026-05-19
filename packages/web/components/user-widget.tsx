@@ -77,7 +77,7 @@ export function UserWidget() {
       {view === "menu" ? (
         <div
           role="menu"
-          className="absolute bottom-full left-0 mb-2 z-50 w-[220px] rounded-md border border-border bg-card shadow-xl py-1"
+          className="absolute bottom-full left-0 mb-2 z-50 w-[220px] rounded-md glass-surface shadow-xl py-1"
         >
           <MenuItem icon={Brain} label="My memory" href="/memory" onActivate={close} />
           <MenuItem

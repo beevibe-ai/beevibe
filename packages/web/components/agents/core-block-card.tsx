@@ -362,7 +362,13 @@ function TeamMemberRow({ member }: { member: TeamMember }) {
   const initial = member.role.charAt(0).toUpperCase();
   return (
     <li className="flex items-start gap-2.5">
-      <Avatar initial={initial} kind="ic" size={28} />
+      <Avatar
+        initial={initial}
+        kind="ic"
+        label={member.role}
+        specialization={member.description}
+        size={28}
+      />
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2 flex-wrap">
           <span className="text-xs font-semibold text-foreground">

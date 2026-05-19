@@ -91,7 +91,13 @@ function AgentRow({
           className="flex items-center gap-2.5 text-left cursor-pointer"
           title="Open peek panel"
         >
-          <Avatar initial={initial} kind={agent.hierarchy} size={28} />
+          <Avatar
+            initial={initial}
+            kind={agent.hierarchy}
+            label={agent.display_name}
+            specialization={agent.specialization}
+            size={28}
+          />
           <div className="min-w-0">
             <div className="flex items-center gap-1.5">
               <span className="font-medium truncate">{agent.display_name}</span>

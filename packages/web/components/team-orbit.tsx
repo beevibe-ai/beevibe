@@ -331,7 +331,13 @@ function CyberCard({
       <div className="cyber-scan" />
       <div className="relative h-full z-[1]" style={{ padding: 12 }}>
         <div className="flex items-center gap-2">
-          <Avatar initial={initial} kind={agent.hierarchy} size={avatarSize} />
+          <Avatar
+            initial={initial}
+            kind={agent.hierarchy}
+            label={agent.display_name ?? agent.name}
+            specialization={agent.specialization}
+            size={avatarSize}
+          />
           <span className="cyber-badge text-[9px] uppercase tracking-[0.18em] font-mono">
             {isTeam ? "TEAM" : "AGENT"}
           </span>
