@@ -85,7 +85,25 @@ export function AgentsClient() {
   const panZoom = usePanZoom({ minScale: 0.4, maxScale: 2.5 });
 
   return (
-    <div className="relative flex-1 overflow-hidden bg-gradient-to-b from-background to-secondary/20">
+    <div className="relative flex-1 flex flex-col overflow-hidden bg-gradient-to-b from-background to-secondary/20">
+      {/* Persistent header — view toggle lives here so it never overlaps
+          content. Title appears in list mode only; orbit mode keeps its
+          own top-left Caption overlay so the canvas can stay edge-to-edge. */}
+      <header className="shrink-0 flex items-center justify-between gap-3 px-6 h-12 border-b border-border/60">
+        {view === "list" ? (
+          <h1 className="text-sm font-semibold tracking-tight">
+            Agents{" "}
+            <span className="text-muted-foreground/70 tabular-nums font-normal">
+              {selfAgents.length}
+            </span>
+          </h1>
+        ) : (
+          <span aria-hidden />
+        )}
+        <ViewToggle view={view} onChange={setView} />
+      </header>
+
+      <div className="relative flex-1 overflow-hidden">
       {!isApiConfigured ? (
         <CenteredShell
           icon={Bot}
@@ -96,8 +114,6 @@ export function AgentsClient() {
         <CenteredShell icon={AlertTriangle} title="Couldn't load the network" />
       ) : (
         <>
-          <ViewToggle view={view} onChange={setView} />
-
           {view === "list" ? (
             <AgentsListView
               agents={selfAgents}
@@ -175,6 +191,7 @@ export function AgentsClient() {
       {selectedAgentId ? (
         <AgentDetailPanel agentId={selectedAgentId} onClose={closeAgent} />
       ) : null}
+      </div>
     </div>
   );
 }
@@ -276,7 +293,7 @@ function ViewToggle({
 }) {
   return (
     <div
-      className="absolute top-6 right-6 z-10 inline-flex items-center gap-0.5 rounded-full border border-border bg-card/90 backdrop-blur-sm shadow-sm p-0.5"
+      className="inline-flex items-center gap-0.5 rounded-full border border-border bg-card/90 backdrop-blur-sm shadow-sm p-0.5"
       data-pan="ignore"
     >
       <ToggleButton
