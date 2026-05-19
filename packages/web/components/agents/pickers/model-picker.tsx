@@ -34,6 +34,7 @@ function useModelMutation(agentId: string) {
         queryKey: queryKeys.agents.detail(agentId),
       });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agentNetwork.all });
     },
   });
 }
@@ -144,6 +145,7 @@ export function ModelPicker({ agent }: { agent: AgentDisplay }) {
         queryKey: queryKeys.agents.detail(agent.id),
       });
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agentNetwork.all });
     },
   });
 

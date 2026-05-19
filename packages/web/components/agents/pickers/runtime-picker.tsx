@@ -64,7 +64,13 @@ function useRuntimeMutation(agentId: string) {
     mutationFn: (runtimeId: string | null) =>
       api.agents.setRuntime(agentId, runtimeId),
     onSuccess: () => {
+      // The list view consumes data via useAgentNetwork() — that's
+      // a separate cache slot (["agent-network", ...]) from the
+      // per-agent detail (["agents", ...]). Invalidating only one
+      // leaves the other stale, so a mutation appears to silently
+      // do nothing in whichever view didn't get its key bumped.
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agentNetwork.all });
     },
   });
 }

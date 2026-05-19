@@ -18,8 +18,11 @@ function useReviewPolicyMutation(agentId: string) {
     mutationFn: (policy: ReviewPolicy) =>
       api.agents.setReviewPolicy(agentId, policy),
     onSuccess: () => {
-      // List rows + peek panel + detail aside all carry review_policy.
+      // List rows source from useAgentNetwork() — different cache
+      // slot from the per-agent detail. Both need to be bumped or
+      // the view that wasn't invalidated stays stale.
       void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
+      void queryClient.invalidateQueries({ queryKey: queryKeys.agentNetwork.all });
     },
   });
 }
