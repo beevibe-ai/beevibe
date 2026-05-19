@@ -86,20 +86,10 @@ export function AgentsClient() {
 
   return (
     <div className="relative flex-1 flex flex-col overflow-hidden bg-gradient-to-b from-background to-secondary/20">
-      {/* Persistent header — view toggle lives here so it never overlaps
-          content. Title appears in list mode only; orbit mode keeps its
-          own top-left Caption overlay so the canvas can stay edge-to-edge. */}
-      <header className="shrink-0 flex items-center justify-between gap-3 px-6 h-12 border-b border-border/60">
-        {view === "list" ? (
-          <h1 className="text-sm font-semibold tracking-tight">
-            Agents{" "}
-            <span className="text-muted-foreground/70 tabular-nums font-normal">
-              {selfAgents.length}
-            </span>
-          </h1>
-        ) : (
-          <span aria-hidden />
-        )}
+      {/* Persistent header — only the view toggle. Orbit mode shows its
+          own top-left Caption overlay, list mode lets the table column
+          headers identify the surface, so no duplicate page title here. */}
+      <header className="shrink-0 flex items-center justify-end px-6 h-12 border-b border-border/60">
         <ViewToggle view={view} onChange={setView} />
       </header>
 
