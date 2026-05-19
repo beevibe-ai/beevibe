@@ -90,10 +90,10 @@ export function AgentsSidebar({ pathname }: { pathname: string }) {
                 href={item.href}
                 aria-current={active ? "page" : undefined}
                 className={cn(
-                  "flex items-center gap-2 h-7 px-2 mx-1 my-0.5 rounded text-xs transition-colors",
+                  "flex items-center gap-2 h-7 px-2 mx-1 my-0.5 rounded text-xs",
                   active
-                    ? "bg-secondary text-foreground font-semibold"
-                    : "text-muted-foreground/85 hover:text-foreground hover:bg-secondary/60",
+                    ? "glassy-chip font-semibold"
+                    : "text-muted-foreground/85 hover:text-foreground hover:bg-secondary/60 transition-colors",
                 )}
               >
                 <item.icon className="h-3.5 w-3.5 shrink-0" />

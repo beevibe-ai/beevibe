@@ -28,6 +28,7 @@ import { Avatar } from "@/components/avatar";
 import { ReferenceCards } from "@/components/chat/reference-cards";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ToolStepList } from "@/components/chat/tool-step-list";
+import { ChatLoader } from "@/components/chat/chat-loader";
 
 function useTeamAgent() {
   const agents = useAgents();
@@ -201,7 +202,7 @@ export function ChatClient() {
                     onClick={() => submit()}
                     disabled={isPending || draft.trim().length === 0}
                     aria-label="Send"
-                    className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                    className="glassy-send h-7 w-7 inline-flex items-center justify-center rounded-full cursor-pointer"
                   >
                     <ArrowUp className="h-3.5 w-3.5" />
                   </button>
@@ -309,7 +310,7 @@ function HeroEmptyChat({
               onClick={() => onSubmit()}
               disabled={draft.trim().length === 0}
               aria-label="Send"
-              className="h-7 w-7 inline-flex items-center justify-center rounded-full bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+              className="glassy-send h-7 w-7 inline-flex items-center justify-center rounded-full cursor-pointer"
             >
               <ArrowUp className="h-3.5 w-3.5" />
             </button>
@@ -494,6 +495,18 @@ function Thinking({
   // stays scannable; the running pulse on the most recent makes it
   // clear where the agent is "now."
   const recentTools = toolSteps.slice(-8);
+
+  // Before any text or tool step lands, hand the reply column over to
+  // the brand orb — single deliberate "agent is starting" moment in
+  // place of three-dot flicker. Once anything arrives we fall back to
+  // the normal avatar + bubble layout.
+  if (!streamingText && recentTools.length === 0) {
+    return (
+      <div className="flex w-full justify-start mt-4 pl-9">
+        <ChatLoader />
+      </div>
+    );
+  }
 
   return (
     <div className="flex w-full justify-start mt-4">

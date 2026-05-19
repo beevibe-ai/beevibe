@@ -40,10 +40,10 @@ export function MemorySubNav() {
             key={entry.href}
             href={entry.href}
             className={cn(
-              "px-3 py-1.5 rounded transition-colors",
+              "px-3 py-1.5 rounded",
               active
-                ? "bg-secondary text-foreground font-medium"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary",
+                ? "glassy-chip font-medium"
+                : "text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors",
             )}
           >
             {entry.label}

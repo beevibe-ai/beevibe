@@ -172,8 +172,8 @@ function ConversationRow({
     <li>
       <div
         className={cn(
-          "group relative block px-3 py-1.5 mx-1 my-0.5 rounded transition-colors",
-          active ? "bg-secondary" : "hover:bg-secondary/60",
+          "group relative block px-3 py-1.5 mx-1 my-0.5 rounded",
+          active ? "glassy-chip" : "hover:bg-secondary/60 transition-colors",
           stale && !active && "opacity-60",
           deleteMutation.isPending && "opacity-50 pointer-events-none",
         )}
