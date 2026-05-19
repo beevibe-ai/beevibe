@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { createAvatar } from "@dicebear/core";
@@ -147,7 +147,7 @@ function repoAvatarSrc(repoUrl: string) {
   return src;
 }
 
-function RepoAvatar({ repoUrl, size = 36 }: { repoUrl: string; size?: number }) {
+function RepoAvatar({ repoUrl, size = 28 }: { repoUrl: string; size?: number }) {
   return (
     <span
       className="agent-avatar-glass inline-block shrink-0"
@@ -193,36 +193,33 @@ function YoursTab({
     );
   }
   return (
-    <div className="max-w-4xl">
-      {skills.map((skill, idx) => (
-        <SkillRow key={skill.id} skill={skill} isFirst={idx === 0} />
+    <div>
+      {skills.map((skill) => (
+        <SkillRow key={skill.id} skill={skill} />
       ))}
     </div>
   );
 }
 
-function SkillRow({ skill, isFirst }: { skill: LearnedSkill; isFirst: boolean }) {
+function SkillRow({ skill }: { skill: LearnedSkill }) {
   const name = repoName(skill.repo_url);
   const draft = `Use the "${skill.name}" capability to ${skill.goal_pattern}`;
   return (
     <Link
       href={`/chat?new=1&draft=${encodeURIComponent(draft)}`}
-      className={cn(
-        "group flex items-center gap-3 px-2 -mx-2 py-3 border-b border-border/40 hover:bg-secondary/20 transition-colors",
-        isFirst && "border-t border-border/40",
-      )}
+      className="group flex items-center gap-2.5 py-2.5 border-b border-border/40 hover:bg-secondary/20 transition-colors"
     >
-      <RepoAvatar repoUrl={skill.repo_url} size={36} />
+      <RepoAvatar repoUrl={skill.repo_url} />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-1.5">
           <span className="font-medium text-sm truncate">{skill.name}</span>
           <Sparkles className="h-3 w-3 text-muted-foreground/60 shrink-0" />
         </div>
-        <p className="text-xs text-muted-foreground line-clamp-1 mt-0.5">
+        <p className="text-xs text-muted-foreground line-clamp-1">
           {skill.goal_pattern}
         </p>
       </div>
-      <span className="hidden sm:inline text-[11px] text-muted-foreground/70 shrink-0">
+      <span className="hidden sm:inline text-[11px] text-muted-foreground/70 shrink-0 pr-3">
         via {name}
       </span>
       <span className="text-xs text-muted-foreground group-hover:text-foreground transition-colors shrink-0">
@@ -234,7 +231,7 @@ function SkillRow({ skill, isFirst }: { skill: LearnedSkill; isFirst: boolean })
 
 function DiscoverTab() {
   return (
-    <div className="space-y-10 max-w-4xl">
+    <div className="space-y-10">
       <section>
         <div className="flex items-baseline justify-between mb-2">
           <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider">
@@ -243,8 +240,8 @@ function DiscoverTab() {
           <p className="text-xs text-muted-foreground">Click a row to try it in chat.</p>
         </div>
         <div>
-          {CURATED.map((entry, idx) => (
-            <CuratedRow key={entry.repo_url} entry={entry} isFirst={idx === 0} />
+          {CURATED.map((entry) => (
+            <CuratedRow key={entry.repo_url} entry={entry} />
           ))}
         </div>
       </section>
@@ -285,7 +282,7 @@ function DiscoverTab() {
   );
 }
 
-function CuratedRow({ entry, isFirst }: { entry: BoostEntry; isFirst: boolean }) {
+function CuratedRow({ entry }: { entry: BoostEntry }) {
   const name = repoName(entry.repo_url);
   const owner = repoOwner(entry.repo_url);
   const draft = `Use ${entry.repo_url} to ${entry.example_goal}`;
@@ -293,30 +290,25 @@ function CuratedRow({ entry, isFirst }: { entry: BoostEntry; isFirst: boolean })
     // The Link covers the whole row via absolute inset-0; the GitHub
     // `source` link sits above it (z-10) as a sibling so it never nests
     // an <a> inside another <a> and clicks route correctly.
-    <div
-      className={cn(
-        "group relative flex items-center gap-3 px-2 -mx-2 py-3 border-b border-border/40 hover:bg-secondary/20 transition-colors",
-        isFirst && "border-t border-border/40",
-      )}
-    >
+    <div className="group relative flex items-center gap-2.5 py-2.5 border-b border-border/40 hover:bg-secondary/20 transition-colors">
       <Link
         href={`/chat?new=1&draft=${encodeURIComponent(draft)}`}
         className="absolute inset-0 z-0"
         aria-label={`Try ${name} in chat`}
       />
       <div className="relative pointer-events-none">
-        <RepoAvatar repoUrl={entry.repo_url} size={36} />
+        <RepoAvatar repoUrl={entry.repo_url} />
       </div>
       <div className="relative pointer-events-none min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <span className="font-medium text-sm truncate">{name}</span>
           <span className="text-xs text-muted-foreground truncate">{owner}</span>
         </div>
-        <p className="text-xs text-muted-foreground/90 italic line-clamp-1 mt-0.5">
+        <p className="text-xs text-muted-foreground/90 italic line-clamp-1">
           “{entry.example_goal}”
         </p>
       </div>
-      <div className="relative pointer-events-none hidden md:flex flex-wrap gap-1 shrink-0 max-w-[200px] justify-end">
+      <div className="relative pointer-events-none hidden md:flex flex-wrap gap-1 shrink-0 justify-end pr-2">
         {entry.goal_keywords.slice(0, 3).map((kw) => (
           <span
             key={kw}
@@ -335,7 +327,7 @@ function CuratedRow({ entry, isFirst }: { entry: BoostEntry; isFirst: boolean })
       >
         <ExternalLink className="h-3.5 w-3.5" />
       </a>
-      <span className="relative pointer-events-none text-xs text-muted-foreground group-hover:text-foreground transition-colors shrink-0">
+      <span className="relative pointer-events-none text-xs text-muted-foreground group-hover:text-foreground transition-colors shrink-0 pr-1">
         Try →
       </span>
     </div>
@@ -358,9 +350,9 @@ function ActivityTab({ runs, isLoading }: { runs: RepoRun[]; isLoading: boolean 
     );
   }
   return (
-    <div className="max-w-3xl">
-      {runs.map((run, idx) => (
-        <RunCard key={run.id} run={run} isFirst={idx === 0} />
+    <div>
+      {runs.map((run) => (
+        <RunCard key={run.id} run={run} />
       ))}
     </div>
   );

@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { CheckCircle, Clock, Loader2, XCircle } from "lucide-react";
 import type { RepoRun } from "@/lib/api/client";
-import { cn } from "@/lib/utils";
 
 function repoName(url: string) {
   const parts = url.replace("https://github.com/", "").split("/");
@@ -26,20 +25,17 @@ function statusIcon(status: RepoRun["status"]) {
   }
 }
 
-export function RunCard({ run, isFirst = false }: { run: RepoRun; isFirst?: boolean }) {
+export function RunCard({ run }: { run: RepoRun }) {
   const isLive = run.status === "pending" || run.status === "running";
   return (
     <Link
       href={`/capabilities/runs/${run.id}`}
-      className={cn(
-        "flex items-center gap-3 px-2 -mx-2 py-3 border-b border-border/40 hover:bg-secondary/20 transition-colors",
-        isFirst && "border-t border-border/40",
-      )}
+      className="flex items-center gap-2.5 py-2.5 border-b border-border/40 hover:bg-secondary/20 transition-colors"
     >
       <div className="shrink-0">{statusIcon(run.status)}</div>
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{run.goal}</p>
-        <p className="text-xs text-muted-foreground mt-0.5 truncate">
+        <p className="text-xs text-muted-foreground truncate">
           {repoName(run.repo_url)}
           {run.error ? (
             <span className="text-red-400"> · {run.error}</span>
