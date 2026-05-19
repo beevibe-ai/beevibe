@@ -384,17 +384,23 @@ function WorkProductCard({ wp }: { wp: WorkProduct }) {
           </span>
         </Link>
         {isRepoArtifact && repoRunId && (
-          <div className="border-t px-3 py-1.5 flex items-center gap-2">
+          <div className="border-t bg-muted/30 px-3 py-2.5 flex items-center gap-3">
+            <Package className="h-4 w-4 text-foreground/70 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium">Came from a repo run</p>
+              <p className="text-[11px] text-muted-foreground">
+                Save the recipe so your agents can rerun this in seconds.
+              </p>
+            </div>
             <button
               onClick={() => setShowSave(true)}
-              className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="shrink-0 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity"
             >
-              <Package className="h-3.5 w-3.5" />
               Save as capability
             </button>
             <Link
               href={`/capabilities/runs/${repoRunId}`}
-              className="ml-auto text-xs text-muted-foreground hover:text-foreground transition-colors"
+              className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors"
             >
               View run →
             </Link>
@@ -443,12 +449,21 @@ function SaveAsCapabilityModal({
       onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div className="bg-card border rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
-        <h2 className="text-base font-semibold mb-4">Save as capability</h2>
+        <h2 className="text-base font-semibold mb-1">Save as capability</h2>
+        <p className="text-xs text-muted-foreground mb-4">
+          Remember this recipe so your agents can reuse it on similar tasks.
+        </p>
         {done ? (
           <div className="space-y-3">
             <p className="text-sm text-green-600 dark:text-green-400">
-              ✓ Saved as <strong>{name}</strong>. Your agents will find it in the discovery step for similar goals.
+              ✓ Saved as <strong>{name}</strong>.
             </p>
+            <Link
+              href="/capabilities"
+              className="block text-center w-full rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
+            >
+              View in Capabilities →
+            </Link>
             <button
               onClick={onClose}
               className="w-full rounded-md border px-4 py-2 text-sm hover:bg-muted transition-colors"
@@ -474,22 +489,23 @@ function SaveAsCapabilityModal({
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Lowercase letters, numbers, hyphens. 2–64 characters.
+                A short slug — lowercase letters, numbers, hyphens.
               </p>
             </div>
             <div>
               <label className="text-xs font-medium text-muted-foreground block mb-1">
-                Goal pattern
+                When should this trigger?
               </label>
               <textarea
                 value={goal}
                 onChange={(e) => setGoal(e.target.value)}
                 rows={3}
+                placeholder="e.g. when the user wants to extract tables from a PDF"
                 required
                 className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                How future agents will match this capability to a goal.
+                Describe the situation in plain language. Agents match this to incoming tasks.
               </p>
             </div>
             {save.error && (

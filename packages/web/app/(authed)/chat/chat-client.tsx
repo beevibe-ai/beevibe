@@ -94,6 +94,22 @@ export function ChatClient() {
     }
   }, [isFresh, messages.length, isSubmitting, searchParams, router]);
 
+  // `?draft=<text>` seeds the input — used by the Capabilities page to send
+  // the user into chat with a starter prompt already filled in. Consumed
+  // once on first mount of a fresh chat; we then drop the param so reloads
+  // don't re-prefill an input the user may have intentionally cleared.
+  const draftSeed = searchParams?.get("draft");
+  useEffect(() => {
+    if (!draftSeed) return;
+    setDraft(draftSeed);
+    const sp = new URLSearchParams(searchParams?.toString() ?? "");
+    sp.delete("draft");
+    const qs = sp.toString();
+    router.replace(qs ? `/chat?${qs}` : "/chat");
+    // Run once per draftSeed value; intentionally narrow deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftSeed]);
+
   // First-run gate: if the caller hasn't completed the welcome wizard
   // and didn't arrive here from it, bounce them to the wizard.
   useEffect(() => {
