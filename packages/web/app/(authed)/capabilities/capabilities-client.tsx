@@ -21,7 +21,8 @@ interface TrendingRepo {
   name: string;
   description: string | null;
   language: string | null;
-  stars: number;
+  /** Stars GAINED in the period — the velocity signal, not lifetime stars. */
+  stars_gained: number;
   rank: number;
 }
 interface TrendingSnapshot {
@@ -272,7 +273,7 @@ function DiscoverTab() {
           </div>
         </div>
         <p className="text-xs text-muted-foreground mb-3">
-          Refreshed daily from the GitHub Search API. Click a row to try it in chat.
+          Star velocity from OSS Insight — actual growth in the window, not lifetime stars. Click a row to try it in chat.
         </p>
         {trendingQuery.isLoading ? (
           <p className="text-sm text-muted-foreground">Loading…</p>
@@ -359,8 +360,11 @@ function TrendingRow({ repo }: { repo: TrendingRepo }) {
         {repo.language && (
           <span className="text-[10px] text-muted-foreground/80">{repo.language}</span>
         )}
-        <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground tabular-nums">
-          ★ {formatStars(repo.stars)}
+        <span
+          className="inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums text-orange-600 dark:text-orange-400"
+          title="Stars gained in this window"
+        >
+          +{formatStars(repo.stars_gained)}★
         </span>
       </div>
       <a
