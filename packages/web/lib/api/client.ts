@@ -107,6 +107,22 @@ export interface SuggestedAction {
   prompt?: string;
 }
 
+/**
+ * Rich repo card from a `<repo_card>` chat directive. Agents emit one
+ * per find_repo result after grouping; the chat UI renders them as
+ * styled rows with stars + language + source-tier badge instead of a
+ * markdown bullet list.
+ */
+export interface ChatRepoCard {
+  repo_url: string;
+  owner: string;
+  name: string;
+  stars?: number;
+  language?: string;
+  source?: "learned" | "trending" | "community" | "github";
+  description?: string;
+}
+
 export interface ChatTurnResponse {
   ok: true;
   agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" };
@@ -126,6 +142,11 @@ export interface ChatTurnResponse {
    * label as the next user message.
    */
   suggested_actions?: SuggestedAction[];
+  /**
+   * `<repo_card>` directives the agent emitted (typically after find_repo).
+   * Rendered as a structured repo list with stars + language + source.
+   */
+  repo_cards?: ChatRepoCard[];
 }
 
 export interface Room {
@@ -158,6 +179,7 @@ export interface RoomMessage {
   view_refs?: string[];
   open_view?: { path: string; label?: string };
   suggested_actions?: SuggestedAction[];
+  repo_cards?: ChatRepoCard[];
   created_at: string;
 }
 
@@ -282,6 +304,7 @@ export interface ChatHistoryMessage {
   view_refs?: string[];
   open_view?: { path: string; label?: string };
   suggested_actions?: SuggestedAction[];
+  repo_cards?: ChatRepoCard[];
 }
 
 export interface ChatHistoryResponse {

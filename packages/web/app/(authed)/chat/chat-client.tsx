@@ -9,12 +9,14 @@ import {
   ArrowRight,
   ArrowUp,
   MessageSquare,
+  Star,
 } from "lucide-react";
 import type { HierarchyLevel, KnownCli } from "@beevibe/core";
 import { isApiConfigured } from "@/lib/api/config";
 import {
   api,
   type ChatConversationsResponse,
+  type ChatRepoCard,
   type SuggestedAction,
 } from "@/lib/api/client";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
@@ -470,6 +472,9 @@ function Bubble({
         {!isUser ? (
           <>
             {refIds.length > 0 ? <ReferenceCards ids={refIds} /> : null}
+            {message.repo_cards && message.repo_cards.length > 0 ? (
+              <RepoCards cards={message.repo_cards} />
+            ) : null}
             {message.open_view ? <OpenViewCta open_view={message.open_view} /> : null}
           </>
         ) : null}
@@ -500,6 +505,69 @@ function SuggestedActions({
         >
           {a.label}
         </button>
+      ))}
+    </div>
+  );
+}
+
+const SOURCE_BADGE_CLASS: Record<NonNullable<ChatRepoCard["source"]>, string> = {
+  learned: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  trending: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  community: "bg-sky-500/15 text-sky-300 border-sky-500/30",
+  github: "bg-muted text-muted-foreground border-border",
+};
+
+const SOURCE_LABEL: Record<NonNullable<ChatRepoCard["source"]>, string> = {
+  learned: "Learned",
+  trending: "Trending",
+  community: "Community",
+  github: "GitHub",
+};
+
+function formatStars(stars: number): string {
+  if (stars >= 1000) return `${(stars / 1000).toFixed(stars >= 10000 ? 0 : 1)}k`;
+  return String(stars);
+}
+
+function RepoCards({ cards }: { cards: ChatRepoCard[] }) {
+  return (
+    <div className="mt-2 flex flex-col gap-1.5">
+      {cards.map((card) => (
+        <Link
+          key={card.repo_url}
+          href={card.repo_url}
+          target="_blank"
+          rel="noreferrer"
+          className="block rounded-lg border border-border bg-card hover:bg-secondary/40 hover:border-foreground/30 px-3 py-2 transition-colors"
+        >
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-medium text-foreground">
+              {card.owner}/{card.name}
+            </span>
+            {typeof card.stars === "number" ? (
+              <span className="inline-flex items-center gap-0.5 text-[11px] text-amber-300 tabular-nums">
+                <Star className="h-3 w-3 fill-current" />
+                {formatStars(card.stars)}
+              </span>
+            ) : null}
+            {card.language ? (
+              <span className="text-[11px] text-muted-foreground">{card.language}</span>
+            ) : null}
+            {card.source ? (
+              <span
+                className={cn(
+                  "ml-auto text-[10px] uppercase tracking-wider rounded border px-1.5 py-0.5",
+                  SOURCE_BADGE_CLASS[card.source],
+                )}
+              >
+                {SOURCE_LABEL[card.source]}
+              </span>
+            ) : null}
+          </div>
+          {card.description ? (
+            <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{card.description}</p>
+          ) : null}
+        </Link>
       ))}
     </div>
   );

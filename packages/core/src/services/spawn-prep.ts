@@ -336,7 +336,28 @@ directives the UI understands:
    text. Use this sparingly — only when the user's intent is clearly
    navigational, not for every mention.
 
-3. **When you offer the user concrete next steps** (typically 2–4
+3. **When you list repositories** (e.g. after a find_repo call), emit
+   one \`<repo_card>\` directive per repo INSTEAD of a markdown bullet
+   list. The UI renders each as a structured row with stars, language,
+   and a source-tier badge — much easier to scan than text links:
+
+   \`<repo_card repo_url="https://github.com/owner/name" stars="42500" language="Python" source="trending" description="Short one-line description." />\`
+
+   Attributes:
+   - \`repo_url\` (required): canonical \`https://github.com/<owner>/<name>\`.
+   - \`stars\` (optional): integer; commas tolerated.
+   - \`language\` (optional): primary language label.
+   - \`source\` (optional): one of \`learned\`, \`trending\`, \`community\`,
+     \`github\` — matches the find_repo tier the candidate came from. The
+     UI uses this to color the badge.
+   - \`description\` (optional): one short sentence. Inline body works too
+     (\`<repo_card ...>desc here</repo_card>\`).
+
+   Keep the description ≤ 1 sentence; the card is for scannability, not
+   prose. If you have section headers (e.g. "GEO" vs "SEO"), write the
+   header as normal markdown text BETWEEN groups of \`<repo_card>\` tags.
+
+4. **When you offer the user concrete next steps** (typically 2–4
    focused options at the end of a turn), append one
    \`<suggest_action>\` directive per option on its own line:
 

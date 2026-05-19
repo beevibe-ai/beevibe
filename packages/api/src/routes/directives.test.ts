@@ -133,3 +133,81 @@ describe("processResponse — visible text stripping", () => {
     expect(r.visible).toBe("just a normal reply.");
   });
 });
+
+describe("processResponse — repo_card", () => {
+  it("parses self-closing tag with all attributes", () => {
+    const r = processResponse(
+      `<repo_card repo_url="https://github.com/karpathy/nanoGPT" stars="42500" language="Python" source="trending" description="The simplest, fastest repository for training GPTs." />`,
+    );
+    expect(r.repo_cards).toEqual([
+      {
+        repo_url: "https://github.com/karpathy/nanoGPT",
+        owner: "karpathy",
+        name: "nanoGPT",
+        stars: 42500,
+        language: "Python",
+        source: "trending",
+        description: "The simplest, fastest repository for training GPTs.",
+      },
+    ]);
+  });
+
+  it("supports inline body as description", () => {
+    const r = processResponse(
+      `<repo_card repo_url="https://github.com/foo/bar">An inline description.</repo_card>`,
+    );
+    expect(r.repo_cards).toEqual([
+      {
+        repo_url: "https://github.com/foo/bar",
+        owner: "foo",
+        name: "bar",
+        description: "An inline description.",
+      },
+    ]);
+  });
+
+  it("strips comma-separated star count to integer", () => {
+    const r = processResponse(
+      `<repo_card repo_url="https://github.com/foo/bar" stars="1,234" />`,
+    );
+    expect(r.repo_cards?.[0]?.stars).toBe(1234);
+  });
+
+  it("strips repo_card tags from visible text and parses multiple", () => {
+    const r = processResponse([
+      "Here's what surfaced:",
+      `<repo_card repo_url="https://github.com/a/one" stars="100" />`,
+      `<repo_card repo_url="https://github.com/b/two" stars="50" />`,
+    ].join("\n"));
+    expect(r.visible).toBe("Here's what surfaced:");
+    expect(r.repo_cards).toHaveLength(2);
+    expect(r.repo_cards?.map((c) => c.name)).toEqual(["one", "two"]);
+  });
+
+  it("dedupes by canonical URL — second mention of same repo is dropped", () => {
+    const r = processResponse([
+      `<repo_card repo_url="https://github.com/foo/bar" />`,
+      `<repo_card repo_url="https://github.com/foo/bar.git" stars="50" />`,
+    ].join("\n"));
+    expect(r.repo_cards).toHaveLength(1);
+  });
+
+  it("drops cards with malformed repo_url (non-github host)", () => {
+    const r = processResponse(
+      `<repo_card repo_url="https://gitlab.com/foo/bar" />`,
+    );
+    expect(r.repo_cards).toBeUndefined();
+  });
+
+  it("drops cards missing repo_url entirely", () => {
+    const r = processResponse(`<repo_card stars="100" />`);
+    expect(r.repo_cards).toBeUndefined();
+  });
+
+  it("ignores unknown source values rather than passing them through", () => {
+    const r = processResponse(
+      `<repo_card repo_url="https://github.com/foo/bar" source="bogus" />`,
+    );
+    expect(r.repo_cards?.[0]?.source).toBeUndefined();
+  });
+});

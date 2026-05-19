@@ -220,6 +220,15 @@ describe("composeSystemPromptAppend lifecycle branching", () => {
     expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT.toLowerCase()).toContain("before proposing custom scaffolding");
   });
 
+  it("chat directives document the <repo_card> tag for find_repo results", () => {
+    // Regression guard so future edits don't silently drop the
+    // structured repo-list rendering convention.
+    expect(CHAT_DIRECTIVES).toContain("<repo_card");
+    expect(CHAT_DIRECTIVES).toContain("repo_url=");
+    expect(CHAT_DIRECTIVES).toContain("stars=");
+    expect(CHAT_DIRECTIVES).toContain("source=");
+  });
+
   it("chat directives explicitly ban the 'prompt dismissed' hallucination phrases", () => {
     // The agent kept narrating "looks like the prompt got dismissed"
     // even after we added the first version of this rule. The blacklist
