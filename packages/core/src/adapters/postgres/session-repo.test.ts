@@ -464,6 +464,61 @@ describe("PostgresSessionRepository", () => {
     });
   });
 
+  describe("cancelPendingForTask", () => {
+    // Pending sessions have no CLI to abort, so the task cancel route
+    // can't rely on the WS push path to flip their status. This method
+    // is the explicit cleanup hook for that case.
+
+    it("flips pending task-sessions to cancelled with completed_at + error stamped", async () => {
+      const a = await sessions.create(
+        newSession({ id: sessionId(), task_id: task, status: "pending" }),
+      );
+      const updated = await sessions.cancelPendingForTask(task);
+      expect(updated).toBe(1);
+      const reread = await sessions.findById(a.id);
+      expect(reread?.status).toBe("cancelled");
+      expect(reread?.completed_at).toBeInstanceOf(Date);
+      expect(reread?.error).toBe("task_cancelled_before_claim");
+    });
+
+    it("leaves running sessions alone (those are cancelled via the WS push path)", async () => {
+      const running = await sessions.create(
+        newSession({ id: sessionId(), task_id: task, status: "running" }),
+      );
+      const pending = await sessions.create(
+        newSession({ id: sessionId(), task_id: task, status: "pending" }),
+      );
+      const updated = await sessions.cancelPendingForTask(task);
+      expect(updated).toBe(1);
+      expect((await sessions.findById(running.id))?.status).toBe("running");
+      expect((await sessions.findById(pending.id))?.status).toBe("cancelled");
+    });
+
+    it("returns 0 when no pending sessions exist (idempotent for already-cancelled tasks)", async () => {
+      expect(await sessions.cancelPendingForTask(task)).toBe(0);
+    });
+
+    it("scoped to the given task — doesn't touch other tasks' pending sessions", async () => {
+      const otherTask = await tasks.create({
+        id: taskId(),
+        title: "other",
+        priority: "medium",
+        creator_id: person,
+        creator_type: "person",
+      });
+      const ours = await sessions.create(
+        newSession({ id: sessionId(), task_id: task, status: "pending" }),
+      );
+      const theirs = await sessions.create(
+        newSession({ id: sessionId(), task_id: otherTask.id, status: "pending" }),
+      );
+      const updated = await sessions.cancelPendingForTask(task);
+      expect(updated).toBe(1);
+      expect((await sessions.findById(ours.id))?.status).toBe("cancelled");
+      expect((await sessions.findById(theirs.id))?.status).toBe("pending");
+    });
+  });
+
   describe("countOwnedByDaemon", () => {
     let daemons: PostgresDaemonRepository;
     let runtimes: PostgresRuntimeRepository;

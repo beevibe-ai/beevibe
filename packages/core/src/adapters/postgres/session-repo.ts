@@ -142,6 +142,18 @@ export class PostgresSessionRepository implements SessionRepository {
     return this.claimNextWhere("s.runtime_id IS NULL", []);
   }
 
+  async cancelPendingForTask(taskId: string): Promise<number> {
+    const result = await this.pool.query(
+      `UPDATE session
+          SET status = 'cancelled',
+              completed_at = now(),
+              error = 'task_cancelled_before_claim'
+        WHERE task_id = $1 AND status = 'pending'`,
+      [taskId],
+    );
+    return result.rowCount ?? 0;
+  }
+
   /**
    * Shared CTE-and-UPDATE body for the two claim paths. The per-agent
    * task-cap gate is inline so the claim is atomic regardless of which

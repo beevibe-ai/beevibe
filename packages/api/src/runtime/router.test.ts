@@ -18,6 +18,7 @@ import {
   PostgresRuntimeRepository,
   PostgresSessionEventRepository,
   PostgresSessionRepository,
+  PostgresTaskRepository,
   type Pool,
 } from "@beevibe/core/adapters/postgres";
 import {
@@ -65,6 +66,7 @@ describe("/runtime — integration", () => {
   let runtimeRepo: PostgresRuntimeRepository;
   let sessionRepo: PostgresSessionRepository;
   let sessionEventRepo: PostgresSessionEventRepository;
+  let taskRepo: PostgresTaskRepository;
   let coreMemoryRepo: PostgresCoreMemoryRepository;
   let hub: DaemonHub;
   let onSessionComplete: ReturnType<typeof vi.fn>;
@@ -77,6 +79,7 @@ describe("/runtime — integration", () => {
     runtimeRepo = new PostgresRuntimeRepository(pool);
     sessionRepo = new PostgresSessionRepository(pool);
     sessionEventRepo = new PostgresSessionEventRepository(pool);
+    taskRepo = new PostgresTaskRepository(pool);
     coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
   });
 
@@ -99,6 +102,7 @@ describe("/runtime — integration", () => {
       runtimeRepo,
       sessionRepo,
       sessionEventRepo,
+      taskRepo,
       hub,
       makeMemoryAgent: () => makeMemoryAgentStub(),
       mcpServerUrl: "http://api.test/mcp",

@@ -370,6 +370,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     runtimeRepo,
     sessionRepo,
     sessionEventRepo,
+    taskRepo,
     hub: daemonHub,
     makeMemoryAgent,
     mcpServerUrl: cfg.mcpServerUrl,

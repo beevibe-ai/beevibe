@@ -8,6 +8,7 @@ import type {
   Workspace,
   WorkspaceManager,
 } from "@beevibe/core";
+import { transitionTaskOnClaim } from "@beevibe/core/services/dispatch-service";
 
 /**
  * Default poll interval. Matches the old repo's `POLL_INTERVAL_MS`.
@@ -199,6 +200,12 @@ export class TaskExecutionWorker {
         });
         continue;
       }
+
+      // Flip the task into its active state now that we're actually
+      // about to dispatch. Pre-#127 this happened at dispatch-time, but
+      // that lied to the UI when the session was cap-blocked or otherwise
+      // sat pending — see PR #186.
+      await transitionTaskOnClaim(session, { taskRepo: this.config.taskRepo });
 
       const workspace = await this.config.workspaceManager.ensureWorkspace({ agent });
       const ac = new AbortController();
