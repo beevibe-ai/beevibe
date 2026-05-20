@@ -6,7 +6,7 @@
   },
   "deploy": {
     "startCommand": "node packages/api/dist/main.js",
-    "preDeployCommand": "pnpm migrate:deploy up",
+    "preDeployCommand": "node scripts/pre-deploy-fix-migration-names.cjs && pnpm migrate:deploy up",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 10,
     "healthcheckPath": "/health",
