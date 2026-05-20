@@ -151,7 +151,7 @@ function RepoHero({ run }: { run: RepoRun }) {
 
 function GoalBlock({ run }: { run: RepoRun }) {
   return (
-    <div className="rounded-lg border border-border bg-card px-4 py-3">
+    <div className="rounded-lg border border-border/40 bg-card px-4 py-3">
       <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
         Goal
       </p>
@@ -191,8 +191,8 @@ function TranscriptBlock({ run }: { run: RepoRun }) {
   };
 
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-border/60 flex items-center gap-2">
+    <div className="rounded-lg border border-border/40 bg-card overflow-hidden">
+      <div className="px-4 py-2.5 flex items-center gap-2">
         <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
           Live transcript
         </p>
@@ -333,8 +333,8 @@ function IterateBlock({ run }: { run: RepoRun }) {
   const placeholder = examplePlaceholder(run);
 
   return (
-    <div className="rounded-lg border border-border bg-card overflow-hidden">
-      <div className="px-4 py-2.5 border-b border-border/60 flex items-center gap-2">
+    <div className="rounded-lg border border-border/40 bg-card overflow-hidden">
+      <div className="px-4 py-2.5 flex items-center gap-2">
         <RotateCw className="h-3.5 w-3.5 text-muted-foreground" />
         <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
           Try another goal
@@ -353,7 +353,7 @@ function IterateBlock({ run }: { run: RepoRun }) {
           onChange={(e) => setGoal(e.target.value)}
           rows={3}
           placeholder={placeholder}
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+          className="w-full rounded-md border border-border/40 bg-background/50 px-3 py-2 text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:border-border focus:bg-background focus:ring-1 focus:ring-ring/30 resize-none transition-colors"
         />
         {start.error ? (
           <p className="text-xs text-red-500">
@@ -672,7 +672,7 @@ function RunOutro({ run }: { run: RepoRun }) {
           </div>
         ) : null}
 
-        <div className="rounded-md border border-border bg-card/60 p-3 space-y-2">
+        <div className="rounded-md border border-border/30 bg-card/60 p-3 space-y-2">
           <div className="flex items-center gap-2">
             <Sparkles className="h-3.5 w-3.5 text-amber-400" />
             <p className="text-xs font-medium">Save as a team capability</p>

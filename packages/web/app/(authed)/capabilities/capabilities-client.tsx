@@ -298,7 +298,7 @@ function SkillRow({ skill }: { skill: LearnedSkill }) {
   return (
     <Link
       href={`/chat?new=1&draft=${encodeURIComponent(draft)}`}
-      className="group flex items-center gap-2.5 py-2.5 border-b border-border/40 hover:bg-secondary/20 transition-colors"
+      className="group flex items-center gap-2.5 py-2.5 hover:bg-secondary/20 transition-colors"
     >
       <RepoAvatar repoUrl={skill.repo_url} />
       <div className="min-w-0 flex-1">
@@ -515,7 +515,7 @@ function TryRow({
   });
 
   return (
-    <div className="group relative flex items-center gap-2.5 py-2.5 border-b border-border/40 hover:bg-secondary/20 transition-colors">
+    <div className="group relative flex items-center gap-2.5 py-2.5 hover:bg-secondary/20 transition-colors">
       <button
         type="button"
         onClick={() => tryRun.mutate()}

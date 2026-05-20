@@ -530,7 +530,7 @@ function ReferencedRepoRow({ repo, taskTitle }: { repo: ReferencedRepo; taskTitl
   });
 
   return (
-    <li className="rounded-lg border border-border bg-card p-3 flex items-center gap-3">
+    <li className="rounded-lg border border-border/40 bg-card p-3 flex items-center gap-3">
       <Package className="h-4 w-4 text-muted-foreground shrink-0" />
       <div className="flex-1 min-w-0">
         <Link
@@ -592,7 +592,7 @@ function WorkProductCard({ wp }: { wp: WorkProduct }) {
           </span>
         </Link>
         {isRepoArtifact && repoRunId && (
-          <div className="border-t bg-muted/30 px-3 py-2.5 flex items-center gap-3">
+          <div className="bg-muted/30 px-3 py-2.5 flex items-center gap-3">
             <Package className="h-4 w-4 text-foreground/70 shrink-0" />
             <div className="flex-1 min-w-0">
               <p className="text-xs font-medium">Came from a repo run</p>

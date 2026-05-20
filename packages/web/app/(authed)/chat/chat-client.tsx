@@ -557,7 +557,7 @@ function RepoCardRow({ card }: { card: ChatRepoCard }) {
   });
 
   return (
-    <div className="rounded-lg border border-border bg-card hover:border-foreground/30 px-3 py-2 transition-colors">
+    <div className="rounded-lg border border-border/40 bg-card hover:border-foreground/30 px-3 py-2 transition-colors">
       <div className="flex items-center gap-2 flex-wrap">
         <Link
           href={card.repo_url}
@@ -600,7 +600,7 @@ function RepoCardRow({ card }: { card: ChatRepoCard }) {
               type="button"
               onClick={() => tryRun.mutate()}
               disabled={tryRun.isPending}
-              className="inline-flex items-center gap-1 rounded-md border border-border bg-transparent hover:bg-secondary hover:border-foreground/30 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1 rounded-md border border-border/40 bg-transparent hover:bg-secondary hover:border-foreground/30 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors disabled:opacity-50"
               title={`Try ${card.owner}/${card.name} in a sandbox`}
             >
               {tryRun.isPending ? "Starting…" : "Try"}
