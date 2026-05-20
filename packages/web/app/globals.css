@@ -133,12 +133,11 @@
 }
 
 /* Pearl button — sidebar New chat CTA. Adapted from Uiverse.io by
-   marcelodolza for light-mode chrome: warm-cream body with white
-   sheen and a soft warm drop shadow. The .wrap pseudo-elements
-   render the glossy top cap and the rising under-glow on hover. */
+   marcelodolza, recolored to the app's honey primary. The .wrap
+   pseudo-elements render the glossy top cap and rising under-glow. */
 .pearl-button {
-  --pearl-bg: #f3ecde;
-  --pearl-text: #2a2a2a;
+  --pearl-bg: hsl(var(--primary));
+  --pearl-text: hsl(36 74% 14%);
   --pearl-radius: 100px;
   outline: none;
   cursor: pointer;
@@ -148,21 +147,21 @@
   background-color: var(--pearl-bg);
   transition: all 0.2s ease;
   box-shadow:
-    inset 0 0.2rem 0.6rem rgba(255, 255, 255, 0.9),
-    inset 0 -0.08rem 0.25rem rgba(120, 90, 60, 0.2),
-    inset 0 -0.3rem 0.6rem rgba(255, 255, 255, 0.65),
-    0 1rem 1.5rem rgba(120, 90, 60, 0.15),
-    0 0.4rem 0.6rem -0.3rem rgba(120, 90, 60, 0.25);
+    inset 0 0.2rem 0.55rem hsl(0 0% 100% / 0.72),
+    inset 0 -0.08rem 0.24rem hsl(35 90% 28% / 0.28),
+    inset 0 -0.32rem 0.62rem hsl(50 100% 84% / 0.46),
+    0 1rem 1.5rem hsl(42 92% 36% / 0.2),
+    0 0.4rem 0.7rem -0.28rem hsl(35 90% 28% / 0.36);
 }
 .dark .pearl-button {
-  --pearl-bg: #1a1a1c;
-  --pearl-text: rgba(255, 255, 255, 0.78);
+  --pearl-bg: hsl(var(--primary));
+  --pearl-text: hsl(36 74% 12%);
   box-shadow:
-    inset 0 0.3rem 0.9rem rgba(255, 255, 255, 0.28),
-    inset 0 -0.1rem 0.3rem rgba(0, 0, 0, 0.7),
-    inset 0 -0.4rem 0.9rem rgba(255, 255, 255, 0.4),
-    0 1rem 1.5rem rgba(0, 0, 0, 0.4),
-    0 0.4rem 0.6rem -0.3rem rgba(0, 0, 0, 0.6);
+    inset 0 0.24rem 0.68rem hsl(0 0% 100% / 0.58),
+    inset 0 -0.1rem 0.3rem hsl(35 90% 24% / 0.38),
+    inset 0 -0.42rem 0.9rem hsl(50 100% 84% / 0.3),
+    0 1rem 1.5rem hsl(0 0% 0% / 0.36),
+    0 0.4rem 0.7rem -0.28rem hsl(var(--primary) / 0.42);
 }
 .pearl-button .wrap {
   font-size: 14px;
@@ -235,19 +234,19 @@
 }
 .pearl-button:hover {
   box-shadow:
-    inset 0 0.2rem 0.45rem rgba(255, 255, 255, 0.95),
-    inset 0 -0.08rem 0.25rem rgba(120, 90, 60, 0.22),
-    inset 0 -0.3rem 0.6rem rgba(255, 255, 255, 0.8),
-    0 1rem 1.5rem rgba(120, 90, 60, 0.18),
-    0 0.4rem 0.6rem -0.3rem rgba(120, 90, 60, 0.28);
+    inset 0 0.2rem 0.48rem hsl(0 0% 100% / 0.86),
+    inset 0 -0.08rem 0.24rem hsl(35 90% 28% / 0.3),
+    inset 0 -0.32rem 0.64rem hsl(50 100% 88% / 0.58),
+    0 1rem 1.55rem hsl(42 92% 36% / 0.26),
+    0 0.4rem 0.72rem -0.28rem hsl(35 90% 28% / 0.42);
 }
 .dark .pearl-button:hover {
   box-shadow:
-    inset 0 0.3rem 0.5rem rgba(255, 255, 255, 0.4),
-    inset 0 -0.1rem 0.3rem rgba(0, 0, 0, 0.7),
-    inset 0 -0.4rem 0.9rem rgba(255, 255, 255, 0.6),
-    0 1rem 1.5rem rgba(0, 0, 0, 0.4),
-    0 0.4rem 0.6rem -0.3rem rgba(0, 0, 0, 0.6);
+    inset 0 0.24rem 0.54rem hsl(0 0% 100% / 0.72),
+    inset 0 -0.1rem 0.3rem hsl(35 90% 24% / 0.42),
+    inset 0 -0.42rem 0.9rem hsl(50 100% 88% / 0.42),
+    0 1rem 1.55rem hsl(0 0% 0% / 0.38),
+    0 0.4rem 0.72rem -0.28rem hsl(var(--primary) / 0.48);
 }
 .pearl-button:hover .wrap::before {
   transform: translateY(-5%);
