@@ -26,20 +26,16 @@ export function createDefaultRuntimeRegistry(): RuntimeRegistry {
 }
 
 /**
- * Producer-consumer pair for the "daemon got a dispatch for a CLI it
- * doesn't have registered" error string — daemon throws via
- * `runtimeMissingError(cli)`; api side parses via `parseRuntimeMissingError`
- * to swap for a user-actionable message in the chat surface. Co-located
- * here so the two stay byte-for-byte in sync; mirrors the
- * `bareCliExitMessage` / `isBareCliExitMessage` pair in claude-code's
- * stream-json module.
+ * Producer for the "daemon got a dispatch for a CLI it doesn't have
+ * registered" error string — thrown from the daemon's spawner so the
+ * api's chat route can swap it for a user-actionable message. The
+ * matching consumer is `parseRuntimeMissingError` in
+ * `@beevibe/core/domain`; the two are round-tripped against this
+ * producer in `runtime-registry.test.ts` to keep the format from
+ * drifting. Mirrors the `bareCliExitMessage` / `isBareCliExitMessage`
+ * pair (producer in claude-code's stream-json module, matcher in
+ * domain).
  */
 export function runtimeMissingError(cli: string): string {
   return `No runtime registered for dispatch payload type '${cli}'`;
-}
-
-const RUNTIME_MISSING_PATTERN = /^No runtime registered for dispatch payload type '([^']+)'$/;
-
-export function parseRuntimeMissingError(s: string): string | undefined {
-  return s.match(RUNTIME_MISSING_PATTERN)?.[1];
 }

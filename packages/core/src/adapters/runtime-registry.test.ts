@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { parseRuntimeMissingError } from "../domain/cli-errors.js";
 import {
   createDefaultRuntimeRegistry,
-  parseRuntimeMissingError,
   runtimeMissingError,
 } from "./runtime-registry.js";
 
