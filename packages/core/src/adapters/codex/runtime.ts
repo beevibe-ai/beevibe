@@ -196,6 +196,20 @@ export class CodexRuntime implements AgentRuntime {
     /* stateless — each session is a separate process */
   }
 
+  /**
+   * Where the workspace manager writes tier-filtered SKILL.md files for
+   * codex-runtime agents.
+   *
+   * Convention only — codex does NOT auto-discover files under
+   * `.codex/skills/`. Codex's customization surface today is
+   * `AGENTS.md` (project-level instructions) and `~/.codex/`
+   * profiles; skill files written here are present for forward-compat
+   * / parity with the claude-code adapter but the spawned CLI will
+   * not load them. Until upstream adds discovery (or we wire the
+   * prose into `system_prompt_append` ourselves), skill guidance
+   * reaches codex agents only via the briefing the router already
+   * injects.
+   */
   skillsDir(workspace: Workspace): string {
     return join(workspace.path, ".codex", "skills");
   }

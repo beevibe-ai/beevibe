@@ -220,6 +220,59 @@ describe("OpenCodeRuntime.execute", () => {
     expect(result.status).toBe("completed");
     expect(result.stderr).toBeUndefined();
   });
+
+  it("warns when daemon-env provider keys are present so API-key billing isn't silent", async () => {
+    // Provider keys aren't stripped (opencode routes by env presence), so
+    // the only safety net is a per-spawn log so operators can spot a
+    // subscription-auth user accidentally getting billed via env-leaked
+    // keys. Asserting the wording locks the message format that the
+    // daemon README documents.
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const prior = process.env.OPENROUTER_API_KEY;
+    process.env.OPENROUTER_API_KEY = "leaked-key";
+    try {
+      mockRunCli();
+      await new OpenCodeRuntime().execute(ctx());
+    } finally {
+      if (prior === undefined) delete process.env.OPENROUTER_API_KEY;
+      else process.env.OPENROUTER_API_KEY = prior;
+    }
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("[opencode] provider env keys present"),
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("OPENROUTER_API_KEY"),
+    );
+    warnSpy.mockRestore();
+  });
+
+  it("does not warn when no provider keys are in the env", async () => {
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const PROVIDER_VARS = [
+      "OPENAI_API_KEY",
+      "OPENROUTER_API_KEY",
+      "ANTHROPIC_API_KEY",
+      "GROQ_API_KEY",
+      "MISTRAL_API_KEY",
+    ];
+    const prior: Record<string, string | undefined> = {};
+    for (const k of PROVIDER_VARS) {
+      prior[k] = process.env[k];
+      delete process.env[k];
+    }
+    try {
+      mockRunCli();
+      await new OpenCodeRuntime().execute(ctx());
+    } finally {
+      for (const k of PROVIDER_VARS) {
+        if (prior[k] === undefined) delete process.env[k];
+        else process.env[k] = prior[k];
+      }
+    }
+    const calls = warnSpy.mock.calls.flat().join(" ");
+    expect(calls).not.toContain("provider env keys present");
+    warnSpy.mockRestore();
+  });
 });
 
 describe("OpenCodeRuntime.healthCheck", () => {

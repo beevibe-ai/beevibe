@@ -93,6 +93,46 @@ Each workspace contains `mcp-config.json` (mode `0600`) with `Bearer <bv_a_…>`
 
 Skills cache: `~/.beevibe/skills/`, version-gated via `.version`. Refreshed on every `start`.
 
+## Multi-runtime caveats
+
+The daemon supports three CLI runtimes (`claude`, `codex`, `opencode`). They are NOT at full parity — these are the live gaps the daemon papers over.
+
+### OpenCode authentication
+
+OpenCode picks its provider by looking for that provider's API key in the spawned process env (`OPENROUTER_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `GROQ_API_KEY`, `MISTRAL_API_KEY`, etc.). The daemon **intentionally does not strip these** — opencode needs at least one of them to route at all. The trade-off:
+
+- If a provider key is present in the daemon's env, opencode bills that key, **even if the user has run `opencode auth login` to set up subscription auth.** Subscription auth gets silently overridden.
+- The opencode runtime adapter (`packages/core/src/adapters/opencode/runtime.ts`) prints a one-line warning per spawn when any common provider key is present, e.g.:
+
+  ```
+  [opencode] provider env keys present — agent will use API-key billing for: OPENROUTER_API_KEY
+  ```
+
+- To force subscription auth instead, scrub the offending keys from the daemon's shell before starting it. For a launchctl/systemd-managed daemon, edit the unit's `Environment=` lines; for an ad-hoc terminal:
+
+  ```bash
+  unset OPENROUTER_API_KEY OPENAI_API_KEY ANTHROPIC_API_KEY GROQ_API_KEY MISTRAL_API_KEY
+  beevibe-daemon start
+  ```
+
+- Per-agent env scrubbing (e.g. `runtime_config.scrub_env`) is not yet implemented — the gating decision is still open with the team lead. If you need it, file an issue.
+
+This contrasts with the claude and codex runtimes, which both strip their provider keys (`ANTHROPIC_API_KEY` / `ANTHROPIC_AUTH_TOKEN` for claude, `OPENAI_API_KEY` / `OPENAI_AUTH_TOKEN` for codex) so subscription auth always wins.
+
+### Skill discovery on codex / opencode
+
+`/runtime/skills` ships tier-filtered SKILL.md files; the workspace manager writes them into the per-runtime discovery dir returned by `runtime.skillsDir(workspace)`:
+
+| Runtime | Path | Auto-discovered by CLI? |
+|---|---|---|
+| claude | `<ws>/.claude/skills/` | **Yes** — Claude Code loads `SKILL.md` files from this dir. |
+| codex | `<ws>/.codex/skills/` | **No** — codex reads `AGENTS.md` and `~/.codex/` profiles only; files here are dead weight. |
+| opencode | `<ws>/.opencode/skills/` | **No** — opencode's customization surface is custom agents (`.opencode/agent/*.md`) and `AGENTS.md`; files here are dead weight. |
+
+Skill prose still reaches codex / opencode agents indirectly: the dispatch briefing the api router injects (`packages/api/src/runtime/router.ts`) carries the relevant instructions via `system_prompt_append`. The on-disk files are present for parity and forward-compat only.
+
+If upstream adds skill discovery (or we wire the prose into `system_prompt_append` ourselves), the JSDoc on `CodexRuntime.skillsDir` / `OpenCodeRuntime.skillsDir` and this table should be updated together.
+
 ## What it doesn't do
 
 - **No MCP proxy.** The CLI calls `/mcp` directly using the `bv_a_` token in `mcp-config.json`. The daemon's job stops at writing the file and supervising the subprocess.
