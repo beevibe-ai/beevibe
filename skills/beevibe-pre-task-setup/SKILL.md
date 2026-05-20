@@ -3,17 +3,11 @@ name: beevibe-pre-task-setup
 description: >
   Cold-start git workspace setup for a fresh beevibe task. Use at the start
   of a session whose intent has a `<task>` block but NO `<context
-  type="revision">` or `<context type="post_escalation">` block — i.e. the
-  first dispatch of this task. Clones the repo on first use, then for every
-  subsequent task pulls the default branch and starts a per-task branch
-  IN PLACE in the same clone. One directory per repo, never per task — old
-  per-task branches stay as branches (cheap), not as full working-tree
-  copies (expensive, clutter the workspace). Falls back to a per-task
+  type="revision">` or `<context type="post_escalation">` block. Clones the
+  repo on first use; on every subsequent task refreshes the default branch
+  and starts a per-task branch in place in the same clone. Falls back to a
   worktree only when a sibling session is already using the clone. Do NOT
-  use on a resumed session — the executor passes `--resume`, so your prior
-  turn's `cd` and branch state are already in your conversation history;
-  just continue (see "Resumed sessions" below for the one branch-restore
-  edge case).
+  use on a resumed session.
 ---
 
 # Pre-Task Setup
@@ -70,26 +64,18 @@ You're on `agent/<task_id_short>` either in the shared clone or (in the rare con
 
 When you're done, leave the branch alone. The next task will branch off the default again. Old `agent/<...>` branches stay locally and on origin for history; they don't fork the working tree.
 
-## Why one clone, not one worktree per task
+## Resumed sessions
 
-The earlier design — `git worktree add ./../<repo>-<task_id_short>` on every task — accumulated `<repo>`, `<repo>-AAAA1234`, `<repo>-BBBB5678`, … one full working-tree copy per task, never reclaimed. On a busy agent that's dozens of duplicated project folders.
+`<context type="revision">` / `<context type="post_escalation">` spawns use `--resume` — your prior turn's `cd` and commits are in your conversation history, so don't re-clone or re-branch.
 
-Branches are the right primitive for "isolate this task's commits." Worktrees are the right primitive for "two task sessions need a separate working tree at the same time." Default `max_task_sessions = 1` means almost no agent ever has the second problem; serving the first with branches alone is enough.
-
-The worktree fallback in step 3 covers the rare concurrent case without polluting the steady state.
-
-## Resumed sessions are NOT this skill
-
-If your spawn intent contains `<context type="revision">` or `<context type="post_escalation">`, the executor used `--resume` to spawn you. Your prior turn's `cd <repo>` and commits are in your conversation history — don't re-clone, don't re-branch, don't re-invoke this skill.
-
-**One edge case to handle:** if you originally branched in place (no worktree fallback) and a different task ran between your turns, the shared clone may now be on a different branch. Before continuing your work, restore yours:
+Edge case: if you branched in place (no worktree fallback) and a different task ran between turns, the shared clone may now be on a different branch. Restore yours first:
 
 ```bash
 cd <repo_name>
 git checkout agent/<your_task_id_short>
 ```
 
-If your prior turn fell back to a worktree (`<repo>-<your_task_id_short>/`), it's still there; cd into it as before.
+If your prior turn fell back to a worktree (`<repo>-<your_task_id_short>/`), it's still there — cd into it as before.
 
 ## Non-code tasks
 
