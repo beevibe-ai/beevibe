@@ -775,11 +775,16 @@ const STATUS_ONLY_RE = /^(exported|done|complete[d]?|finished|wrapped up|all set
  * Alternative pattern derived from the agent's wrap-up message. We
  * skip pure status lines ("Exported.", "Done.") and look for the
  * substantive line — usually "Exported. Artifact: name — description"
- * or similar. The "description" half (after the em-dash) is the part
- * that actually describes what the run produced.
+ * or similar. The "description" half (after the em-dash separator)
+ * is the part that actually describes what the run produced.
+ *
+ * The separator we look for is " — " (en/em-dash with whitespace on
+ * BOTH sides) so hyphens inside filenames like
+ * `mattpocock-skills-overview.md` don't get treated as the boundary.
  */
+const ARTIFACT_DASH_SEPARATORS = [" — ", " – ", " -- "];
+
 function deriveSummaryGoalPattern(run: RepoRun): string | undefined {
-  // Walk backwards through agent messages, skip status-only lines.
   const candidates = [...run.transcript]
     .reverse()
     .filter((e) => e.kind === "agent" && e.text.trim() !== "")
@@ -788,19 +793,36 @@ function deriveSummaryGoalPattern(run: RepoRun): string | undefined {
   if (!picked) return undefined;
   let text = picked.text.trim();
 
-  // Common shape: "Exported. Artifact: **name** — description…"
-  // Pull the description half if present — that's the real signal.
-  const m = text.match(/(?:Exported\.?\s*)?Artifact:\s*\*?\*?[^*\n—-]+\*?\*?\s*[—-]\s*(.+)/is);
-  if (m && m[1]) text = m[1].trim();
-  // Drop a leading "Exported." if it's still there.
+  // If the line starts with "Exported.…Artifact:" style preamble, hunt
+  // for the first ` — ` separator anywhere AFTER `Artifact:` and use
+  // the text after it.
+  const artifactIdx = text.search(/Artifact:/i);
+  if (artifactIdx >= 0) {
+    const afterArtifact = text.slice(artifactIdx);
+    for (const sep of ARTIFACT_DASH_SEPARATORS) {
+      const sepIdx = afterArtifact.indexOf(sep);
+      if (sepIdx > 0) {
+        text = afterArtifact.slice(sepIdx + sep.length).trim();
+        break;
+      }
+    }
+  }
+  // Drop a leading "Exported." / "Done." if it's still there.
   text = text.replace(/^(exported|done|complete[d]?)[.!]?\s+/i, "").trim();
+  // Strip enclosing markdown asterisks if any leak through.
+  text = text.replace(/\*+/g, "").trim();
 
-  // Take up to the first two sentences for a richer pattern than just
-  // the first clause.
-  const sentenceParts = text.split(/(?<=[.!?])\s+/).slice(0, 2);
-  const summary = sentenceParts.join(" ").trim();
+  // Take just the first sentence/clause — a goal_pattern is for FTS
+  // matching, so concise + keyword-rich beats a long content inventory.
+  // Sentence boundary first; fall back to first comma at ≥ 60 chars.
+  const sentence = text.split(/(?<=[.!?])\s+/, 1)[0]?.trim() ?? text;
+  let summary = sentence;
+  if (summary.length > 120) {
+    const commaIdx = summary.indexOf(",", 60);
+    if (commaIdx > 0) summary = summary.slice(0, commaIdx).trim();
+  }
   if (summary.length < 12) return undefined; // too short to be useful
-  if (summary.length > 280) return summary.slice(0, 277) + "…";
+  if (summary.length > 200) return summary.slice(0, 197).trim() + "…";
   return summary;
 }
 
