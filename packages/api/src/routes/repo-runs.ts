@@ -13,12 +13,45 @@
 import { createReadStream, statSync } from "node:fs";
 import { basename } from "node:path";
 import { Router, type RequestHandler } from "express";
-import type { RepoRunRepository } from "@beevibe/core";
+import type {
+  RepoRunRepository,
+  RepoRunTranscriptEvent,
+  SessionEventKind,
+  SessionEventRepository,
+} from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 
 export interface RepoRunsRouterDeps {
   authMiddleware: RequestHandler;
   repoRunRepo: RepoRunRepository;
+  /**
+   * `runtime/events` writes daemon events to `session_event`, not to
+   * `repo_run.transcript`. Hydrate the transcript on read by joining
+   * events for the run's session — keeps the canonical store single
+   * (session_event) without making the daemon double-write.
+   */
+  sessionEventRepo: SessionEventRepository;
+}
+
+/**
+ * Reverse of `packages/daemon/src/repo-runs.ts:mapKind`. The daemon
+ * folds 'log'/'error' from the sandbox orchestrator into session_event
+ * kinds 'summary'/'tool_result'; here we invert so the playground UI
+ * shows the original transcript kinds (it has dedicated colors per kind).
+ */
+function sessionEventToTranscriptKind(
+  kind: SessionEventKind,
+): RepoRunTranscriptEvent["kind"] {
+  switch (kind) {
+    case "agent":
+      return "agent";
+    case "tool_call":
+      return "tool_call";
+    case "tool_result":
+      return "error";
+    case "summary":
+      return "log";
+  }
 }
 
 export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
@@ -53,7 +86,23 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
         res.status(404).json({ error: "not_found" });
         return;
       }
-      res.status(200).json({ run });
+      // Hydrate transcript from session_event (the canonical store).
+      // repo_run.transcript stays empty in the DB; this join is the
+      // single source of truth the UI reads.
+      let transcript: RepoRunTranscriptEvent[] = run.transcript ?? [];
+      if (run.session_id) {
+        try {
+          const events = await deps.sessionEventRepo.listBySession(run.session_id);
+          transcript = events.map((ev) => ({
+            at: ev.created_at.toISOString(),
+            kind: sessionEventToTranscriptKind(ev.kind),
+            text: ev.content,
+          }));
+        } catch (err) {
+          console.warn("[repo-runs/get] transcript hydration failed:", err);
+        }
+      }
+      res.status(200).json({ run: { ...run, transcript } });
     } catch (err) {
       console.error("[repo-runs/get]", err);
       res.status(500).json({ error: "get_failed" });

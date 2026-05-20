@@ -455,6 +455,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const repoRunsRouter = createRepoRunsRouter({
     authMiddleware: server.getAuthMiddleware(),
     repoRunRepo,
+    sessionEventRepo,
   });
   server.getApp().use("/repo-runs", repoRunsRouter);
 
