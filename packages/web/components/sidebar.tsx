@@ -8,11 +8,13 @@ import {
   ListChecks,
   type LucideIcon,
   MessageSquare,
+  Package,
   PanelLeftClose,
   PanelLeftOpen,
   Users,
 } from "lucide-react";
 import { useCollapsible } from "@/lib/hooks/use-collapsible";
+import { useMe } from "@/lib/hooks/use-me";
 import { ConversationSidebar } from "./chat/conversation-sidebar";
 import { LiveStatusDot } from "./chat/live-panel";
 import { AgentsSidebar, RoomsSidebar, TasksAttentionSidebar } from "./mode-sidebars";
@@ -46,6 +48,7 @@ const PRIMARY_MODES: NavItem[] = [
   { href: "/", label: "Chat", icon: MessageSquare, isActive: matchesChat },
   { href: "/rooms", label: "Rooms", icon: Users, isActive: (p) => p.startsWith("/rooms") },
   { href: "/tasks", label: "Tasks", icon: ListChecks, isActive: (p) => p.startsWith("/tasks") },
+  { href: "/capabilities", label: "Capabilities", icon: Package, isActive: (p) => p.startsWith("/capabilities") },
 ];
 
 export function Sidebar() {
@@ -245,12 +248,20 @@ function renderModePanel(args: ModePanelArgs): React.ReactNode {
  * strip — visual gesture for mode-switching, no vertical bloat.
  */
 function ModeStrip({ pathname }: { pathname: string }) {
+  // Capability network is per-user toggleable in /settings. Hide the
+  // mode-strip entry when the caller has it off — keeps the icon
+  // strip from advertising a feature the user opted out of.
+  const me = useMe();
+  const capabilityEnabled = me.data?.preferences?.capability_network_enabled ?? true;
+  const items = PRIMARY_MODES.filter(
+    (item) => capabilityEnabled || item.href !== "/capabilities",
+  );
   return (
     <nav
       aria-label="Primary modes"
       className="flex items-center gap-0.5 px-2 pt-1 pb-1.5"
     >
-      {PRIMARY_MODES.map((item) => {
+      {items.map((item) => {
         const active = item.isActive(pathname);
         if (active) {
           return (

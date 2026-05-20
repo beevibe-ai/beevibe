@@ -28,6 +28,7 @@
   },
   "dependencies": {
     "@beevibe/core": "workspace:*",
+    "@beevibe/sandbox": "workspace:*",
     "ws": "^8.18.0"
   },
   "devDependencies": {

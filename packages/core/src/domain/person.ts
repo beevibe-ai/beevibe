@@ -16,6 +16,12 @@ export interface Person {
    * the system prompt until this is stamped.
    */
   onboarding_completed_at?: Date;
+  /**
+   * Per-user toggle for the capability network surface (Try-a-repo,
+   * /capabilities, find_repo + use_repo MCP tools). Default TRUE;
+   * flip OFF in /settings to hide the UI and strip the MCP tools.
+   */
+  capability_network_enabled: boolean;
   created_at: Date;
   updated_at: Date;
 }

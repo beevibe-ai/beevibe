@@ -30,3 +30,9 @@ export {
 export { PostgresEscalationRepository } from "./escalation-repo.js";
 export { PostgresRoomRepository } from "./room-repo.js";
 export { PostgresAgentProvisionEventRepository } from "./agent-provision-event-repo.js";
+export {
+  PostgresRepoRunRepository,
+  PostgresLearnedSkillRepository,
+  PostgresSkillOutcomeRepository,
+  newSkillOutcomeId,
+} from "./repo-run-repo.js";

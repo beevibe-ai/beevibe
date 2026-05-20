@@ -2,19 +2,21 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
   ArrowRight,
   ArrowUp,
   MessageSquare,
+  Star,
 } from "lucide-react";
 import type { HierarchyLevel, KnownCli } from "@beevibe/core";
 import { isApiConfigured } from "@/lib/api/config";
 import {
   api,
   type ChatConversationsResponse,
+  type ChatRepoCard,
   type SuggestedAction,
 } from "@/lib/api/client";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
@@ -23,6 +25,7 @@ import { useMe } from "@/lib/hooks/use-me";
 import { useAgents } from "@/lib/hooks/use-agents";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
+import { defaultTryGoal, formatStars } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/avatar";
 import { ReferenceCards } from "@/components/chat/reference-cards";
@@ -93,6 +96,33 @@ export function ChatClient() {
       router.replace(qs ? `/chat?${qs}` : "/chat");
     }
   }, [isFresh, messages.length, isSubmitting, searchParams, router]);
+
+  // `?draft=<text>` seeds the input — used by the Capabilities page and
+  // by the blocked-task banner to drop the user into chat with a
+  // pre-written message. `?send=1` additionally auto-submits the seeded
+  // draft on mount so chip-style quick replies skip the "type and press
+  // enter" step entirely. Both params are consumed once and stripped
+  // from the URL so reloads don't repeat the auto-send.
+  const draftSeed = searchParams?.get("draft");
+  const autoSend = searchParams?.get("send") === "1";
+  useEffect(() => {
+    if (!draftSeed) return;
+    setDraft(draftSeed);
+    const sp = new URLSearchParams(searchParams?.toString() ?? "");
+    sp.delete("draft");
+    sp.delete("send");
+    const qs = sp.toString();
+    router.replace(qs ? `/chat?${qs}` : "/chat");
+    if (autoSend && draftSeed.trim().length > 0) {
+      // Fire on next tick so React Query / chat send wiring is settled.
+      const id = setTimeout(() => {
+        submit(draftSeed);
+      }, 0);
+      return () => clearTimeout(id);
+    }
+    // Run once per draftSeed value; intentionally narrow deps.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [draftSeed]);
 
   // First-run gate: if the caller hasn't completed the welcome wizard
   // and didn't arrive here from it, bounce them to the wizard.
@@ -443,6 +473,9 @@ function Bubble({
         {!isUser ? (
           <>
             {refIds.length > 0 ? <ReferenceCards ids={refIds} /> : null}
+            {message.repo_cards && message.repo_cards.length > 0 ? (
+              <RepoCards cards={message.repo_cards} />
+            ) : null}
             {message.open_view ? <OpenViewCta open_view={message.open_view} /> : null}
           </>
         ) : null}
@@ -474,6 +507,115 @@ function SuggestedActions({
           {a.label}
         </button>
       ))}
+    </div>
+  );
+}
+
+const SOURCE_BADGE_CLASS: Record<NonNullable<ChatRepoCard["source"]>, string> = {
+  learned: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+  trending: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+  community: "bg-sky-500/15 text-sky-300 border-sky-500/30",
+  github: "bg-muted text-muted-foreground border-border",
+};
+
+const SOURCE_LABEL: Record<NonNullable<ChatRepoCard["source"]>, string> = {
+  learned: "Learned",
+  trending: "Trending",
+  community: "Community",
+  github: "GitHub",
+};
+
+function RepoCards({ cards }: { cards: ChatRepoCard[] }) {
+  return (
+    <div className="mt-2 flex flex-col gap-1.5">
+      {cards.map((card) => (
+        <RepoCardRow key={card.repo_url} card={card} />
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Single repo row from a find_repo result. The Try button is the
+ * "agentic action" loop closed without the agent — click triggers a
+ * use_repo sandbox run with a sensible default goal, then the button
+ * swaps to a deep-link into the playground (the run detail page).
+ */
+function RepoCardRow({ card }: { card: ChatRepoCard }) {
+  const [watchUrl, setWatchUrl] = useState<string | null>(null);
+  const tryRun = useMutation({
+    mutationFn: () =>
+      api.capabilities.use({
+        repo_url: card.repo_url,
+        goal: defaultTryGoal({
+          owner: card.owner,
+          name: card.name,
+          description: card.description,
+        }),
+      }),
+    onSuccess: (res) => setWatchUrl(res.watch_url),
+  });
+
+  return (
+    <div className="rounded-lg border border-border/40 bg-card hover:border-foreground/30 px-3 py-2 transition-colors">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Link
+          href={card.repo_url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm font-medium text-foreground hover:underline"
+        >
+          {card.owner}/{card.name}
+        </Link>
+        {typeof card.stars === "number" ? (
+          <span className="inline-flex items-center gap-0.5 text-[11px] text-amber-300 tabular-nums">
+            <Star className="h-3 w-3 fill-current" />
+            {formatStars(card.stars)}
+          </span>
+        ) : null}
+        {card.language ? (
+          <span className="text-[11px] text-muted-foreground">{card.language}</span>
+        ) : null}
+        <div className="ml-auto flex items-center gap-2">
+          {card.source ? (
+            <span
+              className={cn(
+                "text-[10px] uppercase tracking-wider rounded border px-1.5 py-0.5",
+                SOURCE_BADGE_CLASS[card.source],
+              )}
+            >
+              {SOURCE_LABEL[card.source]}
+            </span>
+          ) : null}
+          {watchUrl ? (
+            <Link
+              href={watchUrl}
+              className="inline-flex items-center gap-1 rounded-md bg-foreground text-background px-2.5 py-1 text-[11px] font-medium hover:opacity-90 transition-opacity"
+            >
+              Open playground
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => tryRun.mutate()}
+              disabled={tryRun.isPending}
+              className="inline-flex items-center gap-1 rounded-md border border-border/40 bg-transparent hover:bg-secondary hover:border-foreground/30 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors disabled:opacity-50"
+              title={`Try ${card.owner}/${card.name} in a sandbox`}
+            >
+              {tryRun.isPending ? "Starting…" : "Try"}
+            </button>
+          )}
+        </div>
+      </div>
+      {card.description ? (
+        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{card.description}</p>
+      ) : null}
+      {tryRun.error ? (
+        <p className="mt-1 text-[11px] text-red-500">
+          {tryRun.error instanceof Error ? tryRun.error.message : "Couldn't start the sandbox."}
+        </p>
+      ) : null}
     </div>
   );
 }

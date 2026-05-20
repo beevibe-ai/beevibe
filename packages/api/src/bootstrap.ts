@@ -4,15 +4,18 @@ import {
   PostgresCoreMemoryRepository,
   PostgresDaemonRepository,
   PostgresEscalationRepository,
+  PostgresLearnedSkillRepository,
   PostgresMemoryFactRepository,
   PostgresNegotiationRepository,
   PostgresNegotiationRoundRepository,
   PostgresAgentProvisionEventRepository,
   PostgresPersonRepository,
+  PostgresRepoRunRepository,
   PostgresRoomRepository,
   PostgresRuntimeRepository,
   PostgresSessionEventRepository,
   PostgresSessionRepository,
+  PostgresSkillOutcomeRepository,
   PostgresTaskRepository,
   PostgresWorkProductRepository,
   createPool,
@@ -39,6 +42,10 @@ import { BeevibeApiServer } from "./server.js";
 import { SessionCache } from "./session-cache.js";
 import { createMcpRouter } from "./routes/mcp.js";
 import { createTaskRouter } from "./routes/task.js";
+import { createRepoRunsRouter } from "./routes/repo-runs.js";
+import { createLearnedSkillsRouter } from "./routes/learned-skills.js";
+import { createFindRepoRouter } from "./routes/find-repo.js";
+import { createCapabilitiesRouter } from "./routes/capabilities.js";
 import { createEscalationRouter } from "./routes/escalation.js";
 import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
@@ -130,6 +137,12 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const escalationRepo = new PostgresEscalationRepository(pool);
   const roomRepo = new PostgresRoomRepository(pool);
   const agentProvisionEventRepo = new PostgresAgentProvisionEventRepository(pool);
+  const repoRunRepo = new PostgresRepoRunRepository(pool);
+  const learnedSkillRepo = new PostgresLearnedSkillRepository(pool);
+  const skillOutcomeRepo = new PostgresSkillOutcomeRepository(pool);
+
+  const skillsDir =
+    cfg.skillsSourceDir ?? path.resolve(process.cwd(), "skills");
 
   // External services (LLM + embeddings) for memory pipeline
   const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
@@ -295,6 +308,10 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     mesh,
     pool,
     makeMemoryAgent,
+    repoRunRepo,
+    learnedSkillRepo,
+    embeddings: embed,
+    personRepo,
   });
   server.getApp().use("/mcp", mcpRouter);
 
@@ -308,6 +325,9 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     dispatchService,
     hub: daemonHub,
     pool,
+    workProductRepo,
+    repoRunRepo,
+    skillOutcomeRepo,
   });
   server.getApp().use("/task", taskRouter);
 
@@ -371,6 +391,8 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     sessionRepo,
     sessionEventRepo,
     taskRepo,
+    repoRunRepo,
+    workProductRepo,
     hub: daemonHub,
     makeMemoryAgent,
     mcpServerUrl: cfg.mcpServerUrl,
@@ -378,6 +400,18 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     onSessionComplete: async (session) => {
       if (session.type === "chat") {
         chatResolver.resolve(session.id, session);
+      }
+      // Capability Network: flip the container task to 'review' when a
+      // run_repo session succeeds so the artifact lands in the inbox.
+      if (session.type === "run_repo" && session.status === "succeeded" && session.task_id) {
+        try {
+          await taskRepo.update(session.task_id, { status: "review" });
+        } catch (err) {
+          console.warn(
+            "[onSessionComplete] run_repo task→review failed:",
+            err instanceof Error ? err.message : String(err),
+          );
+        }
       }
       failMeshCalleeIfTerminal(session, session.status);
     },
@@ -418,6 +452,50 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     hub: daemonHub,
   });
   server.getApp().use("/runtimes", runtimesRouter);
+
+  // Capability Network — repo-run REST surface.
+  const repoRunsRouter = createRepoRunsRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    repoRunRepo,
+    sessionEventRepo,
+  });
+  server.getApp().use("/repo-runs", repoRunsRouter);
+
+  // Capability Network — learned-skills REST surface.
+  const learnedSkillsRouter = createLearnedSkillsRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    learnedSkillRepo,
+    repoRunRepo,
+    workProductRepo,
+    repoRoot: process.cwd(),
+  });
+  server.getApp().use("/learned-skills", learnedSkillsRouter);
+
+  // Capability Network — search surface for the /capabilities UI.
+  // Wraps the find_repo MCP tool's ranker for bv_u_ callers.
+  const findRepoRouter = createFindRepoRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    agentRepo,
+    learnedSkillRepo,
+    embeddings: embed,
+  });
+  server.getApp().use("/find-repo", findRepoRouter);
+
+  // Capability Network — UI-driven persistence: mine a closed task's
+  // transcript for referenced repos, and let the user kick off a
+  // use_repo sandbox run from the Save-as-capability card.
+  const capabilitiesRouter = createCapabilitiesRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    agentRepo,
+    taskRepo,
+    sessionRepo,
+    sessionEventRepo,
+    workProductRepo,
+    repoRunRepo,
+    learnedSkillRepo,
+    dispatchService,
+  });
+  server.getApp().use("/capabilities", capabilitiesRouter);
 
   // Phase 8 — onboarding/identity surface (bv_u_).
   // GET /me, POST /me/onboarding/complete, GET /health/runtime.

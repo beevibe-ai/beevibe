@@ -83,7 +83,7 @@ export function UserWidget() {
       {view === "menu" ? (
         <div
           role="menu"
-          className="absolute bottom-full left-0 mb-2 z-50 w-[220px] rounded-md glass-surface shadow-xl py-1"
+          className="absolute bottom-full left-0 mb-2 z-50 w-[220px] rounded-md bg-card border border-border/60 shadow-xl py-1"
         >
           <MenuItem icon={Brain} label="My memory" href="/memory" onActivate={close} />
           <MenuItem
@@ -92,7 +92,7 @@ export function UserWidget() {
             onActivate={() => setView("invite")}
           />
           <div className="my-1 border-t border-border" />
-          <MenuItem icon={Settings} label="Runtimes" href="/runtimes" onActivate={close} />
+          <MenuItem icon={Settings} label="Settings" href="/settings" onActivate={close} />
           <MenuItem icon={LogOut} label="Sign out" tone="destructive" onActivate={signOut} />
           <div className="my-1 border-t border-border" />
           <MenuItem

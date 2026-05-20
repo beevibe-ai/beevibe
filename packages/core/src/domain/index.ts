@@ -11,3 +11,4 @@ export * from "./escalation.js";
 export * from "./daemon.js";
 export * from "./runtime.js";
 export * from "./room.js";
+export * from "./repo-run.js";

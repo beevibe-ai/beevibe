@@ -1,6 +1,12 @@
 import type { Person } from "../domain/person.js";
 
-export type NewPerson = Omit<Person, "created_at" | "updated_at">;
+// capability_network_enabled has a DB default (TRUE); callers may omit it.
+export type NewPerson = Omit<
+  Person,
+  "created_at" | "updated_at" | "capability_network_enabled"
+> & {
+  capability_network_enabled?: boolean;
+};
 
 export type PersonPatch = Partial<Omit<Person, "id" | "created_at" | "updated_at">>;
 

@@ -1,5 +1,19 @@
 import { fetchJson } from "./http";
 import type {
+  HierarchyLevel,
+  KnownCli,
+  LearnedSkill,
+  MemoryScope,
+  RepoRun,
+  RepoRunStatus,
+  ReviewPolicy,
+  SessionStatus,
+  SessionType,
+  Task,
+  TaskPriority,
+} from "@beevibe/core";
+export type { RepoRun, RepoRunStatus, LearnedSkill };
+import type {
   TaskDetail,
   AgentDetail,
   DashboardSummary,
@@ -12,16 +26,6 @@ import type { SessionDisplay } from "@/lib/types/sessions";
 import type { FactCounts, MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
 import type { InboxItem } from "@/lib/types/inbox";
-import type {
-  HierarchyLevel,
-  KnownCli,
-  MemoryScope,
-  ReviewPolicy,
-  SessionStatus,
-  SessionType,
-  Task,
-  TaskPriority,
-} from "@beevibe/core";
 import type { Lifecycle } from "@/lib/tasks-grouping";
 
 export type TaskView = "all" | "mine";
@@ -58,6 +62,10 @@ export interface CreateTaskInput {
   parent_task_id?: string;
 }
 
+export interface UserPreferences {
+  capability_network_enabled: boolean;
+}
+
 export interface MeResponse {
   person: {
     id: string;
@@ -70,6 +78,7 @@ export interface MeResponse {
     name: string;
     hierarchy: "ic" | "team" | "org";
   } | null;
+  preferences: UserPreferences;
   needs_onboarding: boolean;
 }
 
@@ -105,6 +114,22 @@ export interface SuggestedAction {
   prompt?: string;
 }
 
+/**
+ * Rich repo card from a `<repo_card>` chat directive. Agents emit one
+ * per find_repo result after grouping; the chat UI renders them as
+ * styled rows with stars + language + source-tier badge instead of a
+ * markdown bullet list.
+ */
+export interface ChatRepoCard {
+  repo_url: string;
+  owner: string;
+  name: string;
+  stars?: number;
+  language?: string;
+  source?: "learned" | "trending" | "community" | "github";
+  description?: string;
+}
+
 export interface ChatTurnResponse {
   ok: true;
   agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" };
@@ -124,6 +149,11 @@ export interface ChatTurnResponse {
    * label as the next user message.
    */
   suggested_actions?: SuggestedAction[];
+  /**
+   * `<repo_card>` directives the agent emitted (typically after find_repo).
+   * Rendered as a structured repo list with stars + language + source.
+   */
+  repo_cards?: ChatRepoCard[];
 }
 
 export interface Room {
@@ -156,6 +186,7 @@ export interface RoomMessage {
   view_refs?: string[];
   open_view?: { path: string; label?: string };
   suggested_actions?: SuggestedAction[];
+  repo_cards?: ChatRepoCard[];
   created_at: string;
 }
 
@@ -280,6 +311,7 @@ export interface ChatHistoryMessage {
   view_refs?: string[];
   open_view?: { path: string; label?: string };
   suggested_actions?: SuggestedAction[];
+  repo_cards?: ChatRepoCard[];
 }
 
 export interface ChatHistoryResponse {
@@ -614,6 +646,11 @@ export const api = {
         "/me/onboarding/complete",
         { method: "POST" },
       ),
+    updatePreferences: (input: Partial<UserPreferences>) =>
+      fetchJson<{ ok: true; preferences: UserPreferences }>(
+        "/me/preferences",
+        { method: "PATCH", body: input },
+      ),
     health: (opts: ReadOptions = {}) =>
       fetchJson<HealthResponse>("/health/runtime", { signal: opts.signal }),
   },
@@ -630,6 +667,94 @@ export const api = {
         body: input,
       }),
   },
+  repoRuns: {
+    list: (opts: ReadOptions = {}) =>
+      fetchJson<{ runs: RepoRun[] }>("/repo-runs", { signal: opts.signal }),
+    get: (id: string, opts: ReadOptions = {}) =>
+      fetchJson<{ run: RepoRun }>(`/repo-runs/${encodeURIComponent(id)}`, { signal: opts.signal }),
+    cancel: (id: string) =>
+      fetchJson<{ run: RepoRun }>(`/repo-runs/${encodeURIComponent(id)}/cancel`, { method: "POST" }),
+  },
+  learnedSkills: {
+    list: (opts: ReadOptions = {}) =>
+      fetchJson<{ skills: LearnedSkill[] }>("/learned-skills", { signal: opts.signal }),
+    create: (input: { name: string; goal_pattern: string; repo_run_id: string }) =>
+      fetchJson<{ skill: LearnedSkill }>("/learned-skills", { method: "POST", body: input }),
+    delete: (id: string) =>
+      fetchJson<void>(`/learned-skills/${encodeURIComponent(id)}`, { method: "DELETE" }),
+    publish: (id: string) =>
+      fetchJson<{
+        ok: boolean;
+        pr_url?: string;
+        reason?: string;
+        skill_md?: string;
+        instructions?: string;
+      }>(`/learned-skills/${encodeURIComponent(id)}/publish`, { method: "POST" }),
+  },
+  findRepo: {
+    /** Ranked search across all 4 find_repo tiers. Empty `goal` is a 400. */
+    search: (goal: string, opts: ReadOptions & { limit?: number } = {}) => {
+      const params = new URLSearchParams({ goal });
+      if (opts.limit) params.set("limit", String(opts.limit));
+      return fetchJson<{
+        goal: string;
+        candidates: FindRepoCandidate[];
+        notes: string[];
+        hint: string;
+      }>(`/find-repo?${params.toString()}`, { signal: opts.signal });
+    },
+  },
+  capabilities: {
+    /** GitHub repos referenced inside a task's transcript/work products. */
+    referencedRepos: (taskId: string, opts: ReadOptions = {}) =>
+      fetchJson<{ repos: ReferencedRepo[] }>(
+        `/capabilities/referenced-repos?task_id=${encodeURIComponent(taskId)}`,
+        { signal: opts.signal },
+      ),
+    /** Trigger a use_repo sandbox run from a human caller. Returns 202. */
+    use: (input: { repo_url: string; goal: string }) =>
+      fetchJson<{
+        repo_run_id: string;
+        session_id: string;
+        task_id: string;
+        status: string;
+        watch_url: string;
+      }>("/capabilities/use", { method: "POST", body: input }),
+  },
 } as const;
+
+export interface ReferencedRepo {
+  owner: string;
+  name: string;
+  url: string;
+  occurrences: number;
+  already_saved: boolean;
+}
+
+/**
+ * Mirrors the candidate shape that `packages/api/src/tools/find-repo.ts`
+ * returns. Duplicating the type rather than importing it avoids
+ * pulling the whole api package into the web bundle — the shape is
+ * small + stable enough that a UI-side copy is cheaper than the
+ * cross-package coupling.
+ */
+export type FindRepoSource = "learned" | "community" | "trending" | "github";
+
+export interface FindRepoCandidate {
+  repo_url: string;
+  score: number;
+  source: FindRepoSource;
+  sources: FindRepoSource[];
+  reason: string;
+  stars?: number;
+  description?: string;
+  language?: string;
+  learned_skill?: {
+    id: string;
+    name: string;
+    goal_pattern: string;
+    invocation: string;
+  };
+}
 
 export type Api = typeof api;

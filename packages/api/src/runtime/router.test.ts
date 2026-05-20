@@ -103,6 +103,13 @@ describe("/runtime — integration", () => {
       sessionRepo,
       sessionEventRepo,
       taskRepo,
+      repoRunRepo: {
+        findBySessionId: vi.fn(async () => undefined),
+        update: vi.fn(async (id: string) => ({ id })),
+      } as unknown as import("@beevibe/core").RepoRunRepository,
+      workProductRepo: {
+        create: vi.fn(async () => ({})),
+      } as unknown as import("@beevibe/core").WorkProductRepository,
       hub,
       makeMemoryAgent: () => makeMemoryAgentStub(),
       mcpServerUrl: "http://api.test/mcp",

@@ -114,7 +114,11 @@ describe("TaskDetailClient", () => {
     renderDetail("t_abc");
 
     expect(await screen.findByText("needs API key from alice")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Blocked" })).toBeInTheDocument();
+    // Heading was renamed from "Blocked" to "Blocked — agent is asking you
+    // something" when the blocked rail became a reply surface (c3088ac).
+    expect(
+      screen.getByRole("heading", { name: /^Blocked\b/ }),
+    ).toBeInTheDocument();
   });
 
   it("renders an Active session rail when latest_session is running", async () => {

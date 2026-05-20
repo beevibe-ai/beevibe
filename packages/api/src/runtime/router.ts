@@ -6,16 +6,20 @@ import {
   daemonId as newDaemonId,
   runtimeId as newRuntimeId,
   sessionEventId as newSessionEventId,
+  workProductId as newWorkProductId,
   isTerminalSessionStatus,
   isKnownCli,
   type AgentRepository,
   type DaemonRepository,
   type PersonRepository,
+  type RepoRunRepository,
+  type RepoRunStatus,
   type Session,
   type SessionEventRepository,
   type SessionRepository,
   type RuntimeRepository,
   type TaskRepository,
+  type WorkProductRepository,
 } from "@beevibe/core";
 import {
   generateDaemonApiKey,
@@ -54,6 +58,10 @@ export interface RuntimeRouterDeps {
   sessionRepo: SessionRepository;
   sessionEventRepo: SessionEventRepository;
   taskRepo: TaskRepository;
+  /** Capability Network: read at claim time + write at /done. */
+  repoRunRepo: RepoRunRepository;
+  /** Capability Network: artifacts from a run_repo come back here as work_products. */
+  workProductRepo: WorkProductRepository;
   hub: DaemonHub;
   /** Per-agent factory for prepareBriefing at claim time. */
   makeMemoryAgent: (agentId: string) => MemoryAgent;
@@ -291,6 +299,65 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
         usage: body.usage,
         completed_at: new Date(),
       });
+
+      // Capability Network: if this was a run_repo session, persist
+      // the recipe + artifacts reported by the daemon.
+      if (updated.type === "run_repo" && body.run_repo) {
+        const rr = body.run_repo;
+        const repoRunStatus: RepoRunStatus =
+          body.status === "succeeded" ? "succeeded" :
+          body.status === "cancelled" ? "cancelled" : "failed";
+        try {
+          await deps.repoRunRepo.update(rr.repo_run_id, {
+            status: repoRunStatus,
+            install_log: rr.install_log ?? null,
+            invocation: rr.invocation ?? null,
+            repo_ref: rr.repo_ref ?? null,
+            error: body.error ?? null,
+            ended_at: new Date(),
+          });
+        } catch (err) {
+          console.warn(
+            "[runtime/done] repo_run update failed:",
+            err instanceof Error ? err.message : String(err),
+          );
+        }
+
+        // Write one work_product per exported artifact, attached to the
+        // container task (task_id lives on the session row).
+        if (rr.artifacts.length > 0 && updated.task_id) {
+          for (const artifact of rr.artifacts) {
+            try {
+              await deps.workProductRepo.create({
+                id: newWorkProductId(),
+                task_id: updated.task_id,
+                agent_id: updated.agent_id,
+                type: "artifact",
+                title: artifact.title,
+                summary: `${artifact.size_bytes} bytes · from ${updated.agent_id}`,
+                // file:// triggers tryReadFileUrl inlining in getWorkProduct.
+                url: `file://${artifact.host_path}`,
+                metadata: {
+                  repo_run_id: rr.repo_run_id,
+                  filename: artifact.filename,
+                  host_path: artifact.host_path,
+                  sandbox_path: artifact.sandbox_path,
+                  size_bytes: artifact.size_bytes,
+                },
+              });
+            } catch (err) {
+              console.warn(
+                `[runtime/done] work_product create failed for ${artifact.filename}:`,
+                err instanceof Error ? err.message : String(err),
+              );
+            }
+          }
+          // Task status flip to 'review' so the inbox surfaces the
+          // artifact. Happens in the onSessionComplete hook in bootstrap.ts
+          // (which has taskRepo in scope; we don't add it here).
+        }
+      }
+
       if (deps.onSessionComplete) {
         // Fire-and-forget; resolver/post-dispatch errors must not fail the
         // daemon's request.
@@ -509,6 +576,37 @@ async function composeDispatchPayload(
     );
   }
 
+  // Capability Network: run_repo dispatches carry the orchestrator
+  // inputs (repo_url, goal, optional input file, limits) as a sidecar
+  // on the payload. The daemon branches on type === 'run_repo' and
+  // ignores the CLI fields below; we still fill them so the payload
+  // stays well-typed.
+  let runRepoSidecar: DispatchPayload["run_repo"] | undefined;
+  if (session.type === "run_repo") {
+    const repoRun = await deps.repoRunRepo.findBySessionId(session.id);
+    if (!repoRun) {
+      console.warn(
+        `[runtime/claim] run_repo session ${session.id} has no repo_run row; skipping`,
+      );
+      return null;
+    }
+    runRepoSidecar = {
+      repo_run_id: repoRun.id,
+      repo_url: repoRun.repo_url,
+      goal: repoRun.goal,
+    };
+    // Flip the row's status to running so the UI shows the right pill
+    // the moment the daemon claims; daemon will overwrite at /done.
+    try {
+      await deps.repoRunRepo.update(repoRun.id, { status: "running" });
+    } catch (err) {
+      console.warn(
+        "[runtime/claim] repo_run status flip failed:",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
   return {
     session_id: session.id,
     agent_id: agent.id,
@@ -531,6 +629,7 @@ async function composeDispatchPayload(
     env: { BEEVIBE_SESSION_ID: session.id, BEEVIBE_AGENT_ID: agent.id },
     type: session.type,
     mcp_server_url: deps.mcpServerUrl,
+    run_repo: runRepoSidecar,
   };
 }
 

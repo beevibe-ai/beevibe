@@ -65,6 +65,9 @@ export function createMeRouter(deps: MeRoutesDeps): Router {
             hierarchy: agent.hierarchy_level,
           }
         : null,
+      preferences: {
+        capability_network_enabled: person.capability_network_enabled,
+      },
       needs_onboarding: !person.onboarding_completed_at,
     });
   });
@@ -75,6 +78,24 @@ export function createMeRouter(deps: MeRoutesDeps): Router {
       onboarding_completed_at: new Date(),
     });
     res.json({ ok: true, onboarding_completed_at: updated.onboarding_completed_at ?? null });
+  });
+
+  router.patch("/me/preferences", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const body = req.body as { capability_network_enabled?: unknown } | undefined;
+    if (!body || typeof body.capability_network_enabled !== "boolean") {
+      res.status(400).json({ error: "invalid_body", message: "capability_network_enabled (boolean) required" });
+      return;
+    }
+    const updated = await deps.personRepo.update(req.caller.personId, {
+      capability_network_enabled: body.capability_network_enabled,
+    });
+    res.json({
+      ok: true,
+      preferences: {
+        capability_network_enabled: updated.capability_network_enabled,
+      },
+    });
   });
 
   router.get("/health/runtime", async (req, res) => {

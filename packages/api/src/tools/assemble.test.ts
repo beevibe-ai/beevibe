@@ -13,6 +13,7 @@ import type {
   AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
+  LearnedSkillRepository,
   TaskRepository,
   WorkProductRepository,
 } from "@beevibe/core";
@@ -57,31 +58,46 @@ function buildMinimalServices(): AssembleToolsServices {
     mesh: {} as unknown as MeshServer,
     pool: {} as unknown as Pool,
     memoryAgent: {} as unknown as MemoryAgent,
+    repoRunRepo: {} as unknown as import("@beevibe/core").RepoRunRepository,
+    learnedSkillRepo: {
+      searchByGoal: vi.fn(async () => []),
+    } as unknown as LearnedSkillRepository,
+    embeddings: {
+      type: "fake",
+      embed: vi.fn(async () => [1, 0]),
+      embedBatch: vi.fn(async (texts: string[]) => texts.map(() => [1, 0])),
+    },
   };
 }
 
-function teamCtx(spawnMode?: AssembleToolsContext["spawnMode"]): AssembleToolsContext {
+function teamCtx(
+  spawnMode?: AssembleToolsContext["spawnMode"],
+  capabilityNetworkEnabled = true,
+): AssembleToolsContext {
   const caller: McpCaller = {
     source: "agent",
     agentId: "agent_team",
     hierarchyLevel: "team",
   };
-  return { caller, beevibeSid: "sess_test", spawnMode };
+  return { caller, beevibeSid: "sess_test", spawnMode, capabilityNetworkEnabled };
 }
 
-function icCtx(spawnMode?: AssembleToolsContext["spawnMode"]): AssembleToolsContext {
+function icCtx(
+  spawnMode?: AssembleToolsContext["spawnMode"],
+  capabilityNetworkEnabled = true,
+): AssembleToolsContext {
   const caller: McpCaller = {
     source: "agent",
     agentId: "agent_ic",
     hierarchyLevel: "ic",
   };
-  return { caller, beevibeSid: "sess_test", spawnMode };
+  return { caller, beevibeSid: "sess_test", spawnMode, capabilityNetworkEnabled };
 }
 
 describe("assembleTools — daemon (full surface)", () => {
-  it("team caller gets the full team surface (24 tools)", () => {
+  it("team caller gets the full team surface (26 tools, includes find_repo + use_repo)", () => {
     const tools = assembleTools(teamCtx(), buildMinimalServices());
-    expect(tools.length).toBe(24);
+    expect(tools.length).toBe(26);
     const names = new Set(tools.map((t) => t.name));
     expect(names.has("create_task")).toBe(true);
     expect(names.has("update_work_product")).toBe(true);
@@ -89,15 +105,34 @@ describe("assembleTools — daemon (full surface)", () => {
     expect(names.has("revise_task")).toBe(true);
     expect(names.has("add_to_escalation")).toBe(true);
     expect(names.has("create_subordinate_agent")).toBe(true);
+    expect(names.has("find_repo")).toBe(true);
+    expect(names.has("use_repo")).toBe(true);
   });
 
-  it("ic caller gets the IC surface (13 tools)", () => {
+  it("ic caller gets the IC surface (15 tools, includes find_repo + use_repo)", () => {
     const tools = assembleTools(icCtx(), buildMinimalServices());
-    expect(tools.length).toBe(13);
+    expect(tools.length).toBe(15);
     const names = new Set(tools.map((t) => t.name));
     expect(names.has("create_task")).toBe(false);
     expect(names.has("respond_ask")).toBe(true);
     expect(names.has("report_blocker")).toBe(true);
+    expect(names.has("find_repo")).toBe(true);
+    expect(names.has("use_repo")).toBe(true);
+  });
+
+  it("owner with capability_network_enabled=false gets neither find_repo nor use_repo", () => {
+    const teamTools = assembleTools(teamCtx(undefined, false), buildMinimalServices());
+    const teamNames = new Set(teamTools.map((t) => t.name));
+    expect(teamNames.has("find_repo")).toBe(false);
+    expect(teamNames.has("use_repo")).toBe(false);
+    // Other tools survive — flag only gates capability network.
+    expect(teamNames.has("create_task")).toBe(true);
+    expect(teamNames.has("save_memory")).toBe(true);
+
+    const icTools = assembleTools(icCtx(undefined, false), buildMinimalServices());
+    const icNames = new Set(icTools.map((t) => t.name));
+    expect(icNames.has("find_repo")).toBe(false);
+    expect(icNames.has("use_repo")).toBe(false);
   });
 });
 

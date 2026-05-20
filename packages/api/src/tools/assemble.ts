@@ -3,6 +3,9 @@ import type {
   AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
+  EmbeddingService,
+  LearnedSkillRepository,
+  RepoRunRepository,
   SessionSpawnMode,
   TaskRepository,
   WorkProductRepository,
@@ -17,6 +20,8 @@ import { buildIcMeshTools, buildTeamMeshTools } from "./mesh.js";
 import { buildHierarchyTools } from "./hierarchy.js";
 import { createSaveMemoryTool } from "./save-memory.js";
 import { createUpdateCoreMemoryTool } from "./update-core-memory.js";
+import { createUseRepoTool } from "./use-repo.js";
+import { createFindRepoTool } from "./find-repo.js";
 import type { AgentTool } from "./types.js";
 
 export interface AssembleToolsServices {
@@ -35,6 +40,12 @@ export interface AssembleToolsServices {
   coreMemoryRepo: CoreMemoryBlockRepository;
   /** Phase 9: audit log + per-parent daily cap on subordinate spawning. */
   agentProvisionEventRepo: AgentProvisionEventRepository;
+  /** Capability Network: backs use_repo (creates repo_run rows). */
+  repoRunRepo: RepoRunRepository;
+  /** Capability Network: backs find_repo's learned-skill tier. */
+  learnedSkillRepo: LearnedSkillRepository;
+  /** Capability Network: powers find_repo's semantic relevance gate. */
+  embeddings: EmbeddingService;
 }
 
 /**
@@ -55,6 +66,13 @@ export interface AssembleToolsContext {
    * but can't carry on building work outside the conversation.
    */
   spawnMode?: SessionSpawnMode;
+  /**
+   * Caller's owner has the capability network turned ON in /settings.
+   * When false, find_repo + use_repo are stripped from the tool list;
+   * the agent can't discover or run external repos at all. Resolved by
+   * the mcp router from the calling agent's owner's person row.
+   */
+  capabilityNetworkEnabled: boolean;
 }
 
 /**
@@ -82,18 +100,20 @@ const FALLBACK_ALLOWED_HIERARCHY = new Set([
  *
  * Tier breakdown (M9.1 final):
  *
- *   IC (13 tools):
+ *   IC (15 tools):
  *     2 memory: save_memory, update_core_memory
  *     9 hierarchy (shared): search_context, update_progress, find_up,
  *       get_agent_profile, get_task, create_work_product,
  *       list_work_products, get_work_product, update_work_product
  *     2 mesh: respond_ask (when targeted by team-tier `ask`),
  *             report_blocker (escalate up to direct parent)
+ *     2 capability network: find_repo, use_repo
  *
- *   Team / org (24 tools):
+ *   Team / org (26 tools):
  *     2 memory + 15 hierarchy (9 shared + 6 team-only) +
  *     6 mesh (ask, respond_ask, negotiate, respond_negotiate,
- *             report_blocker, escalate_to_humans).
+ *             report_blocker, escalate_to_humans) +
+ *     2 capability network: find_repo, use_repo.
  *
  * Team-only hierarchy adds: find_subordinates, find_peers, create_task,
  *   check_work_status, revise_task, add_to_escalation.
@@ -157,7 +177,36 @@ export function assembleTools(
       ? buildIcMeshTools(meshCtx, meshServices)
       : buildTeamMeshTools(meshCtx, meshServices);
 
-  const all = [...memoryTools, ...hierarchyTools, ...meshTools];
+  // Capability Network: use_repo + find_repo are gated by the owner's
+  // per-user toggle. When off, neither tool is in the agent's tool list.
+  const capabilityTools: AgentTool[] = ctx.capabilityNetworkEnabled
+    ? [
+        createFindRepoTool(
+          { agentId: ctx.caller.agentId },
+          {
+            agentRepo: services.agentRepo,
+            learnedSkillRepo: services.learnedSkillRepo,
+            embeddings: services.embeddings,
+          },
+        ),
+        createUseRepoTool(
+          { agentId: ctx.caller.agentId },
+          {
+            agentRepo: services.agentRepo,
+            taskRepo: services.taskRepo,
+            repoRunRepo: services.repoRunRepo,
+            dispatchService: services.dispatchService,
+          },
+        ),
+      ]
+    : [];
+
+  const all = [
+    ...memoryTools,
+    ...hierarchyTools,
+    ...meshTools,
+    ...capabilityTools,
+  ];
   if (ctx.spawnMode === "server_fallback_mesh") {
     return filterForServerFallback(all);
   }

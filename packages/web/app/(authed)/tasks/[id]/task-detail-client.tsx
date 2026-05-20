@@ -2,13 +2,17 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   AlertTriangle,
   FileText,
   ListChecks,
+  MessageSquare,
+  Package,
   Terminal,
 } from "lucide-react";
+import { api } from "@/lib/api/client";
 import { useTask } from "@/lib/hooks/use-tasks";
 import {
   useApproveTask,
@@ -27,7 +31,9 @@ import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { richTextToMarkdown } from "@/components/rich-text";
 import { formatRelativeTime, shortId } from "@/lib/format";
+import { slugify } from "@/lib/capabilities";
 import type { TaskDetail, TaskDetailSessionRow } from "@/lib/api/types";
+import type { ReferencedRepo } from "@/lib/api/client";
 import type { WorkProduct } from "@beevibe/core";
 
 const TasksBackLink = () => (
@@ -233,6 +239,10 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         ) : null}
       </header>
 
+      {task.status === "blocked" && task.blocker_reason ? (
+        <BlockedReplyBanner task={task} />
+      ) : null}
+
       <div className="grid grid-cols-3 gap-6">
         <div className="col-span-2 space-y-5">
           <section className="rounded-lg border border-border bg-card p-5">
@@ -279,6 +289,8 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
             )}
           </section>
 
+          {isTerminal ? <ReferencedReposCard taskId={task.id} taskTitle={task.title} /> : null}
+
           <section>
             <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
               Sessions{" "}
@@ -297,15 +309,6 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         </div>
 
         <aside className="col-span-1 space-y-4">
-          {task.status === "blocked" && task.blocker_reason ? (
-            <section className="rounded-lg border border-status-blocked/40 bg-status-blocked/5 p-4">
-              <h3 className="text-[11px] uppercase tracking-wider text-status-blocked mb-2 font-medium">
-                Blocked
-              </h3>
-              <p className="text-sm text-foreground">{task.blocker_reason}</p>
-            </section>
-          ) : null}
-
           {activeSession ? (
             <section className="rounded-lg border border-border bg-card p-4">
               <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
@@ -357,29 +360,385 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   );
 }
 
+/**
+ * Full-width banner shown above the description when a task is blocked.
+ *
+ * The blocker_reason is whatever the child agent wrote in their
+ * `report_blocker` call — frequently structured questions for the human
+ * (Q1/Q2/Q3 with bold markdown), so ChatMarkdown is the right renderer
+ * here rather than the plain `<p>` the right-aside used.
+ *
+ * "Reply to agent" hands the conversation to the Team agent chat with a
+ * pre-filled draft containing the task short_id + the blocker text. The
+ * Team agent is the agent's direct parent in the mesh hierarchy, so
+ * once it reads the user's answer it can call `revise_task` itself to
+ * unblock the child — the same path the autonomous mesh.reportBlocker
+ * spawn would have taken, just now informed by the user's input.
+ */
+const LIST_ITEM_RE = /^(?:\d+[.)]\s+|[-*•]\s+)(.+)$/;
+
+/**
+ * Extract a list of answer options from a blocker_reason. Agents
+ * frequently call report_blocker with one or more multiple-choice
+ * questions like:
+ *
+ *     Q1 — Where does the canonical CLAUDE.md live?
+ *     - (a) Global ~/.claude/CLAUDE.md
+ *     - (b) A specific project's ./CLAUDE.md
+ *     - (c) Both — layered setup
+ *     - (d) Neither — greenfield
+ *
+ *     Q2 — ...prose follow-up...
+ *
+ * We can't anchor to the tail because Q2 / closing prose comes AFTER
+ * the options. Instead: find every contiguous run of list items in
+ * the text and take the FIRST run that's chip-sized (2–4 items).
+ * That naturally captures the canonical answer set for the first
+ * multiple-choice question; the user can hit "Reply in chat →" for
+ * any free-form follow-ups (Q2/Q3) that don't fit the chip pattern.
+ *
+ * Each item splits into a short `label` (for the chip button) and the
+ * full `option` text (for the outbound message to the team agent).
+ */
+function parseBlockerOptions(reason: string | undefined): Array<{ label: string; option: string }> {
+  if (!reason) return [];
+  const lines = reason.split("\n").map((l) => l.trim());
+
+  // Find all contiguous list-item groups, picking the first 2-4 sized.
+  let target: string[] | undefined;
+  let current: string[] = [];
+  for (const line of lines) {
+    if (LIST_ITEM_RE.test(line)) {
+      current.push(line);
+    } else {
+      if (current.length >= 2 && current.length <= 4) {
+        target = current;
+        break;
+      }
+      current = [];
+    }
+  }
+  if (!target && current.length >= 2 && current.length <= 4) target = current;
+  if (!target) return [];
+
+  return target
+    .map((line) => {
+      const m = LIST_ITEM_RE.exec(line);
+      if (!m || !m[1]) return null;
+      const text = m[1].trim().replace(/^\*\*(.+)\*\*$/, "$1");
+      // For the chip label: take the first clause up to a clear
+      // separator, strip markdown formatting (backticks especially —
+      // they look ugly on a chip).
+      const labelEnd = text.search(/[.—–]/);
+      const labelRaw = (labelEnd === -1 ? text : text.slice(0, labelEnd)).trim();
+      const label = labelRaw.replace(/`/g, "").trim().slice(0, 64);
+      return label.length > 0 ? { label, option: text } : null;
+    })
+    .filter((x): x is { label: string; option: string } => x !== null);
+}
+
+function BlockedReplyBanner({ task }: { task: TaskDetail }) {
+  const blocker = task.blocker_reason ?? "";
+  const options = parseBlockerOptions(blocker);
+
+  // Each chip click drops the user into chat with a one-line reply
+  // already drafted AND auto-sent. The chat client reads the `send=1`
+  // param and submits on mount. The team agent dereferences the task
+  // id from the message, fetches the blocker context, and routes the
+  // answer back to the blocked specialist via revise_task.
+  const chipHref = (option: string) => {
+    const draft = `Reply to ${task.id}: ${option}`;
+    return `/chat?new=1&send=1&draft=${encodeURIComponent(draft)}`;
+  };
+  const freeFormHref = `/chat?new=1&draft=${encodeURIComponent(`Reply to ${task.id}: `)}`;
+
+  return (
+    <section className="mb-6 rounded-lg border border-status-blocked/40 bg-status-blocked/5 p-4">
+      <div className="flex items-center gap-2 mb-3">
+        <AlertTriangle className="h-3.5 w-3.5 text-status-blocked" />
+        <h3 className="text-[11px] uppercase tracking-wider text-status-blocked font-medium">
+          Blocked — agent is asking you something
+        </h3>
+      </div>
+      <div className="text-sm text-foreground/90">
+        <ChatMarkdown content={blocker} />
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        {options.map((opt) => (
+          <Link
+            key={opt.option}
+            href={chipHref(opt.option)}
+            className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium bg-status-blocked/15 text-status-blocked hover:bg-status-blocked/25 transition-colors cursor-pointer"
+            title={opt.option}
+          >
+            {opt.label}
+          </Link>
+        ))}
+        <Link
+          href={freeFormHref}
+          className="inline-flex items-center gap-1.5 h-7 px-2.5 rounded text-xs font-medium text-status-blocked/80 hover:text-status-blocked hover:bg-status-blocked/10 transition-colors cursor-pointer"
+        >
+          <MessageSquare className="h-3 w-3" />
+          {options.length > 0 ? "Or reply in chat →" : "Reply in chat →"}
+        </Link>
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Renders on terminal tasks when the agent referenced GitHub repos
+ * inside the transcript but never called `use_repo` itself (audit-style
+ * tasks). Clicking "Validate & save" kicks off a real use_repo sandbox
+ * run so the repo can be promoted to a learned skill.
+ */
+function ReferencedReposCard({ taskId, taskTitle }: { taskId: string; taskTitle: string }) {
+  const { data, isLoading } = useQuery({
+    queryKey: ["task", taskId, "referenced-repos"],
+    queryFn: ({ signal }) => api.capabilities.referencedRepos(taskId, { signal }),
+    staleTime: 60_000,
+  });
+
+  if (isLoading || !data || data.repos.length === 0) return null;
+
+  return (
+    <section>
+      <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
+        Save as team capability{" "}
+        <span className="text-muted-foreground/70 tabular-nums">{data.repos.length}</span>
+      </h2>
+      <p className="text-xs text-muted-foreground mb-3">
+        Repos this task touched. Validate and save one so future agents can pick it up.
+      </p>
+      <ul className="space-y-2">
+        {data.repos.map((repo) => (
+          <ReferencedRepoRow key={repo.url} repo={repo} taskTitle={taskTitle} />
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+function ReferencedRepoRow({ repo, taskTitle }: { repo: ReferencedRepo; taskTitle: string }) {
+  const [runUrl, setRunUrl] = useState<string | null>(null);
+  const run = useMutation({
+    mutationFn: () =>
+      api.capabilities.use({
+        repo_url: repo.url,
+        goal: taskTitle,
+      }),
+    onSuccess: (res) => setRunUrl(res.watch_url),
+  });
+
+  return (
+    <li className="rounded-lg border border-border/40 bg-card p-3 flex items-center gap-3">
+      <Package className="h-4 w-4 text-muted-foreground shrink-0" />
+      <div className="flex-1 min-w-0">
+        <Link
+          href={repo.url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm font-medium hover:underline"
+        >
+          {repo.owner}/{repo.name}
+        </Link>
+        <p className="text-[11px] text-muted-foreground">
+          {repo.occurrences === 1 ? "1 mention" : `${repo.occurrences} mentions`}
+          {repo.already_saved ? " · already saved" : ""}
+        </p>
+      </div>
+      {repo.already_saved ? (
+        <span className="text-[11px] text-muted-foreground shrink-0">Saved</span>
+      ) : runUrl ? (
+        <Link
+          href={runUrl}
+          className="shrink-0 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity"
+        >
+          Watch run →
+        </Link>
+      ) : (
+        <button
+          onClick={() => run.mutate()}
+          disabled={run.isPending}
+          className="shrink-0 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+        >
+          {run.isPending ? "Starting…" : "Validate & save"}
+        </button>
+      )}
+    </li>
+  );
+}
+
 function WorkProductCard({ wp }: { wp: WorkProduct }) {
-  // Card → dedicated /work-products/[id] page where the body renders
-  // full-width with markdown. We used to inline-expand here, but the
-  // briefing bodies are real documents (audits, reports) — they want a
-  // page, not a sliver of a card.
+  const isRepoArtifact = wp.type === "artifact" && typeof (wp.metadata as Record<string, unknown> | undefined)?.repo_run_id === "string";
+  const repoRunId = isRepoArtifact ? (wp.metadata as Record<string, unknown>).repo_run_id as string : undefined;
+  const [showSave, setShowSave] = useState(false);
+
   return (
     <li>
-      <Link
-        href={`/work-products/${wp.id}`}
-        className="rounded-lg border border-border bg-card p-3 flex items-start gap-3 hover:bg-secondary/30 transition-colors"
-      >
-        <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
-        <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium">{wp.title}</div>
-          {wp.summary ? (
-            <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{wp.summary}</p>
-          ) : null}
-        </div>
-        <span className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 mt-0.5">
-          {wp.type.replace(/_/g, " ")}
-        </span>
-      </Link>
+      <div className="rounded-lg border border-border bg-card overflow-hidden">
+        <Link
+          href={`/work-products/${wp.id}`}
+          className="p-3 flex items-start gap-3 hover:bg-secondary/30 transition-colors block"
+        >
+          <FileText className="h-4 w-4 mt-0.5 text-muted-foreground shrink-0" />
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium">{wp.title}</div>
+            {wp.summary ? (
+              <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{wp.summary}</p>
+            ) : null}
+          </div>
+          <span className="text-[10px] uppercase tracking-wider text-muted-foreground shrink-0 mt-0.5">
+            {wp.type.replace(/_/g, " ")}
+          </span>
+        </Link>
+        {isRepoArtifact && repoRunId && (
+          <div className="bg-muted/30 px-3 py-2.5 flex items-center gap-3">
+            <Package className="h-4 w-4 text-foreground/70 shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-xs font-medium">Came from a repo run</p>
+              <p className="text-[11px] text-muted-foreground">
+                Save the recipe so your agents can rerun this in seconds.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowSave(true)}
+              className="shrink-0 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity"
+            >
+              Save as capability
+            </button>
+            <Link
+              href={`/capabilities/runs/${repoRunId}`}
+              className="shrink-0 text-xs text-muted-foreground hover:text-foreground transition-colors"
+            >
+              View run →
+            </Link>
+          </div>
+        )}
+      </div>
+      {showSave && repoRunId && (
+        <SaveAsCapabilityModal
+          repoRunId={repoRunId}
+          initialName={slugify(wp.title)}
+          initialGoal={wp.summary ?? wp.title}
+          onClose={() => setShowSave(false)}
+        />
+      )}
     </li>
+  );
+}
+
+
+function SaveAsCapabilityModal({
+  repoRunId,
+  initialName,
+  initialGoal,
+  onClose,
+}: {
+  repoRunId: string;
+  initialName: string;
+  initialGoal: string;
+  onClose: () => void;
+}) {
+  const [name, setName] = useState(initialName);
+  const [goal, setGoal] = useState(initialGoal);
+  const [done, setDone] = useState(false);
+  const save = useMutation({
+    mutationFn: () =>
+      api.learnedSkills.create({ name, goal_pattern: goal, repo_run_id: repoRunId }),
+    onSuccess: () => setDone(true),
+  });
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
+      <div className="bg-card border rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
+        <h2 className="text-base font-semibold mb-1">Save as capability</h2>
+        <p className="text-xs text-muted-foreground mb-4">
+          Remember this recipe so your agents can reuse it on similar tasks.
+        </p>
+        {done ? (
+          <div className="space-y-3">
+            <p className="text-sm text-green-600 dark:text-green-400">
+              ✓ Saved as <strong>{name}</strong>.
+            </p>
+            <Link
+              href="/capabilities"
+              className="block text-center w-full rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
+            >
+              View in Capabilities →
+            </Link>
+            <button
+              onClick={onClose}
+              className="w-full rounded-md border px-4 py-2 text-sm hover:bg-muted transition-colors"
+            >
+              Close
+            </button>
+          </div>
+        ) : (
+          <form
+            onSubmit={(e) => { e.preventDefault(); save.mutate(); }}
+            className="space-y-4"
+          >
+            <div>
+              <label className="text-xs font-medium text-muted-foreground block mb-1">
+                Capability name
+              </label>
+              <input
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="extract-pdf-tables"
+                pattern="[a-z0-9-]{2,64}"
+                required
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                A short slug — lowercase letters, numbers, hyphens.
+              </p>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-muted-foreground block mb-1">
+                When should this trigger?
+              </label>
+              <textarea
+                value={goal}
+                onChange={(e) => setGoal(e.target.value)}
+                rows={3}
+                placeholder="e.g. when the user wants to extract tables from a PDF"
+                required
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                Describe the situation in plain language. Agents match this to incoming tasks.
+              </p>
+            </div>
+            {save.error && (
+              <p className="text-xs text-red-500">
+                {save.error instanceof Error ? save.error.message : "Save failed"}
+              </p>
+            )}
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 rounded-md border px-4 py-2 text-sm hover:bg-muted transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={save.isPending}
+                className="flex-1 rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
+              >
+                {save.isPending ? "Saving…" : "Save to library"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
   );
 }
 
