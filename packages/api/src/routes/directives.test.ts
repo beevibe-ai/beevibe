@@ -211,3 +211,75 @@ describe("processResponse — repo_card", () => {
     expect(r.repo_cards?.[0]?.source).toBeUndefined();
   });
 });
+
+describe("processResponse — github URL auto-promotion", () => {
+  it("auto-promotes a bare github URL in the visible text to a repo_card", () => {
+    // Agent drifted from the <repo_card> directive and emitted a
+    // markdown link. UI still gets a Try button.
+    const r = processResponse(
+      "Try https://github.com/mattpocock/skills — Skills for Real Engineers.",
+    );
+    expect(r.repo_cards).toEqual([
+      {
+        repo_url: "https://github.com/mattpocock/skills",
+        owner: "mattpocock",
+        name: "skills",
+      },
+    ]);
+    // Visible text keeps the URL so the markdown link still renders.
+    expect(r.visible).toContain("https://github.com/mattpocock/skills");
+  });
+
+  it("auto-promotes multiple bare URLs in the same message", () => {
+    const r = processResponse([
+      "Top picks:",
+      "- https://github.com/karpathy/nanoGPT",
+      "- https://github.com/foo/bar",
+    ].join("\n"));
+    expect(r.repo_cards).toHaveLength(2);
+    expect(r.repo_cards?.map((c) => c.name)).toEqual(["nanoGPT", "bar"]);
+  });
+
+  it("does not duplicate when both <repo_card> and a bare URL reference the same repo", () => {
+    const r = processResponse([
+      `<repo_card repo_url="https://github.com/foo/bar" stars="100" />`,
+      "I picked foo/bar — see https://github.com/foo/bar.",
+    ].join("\n"));
+    expect(r.repo_cards).toHaveLength(1);
+    // Explicit card wins (keeps stars metadata).
+    expect(r.repo_cards?.[0]?.stars).toBe(100);
+  });
+
+  it("collapses subpaths to repo root and strips .git", () => {
+    const r = processResponse(
+      "Reading https://github.com/foo/bar/blob/main/README.md and git clone https://github.com/baz/qux.git",
+    );
+    expect(r.repo_cards?.map((c) => c.repo_url)).toEqual([
+      "https://github.com/foo/bar",
+      "https://github.com/baz/qux",
+    ]);
+  });
+
+  it("filters non-repo github paths (orgs, settings, marketplace)", () => {
+    const r = processResponse(
+      "See https://github.com/orgs/foo/teams and https://github.com/settings/profile and https://github.com/karpathy/llm.c",
+    );
+    expect(r.repo_cards).toHaveLength(1);
+    expect(r.repo_cards?.[0]?.owner).toBe("karpathy");
+  });
+
+  it("leaves visible text intact (URLs still render as markdown links)", () => {
+    const r = processResponse("check https://github.com/foo/bar out");
+    expect(r.visible).toBe("check https://github.com/foo/bar out");
+  });
+
+  it("does not strip URLs that came from explicit <repo_card> tags", () => {
+    // The card tag is removed; the bare URL elsewhere in prose is kept.
+    const r = processResponse([
+      `<repo_card repo_url="https://github.com/explicit/one" />`,
+      "Also mentioned https://github.com/explicit/one in prose.",
+    ].join("\n"));
+    expect(r.repo_cards).toHaveLength(1);
+    expect(r.visible).toContain("Also mentioned https://github.com/explicit/one");
+  });
+});

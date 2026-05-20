@@ -37,6 +37,24 @@ const ATTR_DESCRIPTION_RE = /\bdescription\s*=\s*"([^"]*)"/i;
 const VALID_REPO_SOURCES = new Set(["learned", "trending", "community", "github"]);
 
 /**
+ * Bare GitHub URL pattern. We auto-promote any GitHub repo URL in the
+ * agent's visible text into a repo_card, so the user gets a Try button
+ * even when the agent emits markdown links instead of <repo_card> tags.
+ * Stops at the second path segment so `/owner/repo/blob/...` collapses
+ * to the repo root.
+ */
+const BARE_GITHUB_URL_RE =
+  /https:\/\/github\.com\/([A-Za-z0-9][A-Za-z0-9._-]*)\/([A-Za-z0-9][A-Za-z0-9._-]*)(?=[/\s)"',<>]|$)/g;
+
+/** github.com paths that aren't repos. */
+const NON_REPO_OWNERS = new Set([
+  "orgs", "settings", "marketplace", "topics", "trending", "features",
+  "pricing", "search", "notifications", "issues", "pulls", "explore",
+  "about", "contact", "site", "security", "login", "signup", "logout",
+  "new",
+]);
+
+/**
  * Paths the chat UI knows how to navigate to. The system prompt names
  * these explicitly, but the prompt is best-effort guidance, not
  * enforcement. A misbehaving model could emit `path="/admin/..."` or
@@ -166,13 +184,45 @@ export function processResponse(raw: string): ProcessedResponse {
       ...(description ? { description } : {}),
     });
   }
-  const repo_cards = repoCards.length > 0 ? repoCards : undefined;
-
   let visible = raw;
   if (openMatch) visible = visible.replace(OPEN_VIEW_RE, "");
   if (suggested_actions) visible = visible.replace(SUGGEST_ACTION_RE, "");
-  if (repo_cards) visible = visible.replace(REPO_CARD_RE, "");
+  if (repoCards.length > 0) visible = visible.replace(REPO_CARD_RE, "");
   visible = visible.trim();
+
+  // Auto-promote bare GitHub URLs in the visible text to repo cards.
+  // Agents drift from the <repo_card> directive under context pressure
+  // and emit markdown links instead. Rather than chase that with more
+  // prompt nudges, we make the UI affordance reachable regardless of
+  // the format the agent chose: every github.com/<owner>/<name> URL
+  // gets a Try button without the agent having to cooperate.
+  //
+  // Inline URLs stay in `visible` so the markdown renderer still shows
+  // the clickable link in prose — the card appears BELOW the bubble
+  // alongside any explicit <repo_card> entries.
+  BARE_GITHUB_URL_RE.lastIndex = 0;
+  let urlMatch: RegExpExecArray | null;
+  while ((urlMatch = BARE_GITHUB_URL_RE.exec(visible)) !== null) {
+    const owner = urlMatch[1];
+    const nameRaw = urlMatch[2];
+    if (!owner || !nameRaw) continue;
+    if (NON_REPO_OWNERS.has(owner.toLowerCase())) continue;
+    // Greedy `[A-Za-z0-9._-]*` swallows the trailing period from
+    // "see https://github.com/foo/bar." — strip it so the canonical
+    // URL matches the explicit-tag form. No real repo ends in `.`.
+    const name = nameRaw.replace(/\.git$/i, "").replace(/\.+$/, "");
+    if (!name) continue;
+    const canonical = `https://github.com/${owner}/${name}`;
+    if (seenRepoUrls.has(canonical)) continue;
+    seenRepoUrls.add(canonical);
+    repoCards.push({
+      repo_url: canonical,
+      owner,
+      name,
+    });
+  }
+
+  const repo_cards = repoCards.length > 0 ? repoCards : undefined;
 
   const seen = new Set<string>();
   const view_refs: string[] = [];

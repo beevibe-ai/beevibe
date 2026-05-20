@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
+import { useRouter } from "next/navigation";
 import { createAvatar } from "@dicebear/core";
 import { glass } from "@dicebear/collection";
 import {
@@ -411,6 +412,26 @@ function DiscoverTab() {
   );
 }
 
+/**
+ * Build a default `use_repo` goal from a repo's metadata. Same shape
+ * as the chat-side `defaultTryGoal()` — keeps Try behavior consistent
+ * across surfaces. Used for one-click Try buttons on /capabilities.
+ */
+function defaultTryGoal(opts: {
+  owner: string;
+  name: string;
+  description?: string | null;
+  goal_pattern?: string;
+}): string {
+  const head = `Show me what ${opts.owner}/${opts.name} does and how to use it.`;
+  // Learned skills already have a curated goal_pattern — prefer it.
+  if (opts.goal_pattern) return `${head} Match: ${opts.goal_pattern}`;
+  const desc = opts.description?.trim();
+  if (!desc) return head;
+  const trimmed = desc.length > 160 ? desc.slice(0, 157) + "…" : desc;
+  return `${head} Context: ${trimmed}`;
+}
+
 function TrendingRow({ repo }: { repo: TrendingRepo }) {
   // Seed the chat draft so the user has a starting line they can edit.
   //
@@ -428,49 +449,113 @@ function TrendingRow({ repo }: { repo: TrendingRepo }) {
     ?.replace(/^[\s\p{Extended_Pictographic}]+/u, "") // emoji + leading whitespace
     .replace(/^:[a-z_]+:\s*/i, "") // gemoji shortcodes like `:books:`
     .trim();
-  const draft = cleanedDesc
-    ? `Try ${repo.repo_url} — ${cleanedDesc}`
-    : `Try ${repo.repo_url}`;
-  const label = `${repo.owner}/${repo.name}`;
+  return (
+    <TryRow
+      avatarUrl={repo.repo_url}
+      name={repo.name}
+      owner={repo.owner}
+      description={repo.description ?? "—"}
+      githubUrl={repo.repo_url}
+      goal={defaultTryGoal({
+        owner: repo.owner,
+        name: repo.name,
+        description: cleanedDesc,
+      })}
+      right={
+        <div className="hidden md:flex items-center gap-3 shrink-0 pr-2">
+          <LanguageBadge language={repo.language} />
+          <span
+            className="inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums text-orange-600 dark:text-orange-400"
+            title="Stars gained in this window"
+          >
+            +{formatStars(repo.stars_gained)}★
+          </span>
+        </div>
+      }
+    />
+  );
+}
+
+/**
+ * Single Try-action row. Used by both TrendingRow and CandidateRow on
+ * the /capabilities page. Click anywhere in the row → POSTs use_repo
+ * with the provided goal → router.push to the playground. The "open
+ * github" icon is the only escape hatch; everything else is one click
+ * to a real sandbox run.
+ */
+function TryRow({
+  avatarUrl,
+  name,
+  owner,
+  description,
+  githubUrl,
+  goal,
+  right,
+  middle,
+}: {
+  avatarUrl: string;
+  name: string;
+  owner: string;
+  description: React.ReactNode;
+  githubUrl: string;
+  goal: string;
+  right?: React.ReactNode;
+  middle?: React.ReactNode;
+}) {
+  const router = useRouter();
+  const tryRun = useMutation({
+    mutationFn: () =>
+      api.capabilities.use({
+        repo_url: githubUrl,
+        goal,
+      }),
+    onSuccess: (res) => {
+      router.push(res.watch_url);
+    },
+  });
+
   return (
     <div className="group relative flex items-center gap-2.5 py-2.5 border-b border-border/40 hover:bg-secondary/20 transition-colors">
-      <Link
-        href={`/chat?new=1&draft=${encodeURIComponent(draft)}`}
-        className="absolute inset-0 z-0"
-        aria-label={`Try ${label} in chat`}
+      <button
+        type="button"
+        onClick={() => tryRun.mutate()}
+        disabled={tryRun.isPending}
+        aria-label={`Try ${owner}/${name} in a sandbox`}
+        className="absolute inset-0 z-0 disabled:cursor-progress"
       />
       <div className="relative pointer-events-none">
-        <RepoAvatar repoUrl={repo.repo_url} />
+        <RepoAvatar repoUrl={avatarUrl} />
       </div>
       <div className="relative pointer-events-none min-w-0 flex-1">
-        <div className="flex items-center gap-2">
-          <span className="font-medium text-sm truncate">{repo.name}</span>
-          <span className="text-xs text-muted-foreground truncate">{repo.owner}</span>
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-medium text-sm truncate">{name}</span>
+          <span className="text-xs text-muted-foreground truncate">{owner}</span>
+          {middle}
         </div>
-        <p className="text-xs text-muted-foreground/90 line-clamp-1">
-          {repo.description ?? "—"}
+        <p className="text-xs text-muted-foreground/90 line-clamp-1 mt-0.5">
+          {description}
         </p>
+        {tryRun.error ? (
+          <p className="text-[11px] text-red-500 mt-0.5">
+            {tryRun.error instanceof Error
+              ? tryRun.error.message
+              : "Couldn't start the sandbox."}
+          </p>
+        ) : null}
       </div>
-      <div className="relative pointer-events-none hidden md:flex items-center gap-3 shrink-0 pr-2">
-        <LanguageBadge language={repo.language} />
-        <span
-          className="inline-flex items-center gap-0.5 text-[10px] font-medium tabular-nums text-orange-600 dark:text-orange-400"
-          title="Stars gained in this window"
-        >
-          +{formatStars(repo.stars_gained)}★
-        </span>
-      </div>
+      {right ? <div className="relative pointer-events-none">{right}</div> : null}
       <a
-        href={repo.repo_url}
+        href={githubUrl}
         target="_blank"
         rel="noopener noreferrer"
         title="Open repo on GitHub"
         className="pointer-events-auto relative z-10 h-7 w-7 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors shrink-0"
+        onClick={(e) => e.stopPropagation()}
       >
         <ExternalLink className="h-3.5 w-3.5" />
       </a>
       <span className="relative pointer-events-none text-xs text-muted-foreground group-hover:text-foreground transition-colors shrink-0 pr-1">
-        Try →
+        {tryRun.isPending ? "Starting…" : "Try →"}
       </span>
     </div>
   );
@@ -571,52 +656,31 @@ function CandidateRow({ candidate }: { candidate: FindRepoCandidate }) {
     ?.replace(/^[\s\p{Extended_Pictographic}]+/u, "")
     .replace(/^:[a-z_]+:\s*/i, "")
     .trim();
-  // For learned skills, use the saved goal_pattern as the draft seed;
-  // otherwise use the GitHub description. Same em-dash separator as
-  // TrendingRow so the prefill reads cleanly.
-  const seed = candidate.learned_skill?.goal_pattern ?? cleanedDesc ?? "";
-  const draft = seed ? `Try ${candidate.repo_url} — ${seed}` : `Try ${candidate.repo_url}`;
   return (
-    <div className="group relative flex items-center gap-2.5 py-2.5 border-b border-border/40 hover:bg-secondary/20 transition-colors">
-      <Link
-        href={`/chat?new=1&draft=${encodeURIComponent(draft)}`}
-        className="absolute inset-0 z-0"
-        aria-label={`Try ${owner}/${name} in chat`}
-      />
-      <div className="relative pointer-events-none">
-        <RepoAvatar repoUrl={candidate.repo_url} />
-      </div>
-      <div className="relative pointer-events-none min-w-0 flex-1">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="font-medium text-sm truncate">{name}</span>
-          <span className="text-xs text-muted-foreground truncate">{owner}</span>
-          <SourceBadge source={candidate.source} />
+    <TryRow
+      avatarUrl={candidate.repo_url}
+      name={name}
+      owner={owner}
+      description={cleanedDesc ?? candidate.reason}
+      githubUrl={candidate.repo_url}
+      goal={defaultTryGoal({
+        owner,
+        name,
+        description: cleanedDesc,
+        goal_pattern: candidate.learned_skill?.goal_pattern,
+      })}
+      middle={<SourceBadge source={candidate.source} />}
+      right={
+        <div className="hidden md:flex items-center gap-3 shrink-0 pr-2">
+          <LanguageBadge language={candidate.language ?? null} />
+          {typeof candidate.stars === "number" && (
+            <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground tabular-nums">
+              ★ {formatStars(candidate.stars)}
+            </span>
+          )}
         </div>
-        <p className="text-xs text-muted-foreground/90 line-clamp-1 mt-0.5">
-          {cleanedDesc ?? candidate.reason}
-        </p>
-      </div>
-      <div className="relative pointer-events-none hidden md:flex items-center gap-3 shrink-0 pr-2">
-        <LanguageBadge language={candidate.language ?? null} />
-        {typeof candidate.stars === "number" && (
-          <span className="inline-flex items-center gap-0.5 text-[10px] text-muted-foreground tabular-nums">
-            ★ {formatStars(candidate.stars)}
-          </span>
-        )}
-      </div>
-      <a
-        href={candidate.repo_url}
-        target="_blank"
-        rel="noopener noreferrer"
-        title="Open repo on GitHub"
-        className="pointer-events-auto relative z-10 h-7 w-7 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary/60 transition-colors shrink-0"
-      >
-        <ExternalLink className="h-3.5 w-3.5" />
-      </a>
-      <span className="relative pointer-events-none text-xs text-muted-foreground group-hover:text-foreground transition-colors shrink-0 pr-1">
-        Try →
-      </span>
-    </div>
+      }
+    />
   );
 }
 
