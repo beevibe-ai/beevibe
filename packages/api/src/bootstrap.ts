@@ -311,6 +311,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     repoRunRepo,
     learnedSkillRepo,
     embeddings: embed,
+    personRepo,
   });
   server.getApp().use("/mcp", mcpRouter);
 

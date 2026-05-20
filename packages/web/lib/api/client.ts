@@ -62,6 +62,10 @@ export interface CreateTaskInput {
   parent_task_id?: string;
 }
 
+export interface UserPreferences {
+  capability_network_enabled: boolean;
+}
+
 export interface MeResponse {
   person: {
     id: string;
@@ -74,6 +78,7 @@ export interface MeResponse {
     name: string;
     hierarchy: "ic" | "team" | "org";
   } | null;
+  preferences: UserPreferences;
   needs_onboarding: boolean;
 }
 
@@ -640,6 +645,11 @@ export const api = {
       fetchJson<{ ok: true; onboarding_completed_at: string | null }>(
         "/me/onboarding/complete",
         { method: "POST" },
+      ),
+    updatePreferences: (input: Partial<UserPreferences>) =>
+      fetchJson<{ ok: true; preferences: UserPreferences }>(
+        "/me/preferences",
+        { method: "PATCH", body: input },
       ),
     health: (opts: ReadOptions = {}) =>
       fetchJson<HealthResponse>("/health/runtime", { signal: opts.signal }),

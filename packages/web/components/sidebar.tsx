@@ -14,6 +14,7 @@ import {
   Users,
 } from "lucide-react";
 import { useCollapsible } from "@/lib/hooks/use-collapsible";
+import { useMe } from "@/lib/hooks/use-me";
 import { ConversationSidebar } from "./chat/conversation-sidebar";
 import { LiveStatusDot } from "./chat/live-panel";
 import { AgentsSidebar, RoomsSidebar, TasksAttentionSidebar } from "./mode-sidebars";
@@ -247,12 +248,20 @@ function renderModePanel(args: ModePanelArgs): React.ReactNode {
  * strip — visual gesture for mode-switching, no vertical bloat.
  */
 function ModeStrip({ pathname }: { pathname: string }) {
+  // Capability network is per-user toggleable in /settings. Hide the
+  // mode-strip entry when the caller has it off — keeps the icon
+  // strip from advertising a feature the user opted out of.
+  const me = useMe();
+  const capabilityEnabled = me.data?.preferences?.capability_network_enabled ?? true;
+  const items = PRIMARY_MODES.filter(
+    (item) => capabilityEnabled || item.href !== "/capabilities",
+  );
   return (
     <nav
       aria-label="Primary modes"
       className="flex items-center gap-0.5 px-2 pt-1 pb-1.5"
     >
-      {PRIMARY_MODES.map((item) => {
+      {items.map((item) => {
         const active = item.isActive(pathname);
         if (active) {
           return (

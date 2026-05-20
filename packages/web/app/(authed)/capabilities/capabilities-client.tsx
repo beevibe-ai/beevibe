@@ -25,6 +25,8 @@ import {
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 import { cleanRepoDescription, defaultTryGoal, formatStars } from "@/lib/capabilities";
+import { useMe } from "@/lib/hooks/use-me";
+import { EmptyState } from "@/components/empty-state";
 import { RunCard } from "./run-card";
 
 type Tab = "yours" | "discover" | "activity";
@@ -77,6 +79,31 @@ function shouldHideRepo(description: string | null | undefined): boolean {
 }
 
 export function CapabilitiesClient() {
+  const me = useMe();
+  // While /me is loading, default ON so the page doesn't flash an
+  // empty state for users who have the feature enabled. The agent-side
+  // gate in assembleTools is authoritative; the UI just hides surfaces.
+  const capabilityEnabled = me.data?.preferences?.capability_network_enabled ?? true;
+  if (me.data && !capabilityEnabled) return <CapabilityNetworkOffEmpty />;
+  return <CapabilitiesBody />;
+}
+
+function CapabilityNetworkOffEmpty() {
+  return (
+    <div className="flex-1 overflow-auto">
+      <div className="max-w-3xl mx-auto px-6 py-16">
+        <EmptyState
+          icon={Sparkles}
+          title="Capability network is off"
+          description="Turn it on in Settings to discover and run external GitHub repos in a sandbox."
+          cta={{ href: "/settings", label: "Open Settings" }}
+        />
+      </div>
+    </div>
+  );
+}
+
+function CapabilitiesBody() {
   const runsQuery = useQuery({
     queryKey: ["repo-runs"],
     queryFn: () => api.repoRuns.list(),

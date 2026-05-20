@@ -92,7 +92,7 @@ export function UserWidget() {
             onActivate={() => setView("invite")}
           />
           <div className="my-1 border-t border-border" />
-          <MenuItem icon={Settings} label="Runtimes" href="/runtimes" onActivate={close} />
+          <MenuItem icon={Settings} label="Settings" href="/settings" onActivate={close} />
           <MenuItem icon={LogOut} label="Sign out" tone="destructive" onActivate={signOut} />
           <div className="my-1 border-t border-border" />
           <MenuItem

@@ -70,22 +70,28 @@ function buildMinimalServices(): AssembleToolsServices {
   };
 }
 
-function teamCtx(spawnMode?: AssembleToolsContext["spawnMode"]): AssembleToolsContext {
+function teamCtx(
+  spawnMode?: AssembleToolsContext["spawnMode"],
+  capabilityNetworkEnabled = true,
+): AssembleToolsContext {
   const caller: McpCaller = {
     source: "agent",
     agentId: "agent_team",
     hierarchyLevel: "team",
   };
-  return { caller, beevibeSid: "sess_test", spawnMode };
+  return { caller, beevibeSid: "sess_test", spawnMode, capabilityNetworkEnabled };
 }
 
-function icCtx(spawnMode?: AssembleToolsContext["spawnMode"]): AssembleToolsContext {
+function icCtx(
+  spawnMode?: AssembleToolsContext["spawnMode"],
+  capabilityNetworkEnabled = true,
+): AssembleToolsContext {
   const caller: McpCaller = {
     source: "agent",
     agentId: "agent_ic",
     hierarchyLevel: "ic",
   };
-  return { caller, beevibeSid: "sess_test", spawnMode };
+  return { caller, beevibeSid: "sess_test", spawnMode, capabilityNetworkEnabled };
 }
 
 describe("assembleTools — daemon (full surface)", () => {
@@ -112,6 +118,21 @@ describe("assembleTools — daemon (full surface)", () => {
     expect(names.has("report_blocker")).toBe(true);
     expect(names.has("find_repo")).toBe(true);
     expect(names.has("use_repo")).toBe(true);
+  });
+
+  it("owner with capability_network_enabled=false gets neither find_repo nor use_repo", () => {
+    const teamTools = assembleTools(teamCtx(undefined, false), buildMinimalServices());
+    const teamNames = new Set(teamTools.map((t) => t.name));
+    expect(teamNames.has("find_repo")).toBe(false);
+    expect(teamNames.has("use_repo")).toBe(false);
+    // Other tools survive — flag only gates capability network.
+    expect(teamNames.has("create_task")).toBe(true);
+    expect(teamNames.has("save_memory")).toBe(true);
+
+    const icTools = assembleTools(icCtx(undefined, false), buildMinimalServices());
+    const icNames = new Set(icTools.map((t) => t.name));
+    expect(icNames.has("find_repo")).toBe(false);
+    expect(icNames.has("use_repo")).toBe(false);
   });
 });
 

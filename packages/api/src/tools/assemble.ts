@@ -66,6 +66,13 @@ export interface AssembleToolsContext {
    * but can't carry on building work outside the conversation.
    */
   spawnMode?: SessionSpawnMode;
+  /**
+   * Caller's owner has the capability network turned ON in /settings.
+   * When false, find_repo + use_repo are stripped from the tool list;
+   * the agent can't discover or run external repos at all. Resolved by
+   * the mcp router from the calling agent's owner's person row.
+   */
+  capabilityNetworkEnabled: boolean;
 }
 
 /**
@@ -170,33 +177,35 @@ export function assembleTools(
       ? buildIcMeshTools(meshCtx, meshServices)
       : buildTeamMeshTools(meshCtx, meshServices);
 
-  // Capability Network: use_repo + find_repo are available to every
-  // agent regardless of tier. Trust boundary is the sandbox + the
-  // read-only ranker, not a per-agent grant.
-  const useRepoTool = createUseRepoTool(
-    { agentId: ctx.caller.agentId },
-    {
-      agentRepo: services.agentRepo,
-      taskRepo: services.taskRepo,
-      repoRunRepo: services.repoRunRepo,
-      dispatchService: services.dispatchService,
-    },
-  );
-  const findRepoTool = createFindRepoTool(
-    { agentId: ctx.caller.agentId },
-    {
-      agentRepo: services.agentRepo,
-      learnedSkillRepo: services.learnedSkillRepo,
-      embeddings: services.embeddings,
-    },
-  );
+  // Capability Network: use_repo + find_repo are gated by the owner's
+  // per-user toggle. When off, neither tool is in the agent's tool list.
+  const capabilityTools: AgentTool[] = ctx.capabilityNetworkEnabled
+    ? [
+        createFindRepoTool(
+          { agentId: ctx.caller.agentId },
+          {
+            agentRepo: services.agentRepo,
+            learnedSkillRepo: services.learnedSkillRepo,
+            embeddings: services.embeddings,
+          },
+        ),
+        createUseRepoTool(
+          { agentId: ctx.caller.agentId },
+          {
+            agentRepo: services.agentRepo,
+            taskRepo: services.taskRepo,
+            repoRunRepo: services.repoRunRepo,
+            dispatchService: services.dispatchService,
+          },
+        ),
+      ]
+    : [];
 
   const all = [
     ...memoryTools,
     ...hierarchyTools,
     ...meshTools,
-    findRepoTool,
-    useRepoTool,
+    ...capabilityTools,
   ];
   if (ctx.spawnMode === "server_fallback_mesh") {
     return filterForServerFallback(all);

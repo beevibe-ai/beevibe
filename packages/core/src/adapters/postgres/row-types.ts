@@ -8,6 +8,7 @@ export interface PersonRow {
   api_key: string | null;
   password_hash: string | null;
   onboarding_completed_at: Date | null;
+  capability_network_enabled: boolean;
   created_at: Date;
   updated_at: Date;
 }
