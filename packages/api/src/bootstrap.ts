@@ -390,6 +390,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     runtimeRepo,
     sessionRepo,
     sessionEventRepo,
+    taskRepo,
     repoRunRepo,
     workProductRepo,
     hub: daemonHub,

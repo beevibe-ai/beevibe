@@ -69,6 +69,33 @@ describe("PostgresSessionRepository", () => {
     ...overrides,
   });
 
+  /**
+   * Create N pending task sessions with a small gap between each so
+   * `created_at` is strictly ordered. Returns the ids in creation order.
+   * Used by the cap-enforcement tests where the claim ordering matters.
+   */
+  async function seedPendingTaskSessions(
+    count: number,
+    opts: { runtimeId?: string; gapMs?: number } = {},
+  ): Promise<string[]> {
+    const gapMs = opts.gapMs ?? 10;
+    const ids: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const id = sessionId();
+      ids.push(id);
+      await sessions.create(
+        newSession({
+          id,
+          task_id: task,
+          ...(opts.runtimeId ? { runtime_id: opts.runtimeId } : {}),
+          status: "pending",
+        }),
+      );
+      if (i < count - 1) await new Promise((r) => setTimeout(r, gapMs));
+    }
+    return ids;
+  }
+
   it("create + findById round-trips, status defaults to running", async () => {
     const id = sessionId();
     const s = await sessions.create(newSession({ id, task_id: task }));
@@ -339,6 +366,12 @@ describe("PostgresSessionRepository", () => {
     });
 
     it("two parallel claims race-safely return distinct sessions or undefined", async () => {
+      // Bump the cap so both pending sessions can claim — this test is
+      // about FOR UPDATE SKIP LOCKED race safety (don't return the SAME
+      // session twice), not about cap enforcement. With the default cap
+      // of 1 (per #127), the second claim would return undefined for a
+      // legitimate non-race reason, masking what we're trying to verify.
+      await agents.update(agent, { max_task_sessions: 2 });
       const ids = [sessionId(), sessionId()];
       for (const id of ids) {
         await sessions.create(
@@ -351,6 +384,138 @@ describe("PostgresSessionRepository", () => {
       ]);
       const claimedIds = [a?.id, b?.id].filter((x): x is string => Boolean(x)).sort();
       expect(claimedIds).toEqual(ids.slice().sort());
+    });
+
+    it("respects per-agent max_task_sessions cap (the exact case from #127)", async () => {
+      await agents.update(agent, { max_task_sessions: 1 });
+      const [first, second] = await seedPendingTaskSessions(2, { runtimeId: runtime });
+
+      expect((await sessions.claimNextForRuntime(runtime))?.id).toBe(first);
+      expect(await sessions.claimNextForRuntime(runtime)).toBeUndefined();
+
+      // Complete the first; second claim should now succeed.
+      await sessions.update(first!, { status: "succeeded", completed_at: new Date() });
+      expect((await sessions.claimNextForRuntime(runtime))?.id).toBe(second);
+    });
+
+    it("defaults to cap=1 when max_task_sessions is NULL (matches DEFAULT_TASK_CAP)", async () => {
+      // Default agent fixture leaves max_task_sessions unset.
+      const [first] = await seedPendingTaskSessions(2, { runtimeId: runtime });
+      expect((await sessions.claimNextForRuntime(runtime))?.id).toBe(first);
+      expect(await sessions.claimNextForRuntime(runtime)).toBeUndefined();
+    });
+
+    it("respects a higher cap (e.g. 3) — claims up to the configured count", async () => {
+      await agents.update(agent, { max_task_sessions: 3 });
+      const ids = await seedPendingTaskSessions(4, { runtimeId: runtime, gapMs: 5 });
+      const claimed: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        const c = await sessions.claimNextForRuntime(runtime);
+        if (c) claimed.push(c.id);
+      }
+      expect(claimed).toEqual(ids.slice(0, 3));
+    });
+
+    it("non-task sessions bypass the cap (chat / mesh have separate gates)", async () => {
+      // One running TASK session already at cap. A pending CHAT session
+      // should still claim because the gate filters on type='task'.
+      await agents.update(agent, { max_task_sessions: 1 });
+      await sessions.create(
+        newSession({
+          id: sessionId(),
+          task_id: task,
+          runtime_id: runtime,
+          type: "task",
+          status: "running",
+        }),
+      );
+      const chatId = sessionId();
+      await sessions.create(
+        newSession({
+          id: chatId,
+          // chat sessions are not bound to a task
+          runtime_id: runtime,
+          type: "chat",
+          status: "pending",
+        }),
+      );
+      const claimed = await sessions.claimNextForRuntime(runtime);
+      expect(claimed?.id).toBe(chatId);
+      expect(claimed?.type).toBe("chat");
+    });
+  });
+
+  describe("claimNextForServerFallback — per-agent task cap", () => {
+    // Mirrors the runtime-claim cap behavior. Server fallback is the
+    // path the scheduler takes when an agent has no preferred runtime;
+    // the cap MUST be enforced here too (used to live in worker.ts as
+    // an application-layer check, now collapsed into the SQL).
+
+    it("over-cap second claim returns undefined; succeeds after the first completes", async () => {
+      await agents.update(agent, { max_task_sessions: 1 });
+      // No runtimeId on the helper → runtime_id stays NULL → server-fallback path
+      const [first, second] = await seedPendingTaskSessions(2);
+
+      expect((await sessions.claimNextForServerFallback())?.id).toBe(first);
+      expect(await sessions.claimNextForServerFallback()).toBeUndefined();
+
+      await sessions.update(first!, { status: "succeeded", completed_at: new Date() });
+      expect((await sessions.claimNextForServerFallback())?.id).toBe(second);
+    });
+  });
+
+  describe("cancelPendingForTask", () => {
+    // Pending sessions have no CLI to abort, so the task cancel route
+    // can't rely on the WS push path to flip their status. This method
+    // is the explicit cleanup hook for that case.
+
+    it("flips pending task-sessions to cancelled with completed_at + error stamped", async () => {
+      const a = await sessions.create(
+        newSession({ id: sessionId(), task_id: task, status: "pending" }),
+      );
+      const updated = await sessions.cancelPendingForTask(task);
+      expect(updated).toBe(1);
+      const reread = await sessions.findById(a.id);
+      expect(reread?.status).toBe("cancelled");
+      expect(reread?.completed_at).toBeInstanceOf(Date);
+      expect(reread?.error).toBe("task_cancelled_before_claim");
+    });
+
+    it("leaves running sessions alone (those are cancelled via the WS push path)", async () => {
+      const running = await sessions.create(
+        newSession({ id: sessionId(), task_id: task, status: "running" }),
+      );
+      const pending = await sessions.create(
+        newSession({ id: sessionId(), task_id: task, status: "pending" }),
+      );
+      const updated = await sessions.cancelPendingForTask(task);
+      expect(updated).toBe(1);
+      expect((await sessions.findById(running.id))?.status).toBe("running");
+      expect((await sessions.findById(pending.id))?.status).toBe("cancelled");
+    });
+
+    it("returns 0 when no pending sessions exist (idempotent for already-cancelled tasks)", async () => {
+      expect(await sessions.cancelPendingForTask(task)).toBe(0);
+    });
+
+    it("scoped to the given task — doesn't touch other tasks' pending sessions", async () => {
+      const otherTask = await tasks.create({
+        id: taskId(),
+        title: "other",
+        priority: "medium",
+        creator_id: person,
+        creator_type: "person",
+      });
+      const ours = await sessions.create(
+        newSession({ id: sessionId(), task_id: task, status: "pending" }),
+      );
+      const theirs = await sessions.create(
+        newSession({ id: sessionId(), task_id: otherTask.id, status: "pending" }),
+      );
+      const updated = await sessions.cancelPendingForTask(task);
+      expect(updated).toBe(1);
+      expect((await sessions.findById(ours.id))?.status).toBe("cancelled");
+      expect((await sessions.findById(theirs.id))?.status).toBe("pending");
     });
   });
 

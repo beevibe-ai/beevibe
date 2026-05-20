@@ -1,9 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent } from "../domain/agent.js";
 import type { Session } from "../domain/session.js";
+import type { Task } from "../domain/task.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type { SessionRepository } from "../ports/session-repo.js";
-import { DispatchService } from "./dispatch-service.js";
+import type { TaskRepository } from "../ports/task-repo.js";
+import { DispatchService, transitionTaskOnClaim } from "./dispatch-service.js";
 import type { ResumeReason } from "./agent-session.js";
 
 const FIXED_NOW = new Date("2026-05-08T00:00:00Z");
@@ -432,5 +434,120 @@ describe("DispatchService server-fallback (mesh-typed sessions)", () => {
     const insert = vi.mocked(sessionRepo.create).mock.calls[0]![0];
     expect(insert.spawn_mode).toBe("daemon");
     expect(insert.runtime_id).toBe("rt_unknown");
+  });
+});
+
+describe("DispatchService.dispatchTask — no longer mutates task status at insert (PR #186)", () => {
+  // Pre-#186 DispatchService flipped task.status from `assigned` to
+  // `in_progress` inline. That made cap-blocked tasks visibly active
+  // even though no CLI was running. The transition now lives in
+  // `transitionTaskOnClaim`, called from the claim paths.
+
+  it("does NOT call taskRepo.update during dispatch, even when taskRepo is wired", async () => {
+    const taskRepo = {
+      findById: vi.fn(),
+      update: vi.fn(),
+    } as unknown as TaskRepository;
+    vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
+
+    const svcWithTaskRepo = new DispatchService({
+      agentRepo,
+      sessionRepo,
+      taskRepo,
+      onSessionInserted,
+    });
+
+    const task: Task = {
+      id: "task_1",
+      title: "do the thing",
+      status: "assigned",
+      priority: "medium",
+      creator_id: "p1",
+      creator_type: "person",
+      created_at: FIXED_NOW,
+      updated_at: FIXED_NOW,
+    } as Task;
+
+    await svcWithTaskRepo.dispatchTask({
+      agentId: "agent_default",
+      task,
+      intent: "x",
+      reason: { kind: "fresh" },
+      type: "task",
+    });
+
+    expect(taskRepo.update).not.toHaveBeenCalled();
+  });
+});
+
+describe("transitionTaskOnClaim", () => {
+  function makeTask(status: Task["status"]): Task {
+    return {
+      id: "task_1",
+      title: "t",
+      status,
+      priority: "medium",
+      creator_id: "p1",
+      creator_type: "person",
+      created_at: FIXED_NOW,
+      updated_at: FIXED_NOW,
+    } as Task;
+  }
+
+  function makeMock(initial: Task): TaskRepository {
+    return {
+      findById: vi.fn().mockResolvedValue(initial),
+      update: vi.fn().mockResolvedValue(initial),
+    } as unknown as TaskRepository;
+  }
+
+  it("flips assigned → in_progress when a task session is claimed", async () => {
+    const taskRepo = makeMock(makeTask("assigned"));
+    await transitionTaskOnClaim(
+      makeSession({ type: "task", task_id: "task_1" }),
+      { taskRepo },
+    );
+    expect(taskRepo.update).toHaveBeenCalledWith("task_1", { status: "in_progress" });
+  });
+
+  it("flips needs_revision → revision (the revision-resume case)", async () => {
+    const taskRepo = makeMock(makeTask("needs_revision"));
+    await transitionTaskOnClaim(
+      makeSession({ type: "task", task_id: "task_1" }),
+      { taskRepo },
+    );
+    expect(taskRepo.update).toHaveBeenCalledWith("task_1", { status: "revision" });
+  });
+
+  it("no-ops when task is already in_progress (re-claim after transient failure)", async () => {
+    const taskRepo = makeMock(makeTask("in_progress"));
+    await transitionTaskOnClaim(
+      makeSession({ type: "task", task_id: "task_1" }),
+      { taskRepo },
+    );
+    expect(taskRepo.update).not.toHaveBeenCalled();
+  });
+
+  it("skips non-task sessions (chat / mesh have no task to transition)", async () => {
+    const taskRepo = makeMock(makeTask("assigned"));
+    await transitionTaskOnClaim(
+      makeSession({ type: "chat", task_id: undefined }),
+      { taskRepo },
+    );
+    expect(taskRepo.findById).not.toHaveBeenCalled();
+    expect(taskRepo.update).not.toHaveBeenCalled();
+  });
+
+  it("swallows taskRepo errors so claim/dispatch never fails on a transient transition error", async () => {
+    const taskRepo = {
+      findById: vi.fn().mockRejectedValue(new Error("db hiccup")),
+      update: vi.fn(),
+    } as unknown as TaskRepository;
+    // Should not throw.
+    await transitionTaskOnClaim(
+      makeSession({ type: "task", task_id: "task_1" }),
+      { taskRepo },
+    );
+    expect(taskRepo.update).not.toHaveBeenCalled();
   });
 });

@@ -254,7 +254,10 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
       // explicit dispatch, no session row exists and no daemon claims
       // the task — it sits at needs_revision until manual intervention.
       // The MCP tool dispatched; this route forgot to.
-      let dispatchedStatus: TaskStatus = updated.status;
+      //
+      // Post-#186: the task stays at 'needs_revision' until the daemon
+      // actually claims the dispatched session — `transitionTaskOnClaim`
+      // does the flip to 'revision' at claim time, not here.
       if (updated.next_dispatch_context?.kind === "revision" && updated.assignee_id) {
         const reason: ResumeReason = updated.next_dispatch_context;
         const intent = buildIntent(
@@ -268,16 +271,13 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
           reason,
           type: "task",
         });
-        // dispatchService transitions needs_revision → revision and
-        // inserts a pending session pinned to the agent's runtime.
-        dispatchedStatus = "revision";
       }
 
       res.json({
         ok: true,
         task: {
           id: updated.id,
-          status: dispatchedStatus,
+          status: updated.status,
           next_dispatch_context: updated.next_dispatch_context,
         },
       });
@@ -319,6 +319,13 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
         status: "cancelled",
         result_summary: reason,
       });
+
+      // Pending sessions have no CLI to abort — they're just DB rows
+      // waiting for a daemon to claim. Flip them straight to cancelled
+      // so the SQL claim gate stops returning them. Running sessions
+      // are handled by the WS push / pg_notify path below; their
+      // session.status flip is written by /runtime/done on CLI exit.
+      await deps.sessionRepo.cancelPendingForTask(id);
 
       // Route the cancel signal to whichever path is running the work:
       // - Daemon-bound sessions: push `{type:"cancel"}` over WS via

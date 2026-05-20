@@ -1,3 +1,4 @@
+import { DEFAULT_TASK_CAP } from "../../domain/agent.js";
 import type {
   Session,
   SessionBriefingSnapshot,
@@ -134,35 +135,67 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   async claimNextForRuntime(runtimeId: string): Promise<Session | undefined> {
-    const { rows } = await this.pool.query<SessionRow>(
-      `WITH candidate AS (
-         SELECT id FROM session
-           WHERE runtime_id = $1
-             AND status = 'pending'
-           ORDER BY created_at ASC
-           FOR UPDATE SKIP LOCKED
-           LIMIT 1
-       )
-       UPDATE session
-          SET status = 'running',
-              started_at = COALESCE(started_at, now())
-         FROM candidate
-        WHERE session.id = candidate.id
-        RETURNING session.*`,
-      [runtimeId],
-    );
-    return rows[0] ? rowToSession(rows[0]) : undefined;
+    return this.claimNextWhere("s.runtime_id = $1", [runtimeId]);
   }
 
   async claimNextForServerFallback(): Promise<Session | undefined> {
+    return this.claimNextWhere("s.runtime_id IS NULL", []);
+  }
+
+  async cancelPendingForTask(taskId: string): Promise<number> {
+    const result = await this.pool.query(
+      `UPDATE session
+          SET status = 'cancelled',
+              completed_at = now(),
+              error = 'task_cancelled_before_claim'
+        WHERE task_id = $1 AND status = 'pending'`,
+      [taskId],
+    );
+    return result.rowCount ?? 0;
+  }
+
+  /**
+   * Shared CTE-and-UPDATE body for the two claim paths. The per-agent
+   * task-cap gate is inline so the claim is atomic regardless of which
+   * surface drove it — the gate used to live in application code on the
+   * scheduler side only, so daemon claims could exceed the cap
+   * (beevibe-ai/beevibe#127).
+   *
+   * `FOR UPDATE OF s, a SKIP LOCKED` serializes concurrent claims for
+   * the same agent: two claims for two different pending sessions of
+   * the same agent can't both pass the count check, because the second
+   * has to wait on (or skip past) the agent row lock held by the first.
+   * Claims across DIFFERENT agents proceed in parallel.
+   *
+   * `runtimePredicate` is interpolated, not parameterized — callers
+   * supply a literal SQL fragment ("s.runtime_id = $1" or "s.runtime_id
+   * IS NULL"), never user input. `DEFAULT_TASK_CAP` rides in as the
+   * last positional parameter so the SQL doesn't bake the default into
+   * a hardcoded literal that could drift from the domain constant.
+   */
+  private async claimNextWhere(
+    runtimePredicate: string,
+    params: unknown[],
+  ): Promise<Session | undefined> {
+    const defaultCapParam = `$${params.length + 1}`;
     const { rows } = await this.pool.query<SessionRow>(
       `WITH candidate AS (
-         SELECT id FROM session
-           WHERE runtime_id IS NULL
-             AND status = 'pending'
-           ORDER BY created_at ASC
-           FOR UPDATE SKIP LOCKED
-           LIMIT 1
+         SELECT s.id FROM session s
+           JOIN agent a ON a.id = s.agent_id
+          WHERE ${runtimePredicate}
+            AND s.status = 'pending'
+            AND (
+              s.type != 'task'
+              OR (
+                SELECT COUNT(*) FROM session s2
+                 WHERE s2.agent_id = s.agent_id
+                   AND s2.status = 'running'
+                   AND s2.type = 'task'
+              ) < COALESCE(a.max_task_sessions, ${defaultCapParam})
+            )
+          ORDER BY s.created_at ASC
+          FOR UPDATE OF s, a SKIP LOCKED
+          LIMIT 1
        )
        UPDATE session
           SET status = 'running',
@@ -170,6 +203,7 @@ export class PostgresSessionRepository implements SessionRepository {
          FROM candidate
         WHERE session.id = candidate.id
         RETURNING session.*`,
+      [...params, DEFAULT_TASK_CAP],
     );
     return rows[0] ? rowToSession(rows[0]) : undefined;
   }

@@ -90,6 +90,21 @@ export interface SessionRepository {
   claimNextForServerFallback(): Promise<Session | undefined>;
 
   /**
+   * Mark every still-pending session for `taskId` as `cancelled`.
+   * Called by the task cancel route to clean up sessions that haven't
+   * been claimed yet — those have no CLI process to abort via WS push,
+   * so we just flip the DB row terminal. Running sessions are cancelled
+   * through the WS push path (`hub.cancel` → daemon → CLI exit
+   * → `/runtime/done` writes the terminal status), so this method
+   * deliberately leaves them alone.
+   *
+   * Returns the count of rows updated (0 when the task has no pending
+   * sessions, e.g. it was cancelled while idle or while a session was
+   * already running).
+   */
+  cancelPendingForTask(taskId: string): Promise<number>;
+
+  /**
    * How many of `sessionIds` are bound to a runtime owned by `daemonId`?
    * Single JOIN round-trip; the /runtime/* surface uses this to gate
    * /events and /done writes against cross-tenant tampering.

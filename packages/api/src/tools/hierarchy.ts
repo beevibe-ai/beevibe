@@ -905,9 +905,11 @@ function reviseTaskTool(
           content: {
             revised: true,
             task_id: updated.id,
-            // Reflect the post-dispatch active state (revision); the
-            // pending session is already in flight.
-            status: "revision",
+            // Post-#186 the task stays at needs_revision until the
+            // daemon claims the dispatched session (transitionTaskOnClaim
+            // does the flip). Used to optimistically return "revision"
+            // because DispatchService flipped it inline.
+            status: updated.status,
             from_status: task.status,
           },
         };

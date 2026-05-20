@@ -138,7 +138,7 @@ describe("task routes — integration", () => {
     expect(res.body.task.status).toBe("cancelled");
   });
 
-  it("revise: review → revision + stamps next_dispatch_context + dispatches a session", async () => {
+  it("revise: review → needs_revision + stamps next_dispatch_context + dispatches a session", async () => {
     const { owner, agent } = await setupHuman();
     const task = await seedTask("review", agent.agent.id);
 
@@ -148,15 +148,15 @@ describe("task routes — integration", () => {
       .send({ feedback: "please add error handling" });
 
     expect(res.status).toBe(200);
-    // The route reviseTask + dispatchService.dispatchTask: reviseTask
-    // moves the task to 'needs_revision' and stamps the dispatch
-    // context; dispatchService then transitions it to 'revision' and
-    // inserts a pending session row. Without the dispatch, the task
-    // would sit at needs_revision forever — no daemon would claim it.
-    expect(res.body.task.status).toBe("revision");
+    // Post-#186 the task stays at `needs_revision` until a daemon
+    // actually claims the dispatched session — `transitionTaskOnClaim`
+    // is the one that flips it to `revision`. Pre-#186 DispatchService
+    // did this optimistically at insert time, which lied to the UI
+    // when the session was cap-blocked.
+    expect(res.body.task.status).toBe("needs_revision");
 
     const refetched = await taskRepo.findById(task.id);
-    expect(refetched?.status).toBe("revision");
+    expect(refetched?.status).toBe("needs_revision");
     expect(refetched?.next_dispatch_context?.kind).toBe("revision");
     if (refetched?.next_dispatch_context?.kind === "revision") {
       expect(refetched.next_dispatch_context.feedback).toBe("please add error handling");
@@ -199,6 +199,35 @@ describe("task routes — integration", () => {
 
     expect(res.status).toBe(409);
     expect(res.body.error).toBe("invalid_transition");
+  });
+
+  it("cancel: pending sessions for the task are flipped to cancelled (no zombie spawns)", async () => {
+    // Pre-#186 a pending session for a cancelled task stayed pending
+    // forever and the next daemon poll would spawn a CLI for a task
+    // the user already cancelled. The cancel route now explicitly
+    // marks the pending sessions terminal so the SQL claim gate
+    // stops returning them.
+    const { owner, agent } = await setupHuman();
+    const task = await seedTask("in_progress", agent.agent.id);
+    const pending = await sessionRepo.create({
+      id: `sess_${Math.random().toString(36).slice(2, 14)}`,
+      agent_id: agent.agent.id,
+      task_id: task.id,
+      type: "task",
+      status: "pending",
+      intent: "do the thing",
+    });
+
+    const res = await request(makeApp())
+      .post(`/task/${task.id}/cancel`)
+      .set("Authorization", `Bearer ${owner.apiKey}`)
+      .send({});
+
+    expect(res.status).toBe(200);
+    const reread = await sessionRepo.findById(pending.id);
+    expect(reread?.status).toBe("cancelled");
+    expect(reread?.completed_at).toBeInstanceOf(Date);
+    expect(reread?.error).toBe("task_cancelled_before_claim");
   });
 
   it("cancel: in_progress → cancelled + pg_notify fires", async () => {

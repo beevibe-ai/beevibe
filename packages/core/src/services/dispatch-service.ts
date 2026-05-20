@@ -127,12 +127,10 @@ export class DispatchService {
       ...(input.roomId ? { room_id: input.roomId } : {}),
     });
 
-    if (input.task && input.type === "task") {
-      const next = transitionForDispatch(input.task.status);
-      if (next && this.deps.taskRepo) {
-        await this.deps.taskRepo.update(input.task.id, { status: next });
-      }
-    }
+    // NOTE: task.status used to flip to in_progress here (pre-#127).
+    // The transition now happens at CLAIM time (`transitionTaskOnClaim`)
+    // so a cap-blocked session leaves the task at `assigned` instead of
+    // lying about active work to the UI. See PR #186.
 
     if (this.deps.onSessionInserted) {
       try {
@@ -157,10 +155,41 @@ export class DispatchService {
  * already active; terminal states shouldn't be re-dispatched). Mirrors
  * the legacy executor's claimById CASE logic.
  */
-function transitionForDispatch(current: TaskStatus): TaskStatus | undefined {
+export function transitionForDispatch(current: TaskStatus): TaskStatus | undefined {
   if (current === "assigned") return "in_progress";
   if (current === "needs_revision") return "revision";
   return undefined;
+}
+
+/**
+ * Run the task status transition that a successful claim implies.
+ * Invoked by the two claim paths (api/runtime/router and scheduler/worker)
+ * right after `claimNext*` returns a session — so the task only flips to
+ * an active state when a daemon actually picks the work up, not when the
+ * pending row first lands.
+ *
+ * No-op for non-task sessions and for tasks already past `assigned` /
+ * `needs_revision`. Best-effort: a failure is logged but doesn't fail
+ * the claim — the worst case is a brief UI inconsistency that
+ * `update_progress` from the agent will eventually correct.
+ */
+export async function transitionTaskOnClaim(
+  session: Session,
+  deps: { taskRepo: TaskRepository },
+): Promise<void> {
+  if (session.type !== "task" || !session.task_id) return;
+  try {
+    const task = await deps.taskRepo.findById(session.task_id);
+    if (!task) return;
+    const next = transitionForDispatch(task.status);
+    if (!next) return;
+    await deps.taskRepo.update(task.id, { status: next });
+  } catch (err) {
+    console.warn(
+      `[transitionTaskOnClaim] failed for session=${session.id} task=${session.task_id}:`,
+      (err as Error).message,
+    );
+  }
 }
 
 function resolveRuntimeId(

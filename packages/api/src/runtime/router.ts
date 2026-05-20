@@ -18,6 +18,7 @@ import {
   type SessionEventRepository,
   type SessionRepository,
   type RuntimeRepository,
+  type TaskRepository,
   type WorkProductRepository,
 } from "@beevibe/core";
 import {
@@ -30,6 +31,7 @@ import {
   composeSystemPromptAppend,
   teamAgentRoutingDirective,
 } from "@beevibe/core/services/agent-session";
+import { transitionTaskOnClaim } from "@beevibe/core/services/dispatch-service";
 import { requireDaemon, requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "./hub.js";
 import type {
@@ -55,6 +57,7 @@ export interface RuntimeRouterDeps {
   runtimeRepo: RuntimeRepository;
   sessionRepo: SessionRepository;
   sessionEventRepo: SessionEventRepository;
+  taskRepo: TaskRepository;
   /** Capability Network: read at claim time + write at /done. */
   repoRunRepo: RepoRunRepository;
   /** Capability Network: artifacts from a run_repo come back here as work_products. */
@@ -213,6 +216,10 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
         res.status(409).json({ error: "agent_missing" });
         return;
       }
+      // Flip the task into its active state now that a CLI is about to
+      // spawn. Pre-#127 this happened at dispatch-time, but that made
+      // cap-blocked tasks visibly "in_progress" while no CLI was running.
+      await transitionTaskOnClaim(claimed, { taskRepo: deps.taskRepo });
       res.status(200).json(payload);
     } catch (err) {
       console.error("[runtime/claim]", err);

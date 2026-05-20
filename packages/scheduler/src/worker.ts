@@ -8,12 +8,7 @@ import type {
   Workspace,
   WorkspaceManager,
 } from "@beevibe/core";
-
-/**
- * Default per-agent cap on concurrent task sessions. Matches the old repo's
- * `SessionManager.canAcceptSession` default (intentcore-platform).
- */
-export const DEFAULT_TASK_CAP = 1;
+import { transitionTaskOnClaim } from "@beevibe/core/services/dispatch-service";
 
 /**
  * Default poll interval. Matches the old repo's `POLL_INTERVAL_MS`.
@@ -206,12 +201,11 @@ export class TaskExecutionWorker {
         continue;
       }
 
-      if (!(await this.hasTaskCapacityForClaim(agent, session))) {
-        // Over cap — release back to pending; another worker tick will
-        // re-claim once capacity frees.
-        await this.config.sessionRepo.update(session.id, { status: "pending" });
-        break;
-      }
+      // Flip the task into its active state now that we're actually
+      // about to dispatch. Pre-#127 this happened at dispatch-time, but
+      // that lied to the UI when the session was cap-blocked or otherwise
+      // sat pending — see PR #186.
+      await transitionTaskOnClaim(session, { taskRepo: this.config.taskRepo });
 
       const workspace = await this.config.workspaceManager.ensureWorkspace({ agent });
       const ac = new AbortController();
@@ -228,16 +222,6 @@ export class TaskExecutionWorker {
     }
   }
 
-  private async hasTaskCapacityForClaim(
-    agent: Agent,
-    claimed: Session,
-  ): Promise<boolean> {
-    if (claimed.type !== "task") return true; // chat / mesh have separate caps elsewhere
-    const running = await this.config.sessionRepo.countRunningByAgent(agent.id, ["task"]);
-    const cap = agent.max_task_sessions ?? DEFAULT_TASK_CAP;
-    // We just promoted this session to running; it's already counted.
-    return running <= cap;
-  }
 }
 
 /**
