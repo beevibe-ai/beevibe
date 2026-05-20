@@ -8,12 +8,10 @@ import type {
   Workspace,
   WorkspaceManager,
 } from "@beevibe/core";
-
-/**
- * Default per-agent cap on concurrent task sessions. Matches the old repo's
- * `SessionManager.canAcceptSession` default (intentcore-platform).
- */
-export const DEFAULT_TASK_CAP = 1;
+// Re-export so existing scheduler consumers keep working; the canonical
+// definition now lives in domain/agent.ts so the SQL claim gates can
+// reference the same value.
+export { DEFAULT_TASK_CAP } from "@beevibe/core";
 
 /**
  * Default poll interval. Matches the old repo's `POLL_INTERVAL_MS`.
@@ -206,13 +204,6 @@ export class TaskExecutionWorker {
         continue;
       }
 
-      if (!(await this.hasTaskCapacityForClaim(agent, session))) {
-        // Over cap — release back to pending; another worker tick will
-        // re-claim once capacity frees.
-        await this.config.sessionRepo.update(session.id, { status: "pending" });
-        break;
-      }
-
       const workspace = await this.config.workspaceManager.ensureWorkspace({ agent });
       const ac = new AbortController();
       this.inFlight.set(session.id, ac);
@@ -228,16 +219,6 @@ export class TaskExecutionWorker {
     }
   }
 
-  private async hasTaskCapacityForClaim(
-    agent: Agent,
-    claimed: Session,
-  ): Promise<boolean> {
-    if (claimed.type !== "task") return true; // chat / mesh have separate caps elsewhere
-    const running = await this.config.sessionRepo.countRunningByAgent(agent.id, ["task"]);
-    const cap = agent.max_task_sessions ?? DEFAULT_TASK_CAP;
-    // We just promoted this session to running; it's already counted.
-    return running <= cap;
-  }
 }
 
 /**

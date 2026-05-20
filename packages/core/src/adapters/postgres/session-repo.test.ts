@@ -339,6 +339,12 @@ describe("PostgresSessionRepository", () => {
     });
 
     it("two parallel claims race-safely return distinct sessions or undefined", async () => {
+      // Bump the cap so both pending sessions can claim — this test is
+      // about FOR UPDATE SKIP LOCKED race safety (don't return the SAME
+      // session twice), not about cap enforcement. With the default cap
+      // of 1 (per #127), the second claim would return undefined for a
+      // legitimate non-race reason, masking what we're trying to verify.
+      await agents.update(agent, { max_task_sessions: 2 });
       const ids = [sessionId(), sessionId()];
       for (const id of ids) {
         await sessions.create(
@@ -351,6 +357,125 @@ describe("PostgresSessionRepository", () => {
       ]);
       const claimedIds = [a?.id, b?.id].filter((x): x is string => Boolean(x)).sort();
       expect(claimedIds).toEqual(ids.slice().sort());
+    });
+
+    it("respects per-agent max_task_sessions cap (the exact case from #127)", async () => {
+      // Agent's cap is 1; queue two task sessions for it on the same
+      // runtime. The first claim returns one; the second returns
+      // undefined (over cap). After the first completes, the second
+      // claim picks up the leftover.
+      await agents.update(agent, { max_task_sessions: 1 });
+      const first = sessionId();
+      const second = sessionId();
+      await sessions.create(
+        newSession({ id: first, task_id: task, runtime_id: runtime, status: "pending" }),
+      );
+      await new Promise((r) => setTimeout(r, 10));
+      await sessions.create(
+        newSession({ id: second, task_id: task, runtime_id: runtime, status: "pending" }),
+      );
+
+      const a = await sessions.claimNextForRuntime(runtime);
+      expect(a?.id).toBe(first);
+
+      const b = await sessions.claimNextForRuntime(runtime);
+      expect(b).toBeUndefined();
+
+      // Complete the first; second claim should now succeed.
+      await sessions.update(first, { status: "succeeded", completed_at: new Date() });
+      const c = await sessions.claimNextForRuntime(runtime);
+      expect(c?.id).toBe(second);
+    });
+
+    it("defaults to cap=1 when max_task_sessions is NULL (matches DEFAULT_TASK_CAP)", async () => {
+      // The default agent fixture leaves max_task_sessions unset. Queue
+      // two task sessions — only the first should claim.
+      const first = sessionId();
+      const second = sessionId();
+      await sessions.create(
+        newSession({ id: first, task_id: task, runtime_id: runtime, status: "pending" }),
+      );
+      await new Promise((r) => setTimeout(r, 10));
+      await sessions.create(
+        newSession({ id: second, task_id: task, runtime_id: runtime, status: "pending" }),
+      );
+      expect((await sessions.claimNextForRuntime(runtime))?.id).toBe(first);
+      expect(await sessions.claimNextForRuntime(runtime)).toBeUndefined();
+    });
+
+    it("respects a higher cap (e.g. 3) — claims up to the configured count", async () => {
+      await agents.update(agent, { max_task_sessions: 3 });
+      const ids = [sessionId(), sessionId(), sessionId(), sessionId()];
+      for (const id of ids) {
+        await sessions.create(
+          newSession({ id, task_id: task, runtime_id: runtime, status: "pending" }),
+        );
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      // Cap=3 → first three claim, fourth is rejected.
+      const claimed: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        const c = await sessions.claimNextForRuntime(runtime);
+        if (c) claimed.push(c.id);
+      }
+      expect(claimed.length).toBe(3);
+      expect(claimed).toEqual(ids.slice(0, 3));
+    });
+
+    it("non-task sessions bypass the cap (chat / mesh have separate gates)", async () => {
+      // max_task_sessions=1 + one running task session: the gate would
+      // block a second TASK session, but a chat session should still
+      // claim freely because the gate filters on type='task'.
+      await agents.update(agent, { max_task_sessions: 1 });
+      await sessions.create(
+        newSession({
+          id: sessionId(),
+          task_id: task,
+          runtime_id: runtime,
+          type: "task",
+          status: "running",
+        }),
+      );
+      const chatId = sessionId();
+      await sessions.create(
+        newSession({
+          id: chatId,
+          // chat sessions are not bound to a task
+          runtime_id: runtime,
+          type: "chat",
+          status: "pending",
+        }),
+      );
+      const claimed = await sessions.claimNextForRuntime(runtime);
+      expect(claimed?.id).toBe(chatId);
+      expect(claimed?.type).toBe("chat");
+    });
+  });
+
+  describe("claimNextForServerFallback — per-agent task cap", () => {
+    // Mirrors the runtime-claim cap behavior. Server fallback is the
+    // path the scheduler takes when an agent has no preferred runtime;
+    // the cap MUST be enforced here too (used to live in worker.ts as
+    // an application-layer check, now collapsed into the SQL).
+
+    it("over-cap second claim returns undefined; succeeds after the first completes", async () => {
+      await agents.update(agent, { max_task_sessions: 1 });
+      const first = sessionId();
+      const second = sessionId();
+      // runtime_id intentionally omitted → server-fallback path
+      await sessions.create(
+        newSession({ id: first, task_id: task, status: "pending" }),
+      );
+      await new Promise((r) => setTimeout(r, 10));
+      await sessions.create(
+        newSession({ id: second, task_id: task, status: "pending" }),
+      );
+
+      expect((await sessions.claimNextForServerFallback())?.id).toBe(first);
+      expect(await sessions.claimNextForServerFallback()).toBeUndefined();
+
+      await sessions.update(first, { status: "succeeded", completed_at: new Date() });
+      expect((await sessions.claimNextForServerFallback())?.id).toBe(second);
     });
   });
 

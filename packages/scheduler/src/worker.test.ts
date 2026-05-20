@@ -246,7 +246,13 @@ describe("TaskExecutionWorker (Phase 4 — session-based claim)", () => {
     expect(ids).toEqual([s1.id, s2.id, s3.id]);
   });
 
-  it("respects per-agent task cap: second session for same agent released back to pending", async () => {
+  it("respects per-agent task cap: second session for same agent is never claimed while the first is running", async () => {
+    // Pre-#127 the worker claimed both and released the second back to
+    // pending in application code. The cap now lives in the SQL claim
+    // (claimNextForServerFallback), so the second session is never
+    // promoted to running in the first place. End state is the same
+    // (s2 stays pending, dispatchTask fires once) — only the mechanism
+    // changed.
     const agent = await seedAgent({ max_task_sessions: 1 });
     // First session claims and stays running (mock dispatch never resolves).
     let block: () => void = () => undefined;

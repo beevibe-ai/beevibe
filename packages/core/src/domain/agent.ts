@@ -40,6 +40,14 @@ export const DEFAULT_RUNTIME_CONFIG: RuntimeConfig = {
   // every new agent.
 };
 
+/**
+ * Default per-agent cap on concurrent task sessions when `max_task_sessions`
+ * is null. Used as the COALESCE fallback in the SQL claim gates AND in any
+ * application-side capacity check. Keep these in lockstep — if you change
+ * this constant, update the COALESCE in `claimNext*` queries to match.
+ */
+export const DEFAULT_TASK_CAP = 1;
+
 export interface Agent {
   id: string;
   name: string;

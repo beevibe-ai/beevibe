@@ -135,13 +135,36 @@ export class PostgresSessionRepository implements SessionRepository {
 
   async claimNextForRuntime(runtimeId: string): Promise<Session | undefined> {
     const { rows } = await this.pool.query<SessionRow>(
+      // Per-agent task-cap gate is inline so the claim is atomic across
+      // both this path and the server-fallback path (the gate lived in
+      // application code on the scheduler side only, so daemon claims
+      // could exceed the cap — see beevibe-ai/beevibe#127).
+      //
+      // For UPDATE OF s, a SKIP LOCKED serializes concurrent claims for
+      // the same agent: two claims for two different pending sessions of
+      // the same agent can't both pass the count check, because the
+      // second has to wait on (or skip past) the agent row lock held by
+      // the first. Across DIFFERENT agents, claims still run in parallel.
+      //
+      // COALESCE(..., 1) must stay in sync with DEFAULT_TASK_CAP in
+      // packages/core/src/domain/agent.ts.
       `WITH candidate AS (
-         SELECT id FROM session
-           WHERE runtime_id = $1
-             AND status = 'pending'
-           ORDER BY created_at ASC
-           FOR UPDATE SKIP LOCKED
-           LIMIT 1
+         SELECT s.id FROM session s
+           JOIN agent a ON a.id = s.agent_id
+          WHERE s.runtime_id = $1
+            AND s.status = 'pending'
+            AND (
+              s.type != 'task'
+              OR (
+                SELECT COUNT(*) FROM session s2
+                 WHERE s2.agent_id = s.agent_id
+                   AND s2.status = 'running'
+                   AND s2.type = 'task'
+              ) < COALESCE(a.max_task_sessions, 1)
+            )
+          ORDER BY s.created_at ASC
+          FOR UPDATE OF s, a SKIP LOCKED
+          LIMIT 1
        )
        UPDATE session
           SET status = 'running',
@@ -156,13 +179,26 @@ export class PostgresSessionRepository implements SessionRepository {
 
   async claimNextForServerFallback(): Promise<Session | undefined> {
     const { rows } = await this.pool.query<SessionRow>(
+      // Same per-agent task-cap gate as claimNextForRuntime — see the
+      // comment there. The two methods diverge only on the runtime_id
+      // predicate; everything else is identical.
       `WITH candidate AS (
-         SELECT id FROM session
-           WHERE runtime_id IS NULL
-             AND status = 'pending'
-           ORDER BY created_at ASC
-           FOR UPDATE SKIP LOCKED
-           LIMIT 1
+         SELECT s.id FROM session s
+           JOIN agent a ON a.id = s.agent_id
+          WHERE s.runtime_id IS NULL
+            AND s.status = 'pending'
+            AND (
+              s.type != 'task'
+              OR (
+                SELECT COUNT(*) FROM session s2
+                 WHERE s2.agent_id = s.agent_id
+                   AND s2.status = 'running'
+                   AND s2.type = 'task'
+              ) < COALESCE(a.max_task_sessions, 1)
+            )
+          ORDER BY s.created_at ASC
+          FOR UPDATE OF s, a SKIP LOCKED
+          LIMIT 1
        )
        UPDATE session
           SET status = 'running',
