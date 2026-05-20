@@ -74,6 +74,7 @@ export interface SessionRow {
   started_at: Date | null;
   completed_at: Date | null;
   created_at: Date;
+  deleted_at: Date | null;
 }
 
 export interface CoreMemoryBlockRow {
