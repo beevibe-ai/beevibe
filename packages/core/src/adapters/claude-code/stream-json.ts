@@ -292,23 +292,15 @@ export function parseClaudeMessages(
 
 /**
  * The placeholder message `parseClaudeMessages` returns when the CLI
- * exited non-zero with no final-result message to surface. Exported so
- * downstream consumers (e.g. the chat route's user-facing failure
- * mapping) can detect this exact string and replace it with something
- * more actionable instead of pattern-matching across package boundaries.
+ * exited non-zero with no final-result message to surface. The codex
+ * and opencode adapters reuse this same producer so the format stays
+ * in lock-step across runtimes. Consumers that want to swap this
+ * stand-in for a friendlier diagnostic use `isBareCliExitMessage`
+ * from `@beevibe/core/domain`, which is anchored to the exact format
+ * this function emits.
  */
 export function bareCliExitMessage(exitCode: number | null): string {
   return `CLI exited with code ${exitCode}`;
-}
-
-/**
- * Matches strings produced by `bareCliExitMessage` — the only "useless"
- * stand-in this layer emits on failure. Consumers that want to swap a
- * bare exit for a friendlier diagnostic gate on this predicate so the
- * coupling stays in one place.
- */
-export function isBareCliExitMessage(s: string): boolean {
-  return /^CLI exited with code (-?\d+|null)$/.test(s);
 }
 
 /**

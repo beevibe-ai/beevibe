@@ -34,8 +34,10 @@ import {
 } from "@beevibe/core";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { ResumeReason } from "@beevibe/core/services/agent-session";
-import { isBareCliExitMessage } from "@beevibe/core/adapters/claude-code";
-import { parseRuntimeMissingError } from "@beevibe/core/adapters/runtime-registry";
+import {
+  isBareCliExitMessage,
+  parseRuntimeMissingError,
+} from "@beevibe/core/domain";
 import { requireHuman } from "../auth/middleware.js";
 import type { ChatResolver } from "../runtime/chat-resolver.js";
 import type { DaemonHub } from "../runtime/hub.js";
