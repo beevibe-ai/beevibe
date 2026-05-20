@@ -36,6 +36,34 @@ export interface ToolDisplay {
   icon: LucideIcon;
 }
 
+const MCP_PREFIX_RE = /^mcp__[^_]+__/;
+const TASK_ID_RE = /\btask_[A-Za-z0-9_-]+\b/g;
+
+function normalizeToolName(toolName: string | undefined): string {
+  return (toolName ?? "").trim().replace(MCP_PREFIX_RE, "");
+}
+
+function cleanToolDetail(content: string): string {
+  const detail = content
+    .trim()
+    .replace(/mcp__[^_]+__/g, "")
+    .replace(/select:/gi, "selected ")
+    .replace(TASK_ID_RE, "task")
+    .replace(/,/g, ", ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (detail.toLowerCase().startsWith("selected ")) return detail.replace(/_/g, " ");
+  return detail;
+}
+
+function fallbackLabel(toolName: string): string {
+  return toolName
+    .replace(MCP_PREFIX_RE, "")
+    .replace(/_/g, " ")
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .trim() || "step";
+}
+
 /**
  * Map a streamed tool-call event to a chat-friendly display: an
  * imperative verb ("asked", "saved a memory", "Read"), the most
@@ -47,8 +75,13 @@ export interface ToolDisplay {
  * by stream-json's describeToolInput); we just polish the surface.
  */
 export function formatTool(toolName: string | undefined, content: string): ToolDisplay {
-  const name = (toolName ?? "").trim();
-  const detail = content.trim();
+  const rawName = (toolName ?? "").trim();
+  const name = normalizeToolName(toolName);
+  const detail = cleanToolDetail(content);
+
+  if (rawName === "ToolSearch") {
+    return { label: "Selected tools", detail, category: "other", icon: Wrench };
+  }
 
   // ── Mesh: agent-to-agent collaboration (the "team" pitch moments) ──
   if (name === "ask") {
@@ -121,7 +154,7 @@ export function formatTool(toolName: string | undefined, content: string): ToolD
 
   // Unknown / future tool — fall back to verbatim name.
   return {
-    label: name || "step",
+    label: fallbackLabel(name || rawName),
     detail,
     category: "other",
     icon: Wrench,

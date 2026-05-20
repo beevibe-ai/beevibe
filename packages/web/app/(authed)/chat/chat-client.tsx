@@ -425,21 +425,27 @@ function Bubble({
           ) : null}
         </div>
       ) : null}
-      <div className={cn("flex flex-col max-w-[78%]", isUser ? "items-end" : "items-start")}>
-        <div
-          className={cn(
-            "rounded-2xl px-3.5 py-2",
-            isUser ? "glass-bubble-user" : "glass-bubble-agent",
-          )}
-        >
-          {isUser ? (
+      <div
+        className={cn(
+          "flex flex-col min-w-0",
+          isUser ? "items-end max-w-[68%]" : "items-start max-w-[78%]",
+        )}
+      >
+        {isUser ? (
+          <div className="rounded-2xl px-3.5 py-2 glass-bubble-user">
             <div className="text-sm whitespace-pre-wrap">{message.content}</div>
-          ) : (
+          </div>
+        ) : (
+          <div className="py-1 text-sm leading-6 text-foreground/90">
             <ChatMarkdown content={message.content} inverted={false} />
-          )}
-          {refIds.length > 0 ? <ReferenceCards ids={refIds} /> : null}
-          {message.open_view ? <OpenViewCta open_view={message.open_view} /> : null}
-        </div>
+          </div>
+        )}
+        {!isUser ? (
+          <>
+            {refIds.length > 0 ? <ReferenceCards ids={refIds} /> : null}
+            {message.open_view ? <OpenViewCta open_view={message.open_view} /> : null}
+          </>
+        ) : null}
         {suggestions.length > 0 && onSuggest ? (
           <SuggestedActions actions={suggestions} onPick={onSuggest} />
         ) : null}
@@ -456,14 +462,14 @@ function SuggestedActions({
   onPick: (text: string) => void;
 }) {
   return (
-    <div className="mt-2 flex flex-wrap gap-1.5">
+    <div className="mt-3 flex flex-wrap gap-1.5">
       {actions.map((a) => (
         <button
           key={a.label}
           type="button"
           onClick={() => onPick(a.prompt ?? a.label)}
           title={a.prompt && a.prompt !== a.label ? a.prompt : undefined}
-          className="text-left rounded-md border border-border bg-card hover:bg-secondary hover:border-foreground/30 px-2.5 py-1.5 text-xs text-foreground transition-colors cursor-pointer"
+          className="text-left rounded-full border border-border/50 bg-transparent hover:bg-secondary/45 hover:border-border px-2.5 py-1 text-[11px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
         >
           {a.label}
         </button>
@@ -476,7 +482,7 @@ function OpenViewCta({ open_view }: { open_view: { path: string; label?: string 
   return (
     <Link
       href={open_view.path}
-      className="mt-2 inline-flex items-center gap-1.5 rounded-md bg-foreground text-background hover:opacity-90 transition-opacity px-3 py-1.5 text-xs font-medium cursor-pointer"
+      className="mt-2 inline-flex items-center gap-1.5 rounded-full border border-border/50 bg-transparent px-2.5 py-1 text-[11px] font-medium text-muted-foreground hover:text-foreground hover:bg-secondary/45 transition-colors cursor-pointer"
     >
       {open_view.label ?? "Open this"}
       <ArrowRight className="h-3 w-3" />
@@ -514,22 +520,10 @@ function Thinking({
   // breaks. (Pre-streaming, each step was a whole message and we joined
   // with "\n\n"; that's wrong now since deltas are mid-sentence.)
   const streamingText = agentSteps.map((s) => s.content).join("");
-  // Show the latest 8 tool steps. With strong categorization the list
-  // stays scannable; the running pulse on the most recent makes it
-  // clear where the agent is "now."
-  const recentTools = toolSteps.slice(-8);
-
-  // Before any text or tool step lands, hand the reply column over to
-  // the brand orb — single deliberate "agent is starting" moment in
-  // place of three-dot flicker. Once anything arrives we fall back to
-  // the normal avatar + bubble layout.
-  if (!streamingText && recentTools.length === 0) {
-    return (
-      <div className="flex w-full justify-start mt-4 pl-9">
-        <ChatLoader />
-      </div>
-    );
-  }
+  // Keep the working trace to the latest six moves. Anything older
+  // collapses into the "+N earlier moves" row in ToolStepList.
+  const recentTools = toolSteps.slice(-6);
+  const hasWorkingText = streamingText.trim().length > 0;
 
   return (
     <div className="flex w-full justify-start mt-4">
@@ -542,21 +536,28 @@ function Thinking({
           size={28}
         />
       </div>
-      <div className="max-w-[78%] rounded-2xl px-3.5 py-2 glass-bubble-agent">
-        {streamingText ? (
-          <ChatMarkdown content={streamingText} />
+      <div className="max-w-[78%] min-w-0 py-1">
+        {hasWorkingText ? (
+          <div className="text-sm leading-6 text-foreground/90">
+            <ChatMarkdown content={streamingText} />
+          </div>
         ) : (
-          <div className="flex items-center gap-2 text-muted-foreground italic text-sm">
+          <div className="flex items-center gap-2 text-sm text-muted-foreground/80">
             <ChatLoader compact />
-            <span>thinking…</span>
+            <span className="italic">Thinking…</span>
           </div>
         )}
         {recentTools.length > 0 ? (
-          <ToolStepList
-            steps={recentTools}
-            totalSteps={toolSteps.length}
-            withTopBorder={!!streamingText}
-          />
+          <div className={cn(hasWorkingText ? "mt-3" : "mt-2")}>
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/45">
+              Working
+            </div>
+            <ToolStepList
+              steps={recentTools}
+              totalSteps={toolSteps.length}
+              withTopBorder={hasWorkingText}
+            />
+          </div>
         ) : null}
       </div>
     </div>

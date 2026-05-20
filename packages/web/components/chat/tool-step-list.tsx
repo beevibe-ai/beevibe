@@ -18,8 +18,8 @@ import { cn } from "@/lib/utils";
  * tool_call — errors use a destructive accent so a failing tool no
  * longer looks like a silent success.
  *
- * The latest step pulses to draw the eye to "now". Older steps are
- * rolled into a "+N earlier steps" line so the list stays scannable.
+ * Older steps are rolled into a "+N earlier moves" line so the list
+ * stays scannable.
  */
 export function ToolStepList({
   steps,
@@ -33,8 +33,8 @@ export function ToolStepList({
   return (
     <ul
       className={cn(
-        "space-y-1 text-[11px]",
-        withTopBorder ? "mt-2 pt-2 border-t border-border/60" : "mt-1",
+        "space-y-0.5 text-[11px]",
+        withTopBorder ? "mt-3 pt-2 border-t border-border/45" : "mt-1.5",
       )}
     >
       {steps.map((step, idx) => {
@@ -45,8 +45,8 @@ export function ToolStepList({
         return <CallRow key={step.event_id} step={step} isLatest={isLatest} />;
       })}
       {totalSteps > steps.length ? (
-        <li className="text-[10px] text-muted-foreground/70 pl-5">
-          + {totalSteps - steps.length} earlier step{totalSteps - steps.length === 1 ? "" : "s"}
+        <li className="text-[10px] text-muted-foreground/50 pl-5 pt-0.5">
+          + {totalSteps - steps.length} earlier move{totalSteps - steps.length === 1 ? "" : "s"}
         </li>
       ) : null}
     </ul>
@@ -56,21 +56,21 @@ export function ToolStepList({
 function CallRow({ step, isLatest }: { step: ChatStreamStep; isLatest: boolean }) {
   const display = formatTool(step.tool_name, step.content);
   return (
-    <li className="flex items-start gap-1.5">
+    <li className="flex items-center gap-1.5 text-muted-foreground/80">
       <span
         className={cn(
-          "shrink-0 inline-flex items-center justify-center h-4 w-4 rounded",
+          "shrink-0 inline-flex items-center justify-center h-4 w-4 rounded opacity-70",
           categoryAccent(display.category),
-          isLatest && "animate-pulse-breathe",
+          isLatest && "opacity-100",
         )}
       >
         <display.icon className="h-2.5 w-2.5" />
       </span>
-      <div className="flex-1 min-w-0 leading-tight">
+      <div className="flex-1 min-w-0 leading-4">
         <div className="flex items-baseline gap-1.5">
-          <span className="font-medium text-foreground/85 shrink-0">{display.label}</span>
+          <span className="text-foreground/70 shrink-0">{display.label}</span>
           {display.detail ? (
-            <span className="text-muted-foreground truncate min-w-0">{display.detail}</span>
+            <span className="text-muted-foreground/60 truncate min-w-0">{display.detail}</span>
           ) : null}
         </div>
       </div>
@@ -85,21 +85,21 @@ function ResultRow({ step, isLatest }: { step: ChatStreamStep; isLatest: boolean
   const text = isError ? step.content.slice("[error] ".length) : step.content;
   const Icon = isError ? AlertCircle : CornerDownRight;
   return (
-    <li className="flex items-start gap-1.5 pl-3">
+    <li className="flex items-center gap-1.5 pl-3">
       <span
         className={cn(
           "shrink-0 inline-flex items-center justify-center h-4 w-4",
-          isError ? "text-destructive" : "text-muted-foreground/60",
-          isLatest && "animate-pulse-breathe",
+          isError ? "text-destructive" : "text-muted-foreground/40",
+          isLatest && "text-muted-foreground/70",
         )}
       >
         <Icon className="h-2.5 w-2.5" />
       </span>
-      <div className="flex-1 min-w-0 leading-tight">
+      <div className="flex-1 min-w-0 leading-4">
         <span
           className={cn(
             "truncate min-w-0 block",
-            isError ? "text-destructive/90" : "text-muted-foreground italic",
+            isError ? "text-destructive/90" : "text-muted-foreground/50",
           )}
         >
           {text || (isError ? "tool error" : "result")}
