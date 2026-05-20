@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -533,44 +533,109 @@ function RepoCards({ cards }: { cards: ChatRepoCard[] }) {
   return (
     <div className="mt-2 flex flex-col gap-1.5">
       {cards.map((card) => (
-        <Link
-          key={card.repo_url}
-          href={card.repo_url}
-          target="_blank"
-          rel="noreferrer"
-          className="block rounded-lg border border-border bg-card hover:bg-secondary/40 hover:border-foreground/30 px-3 py-2 transition-colors"
-        >
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm font-medium text-foreground">
-              {card.owner}/{card.name}
-            </span>
-            {typeof card.stars === "number" ? (
-              <span className="inline-flex items-center gap-0.5 text-[11px] text-amber-300 tabular-nums">
-                <Star className="h-3 w-3 fill-current" />
-                {formatStars(card.stars)}
-              </span>
-            ) : null}
-            {card.language ? (
-              <span className="text-[11px] text-muted-foreground">{card.language}</span>
-            ) : null}
-            {card.source ? (
-              <span
-                className={cn(
-                  "ml-auto text-[10px] uppercase tracking-wider rounded border px-1.5 py-0.5",
-                  SOURCE_BADGE_CLASS[card.source],
-                )}
-              >
-                {SOURCE_LABEL[card.source]}
-              </span>
-            ) : null}
-          </div>
-          {card.description ? (
-            <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{card.description}</p>
-          ) : null}
-        </Link>
+        <RepoCardRow key={card.repo_url} card={card} />
       ))}
     </div>
   );
+}
+
+/**
+ * Single repo row from a find_repo result. The Try button is the
+ * "agentic action" loop closed without the agent — click triggers a
+ * use_repo sandbox run with a sensible default goal, then the button
+ * swaps to a deep-link into the playground (the run detail page).
+ */
+function RepoCardRow({ card }: { card: ChatRepoCard }) {
+  const [watchUrl, setWatchUrl] = useState<string | null>(null);
+  const tryRun = useMutation({
+    mutationFn: () =>
+      api.capabilities.use({
+        repo_url: card.repo_url,
+        goal: defaultTryGoal(card),
+      }),
+    onSuccess: (res) => setWatchUrl(res.watch_url),
+  });
+
+  return (
+    <div className="rounded-lg border border-border bg-card hover:border-foreground/30 px-3 py-2 transition-colors">
+      <div className="flex items-center gap-2 flex-wrap">
+        <Link
+          href={card.repo_url}
+          target="_blank"
+          rel="noreferrer"
+          className="text-sm font-medium text-foreground hover:underline"
+        >
+          {card.owner}/{card.name}
+        </Link>
+        {typeof card.stars === "number" ? (
+          <span className="inline-flex items-center gap-0.5 text-[11px] text-amber-300 tabular-nums">
+            <Star className="h-3 w-3 fill-current" />
+            {formatStars(card.stars)}
+          </span>
+        ) : null}
+        {card.language ? (
+          <span className="text-[11px] text-muted-foreground">{card.language}</span>
+        ) : null}
+        <div className="ml-auto flex items-center gap-2">
+          {card.source ? (
+            <span
+              className={cn(
+                "text-[10px] uppercase tracking-wider rounded border px-1.5 py-0.5",
+                SOURCE_BADGE_CLASS[card.source],
+              )}
+            >
+              {SOURCE_LABEL[card.source]}
+            </span>
+          ) : null}
+          {watchUrl ? (
+            <Link
+              href={watchUrl}
+              className="inline-flex items-center gap-1 rounded-md bg-foreground text-background px-2.5 py-1 text-[11px] font-medium hover:opacity-90 transition-opacity"
+            >
+              Open playground
+              <ArrowRight className="h-3 w-3" />
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => tryRun.mutate()}
+              disabled={tryRun.isPending}
+              className="inline-flex items-center gap-1 rounded-md border border-border bg-transparent hover:bg-secondary hover:border-foreground/30 px-2.5 py-1 text-[11px] font-medium text-foreground transition-colors disabled:opacity-50"
+              title={`Try ${card.owner}/${card.name} in a sandbox`}
+            >
+              {tryRun.isPending ? "Starting…" : "Try"}
+            </button>
+          )}
+        </div>
+      </div>
+      {card.description ? (
+        <p className="mt-1 text-xs text-muted-foreground line-clamp-2">{card.description}</p>
+      ) : null}
+      {tryRun.error ? (
+        <p className="mt-1 text-[11px] text-red-500">
+          {tryRun.error instanceof Error ? tryRun.error.message : "Couldn't start the sandbox."}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * The Try button has no real input to operate on (chat queries are
+ * usually research-shaped, not action-shaped) — so we hand the
+ * sandbox a goal it can interpret as "explore this repo" and let it
+ * show what the repo does. The user can iterate inside the playground
+ * with a different goal if the first run doesn't fit.
+ */
+function defaultTryGoal(card: ChatRepoCard): string {
+  const head = `Show me what ${card.owner}/${card.name} does and how to use it.`;
+  if (!card.description) return head;
+  // Trim absurdly long descriptions so the goal stays readable in
+  // the container task title.
+  const desc = card.description.length > 160
+    ? card.description.slice(0, 157) + "…"
+    : card.description;
+  return `${head} Context: ${desc}`;
 }
 
 function OpenViewCta({ open_view }: { open_view: { path: string; label?: string } }) {

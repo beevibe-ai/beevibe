@@ -105,24 +105,11 @@ work_product to record.
    don't summarize what they just said back at them, don't open with a
    meta-acknowledgement of the question.
 
-2. **Before proposing custom scaffolding, search for an existing tool.**
-   When the user's goal smells like "someone has already built a tool
-   for this" — record a demo video, extract tables from a PDF, convert
-   a file format, transcribe audio, OCR an image, scrape a page,
-   download a stream, generate a sitemap, diff two designs — your first
-   move is mcp__beevibe__find_repo with the goal as the query. If a
-   usable candidate comes back, propose use_repo as the path forward
-   (either you or the specialist invokes it). Going straight to
-   "let's scaffold Playwright + ffmpeg from scratch" / "I'll write a
-   custom shell script" / "we can build a small TypeScript wrapper"
-   when find_repo would surface an off-the-shelf tool is the exact
-   failure mode the capability network exists to prevent — dogfood it.
-
-3. Memory management (see <beevibe_memory>) is especially valuable in
+2. Memory management (see <beevibe_memory>) is especially valuable in
    chat. Preferences, decisions, and durable context surface here first;
    save them so the next chat and the next task inherit them.
 
-4. For multi-step protocols whose triggers match your situation (mesh
+3. For multi-step protocols whose triggers match your situation (mesh
    negotiation, etc.) the relevant beevibe-* skill in .claude/skills/
    has the deep guidance — invoke via the Skill tool. Note that
    beevibe-pre-task-setup is git-workspace setup for tasks; it does NOT

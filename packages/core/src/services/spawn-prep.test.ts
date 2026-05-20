@@ -213,11 +213,15 @@ describe("composeSystemPromptAppend lifecycle branching", () => {
     expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT).not.toContain("find_subordinates");
   });
 
-  it("chat variant tells agents to call find_repo before scaffolding tool-shaped work", () => {
-    // Regression guard for the "team agent reinvents Playwright/ffmpeg
-    // instead of dogfooding the capability network" failure mode.
-    expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT).toContain("find_repo");
-    expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT.toLowerCase()).toContain("before proposing custom scaffolding");
+  it("chat variant does NOT carry a find_repo bias bullet — UI Try buttons drive that flow now", () => {
+    // Regression guard going the other direction: we used to nudge
+    // the agent in-prompt to "call find_repo before scaffolding," but
+    // agents drifted past it under context pressure. The capability
+    // network now drives use_repo via UI buttons on <repo_card>, not
+    // by asking the agent to remember. Keeping the bullet out keeps
+    // the cache prefix lean.
+    expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT.toLowerCase()).not.toContain("before proposing custom scaffolding");
+    expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT).not.toContain("find_repo");
   });
 
   it("chat directives document the <repo_card> tag for find_repo results", () => {

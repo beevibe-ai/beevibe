@@ -1,10 +1,32 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, CheckCircle, Clock, Loader2, XCircle } from "lucide-react";
+import { useRouter } from "next/navigation";
+import {
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle,
+  Clock,
+  ExternalLink,
+  Loader2,
+  RotateCw,
+  Sparkles,
+  XCircle,
+} from "lucide-react";
 import Link from "next/link";
 import { api, type RepoRun } from "@/lib/api/client";
 
+/**
+ * Playground for a repo_run. Two roles in one page:
+ *   1. Watch the live transcript of a use_repo sandbox run.
+ *   2. After it settles, let the user iterate — a textarea + button that
+ *      starts a NEW use_repo on the same repo with a different goal.
+ *
+ * The chat-side "Try" button on a <repo_card> deep-links here. Users
+ * never have to remember sandbox URLs or repo metadata — the page owns
+ * both the watch and the iterate loop.
+ */
 export function RunDetailClient({ id }: { id: string }) {
   const qc = useQueryClient();
   const { data, isLoading } = useQuery({
@@ -21,6 +43,12 @@ export function RunDetailClient({ id }: { id: string }) {
   });
 
   const run = data?.run;
+  const isSettled =
+    run &&
+    (run.status === "succeeded" ||
+      run.status === "failed" ||
+      run.status === "cancelled" ||
+      run.status === "blocked");
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
@@ -34,7 +62,10 @@ export function RunDetailClient({ id }: { id: string }) {
           Capabilities
         </Link>
         <span className="text-muted-foreground">/</span>
-        <span className="text-sm font-medium truncate">{run?.goal ?? "Run"}</span>
+        <span className="inline-flex items-center gap-1.5 text-sm font-medium">
+          <Sparkles className="h-3.5 w-3.5 text-amber-400" />
+          Playground
+        </span>
         {run && <StatusPill status={run.status} />}
         {(run?.status === "pending" || run?.status === "running") && (
           <button
@@ -60,68 +91,166 @@ export function RunDetailClient({ id }: { id: string }) {
       )}
 
       {run && (
-        <div className="flex-1 overflow-hidden flex flex-col md:flex-row gap-0">
-          {/* Transcript */}
-          <div className="flex-1 overflow-y-auto p-6 border-b md:border-b-0 md:border-r">
-            <h2 className="text-sm font-semibold text-muted-foreground mb-3">Live transcript</h2>
-            {run.transcript.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {run.status === "pending" ? "Waiting for daemon…" : "No transcript."}
-              </p>
-            ) : (
-              <div className="space-y-1 font-mono text-xs">
-                {run.transcript.map((ev, i) => (
-                  <TranscriptLine key={i} ev={ev} />
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Meta panel */}
-          <div className="w-full md:w-72 flex-shrink-0 p-6 space-y-4">
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Goal</p>
-              <p className="text-sm">{run.goal}</p>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Repo</p>
-              <a
-                href={run.repo_url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-blue-500 hover:underline break-all"
-              >
-                {run.repo_url}
-              </a>
-            </div>
-            {run.repo_ref && (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Pinned ref</p>
-                <p className="text-xs font-mono text-muted-foreground">{run.repo_ref.slice(0, 12)}</p>
-              </div>
-            )}
-            {run.error && (
-              <div>
-                <p className="text-xs font-medium text-red-500 uppercase tracking-wide mb-1">Error</p>
-                <p className="text-xs text-muted-foreground">{run.error}</p>
-              </div>
-            )}
-            {run.task_id && (
-              <div>
-                <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-1">Task</p>
-                <Link
-                  href={`/tasks?p=${run.task_id}`}
-                  className="text-sm text-blue-500 hover:underline"
-                >
-                  View artifacts →
-                </Link>
-              </div>
-            )}
+        <div className="flex-1 overflow-y-auto">
+          <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
+            <RepoHero run={run} />
+            <GoalBlock run={run} />
+            <TranscriptBlock run={run} />
+            {isSettled ? <IterateBlock run={run} /> : null}
           </div>
         </div>
       )}
     </div>
   );
+}
+
+function RepoHero({ run }: { run: RepoRun }) {
+  const slug = run.repo_url.replace(/^https?:\/\/(?:www\.)?github\.com\//, "");
+  return (
+    <div className="flex items-center gap-3 flex-wrap">
+      <h1 className="text-lg font-semibold tracking-tight">{slug}</h1>
+      <a
+        href={run.repo_url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        github
+        <ExternalLink className="h-3 w-3" />
+      </a>
+      {run.repo_ref ? (
+        <span className="text-[11px] font-mono text-muted-foreground/80">
+          @ {run.repo_ref.slice(0, 12)}
+        </span>
+      ) : null}
+      {run.task_id ? (
+        <Link
+          href={`/tasks?p=${run.task_id}`}
+          className="ml-auto inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          View artifacts
+          <ArrowRight className="h-3 w-3" />
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
+function GoalBlock({ run }: { run: RepoRun }) {
+  return (
+    <div className="rounded-lg border border-border bg-card px-4 py-3">
+      <p className="text-[11px] uppercase tracking-wider text-muted-foreground mb-1">
+        Goal
+      </p>
+      <p className="text-sm text-foreground whitespace-pre-wrap">{run.goal}</p>
+      {run.error ? (
+        <p className="mt-2 text-xs text-red-500 whitespace-pre-wrap">{run.error}</p>
+      ) : null}
+    </div>
+  );
+}
+
+function TranscriptBlock({ run }: { run: RepoRun }) {
+  return (
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-border/60 flex items-center gap-2">
+        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          Live transcript
+        </p>
+        {(run.status === "pending" || run.status === "running") && (
+          <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />
+        )}
+      </div>
+      <div className="p-4">
+        {run.transcript.length === 0 ? (
+          <p className="text-xs text-muted-foreground">
+            {run.status === "pending" ? "Waiting for daemon…" : "No transcript."}
+          </p>
+        ) : (
+          <div className="space-y-1 font-mono text-xs">
+            {run.transcript.map((ev, i) => (
+              <TranscriptLine key={i} ev={ev} />
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Iterate panel — visible after the run settles. Lets the user fire
+ * another use_repo against the same repo without going back to chat
+ * to type "find me … again, then click Try." The new run gets its
+ * own /capabilities/runs/<id> page; we router.push there so the URL
+ * tracks the playground state.
+ */
+function IterateBlock({ run }: { run: RepoRun }) {
+  const router = useRouter();
+  const [goal, setGoal] = useState("");
+  const start = useMutation({
+    mutationFn: () =>
+      api.capabilities.use({
+        repo_url: run.repo_url,
+        goal: goal.trim(),
+      }),
+    onSuccess: (res) => {
+      router.push(res.watch_url);
+    },
+  });
+
+  const placeholder = examplePlaceholder(run);
+
+  return (
+    <div className="rounded-lg border border-border bg-card overflow-hidden">
+      <div className="px-4 py-2.5 border-b border-border/60 flex items-center gap-2">
+        <RotateCw className="h-3.5 w-3.5 text-muted-foreground" />
+        <p className="text-[11px] uppercase tracking-wider text-muted-foreground">
+          Try another goal
+        </p>
+      </div>
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!goal.trim() || start.isPending) return;
+          start.mutate();
+        }}
+        className="p-4 space-y-3"
+      >
+        <textarea
+          value={goal}
+          onChange={(e) => setGoal(e.target.value)}
+          rows={3}
+          placeholder={placeholder}
+          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-ring resize-none"
+        />
+        {start.error ? (
+          <p className="text-xs text-red-500">
+            {start.error instanceof Error ? start.error.message : "Couldn't start the sandbox."}
+          </p>
+        ) : null}
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] text-muted-foreground">
+            Same repo, new goal — spins up a fresh sandbox.
+          </p>
+          <button
+            type="submit"
+            disabled={!goal.trim() || start.isPending}
+            className="inline-flex items-center gap-1.5 rounded-md bg-foreground text-background px-3 py-1.5 text-xs font-medium hover:opacity-90 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            {start.isPending ? "Starting…" : "Run"}
+            {!start.isPending ? <ArrowRight className="h-3 w-3" /> : null}
+          </button>
+        </div>
+      </form>
+    </div>
+  );
+}
+
+/** Pick a sensible placeholder based on what we know about this repo. */
+function examplePlaceholder(run: RepoRun): string {
+  const slug = run.repo_url.replace(/^https?:\/\/(?:www\.)?github\.com\//, "");
+  return `e.g. "Extract the readme highlights from ${slug} and summarize the install steps"`;
 }
 
 function StatusPill({ status }: { status: RepoRun["status"] }) {
