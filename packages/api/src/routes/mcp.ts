@@ -15,6 +15,10 @@ import type {
   AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
+  EmbeddingService,
+  LearnedSkillRepository,
+  PersonRepository,
+  RepoRunRepository,
   SessionRepository,
   TaskRepository,
   WorkProductRepository,
@@ -49,6 +53,14 @@ export interface McpRouterDeps {
   mesh: MeshServer;
   pool: Pool;
   makeMemoryAgent: (agentId: string) => MemoryAgent;
+  /** Capability Network: backs the use_repo MCP tool. */
+  repoRunRepo: RepoRunRepository;
+  /** Capability Network: backs find_repo's learned-skill tier. */
+  learnedSkillRepo: LearnedSkillRepository;
+  /** Capability Network: powers find_repo's semantic relevance gate. */
+  embeddings: EmbeddingService;
+  /** Used to read the caller's owner's capability_network_enabled flag. */
+  personRepo: PersonRepository;
 }
 
 /** Tracked per-MCP-session state. mcpSid ↔ transport + server. */
@@ -233,8 +245,26 @@ async function handleMcpRequest(
   } catch (err) {
     console.warn(`[mcp] failed to load session ${beevibeSid} for spawn_mode:`, err);
   }
+
+  // Resolve capability_network_enabled from the owner. Default-ON when
+  // the lookup fails so a transient DB blip doesn't lock out the
+  // feature for everyone.
+  let capabilityNetworkEnabled = true;
+  try {
+    const ownerId =
+      caller.source === "human"
+        ? caller.personId
+        : (await deps.agentRepo.findById(caller.agentId))?.owner_id;
+    if (ownerId) {
+      const owner = await deps.personRepo.findById(ownerId);
+      if (owner) capabilityNetworkEnabled = owner.capability_network_enabled;
+    }
+  } catch (err) {
+    console.warn(`[mcp] failed to read owner preferences for ${caller.agentId}:`, err);
+  }
+
   const tools = assembleTools(
-    { caller, beevibeSid, spawnMode },
+    { caller, beevibeSid, spawnMode, capabilityNetworkEnabled },
     {
       factStore: deps.factStore,
       coreMemory: deps.coreMemory,
@@ -249,6 +279,9 @@ async function handleMcpRequest(
       mesh: deps.mesh,
       pool: deps.pool,
       memoryAgent,
+      repoRunRepo: deps.repoRunRepo,
+      learnedSkillRepo: deps.learnedSkillRepo,
+      embeddings: deps.embeddings,
     },
   );
 

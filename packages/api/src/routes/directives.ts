@@ -11,6 +11,12 @@
  *     Each becomes a clickable chip; click sends `prompt` (or `label`,
  *     or the inline text). Multiple per turn allowed.
  *
+ *   <repo_card repo_url="..." stars="..." language="..." source="..."
+ *              description="..." />
+ *     Rendered as a rich card (stars, language badge, source tier pill,
+ *     description). Use after find_repo results — one card per result
+ *     instead of a markdown bullet list, so users see stars at a glance.
+ *
  *   `task_*`, `agent_*`, `sess_*` ids inline in the visible text
  *     Hydrated as reference cards by the UI; collected as `view_refs`.
  */
@@ -18,6 +24,35 @@
 const ENTITY_ID_RE = /\b((?:task|agent|sess)_[A-Za-z0-9]{12})\b/g;
 const OPEN_VIEW_RE =
   /<open_view\s+path="([^"]+)"(?:\s+label="([^"]+)")?\s*\/?>(?:\s*<\/open_view>)?/i;
+// Tolerates any attribute order, self-closing or paired-with-inline-text.
+// Group 1 = attributes; group 2 = inline body (used as description when
+// the description="" attribute is absent).
+const REPO_CARD_RE =
+  /<repo_card\b([^>]*)>(?:([\s\S]*?)<\/repo_card>)?/gi;
+const ATTR_REPO_URL_RE = /\brepo_url\s*=\s*"([^"]*)"/i;
+const ATTR_STARS_RE = /\bstars\s*=\s*"([^"]*)"/i;
+const ATTR_LANGUAGE_RE = /\blanguage\s*=\s*"([^"]*)"/i;
+const ATTR_SOURCE_RE = /\bsource\s*=\s*"([^"]*)"/i;
+const ATTR_DESCRIPTION_RE = /\bdescription\s*=\s*"([^"]*)"/i;
+const VALID_REPO_SOURCES = new Set(["learned", "trending", "community", "github"]);
+
+/**
+ * Bare GitHub URL pattern. We auto-promote any GitHub repo URL in the
+ * agent's visible text into a repo_card, so the user gets a Try button
+ * even when the agent emits markdown links instead of <repo_card> tags.
+ * Stops at the second path segment so `/owner/repo/blob/...` collapses
+ * to the repo root.
+ */
+const BARE_GITHUB_URL_RE =
+  /https:\/\/github\.com\/([A-Za-z0-9][A-Za-z0-9._-]*)\/([A-Za-z0-9][A-Za-z0-9._-]*)(?=[/\s)"',<>]|$)/g;
+
+/** github.com paths that aren't repos. */
+const NON_REPO_OWNERS = new Set([
+  "orgs", "settings", "marketplace", "topics", "trending", "features",
+  "pricing", "search", "notifications", "issues", "pulls", "explore",
+  "about", "contact", "site", "security", "login", "signup", "logout",
+  "new",
+]);
 
 /**
  * Paths the chat UI knows how to navigate to. The system prompt names
@@ -65,6 +100,22 @@ export interface OpenView {
   label?: string;
 }
 
+export interface RepoCard {
+  /** Canonical https://github.com/owner/name. */
+  repo_url: string;
+  /** Owner/name parsed out of repo_url; convenience for the renderer. */
+  owner: string;
+  name: string;
+  /** Stars (lifetime, from GitHub search) when the agent knew it. */
+  stars?: number;
+  /** Primary language label when known. */
+  language?: string;
+  /** Source tier — one of learned / trending / community / github. */
+  source?: "learned" | "trending" | "community" | "github";
+  /** Short description string for the card body. */
+  description?: string;
+}
+
 export interface ProcessedResponse {
   /** Directive-stripped, ready for markdown render. */
   visible: string;
@@ -72,6 +123,7 @@ export interface ProcessedResponse {
   view_refs: string[];
   open_view?: OpenView;
   suggested_actions?: SuggestedAction[];
+  repo_cards?: RepoCard[];
 }
 
 export function processResponse(raw: string): ProcessedResponse {
@@ -101,10 +153,66 @@ export function processResponse(raw: string): ProcessedResponse {
   }
   const suggested_actions = suggestedActions.length > 0 ? suggestedActions : undefined;
 
+  const repoCards: RepoCard[] = [];
+  const seenRepoUrls = new Set<string>();
+  for (const m of raw.matchAll(REPO_CARD_RE)) {
+    const attrs = m[1] ?? "";
+    const inline = m[2]?.trim();
+    const repoUrl = attrs.match(ATTR_REPO_URL_RE)?.[1]?.trim();
+    if (!repoUrl) continue;
+    const parsed = parseRepoUrl(repoUrl);
+    if (!parsed) continue;
+    if (seenRepoUrls.has(parsed.canonical)) continue;
+    seenRepoUrls.add(parsed.canonical);
+    const starsRaw = attrs.match(ATTR_STARS_RE)?.[1]?.trim();
+    const language = attrs.match(ATTR_LANGUAGE_RE)?.[1]?.trim();
+    const sourceRaw = attrs.match(ATTR_SOURCE_RE)?.[1]?.trim().toLowerCase();
+    const descAttr = attrs.match(ATTR_DESCRIPTION_RE)?.[1]?.trim();
+    const description = descAttr || inline || undefined;
+    const stars = starsRaw ? Number(starsRaw.replace(/[^\d]/g, "")) : undefined;
+    const source =
+      sourceRaw && VALID_REPO_SOURCES.has(sourceRaw)
+        ? (sourceRaw as RepoCard["source"])
+        : undefined;
+    repoCards.push({
+      repo_url: parsed.canonical,
+      owner: parsed.owner,
+      name: parsed.name,
+      ...(Number.isFinite(stars) && stars! >= 0 ? { stars } : {}),
+      ...(language ? { language } : {}),
+      ...(source ? { source } : {}),
+      ...(description ? { description } : {}),
+    });
+  }
   let visible = raw;
   if (openMatch) visible = visible.replace(OPEN_VIEW_RE, "");
   if (suggested_actions) visible = visible.replace(SUGGEST_ACTION_RE, "");
+  if (repoCards.length > 0) visible = visible.replace(REPO_CARD_RE, "");
   visible = visible.trim();
+
+  // Auto-promote bare github URLs so Try works when agents skip
+  // <repo_card>. URLs stay in `visible` for the markdown renderer.
+  BARE_GITHUB_URL_RE.lastIndex = 0;
+  let urlMatch: RegExpExecArray | null;
+  while ((urlMatch = BARE_GITHUB_URL_RE.exec(visible)) !== null) {
+    const owner = urlMatch[1];
+    const nameRaw = urlMatch[2];
+    if (!owner || !nameRaw) continue;
+    if (NON_REPO_OWNERS.has(owner.toLowerCase())) continue;
+    // Strip trailing periods so sentence punctuation doesn't leak in.
+    const name = nameRaw.replace(/\.git$/i, "").replace(/\.+$/, "");
+    if (!name) continue;
+    const canonical = `https://github.com/${owner}/${name}`;
+    if (seenRepoUrls.has(canonical)) continue;
+    seenRepoUrls.add(canonical);
+    repoCards.push({
+      repo_url: canonical,
+      owner,
+      name,
+    });
+  }
+
+  const repo_cards = repoCards.length > 0 ? repoCards : undefined;
 
   const seen = new Set<string>();
   const view_refs: string[] = [];
@@ -121,5 +229,32 @@ export function processResponse(raw: string): ProcessedResponse {
     view_refs,
     ...(open_view ? { open_view } : {}),
     ...(suggested_actions ? { suggested_actions } : {}),
+    ...(repo_cards ? { repo_cards } : {}),
   };
+}
+
+/**
+ * Extract owner/name from a GitHub URL and return a canonical
+ * `https://github.com/<owner>/<name>` (no trailing path, no .git, lowercased
+ * host). Returns undefined for anything that isn't a valid repo URL — the
+ * caller drops the card so a malformed tag can't render an empty UI row.
+ */
+function parseRepoUrl(
+  raw: string,
+): { owner: string; name: string; canonical: string } | undefined {
+  try {
+    const u = new URL(raw);
+    if (u.protocol !== "https:") return undefined;
+    if (!/^(www\.)?github\.com$/i.test(u.hostname)) return undefined;
+    const parts = u.pathname.split("/").filter(Boolean);
+    if (parts.length < 2) return undefined;
+    const owner = parts[0]!;
+    const nameRaw = parts[1]!;
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(owner)) return undefined;
+    if (!/^[A-Za-z0-9][A-Za-z0-9._-]*$/.test(nameRaw)) return undefined;
+    const name = nameRaw.replace(/\.git$/i, "");
+    return { owner, name, canonical: `https://github.com/${owner}/${name}` };
+  } catch {
+    return undefined;
+  }
 }

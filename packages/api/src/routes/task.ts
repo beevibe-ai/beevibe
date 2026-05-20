@@ -22,12 +22,17 @@ import {
   TASK_PRIORITIES,
   isInFlightSessionStatus,
   taskId,
+  type RepoRunRepository,
   type RuntimeRepository,
   type SessionRepository,
+  type SkillOutcomeRepository,
+  type SkillOutcomeValue,
   type TaskRepository,
   type TaskPriority,
   type TaskStatus,
+  type WorkProductRepository,
 } from "@beevibe/core";
+import { newSkillOutcomeId } from "@beevibe/core/adapters/postgres";
 import {
   type TaskService,
   InvalidTaskTransitionError,
@@ -65,6 +70,48 @@ export interface TaskRoutesDeps {
   hub: DaemonHub;
   /** For pg_notify('cancel_task', task_id) — server-fallback path only. */
   pool: Pool;
+  /**
+   * Capability Network: optional — when present, capability outcomes are
+   * recorded after approve/reject/revise so the discovery ranker stays
+   * accurate. Omitting them (e.g. in tests) disables outcome recording.
+   */
+  workProductRepo?: WorkProductRepository;
+  repoRunRepo?: RepoRunRepository;
+  skillOutcomeRepo?: SkillOutcomeRepository;
+}
+
+/**
+ * Fire-and-forget helper: find any capability artifacts on the task
+ * whose source learned_skill has an id, then record the outcome.
+ */
+async function recordCapabilityOutcome(
+  taskId: string,
+  outcome: SkillOutcomeValue,
+  reviewerId: string,
+  deps: Pick<TaskRoutesDeps, "workProductRepo" | "repoRunRepo" | "skillOutcomeRepo">,
+): Promise<void> {
+  if (!deps.workProductRepo || !deps.repoRunRepo || !deps.skillOutcomeRepo) return;
+  try {
+    const wps = await deps.workProductRepo.listByTask(taskId);
+    for (const wp of wps) {
+      if (wp.type !== "artifact") continue;
+      const repoRunId = (wp.metadata as Record<string, unknown> | undefined)?.repo_run_id;
+      if (typeof repoRunId !== "string") continue;
+      const run = await deps.repoRunRepo.findById(repoRunId);
+      if (!run?.learned_skill_id) continue;
+      await deps.skillOutcomeRepo.upsert({
+        id: newSkillOutcomeId(),
+        learned_skill_id: run.learned_skill_id,
+        repo_run_id: run.id,
+        work_product_id: wp.id,
+        outcome,
+        reviewer_id: reviewerId,
+      });
+    }
+  } catch (err) {
+    // Outcome recording is best-effort — don't fail the review action.
+    console.warn("[task route] capability outcome recording failed:", err instanceof Error ? err.message : String(err));
+  }
 }
 
 function handleServiceError(err: unknown, res: Response): void {
@@ -151,6 +198,7 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
           ? req.body.result_summary
           : undefined;
       const updated = await deps.taskService.approveTask(id, summary);
+      void recordCapabilityOutcome(id, "approved", req.caller!.personId, deps);
       res.json({ ok: true, task: { id: updated.id, status: updated.status } });
     } catch (err) {
       handleServiceError(err, res);
@@ -171,6 +219,7 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
           ? req.body.result_summary
           : undefined;
       const updated = await deps.taskService.rejectTask(id, summary);
+      void recordCapabilityOutcome(id, "rejected", req.caller!.personId, deps);
       res.json({ ok: true, task: { id: updated.id, status: updated.status } });
     } catch (err) {
       handleServiceError(err, res);
@@ -197,6 +246,7 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
       const updated = await deps.taskService.reviseTask(id, feedback, {
         source: "human",
       });
+      void recordCapabilityOutcome(id, "revised", req.caller!.personId, deps);
 
       // Mirror the parent_agent revise_task MCP tool path
       // (hierarchy.ts:824-840): reviseTask just stamps the task with

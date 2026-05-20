@@ -40,7 +40,7 @@ import { requireHuman } from "../auth/middleware.js";
 import type { ChatResolver } from "../runtime/chat-resolver.js";
 import type { DaemonHub } from "../runtime/hub.js";
 import { ChatRateLimiter } from "./chat-rate-limit.js";
-import { processResponse, type SuggestedAction } from "./directives.js";
+import { processResponse, type RepoCard, type SuggestedAction } from "./directives.js";
 
 export interface ChatRoutesDeps {
   authMiddleware: RequestHandler;
@@ -76,6 +76,7 @@ interface HistoryMessage {
   view_refs?: string[];
   open_view?: { path: string; label?: string };
   suggested_actions?: SuggestedAction[];
+  repo_cards?: RepoCard[];
 }
 
 // Generic 500 — internal error text stays in server logs, indexed by
@@ -252,7 +253,8 @@ function chainToMessages(chain: ConversationChain): HistoryMessage[] {
     }
     const summary = s.result_summary ?? "";
     if (summary) {
-      const { visible, view_refs, open_view, suggested_actions } = processResponse(summary);
+      const { visible, view_refs, open_view, suggested_actions, repo_cards } =
+        processResponse(summary);
       messages.push({
         id: `a_${s.id}`,
         role: "agent",
@@ -261,6 +263,7 @@ function chainToMessages(chain: ConversationChain): HistoryMessage[] {
         ...(view_refs.length > 0 ? { view_refs } : {}),
         ...(open_view ? { open_view } : {}),
         ...(suggested_actions ? { suggested_actions } : {}),
+        ...(repo_cards ? { repo_cards } : {}),
       });
     }
   }
@@ -324,7 +327,7 @@ function toChatTurnResponse(
   agent: ChatTurnAgent,
   opts: { replayed?: boolean } = {},
 ): Record<string, unknown> {
-  const { visible, view_refs, open_view, suggested_actions } = processResponse(
+  const { visible, view_refs, open_view, suggested_actions, repo_cards } = processResponse(
     session.result_summary ?? "",
   );
   // Failed turns get the same friendlier-than-"CLI exited with code 1"
@@ -340,6 +343,7 @@ function toChatTurnResponse(
     view_refs,
     ...(open_view ? { open_view } : {}),
     ...(suggested_actions ? { suggested_actions } : {}),
+    ...(repo_cards ? { repo_cards } : {}),
     ...(opts.replayed ? { replayed: true } : {}),
   };
 }

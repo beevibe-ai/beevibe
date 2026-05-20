@@ -1,4 +1,4 @@
-export type SessionType = "task" | "mesh_ask" | "mesh_negotiate" | "blocker" | "chat";
+export type SessionType = "task" | "mesh_ask" | "mesh_negotiate" | "blocker" | "chat" | "run_repo";
 
 export const SESSION_TYPES: readonly SessionType[] = [
   "task",
@@ -6,6 +6,7 @@ export const SESSION_TYPES: readonly SessionType[] = [
   "mesh_negotiate",
   "blocker",
   "chat",
+  "run_repo",
 ] as const;
 
 export type SessionStatus =

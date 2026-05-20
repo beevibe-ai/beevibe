@@ -39,7 +39,7 @@ export interface ToolDisplay {
 const MCP_PREFIX_RE = /^mcp__[^_]+__/;
 const TASK_ID_RE = /\btask_[A-Za-z0-9_-]+\b/g;
 
-function normalizeToolName(toolName: string | undefined): string {
+export function normalizeToolName(toolName: string | undefined): string {
   return (toolName ?? "").trim().replace(MCP_PREFIX_RE, "");
 }
 

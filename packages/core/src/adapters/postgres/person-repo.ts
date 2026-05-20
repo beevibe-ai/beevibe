@@ -63,6 +63,7 @@ export class PostgresPersonRepository implements PersonRepository {
       api_key: "api_key",
       password_hash: "password_hash",
       onboarding_completed_at: "onboarding_completed_at",
+      capability_network_enabled: "capability_network_enabled",
     });
 
     if (clause.fields.length === 0) {
@@ -94,6 +95,7 @@ function rowToPerson(row: PersonRow): Person {
     api_key: row.api_key ?? undefined,
     password_hash: row.password_hash ?? undefined,
     onboarding_completed_at: row.onboarding_completed_at ?? undefined,
+    capability_network_enabled: row.capability_network_enabled,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };

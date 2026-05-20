@@ -23,6 +23,7 @@ import type {
 } from "@beevibe/core";
 import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
+import { runRepoDispatch } from "./repo-runs.js";
 
 export interface DispatchPayload {
   session_id: string;
@@ -36,8 +37,39 @@ export interface DispatchPayload {
   model?: string;
   max_turns?: number;
   env: Record<string, string>;
-  type: "task" | "mesh_ask" | "mesh_negotiate" | "blocker" | "chat";
+  type: "task" | "mesh_ask" | "mesh_negotiate" | "blocker" | "chat" | "run_repo";
   mcp_server_url: string;
+  /**
+   * Set when type === 'run_repo'. The spawner branches into the
+   * Docker-sandbox orchestrator instead of the CLI runtime path.
+   * Capability Network (#149).
+   */
+  run_repo?: RunRepoDispatch;
+}
+
+export interface RunRepoDispatch {
+  /** Pre-created repo_run row id the daemon reports back against. */
+  repo_run_id: string;
+  /** GitHub repo the child agent should borrow. */
+  repo_url: string;
+  /** What the child agent is being asked to do, in plain language. */
+  goal: string;
+  /** Optional input file to pre-stage into the sandbox before the agent starts. */
+  input_url?: string;
+  input_filename?: string;
+  limits?: {
+    wall_clock_minutes?: number;
+    max_install_attempts?: number;
+    disk_mb?: number;
+  };
+}
+
+export interface RunRepoArtifact {
+  filename: string;
+  title: string;
+  size_bytes: number;
+  host_path: string;
+  sandbox_path?: string;
 }
 
 export interface SpawnDeps {
@@ -58,6 +90,15 @@ export async function runDispatch(
   payload: DispatchPayload,
   abortSignal?: AbortSignal,
 ): Promise<void> {
+  // Capability Network: run_repo dispatches skip the CLI runtime path
+  // entirely and hand off to the sandbox orchestrator. No workspace
+  // sync needed — the child agent runs inside Docker, not the user's
+  // local workspace.
+  if (payload.type === "run_repo") {
+    await runRepoDispatch({ api: deps.api }, payload, abortSignal);
+    return;
+  }
+
   // LocalWorkspaceManager.ensureWorkspace takes an Agent shape. Build the
   // minimal subset its read paths need (id, api_key, hierarchy_level,
   // runtime_config.type) — the rest is unused server-side too.

@@ -24,3 +24,6 @@ export const runtimeId = (): string => generateId("rt");
 export const roomId = (): string => generateId("room");
 export const roomMessageId = (): string => generateId("rmsg");
 export const agentProvisionEventId = (): string => generateId("ape");
+export const repoRunId = (): string => generateId("repo");
+export const learnedSkillId = (): string => generateId("skill");
+export const skillOutcomeId = (): string => generateId("sout");

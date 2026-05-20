@@ -45,6 +45,7 @@ import { requireHuman } from "../auth/middleware.js";
 import {
   processResponse,
   type OpenView,
+  type RepoCard,
   type SuggestedAction,
 } from "./directives.js";
 
@@ -141,6 +142,7 @@ interface MessageReply {
   view_refs?: string[];
   open_view?: OpenView;
   suggested_actions?: SuggestedAction[];
+  repo_cards?: RepoCard[];
   created_at: string;
 }
 
@@ -162,6 +164,7 @@ function toMessageReply(m: RoomMessage): MessageReply {
       ...(parsed.view_refs.length > 0 ? { view_refs: parsed.view_refs } : {}),
       ...(parsed.open_view ? { open_view: parsed.open_view } : {}),
       ...(parsed.suggested_actions ? { suggested_actions: parsed.suggested_actions } : {}),
+      ...(parsed.repo_cards ? { repo_cards: parsed.repo_cards } : {}),
       created_at: m.created_at.toISOString(),
     };
   }

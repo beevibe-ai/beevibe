@@ -6,6 +6,7 @@ import {
   api,
   type ChatHistoryMessage,
   type ChatHistoryResponse,
+  type ChatRepoCard,
   type ChatTurnResponse,
   type SuggestedAction,
 } from "@/lib/api/client";
@@ -26,6 +27,8 @@ export interface ChatMessage {
   open_view?: { path: string; label?: string };
   /** Resolved `<suggest_action>` chips — chip shows label, clicking sends prompt (or label). */
   suggested_actions?: SuggestedAction[];
+  /** Resolved `<repo_card>` directives — rendered as a structured repo list. */
+  repo_cards?: ChatRepoCard[];
 }
 
 let nextLocalId = 0;
@@ -50,6 +53,7 @@ function fromHistory(m: ChatHistoryMessage): ChatMessage {
     ...(m.view_refs ? { view_refs: m.view_refs } : {}),
     ...(m.open_view ? { open_view: m.open_view } : {}),
     ...(m.suggested_actions ? { suggested_actions: m.suggested_actions } : {}),
+    ...(m.repo_cards ? { repo_cards: m.repo_cards } : {}),
   };
 }
 
@@ -192,6 +196,7 @@ export function useChat(opts: UseChatOptions = {}) {
           ...(data.view_refs ? { view_refs: data.view_refs } : {}),
           ...(data.open_view ? { open_view: data.open_view } : {}),
           ...(data.suggested_actions ? { suggested_actions: data.suggested_actions } : {}),
+          ...(data.repo_cards ? { repo_cards: data.repo_cards } : {}),
         };
         return {
           ...base,

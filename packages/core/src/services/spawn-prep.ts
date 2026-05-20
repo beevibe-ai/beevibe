@@ -70,6 +70,14 @@ behavioral rules for every task session:
 5. For multi-step protocols (mesh negotiation, git workspace setup), the
    relevant beevibe-* skill in .claude/skills/ has the deep guidance —
    invoke via Skill tool when their description matches your situation.
+
+6. Before reporting a "tool not installed" blocker, check the
+   mcp__beevibe__use_repo and mcp__beevibe__find_repo tools. They run an
+   external GitHub repo inside a fresh Docker sandbox — the host
+   filesystem is never touched, so sandboxed installs do NOT violate any
+   "no auto-install" rule. Use this path for missing CLIs (yt-dlp,
+   ffmpeg, obscure Python libs) instead of blocking on the user to
+   brew/apt/pip-install them.
 </beevibe_lifecycle>`;
 
 /**
@@ -294,7 +302,28 @@ directives the UI understands:
    text. Use this sparingly — only when the user's intent is clearly
    navigational, not for every mention.
 
-3. **When you offer the user concrete next steps** (typically 2–4
+3. **When you list repositories** (e.g. after a find_repo call), emit
+   one \`<repo_card>\` directive per repo INSTEAD of a markdown bullet
+   list. The UI renders each as a structured row with stars, language,
+   and a source-tier badge — much easier to scan than text links:
+
+   \`<repo_card repo_url="https://github.com/owner/name" stars="42500" language="Python" source="trending" description="Short one-line description." />\`
+
+   Attributes:
+   - \`repo_url\` (required): canonical \`https://github.com/<owner>/<name>\`.
+   - \`stars\` (optional): integer; commas tolerated.
+   - \`language\` (optional): primary language label.
+   - \`source\` (optional): one of \`learned\`, \`trending\`, \`community\`,
+     \`github\` — matches the find_repo tier the candidate came from. The
+     UI uses this to color the badge.
+   - \`description\` (optional): one short sentence. Inline body works too
+     (\`<repo_card ...>desc here</repo_card>\`).
+
+   Keep the description ≤ 1 sentence; the card is for scannability, not
+   prose. If you have section headers (e.g. "GEO" vs "SEO"), write the
+   header as normal markdown text BETWEEN groups of \`<repo_card>\` tags.
+
+4. **When you offer the user concrete next steps** (typically 2–4
    focused options at the end of a turn), append one
    \`<suggest_action>\` directive per option on its own line:
 
@@ -308,6 +337,26 @@ directives the UI understands:
 
    Keep \`label\` short (under ~80 chars). Skip the chips entirely
    when there's nothing concrete to choose.
+
+   **Critical: the chat UI has NO "question prompt" or "dismiss"
+   concept.** Chips are simple message quick-replies, not modal
+   prompts. There is no dismissable UI element anywhere in this
+   surface. You will NEVER receive a "chip dismissed" / "prompt
+   dismissed" / "user ignored the question" event because none of
+   those exist. The following phrases are BANNED in your output:
+   - "the prompt was dismissed"
+   - "the question prompt got dismissed"
+   - "the prompt seems to have been dismissed"
+   - "looks like X got dismissed"
+   - "let me just propose a sensible default and let you redirect"
+     (this phrasing is a tell for the same hallucination)
+
+   These describe UI state you do not have access to. They are pure
+   fabrication and they confuse the user. If the user's previous
+   message left genuine ambiguity, ask directly with one specific
+   clarifying question. Otherwise, proceed with the most concrete
+   move and let the chips offer alternatives. After emitting chips,
+   END YOUR TURN — wait for the user's actual next message.
 </chat_directives>`;
 
 /**

@@ -94,6 +94,30 @@ export interface DispatchPayload {
   type: SessionType;
   /** /mcp endpoint daemon writes into mcp-config.json. */
   mcp_server_url: string;
+  /**
+   * Set when type === 'run_repo'. Tells the daemon to skip the normal
+   * CLI runtime path and invoke @beevibe/sandbox's runRepoAgent inside
+   * Docker. Capability Network (#149).
+   */
+  run_repo?: RunRepoDispatch;
+}
+
+export interface RunRepoDispatch {
+  /** Pre-created repo_run row id; daemon reports back against it. */
+  repo_run_id: string;
+  /** GitHub repo the child agent should borrow. */
+  repo_url: string;
+  /** What the child agent is being asked to do, in plain language. */
+  goal: string;
+  /** Optional input file to pre-stage into the sandbox before the agent starts. */
+  input_url?: string;
+  input_filename?: string;
+  /** Hard caps on the run. Daemon defaults apply when omitted. */
+  limits?: {
+    wall_clock_minutes?: number;
+    max_install_attempts?: number;
+    disk_mb?: number;
+  };
 }
 
 /* ─── Skills sync ────────────────────────────────────────────────────── */
@@ -142,4 +166,37 @@ export interface RuntimeDoneRequest {
   exit_code?: number;
   error?: string;
   usage?: SessionUsage;
+  /**
+   * Capability Network: when the dispatch was a run_repo, the daemon
+   * reports the captured recipe + exported artifacts. The api creates
+   * work_product rows from these and updates the repo_run row.
+   */
+  run_repo?: RunRepoDoneReport;
+}
+
+export interface RunRepoArtifact {
+  /** Basename inside the daemon's sandbox artifact dir. */
+  filename: string;
+  /** Human-readable display title; falls back to filename. */
+  title: string;
+  size_bytes: number;
+  /** Absolute path on the daemon's filesystem; the api reads from here when serving the artifact. */
+  host_path: string;
+  /** Original path inside the sandbox before export. */
+  sandbox_path?: string;
+}
+
+export interface RunRepoDoneReport {
+  repo_run_id: string;
+  /** Resolved at clone time; pinned in any learned_skill captured from this run. */
+  repo_ref?: string;
+  /**
+   * Concatenated successful install commands the child agent ran (e.g.
+   * "pip install pdfplumber\n…"). Used as install_steps when the user
+   * saves the run as a learned skill.
+   */
+  install_log?: string;
+  /** Final command(s) that produced the artifact. Used as invocation in learned_skill. */
+  invocation?: string;
+  artifacts: RunRepoArtifact[];
 }
