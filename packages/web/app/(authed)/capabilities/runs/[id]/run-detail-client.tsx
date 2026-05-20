@@ -16,6 +16,19 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { api, type RepoRun } from "@/lib/api/client";
+import { DetailShell } from "@/components/detail/detail-shell";
+import { EmptyState } from "@/components/empty-state";
+import { Skeleton } from "@/components/skeleton";
+
+const CapabilitiesBackLink = () => (
+  <Link
+    href="/capabilities"
+    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-3"
+  >
+    <ArrowLeft className="h-3 w-3" />
+    Capabilities
+  </Link>
+);
 
 /**
  * Playground for a repo_run. Two roles in one page:
@@ -50,65 +63,64 @@ export function RunDetailClient({ id }: { id: string }) {
       run.status === "cancelled" ||
       run.status === "blocked");
 
+  if (isLoading) {
+    return (
+      <DetailShell nav={<CapabilitiesBackLink />}>
+        <Skeleton className="h-7 w-1/3 mb-2" />
+        <Skeleton className="h-4 w-1/4 mb-6" />
+        <Skeleton className="h-20 w-full rounded-lg mb-4" />
+        <Skeleton className="h-32 w-full rounded-lg" />
+      </DetailShell>
+    );
+  }
+
+  if (!run) {
+    return (
+      <DetailShell nav={<CapabilitiesBackLink />}>
+        <EmptyState
+          icon={Sparkles}
+          title="Run not found"
+          description={`Run ${id} couldn't be loaded. Check the daemon logs.`}
+        />
+      </DetailShell>
+    );
+  }
+
   return (
-    <div className="flex flex-col h-full overflow-hidden">
-      {/* Header */}
-      <div className="border-b px-6 py-4 flex items-center gap-3 flex-shrink-0">
-        <Link
-          href="/capabilities"
-          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Capabilities
-        </Link>
-        <span className="text-muted-foreground">/</span>
-        <span className="inline-flex items-center gap-1.5 text-sm font-medium">
+    <DetailShell nav={<CapabilitiesBackLink />}>
+      <header className="mb-6">
+        <div className="flex items-center gap-2 flex-wrap mb-1.5">
           <Sparkles className="h-3.5 w-3.5 text-amber-400" />
-          Playground
-        </span>
-        {run && <StatusPill status={run.status} />}
-        {(run?.status === "pending" || run?.status === "running") && (
-          <button
-            onClick={() => cancel.mutate()}
-            disabled={cancel.isPending}
-            className="ml-auto text-xs text-muted-foreground hover:text-red-500 transition-colors"
-          >
-            Cancel
-          </button>
-        )}
+          <span className="text-[11px] uppercase tracking-wider text-muted-foreground">Playground</span>
+          <StatusPill status={run.status} />
+          {(run.status === "pending" || run.status === "running") && (
+            <button
+              onClick={() => cancel.mutate()}
+              disabled={cancel.isPending}
+              className="ml-auto text-xs text-muted-foreground hover:text-red-500 transition-colors"
+            >
+              Cancel
+            </button>
+          )}
+        </div>
+        <RepoHero run={run} />
+      </header>
+      <div className="space-y-4">
+        <GoalBlock run={run} />
+        <TranscriptBlock run={run} />
+        {isSettled ? <IterateBlock run={run} /> : null}
       </div>
-
-      {isLoading && (
-        <div className="flex items-center justify-center flex-1">
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        </div>
-      )}
-
-      {!isLoading && !run && (
-        <div className="flex items-center justify-center flex-1 text-sm text-muted-foreground">
-          Run not found.
-        </div>
-      )}
-
-      {run && (
-        <div className="flex-1 overflow-y-auto">
-          <div className="max-w-5xl mx-auto px-6 py-6 space-y-6">
-            <RepoHero run={run} />
-            <GoalBlock run={run} />
-            <TranscriptBlock run={run} />
-            {isSettled ? <IterateBlock run={run} /> : null}
-          </div>
-        </div>
-      )}
-    </div>
+    </DetailShell>
   );
 }
 
 function RepoHero({ run }: { run: RepoRun }) {
   const slug = run.repo_url.replace(/^https?:\/\/(?:www\.)?github\.com\//, "");
   return (
-    <div className="flex items-center gap-3 flex-wrap">
-      <h1 className="text-lg font-semibold tracking-tight">{slug}</h1>
+    <div className="flex items-baseline gap-3 flex-wrap">
+      <h1 className="text-base font-semibold tracking-tight leading-tight">
+        {slug}
+      </h1>
       <a
         href={run.repo_url}
         target="_blank"
