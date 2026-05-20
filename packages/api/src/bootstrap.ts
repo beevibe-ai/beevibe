@@ -464,6 +464,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     authMiddleware: server.getAuthMiddleware(),
     learnedSkillRepo,
     repoRunRepo,
+    workProductRepo,
     repoRoot: process.cwd(),
   });
   server.getApp().use("/learned-skills", learnedSkillsRouter);

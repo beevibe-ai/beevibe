@@ -7,15 +7,19 @@
  *   POST   /learned-skills/:id/publish   file a PR to beevibe-capabilities
  */
 
-import { writeFile, mkdir } from "node:fs/promises";
+import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { Router, type RequestHandler } from "express";
 import {
   learnedSkillId as newLearnedSkillId,
   type LearnedSkillRepository,
+  type RepoRun,
   type RepoRunRepository,
+  type WorkProduct,
+  type WorkProductRepository,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 
@@ -25,6 +29,12 @@ export interface LearnedSkillsRouterDeps {
   authMiddleware: RequestHandler;
   learnedSkillRepo: LearnedSkillRepository;
   repoRunRepo: RepoRunRepository;
+  /**
+   * Used to find the run's exported artifact and inline its markdown
+   * as the SKILL.md body — the agent already wrote the skill content;
+   * we shouldn't throw it away and regenerate a template.
+   */
+  workProductRepo: WorkProductRepository;
   /**
    * Root directory of the beevibe repo checkout — skills/learned/
    * is written relative to this. Defaults to process.cwd().
@@ -103,10 +113,17 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
 
       // Write SKILL.md to skills/learned/<name>/SKILL.md so the
       // workspace sync picks it up for this instance's agents.
+      // Prefer the agent's exported artifact body as the SKILL content
+      // (that's the real skill knowledge — the structured doc the
+      // agent already wrote). Fall back to the generic template only
+      // when no artifact body is recoverable.
       try {
         const skillDir = join(repoRoot, "skills", "learned", body.name);
         await mkdir(skillDir, { recursive: true });
-        const md = generateSkillMd(skill.name, skill.goal_pattern, skill.repo_url, skill.repo_ref, skill.install_steps, skill.invocation);
+        const artifactBody = await tryFindArtifactBody(deps.workProductRepo, run);
+        const md = artifactBody
+          ? wrapArtifactAsSkillMd(skill.name, skill.goal_pattern, skill.repo_url, skill.repo_ref, artifactBody)
+          : generateSkillMd(skill.name, skill.goal_pattern, skill.repo_url, skill.repo_ref, skill.install_steps, skill.invocation);
         await writeFile(join(skillDir, "SKILL.md"), md, "utf8");
       } catch (writeErr) {
         // Non-fatal: the DB row is the source of truth; filesystem
@@ -237,6 +254,101 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
   });
 
   return router;
+}
+
+/**
+ * Look up the artifact work_product attached to a repo_run and return
+ * its body. Tries (in order): work_product.body, file:// url on disk,
+ * metadata.host_path on disk. Returns undefined when no artifact is
+ * reachable — the caller falls back to the generic SKILL.md template.
+ */
+async function tryFindArtifactBody(
+  workProductRepo: WorkProductRepository,
+  run: RepoRun,
+): Promise<string | undefined> {
+  if (!run.task_id) return undefined;
+  let items;
+  try {
+    items = await workProductRepo.listByTask(run.task_id);
+  } catch {
+    return undefined;
+  }
+  // Pick the artifact whose metadata.repo_run_id matches; falls back
+  // to the first `artifact`-typed product on the task.
+  const candidates = items.filter((wp) => wp.type === "artifact");
+  const ourRun = candidates.find(
+    (wp) => (wp.metadata as Record<string, unknown> | undefined)?.repo_run_id === run.id,
+  );
+  const chosen = ourRun ?? candidates[0];
+  if (!chosen) return undefined;
+
+  let full: WorkProduct | undefined;
+  try {
+    full = await workProductRepo.findById(chosen.id);
+  } catch {
+    return undefined;
+  }
+  if (!full) return undefined;
+  if (full.body && full.body.trim() !== "") return full.body;
+  if (full.url && full.url.startsWith("file://")) {
+    try {
+      return (await readFile(fileURLToPath(full.url))).toString("utf8");
+    } catch {
+      // fall through to host_path
+    }
+  }
+  const hp = (full.metadata as Record<string, unknown> | undefined)?.host_path;
+  if (typeof hp === "string" && hp !== "") {
+    try {
+      return (await readFile(hp)).toString("utf8");
+    } catch {
+      return undefined;
+    }
+  }
+  return undefined;
+}
+
+/**
+ * Wrap the agent's artifact body as a Claude Code skill: frontmatter
+ * on top, raw artifact body in the middle, provenance footer at the
+ * bottom. The artifact already has its own structure (H1, sections,
+ * tables) — we don't transform it, just attach the metadata Claude
+ * Code's skill-loader expects.
+ */
+function wrapArtifactAsSkillMd(
+  name: string,
+  goalPattern: string,
+  repoUrl: string,
+  repoRef: string,
+  artifactBody: string,
+): string {
+  // Indent goal_pattern continuation lines so the YAML folded scalar
+  // stays valid even when the pattern spans multiple lines.
+  const yamlGoal = goalPattern.split("\n").map((l) => "  " + l).join("\n");
+  const frontmatter = [
+    `---`,
+    `name: ${name}`,
+    `description: >`,
+    yamlGoal,
+    `source_repo: ${repoUrl}`,
+    `repo_ref: ${repoRef}`,
+    `captured_at: ${new Date().toISOString()}`,
+    `---`,
+    ``,
+  ].join("\n");
+  const footer = [
+    ``,
+    `---`,
+    ``,
+    `## Provenance`,
+    ``,
+    `Captured from a sandboxed \`use_repo\` run. Re-run with:`,
+    ``,
+    `\`\`\``,
+    `use_repo({ goal: "${goalPattern.replace(/"/g, '\\"').slice(0, 200)}", repo_url: "${repoUrl}" })`,
+    `\`\`\``,
+  ].join("\n");
+  return frontmatter + artifactBody.trim() + footer + "\n";
 }
 
 /** Generate the SKILL.md content for a learned skill. */
