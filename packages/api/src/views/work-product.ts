@@ -7,7 +7,7 @@
  * agent workspace), the file is read from disk inline.
  */
 
-import { readFile } from "node:fs/promises";
+import { readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { WorkProductType } from "@beevibe/core";
@@ -80,15 +80,27 @@ function truncateToMax(body: string | null | undefined): string | undefined {
   return buf.subarray(0, MAX_BODY_BYTES).toString("utf-8") + "\n\n[truncated]";
 }
 
-async function tryReadFileUrl(url: string): Promise<string | undefined> {
-  if (!url.startsWith("file://")) return undefined;
+/** Hard cap on artifact file size we'll buffer into memory. */
+const MAX_ARTIFACT_BYTES = 2 * 1024 * 1024;
+
+async function readBoundedFile(path: string): Promise<string | undefined> {
   try {
-    const path = fileURLToPath(url);
+    // stat first so a malicious or oversized artifact doesn't ballon
+    // Express memory; truncate the on-disk content rather than refusing.
+    const info = await stat(path);
     const buf = await readFile(path);
-    return truncateToMax(buf.toString("utf-8"));
+    const text = buf
+      .subarray(0, Math.min(info.size, MAX_ARTIFACT_BYTES))
+      .toString("utf-8");
+    return truncateToMax(text);
   } catch {
     return undefined;
   }
+}
+
+async function tryReadFileUrl(url: string): Promise<string | undefined> {
+  if (!url.startsWith("file://")) return undefined;
+  return readBoundedFile(fileURLToPath(url));
 }
 
 /**
@@ -103,12 +115,27 @@ async function tryReadHostPath(
   if (!metadata) return undefined;
   const hp = metadata.host_path;
   if (typeof hp !== "string" || hp === "") return undefined;
-  try {
-    const buf = await readFile(hp);
-    return truncateToMax(buf.toString("utf-8"));
-  } catch {
-    return undefined;
+  return readBoundedFile(hp);
+}
+
+/**
+ * Resolve an artifact work_product's body content. Single source of
+ * truth for `body → file://url → metadata.host_path` resolution —
+ * used by both `getWorkProduct` (work-product detail page) and the
+ * `learned-skills` SKILL.md writer.
+ */
+export async function readArtifactBody(wp: {
+  body?: string | null;
+  url?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): Promise<string | undefined> {
+  const direct = truncateToMax(wp.body);
+  if (direct) return direct;
+  if (wp.url && wp.url.startsWith("file://")) {
+    const fromUrl = await tryReadFileUrl(wp.url);
+    if (fromUrl) return fromUrl;
   }
+  return tryReadHostPath(wp.metadata ?? null);
 }
 
 export async function getWorkProduct(
@@ -120,10 +147,7 @@ export async function getWorkProduct(
   if (!row) return undefined;
   const url = row.url ?? undefined;
   const url_is_local = !!url && url.startsWith("file://");
-  const body =
-    truncateToMax(row.body) ??
-    (url_is_local ? await tryReadFileUrl(url!) : undefined) ??
-    (await tryReadHostPath(row.metadata));
+  const body = await readArtifactBody({ body: row.body, url, metadata: row.metadata });
 
   return {
     id: row.id,

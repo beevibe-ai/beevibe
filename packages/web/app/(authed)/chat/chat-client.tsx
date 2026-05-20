@@ -25,6 +25,7 @@ import { useMe } from "@/lib/hooks/use-me";
 import { useAgents } from "@/lib/hooks/use-agents";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
+import { defaultTryGoal, formatStars } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/avatar";
 import { ReferenceCards } from "@/components/chat/reference-cards";
@@ -524,11 +525,6 @@ const SOURCE_LABEL: Record<NonNullable<ChatRepoCard["source"]>, string> = {
   github: "GitHub",
 };
 
-function formatStars(stars: number): string {
-  if (stars >= 1000) return `${(stars / 1000).toFixed(stars >= 10000 ? 0 : 1)}k`;
-  return String(stars);
-}
-
 function RepoCards({ cards }: { cards: ChatRepoCard[] }) {
   return (
     <div className="mt-2 flex flex-col gap-1.5">
@@ -551,7 +547,11 @@ function RepoCardRow({ card }: { card: ChatRepoCard }) {
     mutationFn: () =>
       api.capabilities.use({
         repo_url: card.repo_url,
-        goal: defaultTryGoal(card),
+        goal: defaultTryGoal({
+          owner: card.owner,
+          name: card.name,
+          description: card.description,
+        }),
       }),
     onSuccess: (res) => setWatchUrl(res.watch_url),
   });
@@ -618,24 +618,6 @@ function RepoCardRow({ card }: { card: ChatRepoCard }) {
       ) : null}
     </div>
   );
-}
-
-/**
- * The Try button has no real input to operate on (chat queries are
- * usually research-shaped, not action-shaped) — so we hand the
- * sandbox a goal it can interpret as "explore this repo" and let it
- * show what the repo does. The user can iterate inside the playground
- * with a different goal if the first run doesn't fit.
- */
-function defaultTryGoal(card: ChatRepoCard): string {
-  const head = `Show me what ${card.owner}/${card.name} does and how to use it.`;
-  if (!card.description) return head;
-  // Trim absurdly long descriptions so the goal stays readable in
-  // the container task title.
-  const desc = card.description.length > 160
-    ? card.description.slice(0, 157) + "…"
-    : card.description;
-  return `${head} Context: ${desc}`;
 }
 
 function OpenViewCta({ open_view }: { open_view: { path: string; label?: string } }) {

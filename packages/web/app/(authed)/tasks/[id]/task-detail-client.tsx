@@ -31,6 +31,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { richTextToMarkdown } from "@/components/rich-text";
 import { formatRelativeTime, shortId } from "@/lib/format";
+import { slugify } from "@/lib/capabilities";
 import type { TaskDetail, TaskDetailSessionRow } from "@/lib/api/types";
 import type { ReferencedRepo } from "@/lib/api/client";
 import type { WorkProduct } from "@beevibe/core";
@@ -627,9 +628,6 @@ function WorkProductCard({ wp }: { wp: WorkProduct }) {
   );
 }
 
-function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 64);
-}
 
 function SaveAsCapabilityModal({
   repoRunId,

@@ -27,6 +27,7 @@ import {
 } from "@/lib/api/client";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
+import { cleanRepoDescription, defaultTryGoal, formatStars } from "@/lib/capabilities";
 import { RunCard } from "./run-card";
 
 type Tab = "yours" | "discover" | "activity";
@@ -412,43 +413,8 @@ function DiscoverTab() {
   );
 }
 
-/**
- * Build a default `use_repo` goal from a repo's metadata. Same shape
- * as the chat-side `defaultTryGoal()` — keeps Try behavior consistent
- * across surfaces. Used for one-click Try buttons on /capabilities.
- */
-function defaultTryGoal(opts: {
-  owner: string;
-  name: string;
-  description?: string | null;
-  goal_pattern?: string;
-}): string {
-  const head = `Show me what ${opts.owner}/${opts.name} does and how to use it.`;
-  // Learned skills already have a curated goal_pattern — prefer it.
-  if (opts.goal_pattern) return `${head} Match: ${opts.goal_pattern}`;
-  const desc = opts.description?.trim();
-  if (!desc) return head;
-  const trimmed = desc.length > 160 ? desc.slice(0, 157) + "…" : desc;
-  return `${head} Context: ${trimmed}`;
-}
-
 function TrendingRow({ repo }: { repo: TrendingRepo }) {
-  // Seed the chat draft so the user has a starting line they can edit.
-  //
-  // Trending descriptions are usually noun phrases ("A library to...",
-  // ":books: Free programming books", "🤖 Your AI assistant"), not
-  // verb phrases. So the previous "Use ${url} to ${description}"
-  // template produced grammatically broken sentences like
-  // "Use X to A single CLAUDE.md file...". The em-dash separator works
-  // regardless: "Try X — <description>" reads cleanly whether the
-  // description leads with a verb or a noun.
-  //
-  // We also strip leading emoji noise from the description so the line
-  // doesn't open with ":books:" / "🤖" / "🔥" / etc.
-  const cleanedDesc = repo.description
-    ?.replace(/^[\s\p{Extended_Pictographic}]+/u, "") // emoji + leading whitespace
-    .replace(/^:[a-z_]+:\s*/i, "") // gemoji shortcodes like `:books:`
-    .trim();
+  const cleanedDesc = cleanRepoDescription(repo.description);
   return (
     <TryRow
       avatarUrl={repo.repo_url}
@@ -561,11 +527,6 @@ function TryRow({
   );
 }
 
-function formatStars(n: number): string {
-  if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;
-  return `${n}`;
-}
-
 /* ─── Search results (unified across all 4 find_repo tiers) ─── */
 
 const SOURCE_STYLES: Record<FindRepoSource, { label: string; classes: string }> = {
@@ -652,10 +613,7 @@ function SearchResults({
 function CandidateRow({ candidate }: { candidate: FindRepoCandidate }) {
   const name = repoName(candidate.repo_url);
   const owner = candidate.repo_url.replace("https://github.com/", "").split("/")[0] ?? "";
-  const cleanedDesc = candidate.description
-    ?.replace(/^[\s\p{Extended_Pictographic}]+/u, "")
-    .replace(/^:[a-z_]+:\s*/i, "")
-    .trim();
+  const cleanedDesc = cleanRepoDescription(candidate.description);
   return (
     <TryRow
       avatarUrl={candidate.repo_url}

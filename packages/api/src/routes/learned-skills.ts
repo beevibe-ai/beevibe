@@ -7,9 +7,8 @@
  *   POST   /learned-skills/:id/publish   file a PR to beevibe-capabilities
  */
 
-import { readFile, writeFile, mkdir } from "node:fs/promises";
+import { writeFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 import { exec } from "node:child_process";
 import { promisify } from "node:util";
 import { Router, type RequestHandler } from "express";
@@ -18,10 +17,10 @@ import {
   type LearnedSkillRepository,
   type RepoRun,
   type RepoRunRepository,
-  type WorkProduct,
   type WorkProductRepository,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
+import { readArtifactBody } from "../views/work-product.js";
 
 const execAsync = promisify(exec);
 
@@ -111,12 +110,8 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
         owner_id: req.caller!.personId,
       });
 
-      // Write SKILL.md to skills/learned/<name>/SKILL.md so the
-      // workspace sync picks it up for this instance's agents.
-      // Prefer the agent's exported artifact body as the SKILL content
-      // (that's the real skill knowledge — the structured doc the
-      // agent already wrote). Fall back to the generic template only
-      // when no artifact body is recoverable.
+      // Prefer the agent's exported artifact as SKILL.md content; fall
+      // back to the generic template when no artifact body is reachable.
       try {
         const skillDir = join(repoRoot, "skills", "learned", body.name);
         await mkdir(skillDir, { recursive: true });
@@ -258,9 +253,8 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
 
 /**
  * Look up the artifact work_product attached to a repo_run and return
- * its body. Tries (in order): work_product.body, file:// url on disk,
- * metadata.host_path on disk. Returns undefined when no artifact is
- * reachable — the caller falls back to the generic SKILL.md template.
+ * its body. Returns undefined when no artifact is reachable — the
+ * caller falls back to the generic SKILL.md template.
  */
 async function tryFindArtifactBody(
   workProductRepo: WorkProductRepository,
@@ -273,39 +267,19 @@ async function tryFindArtifactBody(
   } catch {
     return undefined;
   }
-  // Pick the artifact whose metadata.repo_run_id matches; falls back
-  // to the first `artifact`-typed product on the task.
   const candidates = items.filter((wp) => wp.type === "artifact");
   const ourRun = candidates.find(
     (wp) => (wp.metadata as Record<string, unknown> | undefined)?.repo_run_id === run.id,
   );
   const chosen = ourRun ?? candidates[0];
   if (!chosen) return undefined;
-
-  let full: WorkProduct | undefined;
   try {
-    full = await workProductRepo.findById(chosen.id);
+    const full = await workProductRepo.findById(chosen.id);
+    if (!full) return undefined;
+    return readArtifactBody({ body: full.body, url: full.url, metadata: full.metadata });
   } catch {
     return undefined;
   }
-  if (!full) return undefined;
-  if (full.body && full.body.trim() !== "") return full.body;
-  if (full.url && full.url.startsWith("file://")) {
-    try {
-      return (await readFile(fileURLToPath(full.url))).toString("utf8");
-    } catch {
-      // fall through to host_path
-    }
-  }
-  const hp = (full.metadata as Record<string, unknown> | undefined)?.host_path;
-  if (typeof hp === "string" && hp !== "") {
-    try {
-      return (await readFile(hp)).toString("utf8");
-    } catch {
-      return undefined;
-    }
-  }
-  return undefined;
 }
 
 /**

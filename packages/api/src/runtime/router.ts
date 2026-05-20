@@ -328,10 +328,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
                 type: "artifact",
                 title: artifact.title,
                 summary: `${artifact.size_bytes} bytes · from ${updated.agent_id}`,
-                // file:// url so getWorkProduct.tryReadFileUrl inlines the
-                // bytes into `body`. Without this, the work-product page
-                // shows "5951 bytes" and nothing else — the user can't
-                // see what the agent actually produced.
+                // file:// triggers tryReadFileUrl inlining in getWorkProduct.
                 url: `file://${artifact.host_path}`,
                 metadata: {
                   repo_run_id: rr.repo_run_id,

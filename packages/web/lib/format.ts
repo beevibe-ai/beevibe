@@ -40,6 +40,11 @@ export function shortId(id: string): string {
   return `#${trimmed.slice(0, 6)}`;
 }
 
+/** Cap a string at `n` chars, adding an ellipsis suffix when truncated. */
+export function truncate(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
 /**
  * Session intents for task work are wrapped as `<task id="...">title\n\ndescription</task>`
  * (or self-closing `<task id="..."/>` for lifecycle reminders). Strip the

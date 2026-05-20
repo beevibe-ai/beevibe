@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
@@ -16,6 +16,9 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { api, type RepoRun } from "@/lib/api/client";
+import { truncate } from "@/lib/format";
+import { slugify } from "@/lib/capabilities";
+import { normalizeToolName } from "@/lib/tool-format";
 import { DetailShell } from "@/components/detail/detail-shell";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
@@ -167,10 +170,7 @@ function TranscriptBlock({ run }: { run: RepoRun }) {
   const scrollRef = useRef<HTMLDivElement | null>(null);
   const stickToBottomRef = useRef<boolean>(true);
 
-  // Pre-process raw transcript: collapse ToolSearch ceremony, drop
-  // empty tool results, drop "needs-auth" MCP noise. Keeps the live
-  // view focused on real work.
-  const cleaned = cleanTranscript(run.transcript);
+  const cleaned = useMemo(() => cleanTranscript(run.transcript), [run.transcript]);
   const cleanedLen = cleaned.length;
 
   // "Stick to bottom" UX: auto-scroll on new events, but only if the
@@ -484,7 +484,7 @@ function parseToolCall(text: string): ParsedToolCall {
   }
   const fullName = m[1] ?? "";
   const argsJson = m[2] ?? "";
-  const name = stripToolNamespace(fullName);
+  const name = normalizeToolName(fullName);
 
   let args: unknown;
   try {
@@ -591,18 +591,6 @@ function parseToolResult(body: string): ParsedToolResult {
     ...(durationSeconds !== undefined ? { durationSeconds } : {}),
     body: bodyText,
   };
-}
-
-/** Strip `mcp__<ns>__` prefix on tool names so they're scannable. */
-function stripToolNamespace(name: string): string {
-  // mcp__beevibe-sandbox__sandbox_exec → sandbox_exec
-  // ToolSearch → ToolSearch
-  const m = name.match(/^mcp__[^_]+__([\w-]+)/);
-  return m && m[1] ? m[1] : name;
-}
-
-function truncate(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
 /**
@@ -731,13 +719,8 @@ function RunOutro({ run }: { run: RepoRun }) {
   );
 }
 
-function slugify(s: string): string {
-  return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, "").slice(0, 64);
-}
-
 function defaultSkillName(repoUrl: string): string {
-  const slug = repoUrl.replace(/^https?:\/\/(?:www\.)?github\.com\//, "");
-  return slugify(slug);
+  return slugify(repoUrl.replace(/^https?:\/\/(?:www\.)?github\.com\//, ""));
 }
 
 /**
@@ -854,10 +837,6 @@ function SaveCapabilityModal({
     onSuccess: () => setDone(true),
   });
 
-  // Borders on the modal use border-border/40 instead of the default
-  // border token. The default reads as too-bright on top of the
-  // emerald outro panel + black backdrop; /40 keeps the visual weight
-  // anchored on the form fields and buttons, not the chrome.
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"

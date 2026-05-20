@@ -190,16 +190,8 @@ export function processResponse(raw: string): ProcessedResponse {
   if (repoCards.length > 0) visible = visible.replace(REPO_CARD_RE, "");
   visible = visible.trim();
 
-  // Auto-promote bare GitHub URLs in the visible text to repo cards.
-  // Agents drift from the <repo_card> directive under context pressure
-  // and emit markdown links instead. Rather than chase that with more
-  // prompt nudges, we make the UI affordance reachable regardless of
-  // the format the agent chose: every github.com/<owner>/<name> URL
-  // gets a Try button without the agent having to cooperate.
-  //
-  // Inline URLs stay in `visible` so the markdown renderer still shows
-  // the clickable link in prose — the card appears BELOW the bubble
-  // alongside any explicit <repo_card> entries.
+  // Auto-promote bare github URLs so Try works when agents skip
+  // <repo_card>. URLs stay in `visible` for the markdown renderer.
   BARE_GITHUB_URL_RE.lastIndex = 0;
   let urlMatch: RegExpExecArray | null;
   while ((urlMatch = BARE_GITHUB_URL_RE.exec(visible)) !== null) {
@@ -207,9 +199,7 @@ export function processResponse(raw: string): ProcessedResponse {
     const nameRaw = urlMatch[2];
     if (!owner || !nameRaw) continue;
     if (NON_REPO_OWNERS.has(owner.toLowerCase())) continue;
-    // Greedy `[A-Za-z0-9._-]*` swallows the trailing period from
-    // "see https://github.com/foo/bar." — strip it so the canonical
-    // URL matches the explicit-tag form. No real repo ends in `.`.
+    // Strip trailing periods so sentence punctuation doesn't leak in.
     const name = nameRaw.replace(/\.git$/i, "").replace(/\.+$/, "");
     if (!name) continue;
     const canonical = `https://github.com/${owner}/${name}`;
