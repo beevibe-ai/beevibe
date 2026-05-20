@@ -8,10 +8,6 @@ import type {
   Workspace,
   WorkspaceManager,
 } from "@beevibe/core";
-// Re-export so existing scheduler consumers keep working; the canonical
-// definition now lives in domain/agent.ts so the SQL claim gates can
-// reference the same value.
-export { DEFAULT_TASK_CAP } from "@beevibe/core";
 
 /**
  * Default poll interval. Matches the old repo's `POLL_INTERVAL_MS`.

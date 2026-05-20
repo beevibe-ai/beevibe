@@ -36,10 +36,10 @@ import {
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DEFAULT_TASK_CAP } from "@beevibe/core";
 import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
 import {
   DEFAULT_POLL_MS,
-  DEFAULT_TASK_CAP,
   TaskExecutionWorker,
   isProcessAlive,
 } from "./worker.js";

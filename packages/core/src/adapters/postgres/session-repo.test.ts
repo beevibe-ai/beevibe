@@ -69,6 +69,33 @@ describe("PostgresSessionRepository", () => {
     ...overrides,
   });
 
+  /**
+   * Create N pending task sessions with a small gap between each so
+   * `created_at` is strictly ordered. Returns the ids in creation order.
+   * Used by the cap-enforcement tests where the claim ordering matters.
+   */
+  async function seedPendingTaskSessions(
+    count: number,
+    opts: { runtimeId?: string; gapMs?: number } = {},
+  ): Promise<string[]> {
+    const gapMs = opts.gapMs ?? 10;
+    const ids: string[] = [];
+    for (let i = 0; i < count; i++) {
+      const id = sessionId();
+      ids.push(id);
+      await sessions.create(
+        newSession({
+          id,
+          task_id: task,
+          ...(opts.runtimeId ? { runtime_id: opts.runtimeId } : {}),
+          status: "pending",
+        }),
+      );
+      if (i < count - 1) await new Promise((r) => setTimeout(r, gapMs));
+    }
+    return ids;
+  }
+
   it("create + findById round-trips, status defaults to running", async () => {
     const id = sessionId();
     const s = await sessions.create(newSession({ id, task_id: task }));
@@ -360,72 +387,38 @@ describe("PostgresSessionRepository", () => {
     });
 
     it("respects per-agent max_task_sessions cap (the exact case from #127)", async () => {
-      // Agent's cap is 1; queue two task sessions for it on the same
-      // runtime. The first claim returns one; the second returns
-      // undefined (over cap). After the first completes, the second
-      // claim picks up the leftover.
       await agents.update(agent, { max_task_sessions: 1 });
-      const first = sessionId();
-      const second = sessionId();
-      await sessions.create(
-        newSession({ id: first, task_id: task, runtime_id: runtime, status: "pending" }),
-      );
-      await new Promise((r) => setTimeout(r, 10));
-      await sessions.create(
-        newSession({ id: second, task_id: task, runtime_id: runtime, status: "pending" }),
-      );
+      const [first, second] = await seedPendingTaskSessions(2, { runtimeId: runtime });
 
-      const a = await sessions.claimNextForRuntime(runtime);
-      expect(a?.id).toBe(first);
-
-      const b = await sessions.claimNextForRuntime(runtime);
-      expect(b).toBeUndefined();
+      expect((await sessions.claimNextForRuntime(runtime))?.id).toBe(first);
+      expect(await sessions.claimNextForRuntime(runtime)).toBeUndefined();
 
       // Complete the first; second claim should now succeed.
-      await sessions.update(first, { status: "succeeded", completed_at: new Date() });
-      const c = await sessions.claimNextForRuntime(runtime);
-      expect(c?.id).toBe(second);
+      await sessions.update(first!, { status: "succeeded", completed_at: new Date() });
+      expect((await sessions.claimNextForRuntime(runtime))?.id).toBe(second);
     });
 
     it("defaults to cap=1 when max_task_sessions is NULL (matches DEFAULT_TASK_CAP)", async () => {
-      // The default agent fixture leaves max_task_sessions unset. Queue
-      // two task sessions — only the first should claim.
-      const first = sessionId();
-      const second = sessionId();
-      await sessions.create(
-        newSession({ id: first, task_id: task, runtime_id: runtime, status: "pending" }),
-      );
-      await new Promise((r) => setTimeout(r, 10));
-      await sessions.create(
-        newSession({ id: second, task_id: task, runtime_id: runtime, status: "pending" }),
-      );
+      // Default agent fixture leaves max_task_sessions unset.
+      const [first] = await seedPendingTaskSessions(2, { runtimeId: runtime });
       expect((await sessions.claimNextForRuntime(runtime))?.id).toBe(first);
       expect(await sessions.claimNextForRuntime(runtime)).toBeUndefined();
     });
 
     it("respects a higher cap (e.g. 3) — claims up to the configured count", async () => {
       await agents.update(agent, { max_task_sessions: 3 });
-      const ids = [sessionId(), sessionId(), sessionId(), sessionId()];
-      for (const id of ids) {
-        await sessions.create(
-          newSession({ id, task_id: task, runtime_id: runtime, status: "pending" }),
-        );
-        await new Promise((r) => setTimeout(r, 5));
-      }
-      // Cap=3 → first three claim, fourth is rejected.
+      const ids = await seedPendingTaskSessions(4, { runtimeId: runtime, gapMs: 5 });
       const claimed: string[] = [];
       for (let i = 0; i < 4; i++) {
         const c = await sessions.claimNextForRuntime(runtime);
         if (c) claimed.push(c.id);
       }
-      expect(claimed.length).toBe(3);
       expect(claimed).toEqual(ids.slice(0, 3));
     });
 
     it("non-task sessions bypass the cap (chat / mesh have separate gates)", async () => {
-      // max_task_sessions=1 + one running task session: the gate would
-      // block a second TASK session, but a chat session should still
-      // claim freely because the gate filters on type='task'.
+      // One running TASK session already at cap. A pending CHAT session
+      // should still claim because the gate filters on type='task'.
       await agents.update(agent, { max_task_sessions: 1 });
       await sessions.create(
         newSession({
@@ -460,21 +453,13 @@ describe("PostgresSessionRepository", () => {
 
     it("over-cap second claim returns undefined; succeeds after the first completes", async () => {
       await agents.update(agent, { max_task_sessions: 1 });
-      const first = sessionId();
-      const second = sessionId();
-      // runtime_id intentionally omitted → server-fallback path
-      await sessions.create(
-        newSession({ id: first, task_id: task, status: "pending" }),
-      );
-      await new Promise((r) => setTimeout(r, 10));
-      await sessions.create(
-        newSession({ id: second, task_id: task, status: "pending" }),
-      );
+      // No runtimeId on the helper → runtime_id stays NULL → server-fallback path
+      const [first, second] = await seedPendingTaskSessions(2);
 
       expect((await sessions.claimNextForServerFallback())?.id).toBe(first);
       expect(await sessions.claimNextForServerFallback()).toBeUndefined();
 
-      await sessions.update(first, { status: "succeeded", completed_at: new Date() });
+      await sessions.update(first!, { status: "succeeded", completed_at: new Date() });
       expect((await sessions.claimNextForServerFallback())?.id).toBe(second);
     });
   });
