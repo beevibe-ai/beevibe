@@ -40,7 +40,7 @@ export interface WorkProductDetail {
 const SQL = /* sql */ `
 SELECT
   wp.id, wp.task_id, wp.agent_id, wp.type, wp.title, wp.summary, wp.body,
-  wp.url, wp.provider, wp.external_id, wp.created_at, wp.updated_at,
+  wp.url, wp.metadata, wp.provider, wp.external_id, wp.created_at, wp.updated_at,
   t.title AS task_title,
   a.name  AS agent_label
 FROM work_product wp
@@ -58,6 +58,7 @@ interface Row {
   summary: string | null;
   body: string | null;
   url: string | null;
+  metadata: Record<string, unknown> | null;
   provider: string | null;
   external_id: string | null;
   created_at: Date;
@@ -90,6 +91,26 @@ async function tryReadFileUrl(url: string): Promise<string | undefined> {
   }
 }
 
+/**
+ * Sandbox artifacts store the host filesystem path in
+ * `metadata.host_path`, not in `url`. Older rows pre-date the file://
+ * url shim added in /runtime/done; fall back to metadata so the body
+ * still inlines.
+ */
+async function tryReadHostPath(
+  metadata: Record<string, unknown> | null,
+): Promise<string | undefined> {
+  if (!metadata) return undefined;
+  const hp = metadata.host_path;
+  if (typeof hp !== "string" || hp === "") return undefined;
+  try {
+    const buf = await readFile(hp);
+    return truncateToMax(buf.toString("utf-8"));
+  } catch {
+    return undefined;
+  }
+}
+
 export async function getWorkProduct(
   pool: Pool,
   id: string,
@@ -100,7 +121,9 @@ export async function getWorkProduct(
   const url = row.url ?? undefined;
   const url_is_local = !!url && url.startsWith("file://");
   const body =
-    truncateToMax(row.body) ?? (url_is_local ? await tryReadFileUrl(url!) : undefined);
+    truncateToMax(row.body) ??
+    (url_is_local ? await tryReadFileUrl(url!) : undefined) ??
+    (await tryReadHostPath(row.metadata));
 
   return {
     id: row.id,

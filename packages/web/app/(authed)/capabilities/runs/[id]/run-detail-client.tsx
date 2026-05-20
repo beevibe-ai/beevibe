@@ -741,6 +741,45 @@ function defaultSkillName(repoUrl: string): string {
 }
 
 /**
+ * Pre-fill the goal_pattern with a clean, reusable pattern derived from
+ * the actual run. The run.goal includes "Context: ..." and "Straight
+ * from my .claude directory" trailers that are specific to this
+ * particular Try click and add noise to FTS matching. We strip those
+ * down to the first sentence so the pattern is reusable across goals
+ * that smell similar.
+ *
+ * Also folds in the agent's wrap-up summary when it's substantive —
+ * that's where the post-run signal lives (what was actually produced).
+ */
+function deriveDefaultGoalPattern(run: RepoRun): string {
+  // Step 1: first sentence of the original goal, minus the Context bit.
+  const firstSentence = run.goal
+    .split(/[.!?]\s/, 1)[0]
+    ?.trim()
+    ?? run.goal.trim();
+  const cleaned = firstSentence
+    .replace(/\s+Context:.*$/i, "")
+    .replace(/\s+Straight from.*$/i, "")
+    .trim();
+  return cleaned || run.goal.trim();
+}
+
+/**
+ * Alternative pattern derived from the agent's wrap-up message — the
+ * last agent line in the transcript. That's where the post-run signal
+ * lives (what was actually produced). Offered as an inline swap.
+ */
+function deriveSummaryGoalPattern(run: RepoRun): string | undefined {
+  const lastAgent = [...run.transcript]
+    .reverse()
+    .find((e) => e.kind === "agent" && e.text.trim() !== "");
+  if (!lastAgent) return undefined;
+  // Trim to the first sentence and cap length.
+  const first = lastAgent.text.split(/[.!?]\s/, 1)[0]?.trim() ?? lastAgent.text;
+  return first.length > 0 && first.length < 240 ? first : undefined;
+}
+
+/**
  * Modal that captures the user's name + goal pattern and POSTs to
  * /learned-skills. Backend requires the run.status === "succeeded"
  * (already gated by the outro). On success, the modal flips to a
@@ -755,7 +794,8 @@ function SaveCapabilityModal({
   onClose: () => void;
 }) {
   const [name, setName] = useState(defaultSkillName(run.repo_url));
-  const [goal, setGoal] = useState(run.goal);
+  const [goal, setGoal] = useState(deriveDefaultGoalPattern(run));
+  const summaryPattern = deriveSummaryGoalPattern(run);
   const [done, setDone] = useState(false);
   const save = useMutation({
     mutationFn: () =>
@@ -767,6 +807,10 @@ function SaveCapabilityModal({
     onSuccess: () => setDone(true),
   });
 
+  // Borders on the modal use border-border/40 instead of the default
+  // border token. The default reads as too-bright on top of the
+  // emerald outro panel + black backdrop; /40 keeps the visual weight
+  // anchored on the form fields and buttons, not the chrome.
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
@@ -774,7 +818,7 @@ function SaveCapabilityModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-card border rounded-lg shadow-xl w-full max-w-md p-6">
+      <div className="bg-card rounded-lg shadow-2xl ring-1 ring-border/40 w-full max-w-md p-6">
         <h2 className="text-base font-semibold mb-1">Save as capability</h2>
         <p className="text-xs text-muted-foreground mb-4">
           Adds this run to your team&apos;s learned-skill registry. Specialist
@@ -794,7 +838,7 @@ function SaveCapabilityModal({
             <button
               type="button"
               onClick={onClose}
-              className="w-full rounded-md border px-4 py-2 text-sm hover:bg-muted"
+              className="w-full rounded-md border border-border/40 px-4 py-2 text-sm hover:bg-secondary/50 transition-colors"
             >
               Close
             </button>
@@ -817,7 +861,7 @@ function SaveCapabilityModal({
                 placeholder="extract-pdf-tables"
                 pattern="[a-z0-9-]{2,64}"
                 required
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full rounded-md border border-border/40 bg-background/50 px-3 py-2 text-sm focus:outline-none focus:border-border focus:bg-background focus:ring-1 focus:ring-ring/30 transition-colors"
               />
               <p className="text-[11px] text-muted-foreground mt-1">
                 Lowercase letters, numbers, hyphens — 2–64 chars. Becomes the
@@ -825,19 +869,32 @@ function SaveCapabilityModal({
               </p>
             </div>
             <div>
-              <label className="text-xs font-medium text-muted-foreground block mb-1">
-                Goal pattern
-              </label>
+              <div className="flex items-baseline justify-between mb-1">
+                <label className="text-xs font-medium text-muted-foreground">
+                  Goal pattern
+                </label>
+                {summaryPattern && summaryPattern !== goal ? (
+                  <button
+                    type="button"
+                    onClick={() => setGoal(summaryPattern)}
+                    className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    Use agent&apos;s summary →
+                  </button>
+                ) : null}
+              </div>
               <textarea
                 value={goal}
                 onChange={(e) => setGoal(e.target.value)}
                 rows={3}
                 required
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                className="w-full rounded-md border border-border/40 bg-background/50 px-3 py-2 text-sm resize-none focus:outline-none focus:border-border focus:bg-background focus:ring-1 focus:ring-ring/30 transition-colors"
               />
               <p className="text-[11px] text-muted-foreground mt-1">
-                Plain-language pattern. find_repo full-text-matches this against
-                future goals; the more concrete the verbs/nouns, the better.
+                What kind of goals should reuse this recipe? find_repo
+                full-text-matches future goals against this. Default uses the
+                first sentence of this run&apos;s goal; edit it down to the
+                reusable bit (drop Context / one-time phrases).
               </p>
             </div>
             {save.error ? (
@@ -845,11 +902,11 @@ function SaveCapabilityModal({
                 {save.error instanceof Error ? save.error.message : "Save failed."}
               </p>
             ) : null}
-            <div className="flex gap-2">
+            <div className="flex gap-2 pt-1">
               <button
                 type="button"
                 onClick={onClose}
-                className="flex-1 rounded-md border px-4 py-2 text-sm hover:bg-muted"
+                className="flex-1 rounded-md border border-border/40 px-4 py-2 text-sm hover:bg-secondary/50 transition-colors"
               >
                 Cancel
               </button>
