@@ -7,16 +7,13 @@ import { useRouter } from "next/navigation";
 import { createAvatar } from "@dicebear/core";
 import { glass } from "@dicebear/collection";
 import {
-  Bot,
   Clock,
   ExternalLink,
   Flame,
   Loader2,
-  Package,
   Search,
   Sparkles,
   X,
-  Zap,
 } from "lucide-react";
 import {
   api,
@@ -377,38 +374,6 @@ function DiscoverTab() {
         )}
       </section>
 
-      <section>
-        <h2 className="text-[11px] font-medium text-muted-foreground uppercase tracking-wider mb-3">
-          How it works
-        </h2>
-        <div className="space-y-4">
-          {[
-            {
-              icon: <Zap className="h-4 w-4 text-yellow-500" />,
-              title: "Tell your agent what you need",
-              desc: 'Say "extract tables from this PDF" or "download the audio from this video." The agent finds the right open-source repo.',
-            },
-            {
-              icon: <Package className="h-4 w-4 text-blue-500" />,
-              title: "Runs in a fresh Docker sandbox",
-              desc: "The repo is cloned, deps installed, and the goal executed — entirely inside an isolated container. Your host machine is never touched.",
-            },
-            {
-              icon: <Bot className="h-4 w-4 text-green-500" />,
-              title: "Artifact lands for review",
-              desc: "The result shows up in your inbox as a work product. Approve it to save the recipe as a reusable capability.",
-            },
-          ].map((step) => (
-            <div key={step.title} className="flex gap-3 items-start">
-              <div className="mt-0.5 shrink-0">{step.icon}</div>
-              <div>
-                <p className="text-sm font-medium">{step.title}</p>
-                <p className="text-sm text-muted-foreground">{step.desc}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      </section>
     </div>
   );
 }
