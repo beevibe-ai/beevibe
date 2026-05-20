@@ -37,7 +37,6 @@
 import type {
   AgentRepository,
   EmbeddingService,
-  LearnedSkill,
   LearnedSkillRepository,
 } from "@beevibe/core";
 import type { AgentTool, AgentToolResult } from "./types.js";

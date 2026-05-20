@@ -1,5 +1,17 @@
 import { fetchJson } from "./http";
-import type { RepoRun, RepoRunStatus, LearnedSkill } from "@beevibe/core";
+import type {
+  HierarchyLevel,
+  KnownCli,
+  LearnedSkill,
+  MemoryScope,
+  RepoRun,
+  RepoRunStatus,
+  ReviewPolicy,
+  SessionStatus,
+  SessionType,
+  Task,
+  TaskPriority,
+} from "@beevibe/core";
 export type { RepoRun, RepoRunStatus, LearnedSkill };
 import type {
   TaskDetail,
@@ -14,16 +26,6 @@ import type { SessionDisplay } from "@/lib/types/sessions";
 import type { FactCounts, MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
 import type { InboxItem } from "@/lib/types/inbox";
-import type {
-  HierarchyLevel,
-  KnownCli,
-  MemoryScope,
-  ReviewPolicy,
-  SessionStatus,
-  SessionType,
-  Task,
-  TaskPriority,
-} from "@beevibe/core";
 import type { Lifecycle } from "@/lib/tasks-grouping";
 
 export type TaskView = "all" | "mine";
