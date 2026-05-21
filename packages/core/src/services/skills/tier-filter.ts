@@ -11,7 +11,10 @@
 
 import type { HierarchyLevel } from "../../domain/agent.js";
 
-export const UNIVERSAL_SKILLS = ["beevibe-pre-task-setup"] as const;
+export const UNIVERSAL_SKILLS = [
+  "beevibe-pre-task-setup",
+  "beevibe-verify-pr",
+] as const;
 
 export const TEAM_ONLY_SKILLS = ["beevibe-team-mesh-negotiation"] as const;
 
