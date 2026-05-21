@@ -269,9 +269,11 @@ export class TaskService {
    * never a session (an edge case for tasks that failed at dispatch
    * time before claiming).
    */
-  async prepareRetry(
-    taskId: string,
-  ): Promise<{ task: Task; priorSessionId: string | undefined }> {
+  async prepareRetry(taskId: string): Promise<{
+    task: Task;
+    assigneeId: string;
+    priorSessionId: string | undefined;
+  }> {
     const task = await this.requireTask(taskId);
     if (task.status !== "failed") {
       throw new InvalidTaskTransitionError(
@@ -287,17 +289,12 @@ export class TaskService {
     const priorSessionId = priorSession?.cli_session_id
       ? priorSession.id
       : undefined;
-    // Note: result_summary from the prior failure stays on the row.
-    // buildPatchClause skips undefined values, so we can't clear it
-    // without extending the patch type to accept null. The UI shows
-    // result_summary only on terminal-status cards anyway, so once
-    // the task moves to assigned/in_progress the stale text isn't
-    // visible — agent's next update_progress will overwrite it on
-    // session end.
+    // TODO: clear result_summary too; buildPatchClause currently skips
+    // undefined so we can't pass null without extending the patch type.
     const updated = await this.deps.taskRepo.update(taskId, {
       status: "assigned",
     });
-    return { task: updated, priorSessionId };
+    return { task: updated, assigneeId: task.assignee_id, priorSessionId };
   }
 
   /** Record a work product (PR, doc, artifact, etc.) produced by a task. */

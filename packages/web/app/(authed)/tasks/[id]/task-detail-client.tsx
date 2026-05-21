@@ -111,6 +111,21 @@ function reviewStatus(
 // (done/failed/cancelled) reject with 409, so don't show the button.
 const TASK_TERMINAL_STATUSES = ["done", "failed", "cancelled"] as const;
 
+function MutationError({
+  mutation,
+  verb,
+}: {
+  mutation: { isError: boolean; error: Error | null };
+  verb: string;
+}) {
+  if (!mutation.isError) return null;
+  return (
+    <div className="text-xs text-status-failed text-right mb-2">
+      Couldn&apos;t {verb}: {mutation.error?.message}
+    </div>
+  );
+}
+
 function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   const isInReview = task.status === "review";
   const isTerminal = (TASK_TERMINAL_STATUSES as readonly string[]).includes(task.status);
@@ -176,16 +191,8 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
             ) : null}
           </div>
         </div>
-        {cancel.isError ? (
-          <div className="text-xs text-status-failed text-right mb-2">
-            Couldn&apos;t cancel: {cancel.error.message}
-          </div>
-        ) : null}
-        {retry.isError ? (
-          <div className="text-xs text-status-failed text-right mb-2">
-            Couldn&apos;t retry: {retry.error.message}
-          </div>
-        ) : null}
+        <MutationError mutation={cancel} verb="cancel" />
+        <MutationError mutation={retry} verb="retry" />
 
         {isInReview ? (
           <>

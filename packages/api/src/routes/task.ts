@@ -295,11 +295,7 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
       return;
     }
     try {
-      // taskService.prepareRetry validates status='failed', resets the
-      // task to 'assigned', and returns the prior session id (if any).
-      // We then dispatch a new session with crash_recovery resume so
-      // the agent picks up the prior CLI conversation via --resume.
-      const { task, priorSessionId } =
+      const { task, assigneeId, priorSessionId } =
         await deps.taskService.prepareRetry(id);
       const reason: ResumeReason = priorSessionId
         ? { kind: "crash_recovery", prior_session_id: priorSessionId }
@@ -310,7 +306,7 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
       );
       await deps.dispatchService.dispatchTask({
         task,
-        agentId: task.assignee_id!,
+        agentId: assigneeId,
         intent,
         reason,
         type: "task",

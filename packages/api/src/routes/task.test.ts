@@ -19,7 +19,7 @@ import {
 import { provisionAgent, provisionUser } from "@beevibe/core/auth";
 import { TaskService } from "@beevibe/core/services/task-service";
 import { DispatchService } from "@beevibe/core/services/dispatch-service";
-import { DEFAULT_RUNTIME_CONFIG, agentId, personId, taskId } from "@beevibe/core";
+import { DEFAULT_RUNTIME_CONFIG, agentId, personId, sessionId, taskId } from "@beevibe/core";
 import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
 import { createAuthMiddleware } from "../auth/middleware.js";
 import { DaemonHub } from "../runtime/hub.js";
@@ -284,7 +284,7 @@ describe("task routes — integration", () => {
     // crash_recovery resume reason. Without cli_session_id, --resume
     // would have nothing to point at and we'd fall back to fresh.
     const priorSession = await sessionRepo.create({
-      id: `sess_${Math.random().toString(36).slice(2, 14)}`,
+      id: sessionId(),
       agent_id: agent.agent.id,
       task_id: failedTask.id,
       type: "task",
@@ -303,10 +303,6 @@ describe("task routes — integration", () => {
 
     const refetched = await taskRepo.findById(failedTask.id);
     expect(refetched?.status).toBe("assigned");
-    // result_summary from the prior failure stays on the row; the UI
-    // shows it only on terminal-status cards, so once the task moves
-    // to assigned/in_progress the stale text isn't visible. Agent's
-    // next update_progress will overwrite it on session end.
 
     // A new pending session should exist, pinned to the prior session
     // via prior_session_id (the crash_recovery resume chain).
