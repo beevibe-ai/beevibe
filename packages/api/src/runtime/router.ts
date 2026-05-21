@@ -460,9 +460,6 @@ async function maybeAutoBindPrimaryAgent(
     const primary = await deps.agentRepo.findTopLevelForOwner(ownerPersonId);
     if (!primary || primary.preferred_runtime_id) return;
     await deps.agentRepo.update(primary.id, { preferred_runtime_id: runtimeId });
-    console.log(
-      `[runtime/register] auto-bound agent ${primary.id} → runtime ${runtimeId}`,
-    );
   } catch (err) {
     console.warn(
       "[runtime/register] auto-bind failed (non-fatal):",
