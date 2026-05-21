@@ -463,6 +463,65 @@ describe("TaskService.cancelTask", () => {
   });
 });
 
+describe("TaskService.prepareRetry", () => {
+  it("flips a failed task back to assigned and returns the prior cli-resumable session id", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(
+      makeTask({ status: "failed", assignee_id: "agent_x" }),
+    );
+    vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue({
+      id: "sess_prior",
+      cli_session_id: "cli_xyz",
+    } as never);
+    vi.mocked(taskRepo.update).mockImplementation(async (id, patch) =>
+      makeTask({ id, status: patch.status ?? "failed", assignee_id: "agent_x" }),
+    );
+
+    const out = await service.prepareRetry("task_1");
+    expect(out.task.status).toBe("assigned");
+    expect(out.priorSessionId).toBe("sess_prior");
+    expect(taskRepo.update).toHaveBeenCalledWith("task_1", {
+      status: "assigned",
+    });
+  });
+
+  it("returns undefined priorSessionId when the prior session never produced a cli_session_id", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(
+      makeTask({ status: "failed", assignee_id: "agent_x" }),
+    );
+    vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue({
+      id: "sess_prior",
+      // cli_session_id unset — spawn failed before claude wrote its
+      // own session row, so --resume would have nothing to point at.
+      cli_session_id: null,
+    } as never);
+    vi.mocked(taskRepo.update).mockImplementation(async (id, patch) =>
+      makeTask({ id, status: patch.status ?? "failed", assignee_id: "agent_x" }),
+    );
+
+    const out = await service.prepareRetry("task_1");
+    expect(out.priorSessionId).toBeUndefined();
+  });
+
+  it("rejects retry from a non-failed status (use Revise / new task instead)", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(
+      makeTask({ status: "cancelled" }),
+    );
+    await expect(service.prepareRetry("task_1")).rejects.toBeInstanceOf(
+      InvalidTaskTransitionError,
+    );
+    expect(taskRepo.update).not.toHaveBeenCalled();
+  });
+
+  it("rejects retry on a failed task with no assignee (nothing to dispatch to)", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(
+      makeTask({ status: "failed", assignee_id: undefined }),
+    );
+    await expect(service.prepareRetry("task_1")).rejects.toBeInstanceOf(
+      InvalidTaskTransitionError,
+    );
+  });
+});
+
 describe("TaskService.createWorkProduct + listWorkProducts", () => {
   it("createWorkProduct verifies task exists then delegates", async () => {
     vi.mocked(taskRepo.findById).mockResolvedValue(makeTask());

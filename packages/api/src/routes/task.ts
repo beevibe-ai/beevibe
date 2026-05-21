@@ -286,6 +286,41 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
     }
   });
 
+  // POST /task/:id/retry
+  router.post("/:id/retry", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "missing_task_id" });
+      return;
+    }
+    try {
+      // taskService.prepareRetry validates status='failed', resets the
+      // task to 'assigned', and returns the prior session id (if any).
+      // We then dispatch a new session with crash_recovery resume so
+      // the agent picks up the prior CLI conversation via --resume.
+      const { task, priorSessionId } =
+        await deps.taskService.prepareRetry(id);
+      const reason: ResumeReason = priorSessionId
+        ? { kind: "crash_recovery", prior_session_id: priorSessionId }
+        : { kind: "fresh" };
+      const intent = buildIntent(
+        { id: task.id, title: task.title, description: task.description },
+        reason,
+      );
+      await deps.dispatchService.dispatchTask({
+        task,
+        agentId: task.assignee_id!,
+        intent,
+        reason,
+        type: "task",
+      });
+      res.json({ ok: true, task: { id: task.id, status: task.status } });
+    } catch (err) {
+      handleServiceError(err, res);
+    }
+  });
+
   // POST /task/:id/cancel
   router.post("/:id/cancel", async (req, res) => {
     if (!requireHuman(req, res)) return;

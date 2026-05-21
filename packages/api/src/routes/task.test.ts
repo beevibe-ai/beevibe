@@ -268,6 +268,75 @@ describe("task routes — integration", () => {
     }
   });
 
+  it("retry: failed → assigned + dispatches a new session with crash_recovery resume", async () => {
+    const { owner, agent } = await setupHuman();
+    const failedTask = await taskRepo.create({
+      id: taskId(),
+      title: "task that failed",
+      status: "failed",
+      priority: "medium",
+      assignee_id: agent.agent.id,
+      creator_id: agent.agent.id,
+      creator_type: "agent",
+      result_summary: "agent crashed",
+    });
+    // Seed a prior session with cli_session_id set so retry can build a
+    // crash_recovery resume reason. Without cli_session_id, --resume
+    // would have nothing to point at and we'd fall back to fresh.
+    const priorSession = await sessionRepo.create({
+      id: `sess_${Math.random().toString(36).slice(2, 14)}`,
+      agent_id: agent.agent.id,
+      task_id: failedTask.id,
+      type: "task",
+      status: "failed",
+      intent: "<task/>do the thing",
+      cli_session_id: "cli_prior_xyz",
+    });
+
+    const res = await request(makeApp())
+      .post(`/task/${failedTask.id}/retry`)
+      .set("Authorization", `Bearer ${owner.apiKey}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.task.status).toBe("assigned");
+    expect(res.body.task.id).toBe(failedTask.id);
+
+    const refetched = await taskRepo.findById(failedTask.id);
+    expect(refetched?.status).toBe("assigned");
+    // result_summary from the prior failure stays on the row; the UI
+    // shows it only on terminal-status cards, so once the task moves
+    // to assigned/in_progress the stale text isn't visible. Agent's
+    // next update_progress will overwrite it on session end.
+
+    // A new pending session should exist, pinned to the prior session
+    // via prior_session_id (the crash_recovery resume chain).
+    const sessions = await sessionRepo.listForTask(failedTask.id);
+    expect(sessions.length).toBe(2);
+    const newSession = sessions.find((s) => s.id !== priorSession.id);
+    expect(newSession?.status).toBe("pending");
+    expect(newSession?.prior_session_id).toBe(priorSession.id);
+  });
+
+  it("retry from a non-failed status → 409", async () => {
+    const { owner, agent } = await setupHuman();
+    const task = await taskRepo.create({
+      id: taskId(),
+      title: "cancelled task",
+      status: "cancelled",
+      priority: "medium",
+      assignee_id: agent.agent.id,
+      creator_id: agent.agent.id,
+      creator_type: "agent",
+    });
+
+    const res = await request(makeApp())
+      .post(`/task/${task.id}/retry`)
+      .set("Authorization", `Bearer ${owner.apiKey}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("invalid_transition");
+  });
+
   it("cancel from terminal status → 409", async () => {
     const { owner, agent } = await setupHuman();
     const task = await taskRepo.create({

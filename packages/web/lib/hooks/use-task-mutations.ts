@@ -62,6 +62,23 @@ export function useCancelTask(taskId: string) {
   });
 }
 
+export function useRetryTask(taskId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.tasks.retry(taskId),
+    onSuccess: () => {
+      // Retry moves task: failed → assigned and dispatches a new
+      // session. Invalidate the same surfaces a successful claim would
+      // affect — dashboard counts, task list/detail, and the inbox
+      // (in case the retry leads to a `review` state later).
+      client.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId) });
+      client.invalidateQueries({ queryKey: queryKeys.tasks.all });
+      client.invalidateQueries({ queryKey: queryKeys.dashboard.all });
+      client.invalidateQueries({ queryKey: queryKeys.inbox.all });
+    },
+  });
+}
+
 export function useCreateTask() {
   const client = useQueryClient();
   return useMutation({

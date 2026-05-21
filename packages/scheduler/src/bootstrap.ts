@@ -25,7 +25,7 @@ import { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { CancelListener } from "./cancel-listener.js";
 import { createTaskDispatcher } from "./dispatch.js";
 import { ExecutorHealthServer, DEFAULT_HEALTH_PORT } from "./health-server.js";
-import { buildPostDispatchHook } from "./post-dispatch.js";
+import { buildPostDispatchHook } from "@beevibe/core/services/post-dispatch";
 import { TaskExecutionWorker } from "./worker.js";
 
 export interface BootstrapConfig {
