@@ -33,6 +33,10 @@ interface FleetCountRow {
   active: string;
 }
 
+interface RunningSessionsCountRow {
+  n: string;
+}
+
 interface TrendRow {
   day: string;
   count: string;
@@ -258,7 +262,7 @@ export async function getDashboardSummary(pool: Pool): Promise<DashboardSummary>
     pool.query<AttentionRow>(ATTENTION_SQL, [ATTENTION_LIMIT]),
     pool.query<KpiTrendRow>(KPI_TREND_SQL, [TREND_WINDOW_DAYS]),
     pool.query<UsageWindowRow>(USAGE_WINDOW_SQL, [TREND_WINDOW_DAYS]),
-    pool.query<{ n: number }>(RUNNING_SESSIONS_SQL),
+    pool.query<RunningSessionsCountRow>(RUNNING_SESSIONS_SQL),
   ]);
 
   const status_total = statusResult.rows.reduce((s, r) => s + Number(r.count), 0);
