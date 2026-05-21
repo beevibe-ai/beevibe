@@ -18,7 +18,12 @@ echo "[start-api] migration-name fix"
 node scripts/pre-deploy-fix-migration-names.cjs
 
 echo "[start-api] applying pending migrations"
-packages/api/node_modules/.bin/node-pg-migrate up
+# --no-check-order: prod has 1780900000000_add-work-product-body recorded
+# (via PR #187's rename) but the older 1780800000000_add-capability-network
+# never applied. Default ordering check refuses to run a "preceding" file
+# after a later one was recorded. We need exactly this out-of-order apply
+# to unstick prod; once all four are in, subsequent boots are no-ops.
+packages/api/node_modules/.bin/node-pg-migrate --no-check-order up
 
 echo "[start-api] launching api"
 exec node packages/api/dist/main.js
