@@ -255,19 +255,22 @@ export class TaskService {
   }
 
   /**
-   * Retry a `failed` task. Resets the task to `assigned` and clears the
-   * prior failure summary; the caller is expected to follow up with a
-   * `dispatchService.dispatchTask` using `crash_recovery` resume so the
-   * new session resumes the prior CLI conversation via `--resume`.
+   * Retry a `failed` or `cancelled` task. Resets to `assigned`; caller
+   * follows up with `dispatchService.dispatchTask` using `crash_recovery`
+   * resume so the new session continues the prior CLI conversation via
+   * `--resume`.
    *
-   * Only `failed` is retryable — `cancelled` means the user explicitly
-   * stopped the work and shouldn't be undone by Retry (use Revise / new
-   * task instead). `done` is success; no retry makes sense.
+   * `done` is excluded — success isn't a retry candidate. `cancelled`
+   * was initially excluded (with the reasoning "user explicitly stopped
+   * the work") but operators do use cancel as a cleanup mechanism for
+   * stuck pre-#190 tasks; rejecting Retry on cancelled forces them
+   * through a workaround. User has agency — they only click Retry on
+   * the ones they actually want re-engaged.
    *
    * Returns the prior session id (when one exists) so the caller can
    * build the right ResumeReason. Returns undefined when there was
-   * never a session (an edge case for tasks that failed at dispatch
-   * time before claiming).
+   * never a session (edge case for tasks that failed at dispatch
+   * before claiming).
    */
   async prepareRetry(taskId: string): Promise<{
     task: Task;
@@ -275,9 +278,9 @@ export class TaskService {
     priorSessionId: string | undefined;
   }> {
     const task = await this.requireTask(taskId);
-    if (task.status !== "failed") {
+    if (task.status !== "failed" && task.status !== "cancelled") {
       throw new InvalidTaskTransitionError(
-        `Task ${taskId} is in status '${task.status}'; retry is only allowed from 'failed'`,
+        `Task ${taskId} is in status '${task.status}'; retry is only allowed from 'failed' or 'cancelled'`,
       );
     }
     if (!task.assignee_id) {

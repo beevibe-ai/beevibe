@@ -313,12 +313,12 @@ describe("task routes — integration", () => {
     expect(newSession?.prior_session_id).toBe(priorSession.id);
   });
 
-  it("retry from a non-failed status → 409", async () => {
+  it("retry from done → 409 (success isn't a retry candidate)", async () => {
     const { owner, agent } = await setupHuman();
     const task = await taskRepo.create({
       id: taskId(),
-      title: "cancelled task",
-      status: "cancelled",
+      title: "completed task",
+      status: "done",
       priority: "medium",
       assignee_id: agent.agent.id,
       creator_id: agent.agent.id,

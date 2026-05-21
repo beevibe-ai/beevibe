@@ -23,6 +23,7 @@ import {
   useRejectTask,
   useReviseTask,
 } from "@/lib/hooks/use-task-mutations";
+import { TaskLifecycleActions } from "./task-lifecycle-actions";
 import { formatRelativeTime, shortId } from "@/lib/format";
 import { richTextToMarkdown, type RichText } from "@/components/rich-text";
 import { cn } from "@/lib/utils";
@@ -192,6 +193,8 @@ function PanelLoaded({ task }: { task: TaskDetail }) {
           <span className="capitalize">{task.priority}</span>
         </div>
       </header>
+
+      <TaskLifecycleActions task={task} />
 
       {isInReview ? <ReviewActions task={task} /> : null}
 
@@ -538,3 +541,4 @@ function ReviewActions({ task }: { task: TaskDetail }) {
     </div>
   );
 }
+

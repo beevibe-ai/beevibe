@@ -16,11 +16,11 @@ import { api } from "@/lib/api/client";
 import { useTask } from "@/lib/hooks/use-tasks";
 import {
   useApproveTask,
-  useCancelTask,
   useRejectTask,
-  useRetryTask,
   useReviseTask,
 } from "@/lib/hooks/use-task-mutations";
+import { TaskLifecycleActions } from "@/components/tasks/task-lifecycle-actions";
+import { isTerminalTaskStatus } from "@/lib/task-status";
 import { isApiConfigured } from "@/lib/api/config";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
 import { ChatMarkdown } from "@/components/chat/markdown";
@@ -106,44 +106,21 @@ function reviewStatus(
   };
 }
 
-// Mirrors CANCELLABLE_FROM in packages/api/src/routes/task.ts — the
-// statuses where the api will accept a cancel. Terminal statuses
-// (done/failed/cancelled) reject with 409, so don't show the button.
-const TASK_TERMINAL_STATUSES = ["done", "failed", "cancelled"] as const;
-
-function MutationError({
-  mutation,
-  verb,
-}: {
-  mutation: { isError: boolean; error: Error | null };
-  verb: string;
-}) {
-  if (!mutation.isError) return null;
-  return (
-    <div className="text-xs text-status-failed text-right mb-2">
-      Couldn&apos;t {verb}: {mutation.error?.message}
-    </div>
-  );
-}
-
 function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   const isInReview = task.status === "review";
-  const isTerminal = (TASK_TERMINAL_STATUSES as readonly string[]).includes(task.status);
+  const isTerminal = isTerminalTaskStatus(task.status);
   const activeSession = task.latest_session?.status === "running" ? task.latest_session : null;
   const approve = useApproveTask(task.id);
   const reject = useRejectTask(task.id);
   const revise = useReviseTask(task.id);
-  const cancel = useCancelTask(task.id);
-  const retry = useRetryTask(task.id);
-  const canRetry = task.status === "failed";
   const [reviseOpen, setReviseOpen] = useState(false);
   const [reviseFeedback, setReviseFeedback] = useState("");
 
+  // Review actions in flight gate each other AND the lifecycle Cancel
+  // button (passed via `extraDisabled` to TaskLifecycleActions) — if
+  // cancel raced with an in-flight approve/reject, the task could end
+  // up in a weird mid-transition state.
   const { anyPending: reviewPending, lastError, lastErrorAction } = reviewStatus({ approve, reject, revise });
-  // Cancel disables the review actions too — if cancel is in flight,
-  // the task is about to become terminal and approve/reject/revise
-  // would race against it.
-  const anyPending = reviewPending || cancel.isPending;
 
   const submitRevise = () => {
     const feedback = reviseFeedback.trim();
@@ -167,39 +144,16 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
           <div className="flex items-center gap-1.5 mt-1.5 shrink-0">
             <TaskStatusPill status={task.status} />
             {task.assignee_hierarchy ? <HierChip hier={task.assignee_hierarchy} /> : null}
-            {!isTerminal ? (
-              <button
-                type="button"
-                disabled={anyPending}
-                onClick={() => cancel.mutate({})}
-                className="h-7 px-2.5 rounded text-xs font-medium border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Cancel this task — stops any running session"
-              >
-                {cancel.isPending ? "Cancelling…" : "Cancel"}
-              </button>
-            ) : null}
-            {canRetry ? (
-              <button
-                type="button"
-                disabled={retry.isPending}
-                onClick={() => retry.mutate()}
-                className="h-7 px-2.5 rounded text-xs font-medium border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                title="Retry — re-dispatches the task; the agent resumes the prior CLI conversation"
-              >
-                {retry.isPending ? "Retrying…" : "Retry"}
-              </button>
-            ) : null}
           </div>
         </div>
-        <MutationError mutation={cancel} verb="cancel" />
-        <MutationError mutation={retry} verb="retry" />
+        <TaskLifecycleActions task={task} extraDisabled={reviewPending} />
 
         {isInReview ? (
           <>
             <div className="flex justify-end gap-2 mb-2">
               <button
                 type="button"
-                disabled={anyPending}
+                disabled={reviewPending}
                 onClick={() => reject.mutate({})}
                 className="h-9 px-3 rounded text-sm font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -207,7 +161,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
               </button>
               <button
                 type="button"
-                disabled={anyPending}
+                disabled={reviewPending}
                 onClick={() => setReviseOpen((v) => !v)}
                 className="h-9 px-3 rounded text-sm font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -215,7 +169,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
               </button>
               <button
                 type="button"
-                disabled={anyPending}
+                disabled={reviewPending}
                 onClick={() => approve.mutate({})}
                 className="h-9 px-3 rounded text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -247,7 +201,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
                   </button>
                   <button
                     type="button"
-                    disabled={anyPending || reviseFeedback.trim().length === 0}
+                    disabled={reviewPending || reviseFeedback.trim().length === 0}
                     onClick={submitRevise}
                     className="h-8 px-3 rounded text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >

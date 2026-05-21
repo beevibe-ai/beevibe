@@ -502,10 +502,24 @@ describe("TaskService.prepareRetry", () => {
     expect(out.priorSessionId).toBeUndefined();
   });
 
-  it("rejects retry from a non-failed status (use Revise / new task instead)", async () => {
+  it("allows retry from cancelled (operators use cancel as cleanup for stuck tasks)", async () => {
     vi.mocked(taskRepo.findById).mockResolvedValue(
-      makeTask({ status: "cancelled" }),
+      makeTask({ status: "cancelled", assignee_id: "agent_x" }),
     );
+    vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue({
+      id: "sess_prior",
+      cli_session_id: "cli_xyz",
+    } as never);
+    vi.mocked(taskRepo.update).mockImplementation(async (id, patch) =>
+      makeTask({ id, status: patch.status ?? "cancelled", assignee_id: "agent_x" }),
+    );
+    const out = await service.prepareRetry("task_1");
+    expect(out.task.status).toBe("assigned");
+    expect(out.priorSessionId).toBe("sess_prior");
+  });
+
+  it("rejects retry from done (success isn't a retry candidate)", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "done" }));
     await expect(service.prepareRetry("task_1")).rejects.toBeInstanceOf(
       InvalidTaskTransitionError,
     );
