@@ -254,6 +254,49 @@ export class TaskService {
     });
   }
 
+  /**
+   * Retry a `failed` task. Resets the task to `assigned` and clears the
+   * prior failure summary; the caller is expected to follow up with a
+   * `dispatchService.dispatchTask` using `crash_recovery` resume so the
+   * new session resumes the prior CLI conversation via `--resume`.
+   *
+   * Only `failed` is retryable — `cancelled` means the user explicitly
+   * stopped the work and shouldn't be undone by Retry (use Revise / new
+   * task instead). `done` is success; no retry makes sense.
+   *
+   * Returns the prior session id (when one exists) so the caller can
+   * build the right ResumeReason. Returns undefined when there was
+   * never a session (an edge case for tasks that failed at dispatch
+   * time before claiming).
+   */
+  async prepareRetry(taskId: string): Promise<{
+    task: Task;
+    assigneeId: string;
+    priorSessionId: string | undefined;
+  }> {
+    const task = await this.requireTask(taskId);
+    if (task.status !== "failed") {
+      throw new InvalidTaskTransitionError(
+        `Task ${taskId} is in status '${task.status}'; retry is only allowed from 'failed'`,
+      );
+    }
+    if (!task.assignee_id) {
+      throw new InvalidTaskTransitionError(
+        `Task ${taskId} has no assignee; cannot retry`,
+      );
+    }
+    const priorSession = await this.deps.sessionRepo.findLatestForTask(taskId);
+    const priorSessionId = priorSession?.cli_session_id
+      ? priorSession.id
+      : undefined;
+    // TODO: clear result_summary too; buildPatchClause currently skips
+    // undefined so we can't pass null without extending the patch type.
+    const updated = await this.deps.taskRepo.update(taskId, {
+      status: "assigned",
+    });
+    return { task: updated, assigneeId: task.assignee_id, priorSessionId };
+  }
+
   /** Record a work product (PR, doc, artifact, etc.) produced by a task. */
   async createWorkProduct(input: NewWorkProduct): Promise<WorkProduct> {
     await this.requireTask(input.task_id);

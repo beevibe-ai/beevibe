@@ -1,12 +1,29 @@
+/**
+ * Post-dispatch handling for terminal task sessions.
+ *
+ * Wired from both the api binary (daemon-claimed sessions, via
+ * `/runtime/done`'s `onSessionComplete` hook) and the scheduler binary
+ * (server-fallback sessions, via `AgentSession.run`'s `onSessionComplete`
+ * hook). One implementation, two call sites.
+ *
+ * The motivating bug: agents sometimes exit without calling
+ * `update_progress`, leaving the task stuck at `in_progress`/`revision`
+ * with no path to recover. This module is the auto-retry-then-fail
+ * safety net for that case.
+ *
+ * Used to live in `packages/scheduler/src/post-dispatch.ts`; moved to
+ * core so both binaries can share it (closes #129).
+ */
+
 import type {
   AgentRepository,
   Session,
   SessionRepository,
   TaskRepository,
-} from "@beevibe/core";
-import type { DispatchService } from "@beevibe/core/services/dispatch-service";
-import type { ResumeReason } from "@beevibe/core/services/agent-session";
-import type { TaskService } from "@beevibe/core/services/task-service";
+} from "../index.js";
+import type { DispatchService } from "./dispatch-service.js";
+import type { ResumeReason } from "./agent-session.js";
+import type { TaskService } from "./task-service.js";
 
 /**
  * The XML context marker the retry session sees in its stdin. Identifies
@@ -22,8 +39,7 @@ export interface PostDispatchDeps {
    * Phase 4: retry sessions go through dispatchService (creates a
    * `pending` row, pins runtime_id to the prior session's daemon so
    * `claude --resume` reads the correct local `.jsonl`). The daemon
-   * (or executor as null-runtime fallback) claims and spawns. Inline
-   * AgentSession.run is gone from this path.
+   * (or executor as null-runtime fallback) claims and spawns.
    */
   dispatchService: DispatchService;
   /**
@@ -45,7 +61,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * After a task session terminates, decide whether the agent set a final
- * status. Three branches:
+ * status. Four branches:
  *
  * 1. **Agent set terminal status** → bubble parent rollup via
  *    `taskService.checkAndCompleteParent`.

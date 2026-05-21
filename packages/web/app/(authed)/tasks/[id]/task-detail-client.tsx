@@ -18,6 +18,7 @@ import {
   useApproveTask,
   useCancelTask,
   useRejectTask,
+  useRetryTask,
   useReviseTask,
 } from "@/lib/hooks/use-task-mutations";
 import { isApiConfigured } from "@/lib/api/config";
@@ -110,6 +111,21 @@ function reviewStatus(
 // (done/failed/cancelled) reject with 409, so don't show the button.
 const TASK_TERMINAL_STATUSES = ["done", "failed", "cancelled"] as const;
 
+function MutationError({
+  mutation,
+  verb,
+}: {
+  mutation: { isError: boolean; error: Error | null };
+  verb: string;
+}) {
+  if (!mutation.isError) return null;
+  return (
+    <div className="text-xs text-status-failed text-right mb-2">
+      Couldn&apos;t {verb}: {mutation.error?.message}
+    </div>
+  );
+}
+
 function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   const isInReview = task.status === "review";
   const isTerminal = (TASK_TERMINAL_STATUSES as readonly string[]).includes(task.status);
@@ -118,6 +134,8 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   const reject = useRejectTask(task.id);
   const revise = useReviseTask(task.id);
   const cancel = useCancelTask(task.id);
+  const retry = useRetryTask(task.id);
+  const canRetry = task.status === "failed";
   const [reviseOpen, setReviseOpen] = useState(false);
   const [reviseFeedback, setReviseFeedback] = useState("");
 
@@ -160,13 +178,21 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
                 {cancel.isPending ? "Cancelling…" : "Cancel"}
               </button>
             ) : null}
+            {canRetry ? (
+              <button
+                type="button"
+                disabled={retry.isPending}
+                onClick={() => retry.mutate()}
+                className="h-7 px-2.5 rounded text-xs font-medium border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                title="Retry — re-dispatches the task; the agent resumes the prior CLI conversation"
+              >
+                {retry.isPending ? "Retrying…" : "Retry"}
+              </button>
+            ) : null}
           </div>
         </div>
-        {cancel.isError ? (
-          <div className="text-xs text-status-failed text-right mb-2">
-            Couldn&apos;t cancel: {cancel.error.message}
-          </div>
-        ) : null}
+        <MutationError mutation={cancel} verb="cancel" />
+        <MutationError mutation={retry} verb="retry" />
 
         {isInReview ? (
           <>

@@ -36,6 +36,7 @@ import { TaskService } from "@beevibe/core/services/task-service";
 import { EscalationService } from "@beevibe/core/services/escalation-service";
 import { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { DaemonOrphanReaper } from "@beevibe/core/services/orphan-reaper";
+import { buildPostDispatchHook } from "@beevibe/core/services/post-dispatch";
 import type { Session } from "@beevibe/core";
 import { MeshServer } from "./mesh/server.js";
 import { BeevibeApiServer } from "./server.js";
@@ -192,6 +193,19 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     // only); a daemon mid-WS-blip is still reachable via the HTTP claim
     // poll within ~30s, no need to demote.
     isRuntimeOnline: (runtimeId) => daemonHub.isOnline(runtimeId),
+  });
+
+  // Auto-retry-then-fail hook for daemon-claimed task sessions. Same
+  // implementation the scheduler uses for server-fallback sessions —
+  // closes the gap from #129 where task sessions on the daemon path
+  // could exit without update_progress and leave the task stuck at
+  // in_progress with no recovery.
+  const postDispatchHookForTasks = buildPostDispatchHook({
+    taskRepo,
+    taskService,
+    agentRepo,
+    sessionRepo,
+    dispatchService,
   });
 
   // M6.4 escalation service: DB-only writes for the resolution + dispatch
@@ -413,6 +427,11 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
           );
         }
       }
+      // Auto-retry-then-fail for task sessions whose agent exited
+      // without calling update_progress. Previously only wired in the
+      // scheduler binary (server-fallback path), so daemon-claimed
+      // task sessions sat at in_progress forever — see #129.
+      await postDispatchHookForTasks(session);
       failMeshCalleeIfTerminal(session, session.status);
     },
   });

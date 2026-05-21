@@ -49,16 +49,18 @@ export function useReviseTask(taskId: string) {
 }
 
 export function useCancelTask(taskId: string) {
-  const client = useQueryClient();
+  const onSuccess = useTaskMutationInvalidations(taskId);
   return useMutation({
     mutationFn: (input: CancelTaskInput = {}) => api.tasks.cancel(taskId, input),
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: queryKeys.tasks.detail(taskId) });
-      client.invalidateQueries({ queryKey: queryKeys.tasks.all });
-      // Cancelled tasks leave both the `review` and `blocked` inbox
-      // branches; refresh so the row disappears immediately.
-      client.invalidateQueries({ queryKey: queryKeys.inbox.all });
-    },
+    onSuccess,
+  });
+}
+
+export function useRetryTask(taskId: string) {
+  const onSuccess = useTaskMutationInvalidations(taskId);
+  return useMutation({
+    mutationFn: () => api.tasks.retry(taskId),
+    onSuccess,
   });
 }
 

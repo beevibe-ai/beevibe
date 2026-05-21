@@ -404,6 +404,11 @@ export const api = {
         `/task/${encodeURIComponent(id)}/cancel`,
         { method: "POST", body: input },
       ),
+    retry: (id: string) =>
+      fetchJson<{ ok: true; task: Pick<Task, "id" | "status"> }>(
+        `/task/${encodeURIComponent(id)}/retry`,
+        { method: "POST" },
+      ),
     // Backend hasn't shipped POST /task (create) yet — see #30.
     create: (input: CreateTaskInput) =>
       fetchJson<Task>("/task", { method: "POST", body: input }),

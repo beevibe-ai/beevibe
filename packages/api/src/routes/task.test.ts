@@ -19,7 +19,7 @@ import {
 import { provisionAgent, provisionUser } from "@beevibe/core/auth";
 import { TaskService } from "@beevibe/core/services/task-service";
 import { DispatchService } from "@beevibe/core/services/dispatch-service";
-import { DEFAULT_RUNTIME_CONFIG, agentId, personId, taskId } from "@beevibe/core";
+import { DEFAULT_RUNTIME_CONFIG, agentId, personId, sessionId, taskId } from "@beevibe/core";
 import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
 import { createAuthMiddleware } from "../auth/middleware.js";
 import { DaemonHub } from "../runtime/hub.js";
@@ -266,6 +266,71 @@ describe("task routes — integration", () => {
     } finally {
       await listener.end();
     }
+  });
+
+  it("retry: failed → assigned + dispatches a new session with crash_recovery resume", async () => {
+    const { owner, agent } = await setupHuman();
+    const failedTask = await taskRepo.create({
+      id: taskId(),
+      title: "task that failed",
+      status: "failed",
+      priority: "medium",
+      assignee_id: agent.agent.id,
+      creator_id: agent.agent.id,
+      creator_type: "agent",
+      result_summary: "agent crashed",
+    });
+    // Seed a prior session with cli_session_id set so retry can build a
+    // crash_recovery resume reason. Without cli_session_id, --resume
+    // would have nothing to point at and we'd fall back to fresh.
+    const priorSession = await sessionRepo.create({
+      id: sessionId(),
+      agent_id: agent.agent.id,
+      task_id: failedTask.id,
+      type: "task",
+      status: "failed",
+      intent: "<task/>do the thing",
+      cli_session_id: "cli_prior_xyz",
+    });
+
+    const res = await request(makeApp())
+      .post(`/task/${failedTask.id}/retry`)
+      .set("Authorization", `Bearer ${owner.apiKey}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.task.status).toBe("assigned");
+    expect(res.body.task.id).toBe(failedTask.id);
+
+    const refetched = await taskRepo.findById(failedTask.id);
+    expect(refetched?.status).toBe("assigned");
+
+    // A new pending session should exist, pinned to the prior session
+    // via prior_session_id (the crash_recovery resume chain).
+    const sessions = await sessionRepo.listForTask(failedTask.id);
+    expect(sessions.length).toBe(2);
+    const newSession = sessions.find((s) => s.id !== priorSession.id);
+    expect(newSession?.status).toBe("pending");
+    expect(newSession?.prior_session_id).toBe(priorSession.id);
+  });
+
+  it("retry from a non-failed status → 409", async () => {
+    const { owner, agent } = await setupHuman();
+    const task = await taskRepo.create({
+      id: taskId(),
+      title: "cancelled task",
+      status: "cancelled",
+      priority: "medium",
+      assignee_id: agent.agent.id,
+      creator_id: agent.agent.id,
+      creator_type: "agent",
+    });
+
+    const res = await request(makeApp())
+      .post(`/task/${task.id}/retry`)
+      .set("Authorization", `Bearer ${owner.apiKey}`);
+
+    expect(res.status).toBe(409);
+    expect(res.body.error).toBe("invalid_transition");
   });
 
   it("cancel from terminal status → 409", async () => {

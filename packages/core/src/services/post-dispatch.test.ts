@@ -1,12 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type {
-  Session,
-  SessionRepository,
-  Task,
-  TaskRepository,
-} from "@beevibe/core";
-import type { DispatchService } from "@beevibe/core/services/dispatch-service";
-import type { TaskService } from "@beevibe/core/services/task-service";
+import type { Session } from "../domain/session.js";
+import type { Task } from "../domain/task.js";
+import type { SessionRepository } from "../ports/session-repo.js";
+import type { TaskRepository } from "../ports/task-repo.js";
+import type { DispatchService } from "./dispatch-service.js";
+import type { TaskService } from "./task-service.js";
 import {
   NUDGE_COMPLETION_MARKER,
   postDispatchCheck,

@@ -78,6 +78,10 @@
       "types": "./dist/services/orphan-reaper.d.ts",
       "default": "./dist/services/orphan-reaper.js"
     },
+    "./services/post-dispatch": {
+      "types": "./dist/services/post-dispatch.d.ts",
+      "default": "./dist/services/post-dispatch.js"
+    },
     "./services/skills": {
       "types": "./dist/services/skills/index.d.ts",
       "default": "./dist/services/skills/index.js"
