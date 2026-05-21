@@ -73,19 +73,24 @@ export interface SessionRepository {
   }): Promise<Session[]>;
 
   /**
-   * Atomically claim the oldest pending session bound to `runtimeId` and
+   * Atomically claim the next pending session bound to `runtimeId` and
    * promote it to `running`. Returns undefined when nothing is pending.
    * Implemented with `SELECT … FOR UPDATE SKIP LOCKED` so concurrent claims
    * by parallel daemons each get a distinct session (or undefined).
+   *
+   * Ordering: task sessions ranked by `task.priority` desc (critical >
+   * high > medium > low), non-task sessions (chat/mesh/blocker/run_repo)
+   * slot at the medium tier; ties break on `session.created_at` asc
+   * (FIFO within a priority bucket).
    */
   claimNextForRuntime(runtimeId: string): Promise<Session | undefined>;
 
   /**
-   * Atomically claim the oldest pending session that has NO runtime_id
+   * Atomically claim the next pending session that has NO runtime_id
    * bound. Used by the legacy in-process executor as the fallback
    * claimant for agents without a `preferred_runtime_id`. Daemon-bound
    * sessions are never returned — those go to the matching daemon via
-   * `claimNextForRuntime`.
+   * `claimNextForRuntime`. Same priority+FIFO ordering as that method.
    */
   claimNextForServerFallback(): Promise<Session | undefined>;
 

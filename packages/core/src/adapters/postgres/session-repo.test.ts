@@ -443,6 +443,92 @@ describe("PostgresSessionRepository", () => {
       expect(claimed?.id).toBe(chatId);
       expect(claimed?.type).toBe("chat");
     });
+
+    it("orders task sessions by task priority (critical > high > medium > low), then FIFO", async () => {
+      // Four pending task sessions, created OLDEST-FIRST as low, then
+      // medium, then high, then critical — i.e. inverse priority order.
+      // FIFO alone would claim them in [low, medium, high, critical].
+      // Priority-aware claim must claim [critical, high, medium, low].
+      await agents.update(agent, { max_task_sessions: 4 });
+      const priorities = ["low", "medium", "high", "critical"] as const;
+      const idsByPriority = new Map<string, string>();
+      for (const p of priorities) {
+        const t = await tasks.create({
+          id: taskId(),
+          title: `T-${p}`,
+          priority: p,
+          creator_id: person,
+          creator_type: "person",
+        });
+        const sid = sessionId();
+        idsByPriority.set(p, sid);
+        await sessions.create(
+          newSession({
+            id: sid,
+            task_id: t.id,
+            runtime_id: runtime,
+            status: "pending",
+          }),
+        );
+        await new Promise((r) => setTimeout(r, 5));
+      }
+      const claimedOrder: string[] = [];
+      for (let i = 0; i < 4; i++) {
+        const c = await sessions.claimNextForRuntime(runtime);
+        if (c) claimedOrder.push(c.id);
+      }
+      expect(claimedOrder).toEqual([
+        idsByPriority.get("critical"),
+        idsByPriority.get("high"),
+        idsByPriority.get("medium"),
+        idsByPriority.get("low"),
+      ]);
+    });
+
+    it("ties on priority break by created_at ASC (FIFO within a priority bucket)", async () => {
+      await agents.update(agent, { max_task_sessions: 2 });
+      const t1 = await tasks.create({
+        id: taskId(), title: "h1", priority: "high",
+        creator_id: person, creator_type: "person",
+      });
+      const t2 = await tasks.create({
+        id: taskId(), title: "h2", priority: "high",
+        creator_id: person, creator_type: "person",
+      });
+      const first = sessionId();
+      const second = sessionId();
+      await sessions.create(newSession({ id: first, task_id: t1.id, runtime_id: runtime, status: "pending" }));
+      await new Promise((r) => setTimeout(r, 10));
+      await sessions.create(newSession({ id: second, task_id: t2.id, runtime_id: runtime, status: "pending" }));
+      expect((await sessions.claimNextForRuntime(runtime))?.id).toBe(first);
+      expect((await sessions.claimNextForRuntime(runtime))?.id).toBe(second);
+    });
+
+    it("ranks non-task sessions (chat/mesh/etc.) at the medium tier", async () => {
+      // critical task should claim before chat; chat should claim before low task.
+      await agents.update(agent, { max_task_sessions: 3 });
+      const critTask = await tasks.create({
+        id: taskId(), title: "crit", priority: "critical",
+        creator_id: person, creator_type: "person",
+      });
+      const lowTask = await tasks.create({
+        id: taskId(), title: "low", priority: "low",
+        creator_id: person, creator_type: "person",
+      });
+      // Insert in inverse-of-expected order so created_at can't carry the test.
+      const lowId = sessionId();
+      const chatId = sessionId();
+      const critId = sessionId();
+      await sessions.create(newSession({ id: lowId, task_id: lowTask.id, runtime_id: runtime, status: "pending" }));
+      await new Promise((r) => setTimeout(r, 5));
+      await sessions.create(newSession({ id: chatId, runtime_id: runtime, type: "chat", status: "pending" }));
+      await new Promise((r) => setTimeout(r, 5));
+      await sessions.create(newSession({ id: critId, task_id: critTask.id, runtime_id: runtime, status: "pending" }));
+
+      expect((await sessions.claimNextForRuntime(runtime))?.id).toBe(critId);
+      expect((await sessions.claimNextForRuntime(runtime))?.id).toBe(chatId);
+      expect((await sessions.claimNextForRuntime(runtime))?.id).toBe(lowId);
+    });
   });
 
   describe("claimNextForServerFallback — per-agent task cap", () => {

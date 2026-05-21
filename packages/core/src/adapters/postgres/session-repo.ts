@@ -177,11 +177,18 @@ export class PostgresSessionRepository implements SessionRepository {
     runtimePredicate: string,
     params: unknown[],
   ): Promise<Session | undefined> {
+    // Same priority CASE as task-repo.ts `listAssignable` — TEXT
+    // alphabetical DESC orders low > high > critical, so the rank has to
+    // be expressed numerically. Non-task sessions (chat/mesh/blocker/
+    // run_repo) slot at the medium tier (= 2) so high+critical tasks
+    // preempt them while they still beat low-priority tasks; preserves
+    // the prior FIFO ordering within the non-task group.
     const defaultCapParam = `$${params.length + 1}`;
     const { rows } = await this.pool.query<SessionRow>(
       `WITH candidate AS (
          SELECT s.id FROM session s
            JOIN agent a ON a.id = s.agent_id
+           LEFT JOIN task t ON t.id = s.task_id
           WHERE ${runtimePredicate}
             AND s.status = 'pending'
             AND (
@@ -193,7 +200,19 @@ export class PostgresSessionRepository implements SessionRepository {
                    AND s2.type = 'task'
               ) < COALESCE(a.max_task_sessions, ${defaultCapParam})
             )
-          ORDER BY s.created_at ASC
+          ORDER BY
+            (CASE
+               WHEN s.type = 'task' THEN
+                 (CASE t.priority
+                    WHEN 'critical' THEN 4
+                    WHEN 'high'     THEN 3
+                    WHEN 'medium'   THEN 2
+                    WHEN 'low'      THEN 1
+                    ELSE 0
+                  END)
+               ELSE 2
+             END) DESC,
+            s.created_at ASC
           FOR UPDATE OF s, a SKIP LOCKED
           LIMIT 1
        )
