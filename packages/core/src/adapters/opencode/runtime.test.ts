@@ -228,15 +228,10 @@ describe("OpenCodeRuntime.execute", () => {
     // keys. Asserting the wording locks the message format that the
     // daemon README documents.
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const prior = process.env.OPENROUTER_API_KEY;
-    process.env.OPENROUTER_API_KEY = "leaked-key";
-    try {
+    await withEnv({ OPENROUTER_API_KEY: "leaked-key" }, async () => {
       mockRunCli();
       await new OpenCodeRuntime().execute(ctx());
-    } finally {
-      if (prior === undefined) delete process.env.OPENROUTER_API_KEY;
-      else process.env.OPENROUTER_API_KEY = prior;
-    }
+    });
     expect(warnSpy).toHaveBeenCalledWith(
       expect.stringContaining("[opencode] provider env keys present"),
     );
@@ -248,32 +243,52 @@ describe("OpenCodeRuntime.execute", () => {
 
   it("does not warn when no provider keys are in the env", async () => {
     const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const PROVIDER_VARS = [
-      "OPENAI_API_KEY",
-      "OPENROUTER_API_KEY",
-      "ANTHROPIC_API_KEY",
-      "GROQ_API_KEY",
-      "MISTRAL_API_KEY",
-    ];
-    const prior: Record<string, string | undefined> = {};
-    for (const k of PROVIDER_VARS) {
-      prior[k] = process.env[k];
-      delete process.env[k];
-    }
-    try {
-      mockRunCli();
-      await new OpenCodeRuntime().execute(ctx());
-    } finally {
-      for (const k of PROVIDER_VARS) {
-        if (prior[k] === undefined) delete process.env[k];
-        else process.env[k] = prior[k];
-      }
-    }
+    await withEnv(
+      {
+        OPENAI_API_KEY: undefined,
+        OPENROUTER_API_KEY: undefined,
+        ANTHROPIC_API_KEY: undefined,
+        GROQ_API_KEY: undefined,
+        MISTRAL_API_KEY: undefined,
+      },
+      async () => {
+        mockRunCli();
+        await new OpenCodeRuntime().execute(ctx());
+      },
+    );
     const calls = warnSpy.mock.calls.flat().join(" ");
     expect(calls).not.toContain("provider env keys present");
     warnSpy.mockRestore();
   });
 });
+
+/**
+ * Run `fn` with `process.env` patched per `overrides`, then restore. Set
+ * a key to `undefined` to delete it for the duration of the call;
+ * otherwise the string replaces (or creates) the var. The save-restore
+ * dance is per-key so tests that touch >1 var don't have to hand-roll
+ * the loop.
+ */
+async function withEnv(
+  overrides: Record<string, string | undefined>,
+  fn: () => Promise<void>,
+): Promise<void> {
+  const prior: Record<string, string | undefined> = {};
+  for (const k of Object.keys(overrides)) {
+    prior[k] = process.env[k];
+    const v = overrides[k];
+    if (v === undefined) delete process.env[k];
+    else process.env[k] = v;
+  }
+  try {
+    await fn();
+  } finally {
+    for (const k of Object.keys(overrides)) {
+      if (prior[k] === undefined) delete process.env[k];
+      else process.env[k] = prior[k];
+    }
+  }
+}
 
 describe("OpenCodeRuntime.healthCheck", () => {
   it("runs opencode --version", async () => {
