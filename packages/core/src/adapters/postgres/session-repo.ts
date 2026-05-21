@@ -12,7 +12,7 @@ import type {
   SessionPatch,
 } from "../../ports/session-repo.js";
 import type { Pool } from "./client.js";
-import { buildPatchClause } from "./pg-helpers.js";
+import { buildPatchClause, taskPriorityRankSql } from "./pg-helpers.js";
 import type { SessionRow } from "./row-types.js";
 
 export class PostgresSessionRepository implements SessionRepository {
@@ -177,12 +177,11 @@ export class PostgresSessionRepository implements SessionRepository {
     runtimePredicate: string,
     params: unknown[],
   ): Promise<Session | undefined> {
-    // Same priority CASE as task-repo.ts `listAssignable` — TEXT
-    // alphabetical DESC orders low > high > critical, so the rank has to
-    // be expressed numerically. Non-task sessions (chat/mesh/blocker/
-    // run_repo) slot at the medium tier (= 2) so high+critical tasks
-    // preempt them while they still beat low-priority tasks; preserves
-    // the prior FIFO ordering within the non-task group.
+    // Non-task sessions (chat/mesh/blocker/run_repo) have task_id NULL,
+    // so they fall into the LEFT JOIN's NULL branch and the outer CASE
+    // slots them at the medium tier (= 2): high+critical tasks preempt
+    // them, they preempt medium and low tasks. Preserves the prior FIFO
+    // ordering within the non-task group.
     const defaultCapParam = `$${params.length + 1}`;
     const { rows } = await this.pool.query<SessionRow>(
       `WITH candidate AS (
@@ -201,16 +200,9 @@ export class PostgresSessionRepository implements SessionRepository {
               ) < COALESCE(a.max_task_sessions, ${defaultCapParam})
             )
           ORDER BY
-            (CASE
-               WHEN s.type = 'task' THEN
-                 (CASE t.priority
-                    WHEN 'critical' THEN 4
-                    WHEN 'high'     THEN 3
-                    WHEN 'medium'   THEN 2
-                    WHEN 'low'      THEN 1
-                    ELSE 0
-                  END)
-               ELSE 2
+            (CASE WHEN s.type = 'task'
+                  THEN ${taskPriorityRankSql("t.priority")}
+                  ELSE 2
              END) DESC,
             s.created_at ASC
           FOR UPDATE OF s, a SKIP LOCKED

@@ -11,7 +11,7 @@ import type {
   TaskListFilter,
 } from "../../ports/task-repo.js";
 import type { Pool } from "./client.js";
-import { buildPatchClause } from "./pg-helpers.js";
+import { buildPatchClause, taskPriorityRankSql } from "./pg-helpers.js";
 import type { TaskRow } from "./row-types.js";
 
 export class PostgresTaskRepository implements TaskRepository {
@@ -81,15 +81,8 @@ export class PostgresTaskRepository implements TaskRepository {
       `SELECT * FROM task
         WHERE status IN ('assigned', 'needs_revision')
           AND assignee_id IS NOT NULL
-        ORDER BY
-          (CASE priority
-             WHEN 'critical' THEN 4
-             WHEN 'high'     THEN 3
-             WHEN 'medium'   THEN 2
-             WHEN 'low'      THEN 1
-             ELSE 0
-           END) DESC,
-          created_at ASC`,
+        ORDER BY ${taskPriorityRankSql("priority")} DESC,
+                 created_at ASC`,
     );
     return rows.map(rowToTask);
   }
