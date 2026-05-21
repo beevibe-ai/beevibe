@@ -20,11 +20,10 @@ import { isApiConfigured } from "@/lib/api/config";
 import { useTask } from "@/lib/hooks/use-tasks";
 import {
   useApproveTask,
-  useCancelTask,
   useRejectTask,
-  useRetryTask,
   useReviseTask,
 } from "@/lib/hooks/use-task-mutations";
+import { TaskLifecycleActions } from "./task-lifecycle-actions";
 import { formatRelativeTime, shortId } from "@/lib/format";
 import { richTextToMarkdown, type RichText } from "@/components/rich-text";
 import { cn } from "@/lib/utils";
@@ -159,17 +158,8 @@ function PanelBody({ taskId }: { taskId: string }) {
   return <PanelLoaded task={data} />;
 }
 
-// Statuses where Retry / Cancel apply. Matches the gates used in the
-// route handlers (TASK_TERMINAL_STATUSES for Cancel; failed|cancelled
-// for Retry) — keep these in lockstep with task.ts CANCELLABLE_FROM
-// and task-service.ts prepareRetry.
-const TASK_TERMINAL_STATUSES = ["done", "failed", "cancelled"] as const;
-const RETRYABLE_STATUSES = ["failed", "cancelled"] as const;
-
 function PanelLoaded({ task }: { task: TaskDetail }) {
   const isInReview = task.status === "review";
-  const isTerminal = (TASK_TERMINAL_STATUSES as readonly string[]).includes(task.status);
-  const canRetry = (RETRYABLE_STATUSES as readonly string[]).includes(task.status);
   const activeSession =
     task.latest_session?.status === "running" ? task.latest_session : null;
 
@@ -204,9 +194,7 @@ function PanelLoaded({ task }: { task: TaskDetail }) {
         </div>
       </header>
 
-      {!isTerminal || canRetry ? (
-        <LifecycleActions task={task} isTerminal={isTerminal} canRetry={canRetry} />
-      ) : null}
+      <TaskLifecycleActions task={task} />
 
       {isInReview ? <ReviewActions task={task} /> : null}
 
@@ -554,59 +542,3 @@ function ReviewActions({ task }: { task: TaskDetail }) {
   );
 }
 
-// ── Lifecycle actions (Cancel / Retry) ──────────────────────────────
-
-/**
- * Lifecycle-stage actions inline in the side panel so users don't have
- * to open the detail page to cancel or retry. Cancel shows when the
- * task isn't terminal; Retry shows when it's failed or cancelled.
- * Renders nothing when neither applies.
- */
-function LifecycleActions({
-  task,
-  isTerminal,
-  canRetry,
-}: {
-  task: TaskDetail;
-  isTerminal: boolean;
-  canRetry: boolean;
-}) {
-  const cancel = useCancelTask(task.id);
-  const retry = useRetryTask(task.id);
-  return (
-    <div className="mt-3 flex items-center gap-2">
-      {!isTerminal ? (
-        <button
-          type="button"
-          disabled={cancel.isPending}
-          onClick={() => cancel.mutate({})}
-          className="h-7 px-2.5 rounded text-[11px] font-medium border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Cancel this task — stops any running session"
-        >
-          {cancel.isPending ? "Cancelling…" : "Cancel"}
-        </button>
-      ) : null}
-      {canRetry ? (
-        <button
-          type="button"
-          disabled={retry.isPending}
-          onClick={() => retry.mutate()}
-          className="h-7 px-2.5 rounded text-[11px] font-medium border border-border text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-          title="Retry — re-dispatches the task; the agent resumes the prior CLI conversation"
-        >
-          {retry.isPending ? "Retrying…" : "Retry"}
-        </button>
-      ) : null}
-      {cancel.isError ? (
-        <span className="text-[11px] text-status-failed ml-auto">
-          Couldn&apos;t cancel: {cancel.error.message}
-        </span>
-      ) : null}
-      {retry.isError ? (
-        <span className="text-[11px] text-status-failed ml-auto">
-          Couldn&apos;t retry: {retry.error.message}
-        </span>
-      ) : null}
-    </div>
-  );
-}
