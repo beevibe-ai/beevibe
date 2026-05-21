@@ -17,14 +17,23 @@ set -euo pipefail
 DAEMON_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_ROOT="$(cd "$DAEMON_DIR/../.." && pwd)"
 
-# Build core first — bun --compile resolves @beevibe/core via its package
-# manifest's main field, which points at dist/.
-cd "$REPO_ROOT"
-# Idempotent core build — skip if dist is fresh enough. Ad-hoc local
+# Build workspace deps first — bun --compile resolves their imports via
+# package.json `main` / `exports` which point at `dist/`. Without these
+# pre-builds, bun-bundle errors with "Could not resolve" on cold checkouts
+# (e.g., CI's fresh clone after pnpm install --frozen-lockfile).
+#
+# Idempotent — skip per package if dist is already fresh. Ad-hoc local
 # runs hit the cold case; the release workflow pre-builds once and the
 # sibling prepare-publish.sh reuses the result.
+cd "$REPO_ROOT"
 if [ ! -f packages/core/dist/index.js ]; then
   pnpm --filter @beevibe/core build >/dev/null
+fi
+# Capability Network (#153): daemon's repo-runs.ts imports
+# @beevibe/sandbox/orchestrator whose package exports point at
+# packages/sandbox/dist/. Needs the same treatment as core.
+if [ ! -f packages/sandbox/dist/orchestrator.js ]; then
+  pnpm --filter @beevibe/sandbox build >/dev/null
 fi
 
 cd "$DAEMON_DIR"
