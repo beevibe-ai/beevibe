@@ -135,7 +135,10 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   const revise = useReviseTask(task.id);
   const cancel = useCancelTask(task.id);
   const retry = useRetryTask(task.id);
-  const canRetry = task.status === "failed";
+  // Retry is allowed from failed or cancelled. Operators used cancel as
+  // a cleanup hatch for pre-#190 stuck tasks; rejecting Retry there would
+  // force them through a workaround.
+  const canRetry = task.status === "failed" || task.status === "cancelled";
   const [reviseOpen, setReviseOpen] = useState(false);
   const [reviseFeedback, setReviseFeedback] = useState("");
 
