@@ -19,10 +19,15 @@ DAEMON_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 REPO_ROOT="$(cd "$DAEMON_DIR/../.." && pwd)"
 
 cd "$REPO_ROOT"
-# Idempotent core build — skip if dist exists. The release workflow
-# pre-builds via build-binaries.sh, and ad-hoc runs handle the cold case.
+# Idempotent workspace-dep builds — skip per package if dist exists.
+# The release workflow pre-builds via build-binaries.sh; ad-hoc runs
+# handle the cold case. Both core and sandbox need dist/ for bun-bundle
+# to resolve `@beevibe/core` and `@beevibe/sandbox/orchestrator`.
 if [ ! -f packages/core/dist/index.js ]; then
   pnpm --filter @beevibe/core build >/dev/null
+fi
+if [ ! -f packages/sandbox/dist/orchestrator.js ]; then
+  pnpm --filter @beevibe/sandbox build >/dev/null
 fi
 
 cd "$DAEMON_DIR"
