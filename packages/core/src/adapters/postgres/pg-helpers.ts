@@ -38,3 +38,27 @@ export function buildPatchClause<T extends object>(
   }
   return { fields, values, nextIndex: i };
 }
+
+/**
+ * SQL fragment ranking task.priority numerically (critical=4, high=3,
+ * medium=2, low=1, unknown/NULL=0). TEXT alphabetical DESC orders
+ * 'low' > 'high' > 'critical' (backwards), so ORDER BY clauses on
+ * priority need this numeric expression instead.
+ *
+ * Pass `priority` for bare-column refs (task-repo `listAssignable`),
+ * or `t.priority` when joined with a task alias (session-repo claim).
+ *
+ * Mirror of `migrations/1777500000000_fix-task-dispatch-index.sql`'s
+ * partial-index CASE — the index uses the same numeric ranks, so the
+ * planner can match queries that ORDER BY this expression. If you
+ * change the numbers here, change them in that migration too.
+ */
+export function taskPriorityRankSql(column: string): string {
+  return `(CASE ${column}
+            WHEN 'critical' THEN 4
+            WHEN 'high'     THEN 3
+            WHEN 'medium'   THEN 2
+            WHEN 'low'      THEN 1
+            ELSE 0
+          END)`;
+}

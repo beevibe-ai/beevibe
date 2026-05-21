@@ -12,7 +12,7 @@ import type {
   SessionPatch,
 } from "../../ports/session-repo.js";
 import type { Pool } from "./client.js";
-import { buildPatchClause } from "./pg-helpers.js";
+import { buildPatchClause, taskPriorityRankSql } from "./pg-helpers.js";
 import type { SessionRow } from "./row-types.js";
 
 export class PostgresSessionRepository implements SessionRepository {
@@ -177,11 +177,17 @@ export class PostgresSessionRepository implements SessionRepository {
     runtimePredicate: string,
     params: unknown[],
   ): Promise<Session | undefined> {
+    // Non-task sessions (chat/mesh/blocker/run_repo) have task_id NULL,
+    // so they fall into the LEFT JOIN's NULL branch and the outer CASE
+    // slots them at the medium tier (= 2): high+critical tasks preempt
+    // them, they preempt medium and low tasks. Preserves the prior FIFO
+    // ordering within the non-task group.
     const defaultCapParam = `$${params.length + 1}`;
     const { rows } = await this.pool.query<SessionRow>(
       `WITH candidate AS (
          SELECT s.id FROM session s
            JOIN agent a ON a.id = s.agent_id
+           LEFT JOIN task t ON t.id = s.task_id
           WHERE ${runtimePredicate}
             AND s.status = 'pending'
             AND (
@@ -193,7 +199,12 @@ export class PostgresSessionRepository implements SessionRepository {
                    AND s2.type = 'task'
               ) < COALESCE(a.max_task_sessions, ${defaultCapParam})
             )
-          ORDER BY s.created_at ASC
+          ORDER BY
+            (CASE WHEN s.type = 'task'
+                  THEN ${taskPriorityRankSql("t.priority")}
+                  ELSE 2
+             END) DESC,
+            s.created_at ASC
           FOR UPDATE OF s, a SKIP LOCKED
           LIMIT 1
        )
