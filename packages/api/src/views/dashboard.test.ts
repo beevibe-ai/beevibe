@@ -9,6 +9,8 @@
  *   3) TREND_SQL                 → 14 days of completed sessions
  *   4) ATTENTION_SQL             → blocked/failed/review tasks
  *   5) KPI_TREND_SQL             → 7 days of per-KPI counts
+ *   6) USAGE_WINDOW_SQL          → per-agent cost/token rollup
+ *   7) RUNNING_SESSIONS_SQL      → current running session count
  */
 import { describe, it, expect, vi } from "vitest";
 import type { Pool } from "@beevibe/core/adapters/postgres";
@@ -127,6 +129,8 @@ describe("getDashboardSummary", () => {
       makeTrendRows(),
       [],
       makeKpiTrendRows(),
+      [], // usage
+      [{ n: 10 }], // running sessions
     ]);
     const { kpis } = await getDashboardSummary(pool);
     expect(kpis.map((k) => k.kind)).toEqual([
@@ -135,10 +139,27 @@ describe("getDashboardSummary", () => {
       "completed_today",
       "blocked",
     ]);
-    expect(kpis.find((k) => k.kind === "active_sessions")?.value).toBe(2); // fleet_active
+    expect(kpis.find((k) => k.kind === "active_sessions")?.value).toBe(10);
     expect(kpis.find((k) => k.kind === "in_review")?.value).toBe(4);
     expect(kpis.find((k) => k.kind === "completed_today")?.value).toBe(5); // last day of trend
     expect(kpis.find((k) => k.kind === "blocked")?.value).toBe(2);
+  });
+
+  it("active_sessions KPI counts running sessions, not active agents", async () => {
+    // 1 agent with 10 running sessions: fleet_active=1, running_sessions=10.
+    // The KPI must report 10, not 1.
+    const pool = makeMockPool([
+      [],
+      [{ hier: "team", count: 1, active: 1 }],
+      makeTrendRows(),
+      [],
+      makeKpiTrendRows(),
+      [],
+      [{ n: 10 }],
+    ]);
+    const summary = await getDashboardSummary(pool);
+    expect(summary.fleet_active).toBe(1);
+    expect(summary.kpis.find((k) => k.kind === "active_sessions")?.value).toBe(10);
   });
 
   it("handles 0 totals without dividing by zero", async () => {
@@ -189,7 +210,7 @@ describe("getDashboardSummary", () => {
     });
   });
 
-  it("fires all 6 queries in parallel (single Promise.all)", async () => {
+  it("fires all 7 queries in parallel (single Promise.all)", async () => {
     const calls: number[] = [];
     let next = 0;
     const query = vi.fn(async (sql: unknown) => {
@@ -208,8 +229,8 @@ describe("getDashboardSummary", () => {
     });
     const pool = { query } as unknown as Pool;
     await getDashboardSummary(pool);
-    expect(calls).toEqual([0, 1, 2, 3, 4, 5]);
-    expect(query).toHaveBeenCalledTimes(6);
+    expect(calls).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(query).toHaveBeenCalledTimes(7);
   });
 });
 

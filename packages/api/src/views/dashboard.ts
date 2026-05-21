@@ -89,6 +89,10 @@ LEFT JOIN active_agents aa ON aa.agent_id = a.id
 GROUP BY a.hierarchy_level
 `;
 
+const RUNNING_SESSIONS_SQL = /* sql */ `
+SELECT COUNT(*)::int AS n FROM session WHERE status = 'running'
+`;
+
 const TREND_SQL = /* sql */ `
 WITH days AS (
   SELECT (CURRENT_DATE - i)::date AS d
@@ -246,6 +250,7 @@ export async function getDashboardSummary(pool: Pool): Promise<DashboardSummary>
     attentionResult,
     kpiTrendResult,
     usageResult,
+    runningSessionsResult,
   ] = await Promise.all([
     pool.query<StatusCountRow>(STATUS_COUNT_SQL),
     pool.query<FleetCountRow>(FLEET_SQL),
@@ -253,6 +258,7 @@ export async function getDashboardSummary(pool: Pool): Promise<DashboardSummary>
     pool.query<AttentionRow>(ATTENTION_SQL, [ATTENTION_LIMIT]),
     pool.query<KpiTrendRow>(KPI_TREND_SQL, [TREND_WINDOW_DAYS]),
     pool.query<UsageWindowRow>(USAGE_WINDOW_SQL, [TREND_WINDOW_DAYS]),
+    pool.query<{ n: number }>(RUNNING_SESSIONS_SQL),
   ]);
 
   const status_total = statusResult.rows.reduce((s, r) => s + Number(r.count), 0);
@@ -308,7 +314,8 @@ export async function getDashboardSummary(pool: Pool): Promise<DashboardSummary>
     created_at: r.created_at,
   }));
 
-  const kpis: KpiData[] = buildKpis(kpiTrendResult.rows, statusResult.rows, fleet_active);
+  const running_sessions = Number(runningSessionsResult.rows[0]?.n ?? 0);
+  const kpis: KpiData[] = buildKpis(kpiTrendResult.rows, statusResult.rows, running_sessions);
 
   const usage_summary: UsageSummaryData = buildUsageSummary(
     usageResult.rows,
@@ -335,7 +342,7 @@ export async function getDashboardSummary(pool: Pool): Promise<DashboardSummary>
 function buildKpis(
   kpiRows: KpiTrendRow[],
   statusRows: StatusCountRow[],
-  activeAgents: number,
+  runningSessions: number,
 ): KpiData[] {
   const statusMap = new Map<TaskStatus, number>();
   for (const r of statusRows) statusMap.set(r.status, Number(r.count));
@@ -348,7 +355,7 @@ function buildKpis(
   return [
     {
       kind: "active_sessions",
-      value: activeAgents,
+      value: runningSessions,
       unit: "running",
       trend: trend("active_sessions"),
     },
