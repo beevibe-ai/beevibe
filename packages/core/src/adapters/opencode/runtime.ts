@@ -39,8 +39,19 @@ export interface OpenCodeRuntimeConfig {
  *
  * Provider auth env vars (OPENROUTER_API_KEY, OPENAI_API_KEY, etc.) are
  * intentionally NOT stripped — opencode depends on them to know which
- * provider to route to.
+ * provider to route to. Their presence forces opencode onto API-key
+ * billing rather than the subscription auth a user may have configured
+ * via `opencode auth login`; the runtime logs a one-line warning per
+ * spawn so this isn't a silent UX footgun.
  */
+const PROVIDER_AUTH_VARS = [
+  "OPENAI_API_KEY",
+  "OPENROUTER_API_KEY",
+  "ANTHROPIC_API_KEY",
+  "GROQ_API_KEY",
+  "MISTRAL_API_KEY",
+] as const;
+
 export class OpenCodeRuntime implements AgentRuntime {
   readonly type = "opencode";
 
@@ -68,6 +79,19 @@ export class OpenCodeRuntime implements AgentRuntime {
 
     const env: Record<string, string | undefined> = { ...process.env };
     if (context.env) Object.assign(env, context.env);
+
+    // Surface the auth-routing footgun: any provider key in the daemon
+    // env forces opencode onto API-key billing for that provider, even
+    // if the user expected `opencode auth login` subscription auth to
+    // win. Logged per spawn so operators can spot it in daemon logs;
+    // scrub the env (see packages/daemon/README.md) to opt back into
+    // subscription auth.
+    const leakedProviderKeys = PROVIDER_AUTH_VARS.filter((k) => env[k]);
+    if (leakedProviderKeys.length > 0) {
+      console.warn(
+        `[opencode] provider env keys present — agent will use API-key billing for: ${leakedProviderKeys.join(", ")}`,
+      );
+    }
 
     const events: OpenCodeEvent[] = [];
     let pending = "";
@@ -154,6 +178,20 @@ export class OpenCodeRuntime implements AgentRuntime {
     /* stateless — each session is a separate process */
   }
 
+  /**
+   * Where the workspace manager writes tier-filtered SKILL.md files for
+   * opencode-runtime agents.
+   *
+   * Convention only — opencode does NOT auto-discover files under
+   * `.opencode/skills/`. opencode's customization surface today is
+   * custom agents (`.opencode/agent/*.md`) and project-level
+   * instructions (`AGENTS.md`); skill files written here are present
+   * for forward-compat / parity with the claude-code adapter but the
+   * spawned CLI will not load them. Until upstream adds discovery (or
+   * we wire the prose into `system_prompt_append` ourselves), skill
+   * guidance reaches opencode agents only via the briefing the router
+   * already injects.
+   */
   skillsDir(workspace: Workspace): string {
     return join(workspace.path, ".opencode", "skills");
   }
