@@ -293,14 +293,10 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     },
   });
 
-  // F-SL-2: SessionCache state is lost on api restart. Any human MCP chat
-  // session that was `running` when the api went down becomes orphaned —
-  // no eviction will ever fire, and (post F-SL-1) cache eviction no longer
-  // writes status anyway. One-shot sweep at boot reaps `running` chat
-  // sessions whose newest activity timestamp is older than 2× the cache's
-  // idle TTL (default 60 min). Has to run BEFORE startIdleSweep so a
-  // fresh idle sweep that fires immediately doesn't race against the
-  // orphan-write.
+  // SessionCache is in-memory: on api restart a `running` chat session
+  // has no daemon to report it terminal and would sit `running` forever.
+  // One-shot sweep at boot reaps stale chat rows (2× the cache's idle TTL)
+  // before startIdleSweep so the sweep can't race the orphan write.
   const chatOrphanThresholdMs = (cfg.sessionCacheIdleTimeoutMs ?? 30 * 60 * 1000) * 2;
   try {
     const reaped = await sessionRepo.markAbandonedChatSessions(chatOrphanThresholdMs);
