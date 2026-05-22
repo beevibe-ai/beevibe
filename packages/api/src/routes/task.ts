@@ -286,8 +286,7 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
           }),
         );
       }
-      await Promise.all(cancelPushes);
-      await deps.taskService.notifyCancelled(id);
+      await Promise.all([...cancelPushes, deps.taskService.notifyCancelled(id)]);
 
       res.json({
         ok: true,

@@ -372,11 +372,7 @@ export class EscalationService {
     };
   }
 
-  /**
-   * Fire `pg_notify('escalation_resolved', escalation_id)`. Wraps the repo's
-   * notify so `POST /escalation/:id/resolve` can issue the wakeup signal
-   * without reaching around the data layer for a raw pool query.
-   */
+  /** See `EscalationRepository.notifyResolved`. Service hop keeps routes one call from a service like every other side-effect. */
   async notifyResolved(escalationId: string): Promise<void> {
     await this.deps.escalationRepo.notifyResolved(escalationId);
   }

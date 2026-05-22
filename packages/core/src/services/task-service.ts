@@ -254,13 +254,7 @@ export class TaskService {
     });
   }
 
-  /**
-   * Fire `pg_notify('cancel_task', task_id)`. Wraps the repo's notify so
-   * `POST /task/:id/cancel` can issue the scheduler signal without reaching
-   * around the data layer for a raw pool query. The route already updated the
-   * task's status; this is the cross-process wakeup for server-fallback
-   * sessions still running the work.
-   */
+  /** See `TaskRepository.notifyCancelled`. Service hop keeps routes one call from a service like every other side-effect. */
   async notifyCancelled(taskId: string): Promise<void> {
     await this.deps.taskRepo.notifyCancelled(taskId);
   }
