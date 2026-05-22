@@ -17,7 +17,6 @@
  */
 
 import { Router, type RequestHandler, type Response } from "express";
-import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   TASK_PRIORITIES,
   isInFlightSessionStatus,
@@ -63,8 +62,6 @@ export interface TaskRoutesDeps {
   dispatchService: DispatchService;
   /** Push cancel frames over WS to daemon-bound running sessions. */
   hub: DaemonHub;
-  /** For pg_notify('cancel_task', task_id) — server-fallback path only. */
-  pool: Pool;
 }
 
 function handleServiceError(err: unknown, res: Response): void {
@@ -290,7 +287,7 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
         );
       }
       await Promise.all(cancelPushes);
-      await deps.pool.query(`SELECT pg_notify('cancel_task', $1)`, [id]);
+      await deps.taskService.notifyCancelled(id);
 
       res.json({
         ok: true,

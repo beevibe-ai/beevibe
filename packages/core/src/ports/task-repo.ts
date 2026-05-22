@@ -75,6 +75,14 @@ export interface TaskRepository {
   clearBlocker(id: string): Promise<Task>;
 
   delete(id: string): Promise<void>;
+
+  /**
+   * Fire `pg_notify('cancel_task', task_id)` on the repo's pool. The scheduler's
+   * CancelListener subscribes to this channel and aborts server-fallback
+   * (in-process) sessions running the task. Routed through the repo so route
+   * handlers don't reach around the data layer to issue raw pool queries.
+   */
+  notifyCancelled(taskId: string): Promise<void>;
 }
 
 export type TaskCreatorInput = {

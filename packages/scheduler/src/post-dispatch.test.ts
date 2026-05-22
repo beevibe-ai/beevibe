@@ -61,6 +61,7 @@ beforeEach(() => {
     markBlocked: vi.fn(),
     clearBlocker: vi.fn(),
     delete: vi.fn(),
+    notifyCancelled: vi.fn(),
   };
   taskService = {
     checkAndCompleteParent: vi.fn(),

@@ -18,7 +18,6 @@
  */
 
 import { Router, type RequestHandler } from "express";
-import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   type EscalationService,
   type ResolveSelector,
@@ -31,7 +30,6 @@ import { requireHuman } from "../auth/middleware.js";
 export interface EscalationRoutesDeps {
   authMiddleware: RequestHandler;
   escalationService: EscalationService;
-  pool: Pool;
 }
 
 function buildSelector(body: unknown):
@@ -117,7 +115,7 @@ export function createEscalationRouter(deps: EscalationRoutesDeps): Router {
       });
 
       // Notify any future M8 web-UI listeners. Zero cost in M6.
-      await deps.pool.query(`SELECT pg_notify('escalation_resolved', $1)`, [id]);
+      await deps.escalationService.notifyResolved(id);
 
       res.json({
         ok: true,

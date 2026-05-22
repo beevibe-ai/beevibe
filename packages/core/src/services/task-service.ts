@@ -254,6 +254,17 @@ export class TaskService {
     });
   }
 
+  /**
+   * Fire `pg_notify('cancel_task', task_id)`. Wraps the repo's notify so
+   * `POST /task/:id/cancel` can issue the scheduler signal without reaching
+   * around the data layer for a raw pool query. The route already updated the
+   * task's status; this is the cross-process wakeup for server-fallback
+   * sessions still running the work.
+   */
+  async notifyCancelled(taskId: string): Promise<void> {
+    await this.deps.taskRepo.notifyCancelled(taskId);
+  }
+
   /** Record a work product (PR, doc, artifact, etc.) produced by a task. */
   async createWorkProduct(input: NewWorkProduct): Promise<WorkProduct> {
     await this.requireTask(input.task_id);

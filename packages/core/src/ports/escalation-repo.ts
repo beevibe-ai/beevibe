@@ -45,4 +45,12 @@ export interface EscalationRepository {
   listPending(): Promise<Escalation[]>;
   create(input: NewEscalation): Promise<Escalation>;
   update(id: string, patch: EscalationPatch): Promise<Escalation>;
+
+  /**
+   * Fire `pg_notify('escalation_resolved', escalation_id)` on the repo's pool.
+   * Notification side-channel for future web-UI listeners; routed through the
+   * repo so route handlers don't reach around the data layer to issue raw pool
+   * queries.
+   */
+  notifyResolved(escalationId: string): Promise<void>;
 }

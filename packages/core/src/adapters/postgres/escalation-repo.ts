@@ -121,6 +121,13 @@ export class PostgresEscalationRepository implements EscalationRepository {
     if (!rows[0]) throw new Error(`Escalation not found: ${id}`);
     return rowToEscalation(rows[0]);
   }
+
+  async notifyResolved(escalationId: string): Promise<void> {
+    await this.pool.query(
+      `SELECT pg_notify('escalation_resolved', $1)`,
+      [escalationId],
+    );
+  }
 }
 
 function rowToEscalation(row: EscalationRow): Escalation {

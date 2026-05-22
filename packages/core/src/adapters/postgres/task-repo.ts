@@ -263,6 +263,10 @@ export class PostgresTaskRepository implements TaskRepository {
   async delete(id: string): Promise<void> {
     await this.pool.query(`DELETE FROM task WHERE id = $1`, [id]);
   }
+
+  async notifyCancelled(taskId: string): Promise<void> {
+    await this.pool.query(`SELECT pg_notify('cancel_task', $1)`, [taskId]);
+  }
 }
 
 function rowToTask(row: TaskRow): Task {

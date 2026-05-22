@@ -87,7 +87,6 @@ describe("escalation routes — integration", () => {
       createEscalationRouter({
         authMiddleware: createAuthMiddleware({ agentRepo, personRepo }),
         escalationService,
-        pool,
       }),
     );
     return app;

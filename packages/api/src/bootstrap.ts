@@ -307,14 +307,12 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     runtimeRepo,
     dispatchService,
     hub: daemonHub,
-    pool,
   });
   server.getApp().use("/task", taskRouter);
 
   const escalationRouter = createEscalationRouter({
     authMiddleware: server.getAuthMiddleware(),
     escalationService,
-    pool,
   });
   server.getApp().use("/escalation", escalationRouter);
 

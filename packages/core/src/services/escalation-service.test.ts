@@ -62,6 +62,7 @@ beforeEach(() => {
     listPending: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+    notifyResolved: vi.fn(),
   };
   negotiationRepo = {
     findById: vi.fn(),
@@ -92,6 +93,7 @@ beforeEach(() => {
     markBlocked: vi.fn(),
     clearBlocker: vi.fn(),
     delete: vi.fn(),
+    notifyCancelled: vi.fn(),
   };
   agentRepo = {
     findById: vi.fn(),

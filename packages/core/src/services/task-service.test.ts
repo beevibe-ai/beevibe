@@ -96,6 +96,7 @@ beforeEach(() => {
     markBlocked: vi.fn(),
     clearBlocker: vi.fn(),
     delete: vi.fn(),
+    notifyCancelled: vi.fn(),
   };
   workProductRepo = {
     findById: vi.fn(),

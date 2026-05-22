@@ -73,7 +73,6 @@ describe("task routes — integration", () => {
         runtimeRepo,
         dispatchService,
         hub,
-        pool,
       }),
     );
     return app;
