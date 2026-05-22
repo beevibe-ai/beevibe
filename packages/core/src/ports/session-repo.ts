@@ -131,6 +131,26 @@ export interface SessionRepository {
    */
   listRunningInRoom(roomId: string): Promise<Session[]>;
 
+  /**
+   * One-shot startup sweep for orphaned human MCP chat sessions. The
+   * SessionCache is in-memory only, so on api restart any chat session
+   * that was `running` when the process went down has no daemon to
+   * report it terminal — the row sits `running` forever. This call
+   * marks every chat session that's been idle longer than
+   * `olderThanMs` (measured against `COALESCE(last_event_at,
+   * started_at, created_at)`) as `failed` with
+   * `error='abandoned_at_restart'`.
+   *
+   * Returns the number of rows reaped. Run from bootstrap BEFORE
+   * `sessionCache.startIdleSweep()`.
+   *
+   * Only touches `type='chat'` rows so daemon-bound task/mesh sessions
+   * aren't accidentally reaped — those have their own
+   * `DaemonOrphanReaper` path that joins against the daemon's
+   * heartbeat.
+   */
+  markAbandonedChatSessions(olderThanMs: number): Promise<number>;
+
   create(input: NewSession): Promise<Session>;
 
   update(id: string, patch: SessionPatch): Promise<Session>;

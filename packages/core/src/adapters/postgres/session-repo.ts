@@ -249,6 +249,27 @@ export class PostgresSessionRepository implements SessionRepository {
     return rows[0] ? rowToSession(rows[0]) : undefined;
   }
 
+  async markAbandonedChatSessions(olderThanMs: number): Promise<number> {
+    const seconds = Math.max(0, Math.floor(olderThanMs / 1000));
+    // COALESCE(last_event_at, started_at, created_at) gives the freshest
+    // signal of activity we have for a chat row. SessionEventRepository
+    // touches last_event_at for daemon-bound sessions; human MCP chat
+    // sessions don't emit those events, so they fall through to
+    // started_at/created_at.
+    const { rowCount } = await this.pool.query(
+      `UPDATE session
+          SET status = 'failed',
+              error = 'abandoned_at_restart',
+              completed_at = now()
+        WHERE status = 'running'
+          AND type = 'chat'
+          AND COALESCE(last_event_at, started_at, created_at)
+              < now() - ($1 * INTERVAL '1 second')`,
+      [seconds],
+    );
+    return rowCount ?? 0;
+  }
+
   async listRunningInRoom(roomId: string): Promise<Session[]> {
     const { rows } = await this.pool.query<SessionRow>(
       `SELECT * FROM session

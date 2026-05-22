@@ -283,7 +283,6 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
    * on the hot path.
    */
   const sessionCache = new SessionCache({
-    sessionRepo,
     maxEntries: cfg.sessionCacheMaxEntries,
     idleTimeoutMs: cfg.sessionCacheIdleTimeoutMs,
     onEvict: async (beevibeSid) => {
@@ -293,6 +292,31 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
       await memoryAgent.onTaskComplete(beevibeSid);
     },
   });
+
+  // F-SL-2: SessionCache state is lost on api restart. Any human MCP chat
+  // session that was `running` when the api went down becomes orphaned —
+  // no eviction will ever fire, and (post F-SL-1) cache eviction no longer
+  // writes status anyway. One-shot sweep at boot reaps `running` chat
+  // sessions whose newest activity timestamp is older than 2× the cache's
+  // idle TTL (default 60 min). Has to run BEFORE startIdleSweep so a
+  // fresh idle sweep that fires immediately doesn't race against the
+  // orphan-write.
+  const chatOrphanThresholdMs = (cfg.sessionCacheIdleTimeoutMs ?? 30 * 60 * 1000) * 2;
+  try {
+    const reaped = await sessionRepo.markAbandonedChatSessions(chatOrphanThresholdMs);
+    if (reaped > 0) {
+      console.warn(
+        `[bootstrap] reaped ${reaped} abandoned chat session(s) older than ${Math.round(
+          chatOrphanThresholdMs / 60_000,
+        )}m at startup`,
+      );
+    }
+  } catch (err) {
+    console.error(
+      "[bootstrap] markAbandonedChatSessions failed (non-fatal):",
+      err instanceof Error ? err.message : err,
+    );
+  }
   sessionCache.startIdleSweep();
 
   const server = new BeevibeApiServer({

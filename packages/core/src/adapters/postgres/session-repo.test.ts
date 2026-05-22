@@ -666,4 +666,87 @@ describe("PostgresSessionRepository", () => {
       expect(await sessions.countOwnedByDaemon(dId, [s])).toBe(0);
     });
   });
+
+  describe("markAbandonedChatSessions", () => {
+    // Direct UPDATE so we can backdate fields the public API doesn't normally
+    // let us rewrite (created_at, last_event_at). Mirrors the orphan-reaper
+    // tests' pattern.
+    const backdate = async (id: string, intervalSql: string): Promise<void> => {
+      await pool.query(
+        `UPDATE session
+            SET last_event_at = now() - $2::interval,
+                started_at = now() - $2::interval,
+                created_at = now() - $2::interval
+          WHERE id = $1`,
+        [id, intervalSql],
+      );
+    };
+
+    it("marks a stale running chat session as failed with error='abandoned_at_restart'", async () => {
+      const chat = await sessions.create(
+        newSession({ type: "chat", intent: "hi", status: "running" }),
+      );
+      await backdate(chat.id, "2 hours");
+
+      // Threshold = 1 hour. The 2-hour-old chat must be reaped.
+      const count = await sessions.markAbandonedChatSessions(60 * 60 * 1000);
+      expect(count).toBe(1);
+
+      const after = await sessions.findById(chat.id);
+      expect(after?.status).toBe("failed");
+      expect(after?.error).toBe("abandoned_at_restart");
+      expect(after?.completed_at).toBeInstanceOf(Date);
+    });
+
+    it("leaves recent chat sessions alone", async () => {
+      const fresh = await sessions.create(
+        newSession({ type: "chat", intent: "hi", status: "running" }),
+      );
+      // No backdate — created seconds ago, well inside the 1-hour window.
+
+      const count = await sessions.markAbandonedChatSessions(60 * 60 * 1000);
+      expect(count).toBe(0);
+
+      const after = await sessions.findById(fresh.id);
+      expect(after?.status).toBe("running");
+      expect(after?.error).toBeUndefined();
+    });
+
+    it("does not touch non-chat sessions even when stale", async () => {
+      // A task session that's been running for hours has its own
+      // DaemonOrphanReaper path (heartbeat join) — markAbandonedChatSessions
+      // must stay out of its way.
+      const taskRun = await sessions.create(
+        newSession({ type: "task", task_id: task, status: "running" }),
+      );
+      await backdate(taskRun.id, "5 hours");
+
+      const count = await sessions.markAbandonedChatSessions(60 * 60 * 1000);
+      expect(count).toBe(0);
+
+      const after = await sessions.findById(taskRun.id);
+      expect(after?.status).toBe("running");
+    });
+
+    it("does not touch already-terminal chat sessions", async () => {
+      // A row that's already `succeeded`/`failed`/`cancelled` must not be
+      // re-stamped — the sweep is for sessions still claiming to be live.
+      const chat = await sessions.create(
+        newSession({ type: "chat", intent: "hi", status: "running" }),
+      );
+      await sessions.update(chat.id, {
+        status: "succeeded",
+        result_summary: "done",
+        completed_at: new Date(),
+      });
+      await backdate(chat.id, "2 hours");
+
+      const count = await sessions.markAbandonedChatSessions(60 * 60 * 1000);
+      expect(count).toBe(0);
+
+      const after = await sessions.findById(chat.id);
+      expect(after?.status).toBe("succeeded");
+      expect(after?.error).toBeUndefined();
+    });
+  });
 });
