@@ -28,6 +28,7 @@
     "install-skills": "tsx scripts/install-skills.ts",
     "bootstrap": "tsx scripts/init.ts",
     "provision-user": "tsx scripts/provision-user.ts",
+    "seed-deep-research-prep": "tsx scripts/seed-deep-research-prep.ts",
     "sync-core-memory": "tsx scripts/sync-core-memory-descriptions.ts",
     "daemon": "tsx packages/daemon/src/main.ts"
   },
