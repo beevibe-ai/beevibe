@@ -717,9 +717,8 @@ function Thinking({
             <ChatMarkdown content={streamingText} />
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground/80">
+          <div className="pl-3">
             <ChatLoader compact />
-            <span className="italic">Thinking…</span>
           </div>
         )}
         {recentTools.length > 0 ? (
