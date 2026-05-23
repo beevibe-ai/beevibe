@@ -716,17 +716,55 @@ export const api = {
         `/capabilities/referenced-repos?task_id=${encodeURIComponent(taskId)}`,
         { signal: opts.signal },
       ),
-    /** Trigger a use_repo sandbox run from a human caller. Returns 202. */
-    use: (input: { repo_url: string; goal: string }) =>
+    /**
+     * Trigger a use_repo sandbox run from a human caller. Returns 202.
+     * Pass `secrets` to inject env vars into the sandbox container from
+     * the caller's secret store; values never leave the server.
+     */
+    use: (input: { repo_url: string; goal: string; secrets?: string[] }) =>
       fetchJson<{
         repo_run_id: string;
         session_id: string;
         task_id: string;
         status: string;
         watch_url: string;
+        resolved_secret_names?: string[];
+        missing_secret_names?: string[];
       }>("/capabilities/use", { method: "POST", body: input }),
   },
+  /**
+   * Per-person encrypted secret store — backs sandbox env injection for
+   * use_repo runs. Settings page reads listByPerson; the agent-driven
+   * MCP path injects them server-side via use_repo's `secrets` param.
+   * Values are NEVER returned by any of these endpoints — the API
+   * surface is metadata-only for clients.
+   */
+  secrets: {
+    list: (opts: ReadOptions = {}) =>
+      fetchJson<{ secrets: PersonSecretDisplay[] }>("/secrets/", {
+        signal: opts.signal,
+      }),
+    upsert: (input: { name: string; value: string; description?: string }) =>
+      fetchJson<{ secret: PersonSecretDisplay }>("/secrets/", {
+        method: "POST",
+        body: input,
+      }),
+    delete: (id: string) =>
+      fetchJson<void>(`/secrets/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+      }),
+  },
 } as const;
+
+/** Metadata-only secret shape — never carries `value_*` cipher fields. */
+export interface PersonSecretDisplay {
+  id: string;
+  person_id: string;
+  name: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+}
 
 export interface ReferencedRepo {
   owner: string;

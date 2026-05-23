@@ -72,4 +72,8 @@ export const queryKeys = {
     historyAll: ["chat", "history"] as const,
     conversations: () => ["chat", "conversations"] as const,
   },
+  secrets: {
+    all: ["secrets"] as const,
+    list: () => ["secrets", "list"] as const,
+  },
 } as const;
