@@ -78,6 +78,14 @@ export interface DispatchInput {
    * inside a room context.
    */
   roomId?: string;
+  /**
+   * Stamped on `session.parent_session_id` when one session spawned this
+   * dispatch — e.g. a team agent's create_task tool spawning an IC. The
+   * chat UI uses the column (together with the session.spawned SSE event
+   * the trigger emits) to nest the spawned session's live transcript
+   * inline under the create_task tool_call row.
+   */
+  parentSessionId?: string;
 }
 
 export interface DispatchResult {
@@ -125,6 +133,7 @@ export class DispatchService {
       spawn_mode,
       ...(input.callerAgentId ? { caller_agent_id: input.callerAgentId } : {}),
       ...(input.roomId ? { room_id: input.roomId } : {}),
+      ...(input.parentSessionId ? { parent_session_id: input.parentSessionId } : {}),
     });
 
     // NOTE: task.status used to flip to in_progress here (pre-#127).

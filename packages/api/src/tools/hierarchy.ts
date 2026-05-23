@@ -113,6 +113,14 @@ export interface HierarchyToolContext {
   agentId: string;
   /** Caller's hierarchy level. Used to pick the IC vs team tool set. */
   hierarchyLevel: HierarchyLevel;
+  /**
+   * Caller's beevibe session id (when invoked inside an MCP-served
+   * session). create_task stamps this on the spawned IC session's
+   * parent_session_id so the chat UI can nest the IC's live transcript
+   * under the create_task tool_call row. Undefined for callers outside a
+   * session context (e.g. cron, server fallback paths).
+   */
+  sessionId?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────
@@ -731,6 +739,12 @@ function createTaskTool(
           intent: dispatchIntent,
           reason,
           type: "task",
+          // Link the IC session back to the team session that called
+          // create_task so the chat UI can nest the IC's live transcript
+          // inline. The trg_session_spawned_notify trigger fires when
+          // parent_session_id is set and emits session.spawned for the
+          // parent.
+          parentSessionId: ctx.sessionId,
         });
 
         return {

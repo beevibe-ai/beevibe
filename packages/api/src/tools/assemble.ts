@@ -148,6 +148,7 @@ export function assembleTools(
     {
       agentId: ctx.caller.agentId,
       hierarchyLevel: ctx.caller.hierarchyLevel,
+      sessionId: ctx.beevibeSid,
     },
     {
       agentRepo: services.agentRepo,

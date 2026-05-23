@@ -274,6 +274,16 @@ export function useChat(opts: UseChatOptions = {}) {
   const serverInFlightSessionId = history.data?.in_flight_session_id;
   const inFlightSessionId = localSendingSessionId ?? serverInFlightSessionId;
 
+  // agent_offline is benign: the api persisted the session row and a
+  // daemon will claim it when one comes online. The optimistic user
+  // message + spinner already convey "in flight"; surfacing the 503
+  // as a red banner is misleading (the response DOES arrive — via the
+  // SSE invalidation once the queued session completes).
+  const isOfflineQueued =
+    mutation.error instanceof ApiError &&
+    mutation.error.errorCode === "agent_offline";
+  const exposedError = isOfflineQueued ? null : mutation.error;
+
   return {
     messages,
     send,
@@ -290,7 +300,7 @@ export function useChat(opts: UseChatOptions = {}) {
      * server reality, not just this tab's mutation.
      */
     isPending: mutation.isPending || serverInFlightSessionId !== undefined,
-    error: mutation.error,
+    error: exposedError,
     /** Renamed from pendingSessionId — semantics unchanged at the call site. */
     pendingSessionId: inFlightSessionId,
     /** History query state, for showing a "loading prior conversation…" indicator. */

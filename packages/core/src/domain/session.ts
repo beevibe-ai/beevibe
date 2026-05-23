@@ -158,6 +158,18 @@ export interface Session {
    * approach so the column can be indexed).
    */
   caller_agent_id?: string;
+  /**
+   * Set when this session was spawned from inside another session — e.g. a
+   * team agent calling create_task spawns an IC session whose
+   * parent_session_id points back at the team session. The chat UI uses
+   * this link (together with the session.spawned SSE event) to nest the
+   * IC's live transcript inline under the create_task tool_call instead
+   * of forcing the user to navigate Tasks → Task → Session.
+   *
+   * Distinct from `prior_session_id` (resume of the same agent on the
+   * same task) and `caller_agent_id` (mesh ask/negotiate initiator).
+   */
+  parent_session_id?: string;
   started_at?: Date;
   completed_at?: Date;
   created_at: Date;

@@ -268,6 +268,7 @@ export class PostgresSessionRepository implements SessionRepository {
          process_pid, process_group_id,
          result_summary, exit_code, error, usage,
          runtime_id, spawn_mode, room_id, caller_agent_id,
+         parent_session_id,
          started_at, completed_at
        ) VALUES (
          $1, $2, $3, $4,
@@ -276,7 +277,8 @@ export class PostgresSessionRepository implements SessionRepository {
          $10, $11,
          $12, $13, $14, $15,
          $16, COALESCE($17, 'daemon'), $18, $19,
-         $20, NULL
+         $20,
+         $21, NULL
        )
        RETURNING *`,
       [
@@ -299,6 +301,7 @@ export class PostgresSessionRepository implements SessionRepository {
         input.spawn_mode ?? null,
         input.room_id ?? null,
         input.caller_agent_id ?? null,
+        input.parent_session_id ?? null,
         input.started_at ?? null,
       ],
     );
@@ -364,6 +367,7 @@ function rowToSession(row: SessionRow): Session {
     last_event_at: row.last_event_at ?? undefined,
     room_id: row.room_id ?? undefined,
     caller_agent_id: row.caller_agent_id ?? undefined,
+    parent_session_id: row.parent_session_id ?? undefined,
     started_at: row.started_at ?? undefined,
     completed_at: row.completed_at ?? undefined,
     created_at: row.created_at,

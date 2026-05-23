@@ -258,6 +258,37 @@ export interface SessionDisplay {
   usage?: SessionUsageDisplay;
 }
 
+/**
+ * Slim metadata for a single session in a spawn tree. Returned by
+ * `GET /session/:id/tree` for chat-UI hydration. Transcripts and step
+ * events come via the SSE stream — the tree endpoint only ships the
+ * structural snapshot of who-spawned-whom that the browser needs to
+ * lay out inline IC blocks.
+ */
+export interface SessionTreeNode {
+  id: string;
+  short_id: string;
+  parent_session_id: string | null;
+  agent_id: string;
+  agent_label: string;
+  agent_hierarchy: HierarchyLevel;
+  task_id: string | null;
+  task_short_id: string | null;
+  task_title: string | null;
+  type: SessionType;
+  status: SessionStatus;
+  intent: string;
+  /** ISO 8601. Null when the session row exists but hasn't been claimed. */
+  started_at: string | null;
+  /** ISO 8601. Null while the session is still in-flight. */
+  completed_at: string | null;
+}
+
+export interface SessionTreeResponse {
+  root: SessionTreeNode;
+  descendants: SessionTreeNode[];
+}
+
 export interface SessionBriefing {
   block_count: number;
   fact_count: number;

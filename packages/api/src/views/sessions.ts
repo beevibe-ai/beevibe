@@ -32,6 +32,8 @@ import {
 import type {
   SessionDisplay,
   SessionBriefing,
+  SessionTreeNode,
+  SessionTreeResponse,
   SessionUsageDisplay,
   TranscriptEntry,
 } from "./types.js";
@@ -132,6 +134,86 @@ export async function getSessionByShortId(
   if (rows.length === 0) return undefined;
   if (rows.length > 1) throw new AmbiguousShortIdError(shortId);
   return rowToSessionDisplay(rows[0]!);
+}
+
+interface SessionTreeRow {
+  id: string;
+  parent_session_id: string | null;
+  agent_id: string;
+  agent_label: string;
+  agent_hier: HierarchyLevel;
+  task_id: string | null;
+  task_title: string | null;
+  type: SessionType;
+  status: SessionStatus;
+  intent: string;
+  started_at: Date | null;
+  completed_at: Date | null;
+  depth: number;
+}
+
+const SESSION_TREE_SQL = /* sql */ `
+WITH RECURSIVE tree(id, parent_session_id, depth) AS (
+  SELECT id, parent_session_id, 0
+    FROM session
+   WHERE id = $1
+  UNION ALL
+  SELECT s.id, s.parent_session_id, t.depth + 1
+    FROM session s
+    JOIN tree t ON s.parent_session_id = t.id
+   WHERE t.depth < 10
+)
+SELECT
+  s.id, s.parent_session_id, s.agent_id, s.task_id, s.type, s.status, s.intent,
+  s.started_at, s.completed_at, t.depth,
+  a.name AS agent_label,
+  a.hierarchy_level AS agent_hier,
+  task.title AS task_title
+FROM tree t
+JOIN session s ON s.id = t.id
+JOIN agent a ON a.id = s.agent_id
+LEFT JOIN task ON task.id = s.task_id
+ORDER BY t.depth ASC, s.started_at ASC NULLS LAST, s.id ASC
+`;
+
+/**
+ * Hydration fallback for useChatStreamTree on cold mount or reload.
+ * Returns the root session and every descendant linked via
+ * parent_session_id, capped at depth 10 to bound the recursion in case a
+ * malformed cycle ever slips in (the FK already prevents NULL→ROOT cycles
+ * but defense-in-depth never hurts). The live stream of new spawns and
+ * step events flows through the existing SSE pipeline; this endpoint only
+ * fills in whatever the browser missed before subscribing.
+ */
+export async function getSessionTree(
+  pool: Pool,
+  rootSessionId: string,
+): Promise<SessionTreeResponse | undefined> {
+  const { rows } = await pool.query<SessionTreeRow>(SESSION_TREE_SQL, [rootSessionId]);
+  if (rows.length === 0) return undefined;
+  const nodes = rows.map(rowToTreeNode);
+  const root = nodes[0]!;
+  if (root.id !== rootSessionId) return undefined;
+  return { root, descendants: nodes.slice(1) };
+}
+
+function rowToTreeNode(row: SessionTreeRow): SessionTreeNode {
+  return {
+    id: row.id,
+    short_id: deriveShortId(row.id),
+    parent_session_id: row.parent_session_id,
+    agent_id: row.agent_id,
+    agent_label: row.agent_label,
+    agent_hierarchy: row.agent_hier,
+    task_id: row.task_id,
+    task_short_id: row.task_id ? deriveShortId(row.task_id) : null,
+    task_title: row.task_title,
+    type: row.type,
+    status: row.status,
+    intent: row.intent,
+    started_at: row.started_at ? row.started_at.toISOString() : null,
+    completed_at: row.completed_at ? row.completed_at.toISOString() : null,
+  };
 }
 
 function emptyBriefing(): SessionBriefing {

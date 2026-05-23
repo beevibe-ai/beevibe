@@ -20,7 +20,12 @@ import {
   type SuggestedAction,
 } from "@/lib/api/client";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
-import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
+import {
+  useChatStream,
+  useChatStreamTree,
+  type ChatStreamStep,
+  type ChatStreamTree,
+} from "@/lib/chat-stream";
 import { useMe } from "@/lib/hooks/use-me";
 import { useAgents } from "@/lib/hooks/use-agents";
 import { queryKeys } from "@/lib/hooks/keys";
@@ -41,6 +46,8 @@ function useTeamAgent() {
   const kind: HierarchyLevel = teamAgent?.hierarchy ?? "team";
   return { initial, kind, label, specialization: teamAgent?.specialization };
 }
+
+const EMPTY_STEPS: ChatStreamStep[] = [];
 
 const PROMPT_SUGGESTIONS = [
   "What's on the team's plate today?",
@@ -79,7 +86,18 @@ export function ChatClient() {
       fresh: isFresh,
     });
 
-  const liveSteps = useChatStream(pendingSessionId);
+  // Tree mode subscribes to both `session.step` and `session.spawned`
+  // events for the team session AND every IC it spawns via create_task.
+  // Off mode preserves the pre-tree single-session stream so the flag
+  // is a true escape hatch during rollout.
+  const chatTreeEnabled = process.env.NEXT_PUBLIC_CHAT_TREE_UI === "1";
+  const liveTree = useChatStreamTree(chatTreeEnabled ? pendingSessionId : undefined);
+  const liveStepsFlat = useChatStream(chatTreeEnabled ? undefined : pendingSessionId);
+  const liveSteps: ChatStreamStep[] = chatTreeEnabled
+    ? pendingSessionId
+      ? liveTree.steps[pendingSessionId] ?? EMPTY_STEPS
+      : EMPTY_STEPS
+    : liveStepsFlat;
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const teamAgent = useTeamAgent();
 
@@ -203,7 +221,14 @@ export function ChatClient() {
                     />
                   );
                 })}
-                {isPending ? <Thinking steps={liveSteps} teamAgent={teamAgent} /> : null}
+                {isPending ? (
+                  <Thinking
+                    steps={liveSteps}
+                    teamAgent={teamAgent}
+                    tree={chatTreeEnabled ? liveTree : undefined}
+                    rootSessionId={pendingSessionId}
+                  />
+                ) : null}
                 {error ? (
                   <div className="mt-4 rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
                     <div className="flex items-center gap-1.5 text-status-failed font-medium mb-1">
@@ -635,6 +660,8 @@ function OpenViewCta({ open_view }: { open_view: { path: string; label?: string 
 function Thinking({
   steps,
   teamAgent,
+  tree,
+  rootSessionId,
 }: {
   steps: ChatStreamStep[];
   teamAgent: {
@@ -643,6 +670,8 @@ function Thinking({
     label?: string;
     specialization?: string;
   };
+  tree?: ChatStreamTree;
+  rootSessionId?: string;
 }) {
   // Split agent text from tool steps. Agent text is the response being
   // written; tools are the substrate beneath, categorized so the
@@ -663,8 +692,12 @@ function Thinking({
   // with "\n\n"; that's wrong now since deltas are mid-sentence.)
   const streamingText = agentSteps.map((s) => s.content).join("");
   // Keep the working trace to the latest six moves. Anything older
-  // collapses into the "+N earlier moves" row in ToolStepList.
-  const recentTools = toolSteps.slice(-6);
+  // collapses into the "+N earlier moves" row in ToolStepList. Tree
+  // mode keeps the full list visible so the Nth create_task tool_call
+  // still aligns with the Nth child in tree.children[parentSessionId]
+  // (slicing would drop early calls and misalign IC blocks); IC nesting
+  // is the value-add of tree mode so showing every step is correct.
+  const recentTools = tree ? toolSteps : toolSteps.slice(-6);
   const hasWorkingText = streamingText.trim().length > 0;
 
   return (
@@ -684,9 +717,8 @@ function Thinking({
             <ChatMarkdown content={streamingText} />
           </div>
         ) : (
-          <div className="flex items-center gap-2 text-sm text-muted-foreground/80">
+          <div className="pl-3">
             <ChatLoader compact />
-            <span className="italic">Thinking…</span>
           </div>
         )}
         {recentTools.length > 0 ? (
@@ -698,6 +730,8 @@ function Thinking({
               steps={recentTools}
               totalSteps={toolSteps.length}
               withTopBorder={hasWorkingText}
+              tree={tree}
+              parentSessionId={rootSessionId}
             />
           </div>
         ) : null}
