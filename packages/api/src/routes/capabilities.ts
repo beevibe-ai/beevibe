@@ -97,9 +97,16 @@ export function createCapabilitiesRouter(deps: CapabilitiesRouterDeps): Router {
   router.post("/use", async (req, res) => {
     if (!requireHuman(req, res)) return;
 
-    const body = req.body as Partial<{ repo_url: string; goal: string }>;
+    const body = req.body as Partial<{
+      repo_url: string;
+      goal: string;
+      secrets: string[];
+    }>;
     const repoUrl = typeof body.repo_url === "string" ? body.repo_url.trim() : "";
     const goal = typeof body.goal === "string" ? body.goal.trim() : "";
+    const secrets = Array.isArray(body.secrets)
+      ? body.secrets.filter((s): s is string => typeof s === "string" && s.length > 0)
+      : undefined;
     if (!repoUrl) {
       res.status(400).json({ error: "missing_repo_url" });
       return;
@@ -131,7 +138,11 @@ export function createCapabilitiesRouter(deps: CapabilitiesRouterDeps): Router {
           personSecretRepo: deps.personSecretRepo,
         },
       );
-      const result = await tool.handler({ goal, repo_url: repoUrl });
+      const result = await tool.handler({
+        goal,
+        repo_url: repoUrl,
+        ...(secrets ? { secrets } : {}),
+      });
       if (result.isError) {
         res.status(400).json(result.content);
         return;
