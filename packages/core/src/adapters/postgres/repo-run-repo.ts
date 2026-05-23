@@ -36,6 +36,7 @@ interface RepoRunRow {
   error: string | null;
   learned_skill_id: string | null;
   ranker_candidates: unknown;
+  requested_secret_names: string[] | null;
   started_at: Date;
   ended_at: Date | null;
 }
@@ -78,8 +79,8 @@ export class PostgresRepoRunRepository implements RepoRunRepository {
     const { rows } = await this.pool.query<RepoRunRow>(
       `INSERT INTO repo_run
          (id, session_id, task_id, agent_id, goal, repo_url, repo_ref,
-          status, transcript)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+          status, transcript, requested_secret_names)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
        RETURNING *`,
       [
         input.id,
@@ -91,6 +92,9 @@ export class PostgresRepoRunRepository implements RepoRunRepository {
         input.repo_ref ?? null,
         status,
         JSON.stringify(transcript),
+        input.requested_secret_names && input.requested_secret_names.length > 0
+          ? input.requested_secret_names
+          : null,
       ],
     );
     return rowToRepoRun(rows[0]!);
@@ -400,6 +404,7 @@ function rowToRepoRun(row: RepoRunRow): RepoRun {
     error: row.error ?? undefined,
     learned_skill_id: row.learned_skill_id ?? undefined,
     ranker_candidates: row.ranker_candidates ?? undefined,
+    requested_secret_names: row.requested_secret_names ?? undefined,
     started_at: row.started_at,
     ended_at: row.ended_at ?? undefined,
   };

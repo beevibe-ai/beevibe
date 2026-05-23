@@ -18,6 +18,7 @@ import type {
   EmbeddingService,
   LearnedSkillRepository,
   PersonRepository,
+  PersonSecretRepository,
   RepoRunRepository,
   SessionRepository,
   TaskRepository,
@@ -61,6 +62,8 @@ export interface McpRouterDeps {
   embeddings: EmbeddingService;
   /** Used to read the caller's owner's capability_network_enabled flag. */
   personRepo: PersonRepository;
+  /** Capability Network: backs use_repo's `secrets: string[]` param. */
+  personSecretRepo: PersonSecretRepository;
 }
 
 /** Tracked per-MCP-session state. mcpSid ↔ transport + server. */
@@ -282,6 +285,7 @@ async function handleMcpRequest(
       repoRunRepo: deps.repoRunRepo,
       learnedSkillRepo: deps.learnedSkillRepo,
       embeddings: deps.embeddings,
+      personSecretRepo: deps.personSecretRepo,
     },
   );
 

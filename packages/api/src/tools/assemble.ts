@@ -5,6 +5,7 @@ import type {
   CoreMemoryBlockRepository,
   EmbeddingService,
   LearnedSkillRepository,
+  PersonSecretRepository,
   RepoRunRepository,
   SessionSpawnMode,
   TaskRepository,
@@ -46,6 +47,12 @@ export interface AssembleToolsServices {
   learnedSkillRepo: LearnedSkillRepository;
   /** Capability Network: powers find_repo's semantic relevance gate. */
   embeddings: EmbeddingService;
+  /**
+   * Per-person encrypted secret store. use_repo validates requested
+   * secret names against this; composeDispatchPayload at claim time
+   * does the actual decryption.
+   */
+  personSecretRepo: PersonSecretRepository;
 }
 
 /**
@@ -196,6 +203,7 @@ export function assembleTools(
             taskRepo: services.taskRepo,
             repoRunRepo: services.repoRunRepo,
             dispatchService: services.dispatchService,
+            personSecretRepo: services.personSecretRepo,
           },
         ),
       ]

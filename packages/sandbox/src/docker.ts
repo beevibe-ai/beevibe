@@ -44,6 +44,14 @@ export interface SandboxOptions {
    * suffix to make the actual container name.
    */
   label?: string;
+  /**
+   * Env vars to set on the container via `docker run --env NAME=VALUE`.
+   * Used to inject decrypted person_secret values for use_repo runs.
+   * Values are visible to any process inside the container — that's
+   * the point — but never logged or stamped on the Sandbox return
+   * shape, so callers can't accidentally serialize them.
+   */
+  env?: Record<string, string>;
 }
 
 export interface Sandbox {
@@ -143,6 +151,14 @@ export async function createSandbox(opts: SandboxOptions = {}): Promise<Sandbox>
 
   if (!limits.network) {
     args.push("--network=none");
+  }
+
+  // Per-call env injection. Values are passed to docker via individual
+  // --env flags; docker forwards them as the container's process env.
+  // Skipped silently when no env was provided so the existing behavior
+  // (no env at all) stays identical for callers that don't opt in.
+  for (const [k, v] of Object.entries(opts.env ?? {})) {
+    args.push("--env", `${k}=${v}`);
   }
 
   args.push(image, "-f", "/dev/null");

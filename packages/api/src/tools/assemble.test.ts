@@ -67,6 +67,13 @@ function buildMinimalServices(): AssembleToolsServices {
       embed: vi.fn(async () => [1, 0]),
       embedBatch: vi.fn(async (texts: string[]) => texts.map(() => [1, 0])),
     },
+    personSecretRepo: {
+      listByPerson: vi.fn(async () => []),
+      findRecord: vi.fn(async () => undefined),
+      findRecordsByNames: vi.fn(async () => new Map()),
+      upsert: vi.fn(),
+      delete: vi.fn(async () => false),
+    } as unknown as import("@beevibe/core").PersonSecretRepository,
   };
 }
 

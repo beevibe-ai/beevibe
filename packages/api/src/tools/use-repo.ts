@@ -23,6 +23,7 @@ import {
   sessionId as newSessionId,
   taskId as newTaskId,
   type AgentRepository,
+  type PersonSecretRepository,
   type RepoRunRepository,
   type TaskRepository,
 } from "@beevibe/core";
@@ -77,6 +78,20 @@ const USE_REPO_SCHEMA = {
       },
       additionalProperties: false,
     },
+    secrets: {
+      type: "array",
+      items: { type: "string" },
+      description:
+        "Optional list of env-var names from the caller's secret store to " +
+        "inject into the sandbox (set via `docker run --env <NAME>=<VALUE>`). " +
+        "Use for repos that need cloud-API credentials: e.g. " +
+        "['OPENAI_API_KEY', 'TAVILY_API_KEY'] for the " +
+        "architecture-deep-research repo. The named secrets must already " +
+        "exist for the caller (the user adds them via /settings → Secrets). " +
+        "Unknown names are silently skipped — the run can still proceed " +
+        "if the repo can fall back. Values are never logged or surfaced " +
+        "in the transcript.",
+    },
   },
   required: ["goal", "repo_url"],
   additionalProperties: false,
@@ -92,6 +107,7 @@ export interface UseRepoServices {
   taskRepo: TaskRepository;
   repoRunRepo: RepoRunRepository;
   dispatchService: DispatchService;
+  personSecretRepo: PersonSecretRepository;
 }
 
 export function createUseRepoTool(
@@ -159,6 +175,51 @@ export function createUseRepoTool(
         };
       }
 
+      // Per-run secret resolution. The handler ONLY validates that the
+      // requested names exist in the caller's secret store (existence
+      // check, NO decryption). The names get persisted on repo_run.
+      // requested_secret_names; composeDispatchPayload at /runtime/claim
+      // time does the actual decryption and puts the values into
+      // DispatchPayload.run_repo.sandbox_env. That keeps decrypted
+      // values out of any DB row.
+      //
+      // Unknown names are reported in missing_secret_names but don't
+      // block dispatch — the run can still try if the repo has a
+      // fallback. Whether to fail is the calling agent's call (it can
+      // re-prompt the user to add the missing key).
+      const requestedSecrets = Array.isArray(input.secrets)
+        ? Array.from(
+            new Set(
+              (input.secrets as unknown[]).filter(
+                (s): s is string => typeof s === "string" && s.length > 0,
+              ),
+            ),
+          )
+        : [];
+      const resolvedSecretNames: string[] = [];
+      const missingSecrets: string[] = [];
+      if (requestedSecrets.length > 0) {
+        let existingNames: Set<string>;
+        try {
+          const listed = await services.personSecretRepo.listByPerson(
+            agent.owner_id,
+          );
+          existingNames = new Set(listed.map((s) => s.name));
+        } catch (err) {
+          return {
+            content: {
+              error: "secret_lookup_failed",
+              message: err instanceof Error ? err.message : String(err),
+            },
+            isError: true,
+          };
+        }
+        for (const name of requestedSecrets) {
+          if (existingNames.has(name)) resolvedSecretNames.push(name);
+          else missingSecrets.push(name);
+        }
+      }
+
       // Container task — the artifact has to live somewhere, and
       // work_product requires a task_id. Title is a short cut of the
       // goal so the inbox row is scannable.
@@ -213,6 +274,11 @@ export function createUseRepoTool(
           goal,
           repo_url: repoUrl,
           status: "pending",
+          // Only persist the names that actually resolved. Missing names
+          // would just be dead weight at claim time; the agent already
+          // got told about them in the return payload.
+          requested_secret_names:
+            resolvedSecretNames.length > 0 ? resolvedSecretNames : undefined,
         });
       } catch (err) {
         // Session row landed but repo_run insert failed — orphan
@@ -245,6 +311,12 @@ export function createUseRepoTool(
           limits,
           input_url: inputUrl,
           input_filename: inputFilename,
+          // Echo back the secret names that were resolved / missed so the
+          // agent can tell the user which keys they still need to add
+          // (e.g. "I need OPENAI_API_KEY in /settings → Secrets to run
+          // ADR end-to-end"). Values are NEVER returned — names only.
+          resolved_secret_names: resolvedSecretNames,
+          missing_secret_names: missingSecrets,
         },
       };
     },

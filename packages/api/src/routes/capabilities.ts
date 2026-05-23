@@ -19,6 +19,7 @@ import { Router, type RequestHandler } from "express";
 import type {
   AgentRepository,
   LearnedSkillRepository,
+  PersonSecretRepository,
   RepoRunRepository,
   SessionEventRepository,
   SessionRepository,
@@ -39,6 +40,7 @@ export interface CapabilitiesRouterDeps {
   workProductRepo: WorkProductRepository;
   repoRunRepo: RepoRunRepository;
   learnedSkillRepo: LearnedSkillRepository;
+  personSecretRepo: PersonSecretRepository;
   dispatchService: DispatchService;
 }
 
@@ -126,6 +128,7 @@ export function createCapabilitiesRouter(deps: CapabilitiesRouterDeps): Router {
           taskRepo: deps.taskRepo,
           repoRunRepo: deps.repoRunRepo,
           dispatchService: deps.dispatchService,
+          personSecretRepo: deps.personSecretRepo,
         },
       );
       const result = await tool.handler({ goal, repo_url: repoUrl });

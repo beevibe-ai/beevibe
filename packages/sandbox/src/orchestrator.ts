@@ -87,6 +87,16 @@ export interface OrchestratorOptions {
   mcp_server_command?: { command: string; args: string[] };
   /** Callback fired every time RunState changes. */
   on_state?: (state: RunState) => void;
+  /**
+   * Env vars to set inside the sandbox container at create time
+   * (via `docker run --env NAME=VALUE`). Used by use_repo to inject
+   * decrypted person_secret values (API keys, tokens) so the child
+   * agent can call cloud APIs from inside the sandbox.
+   *
+   * Never logged into the transcript — only the variable names are
+   * surfaced in any debug output, never the values.
+   */
+  sandbox_env?: Record<string, string>;
 }
 
 const DEFAULT_PROMPT_HEADER = `\
@@ -194,12 +204,22 @@ export async function runRepoAgent(opts: OrchestratorOptions): Promise<RunState>
     state.status = "preparing";
     emit();
     try {
-      sandbox = await createSandbox({ label: `bv-run-${opts.run_id}` });
+      sandbox = await createSandbox({
+        label: `bv-run-${opts.run_id}`,
+        env: opts.sandbox_env,
+      });
     } catch (err) {
       throw new Error(classifyStartupError(err));
     }
     state.sandbox_id = sandbox.id;
     log("log", `Sandbox ${sandbox.id} created (image ${sandbox.image}).`);
+    if (opts.sandbox_env && Object.keys(opts.sandbox_env).length > 0) {
+      // Log NAMES only, never values.
+      log(
+        "log",
+        `Injected env vars: ${Object.keys(opts.sandbox_env).join(", ")}.`,
+      );
+    }
 
     log("log", "Installing git + curl in the sandbox base image…");
     await prepareBaseEnvironment(sandbox);
