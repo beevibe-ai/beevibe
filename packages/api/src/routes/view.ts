@@ -45,7 +45,7 @@ import {
   type Lifecycle,
 } from "../views/tasks-grouping.js";
 import { listAgents, getAgent } from "../views/agents.js";
-import { getSessionByShortId, AmbiguousShortIdError } from "../views/sessions.js";
+import { getSessionByShortId, getSessionTree, AmbiguousShortIdError } from "../views/sessions.js";
 import { listMemoryFactCounts, listMemoryFacts } from "../views/memory.js";
 import { getDashboardSummary } from "../views/dashboard.js";
 import { getMeshOverview } from "../views/mesh.js";
@@ -450,6 +450,43 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
         return;
       }
       handleError(err, res, "session detail");
+    }
+  });
+
+  /**
+   * Hydration fallback for the chat tree UI. Given a full session id
+   * (the same one the SSE stream keys on, not the short_id), returns
+   * the session and every descendant spawned via parent_session_id.
+   * Ownership: the root session's agent must be owned by the caller —
+   * descendants inherit access since they were spawned by the root.
+   */
+  router.get("/session/:id/tree", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    if (!id || !id.startsWith("sess_")) {
+      res.status(400).json({ error: "missing_session_id" });
+      return;
+    }
+    try {
+      const tree = await getSessionTree(deps.pool, id);
+      if (!tree) {
+        res.status(404).json({ error: "session_not_found" });
+        return;
+      }
+      // Root-session ownership check via the agent's owner_id; mirrors
+      // how SINGLE_OWNER_SQL.session resolves the SSE owner set.
+      const { rows: ownerRows } = await deps.pool.query<{ owner_id: string }>(
+        "SELECT a.owner_id FROM session s JOIN agent a ON a.id = s.agent_id WHERE s.id = $1",
+        [id],
+      );
+      const ownerId = ownerRows[0]?.owner_id;
+      if (!ownerId || ownerId !== req.caller.personId) {
+        res.status(404).json({ error: "session_not_found" });
+        return;
+      }
+      res.json(tree);
+    } catch (err) {
+      handleError(err, res, "session tree");
     }
   });
 

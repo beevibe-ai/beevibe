@@ -1,9 +1,11 @@
 "use client";
 
+import type { ReactElement } from "react";
 import { AlertCircle, CornerDownRight } from "lucide-react";
-import type { ChatStreamStep } from "@/lib/chat-stream";
+import type { ChatStreamStep, ChatStreamTree } from "@/lib/chat-stream";
 import { categoryAccent, formatTool } from "@/lib/tool-format";
 import { cn } from "@/lib/utils";
+import { InlineICTranscript } from "./inline-ic-transcript";
 
 /**
  * Compact list of streamed tool calls + results for a single agent
@@ -20,16 +22,33 @@ import { cn } from "@/lib/utils";
  *
  * Older steps are rolled into a "+N earlier moves" line so the list
  * stays scannable.
+ *
+ * When `tree` + `parentSessionId` are passed, each `create_task`
+ * tool_call gets an `<InlineICTranscript>` block rendered below it so
+ * the spawned IC's live work shows up nested under the row that
+ * delegated to it. The Nth `create_task` step is matched to the Nth
+ * child session in `tree.children[parentSessionId]` — tool calls in
+ * Claude Code run serially within a turn, so the spawn-order ↔ call-
+ * order match holds.
  */
 export function ToolStepList({
   steps,
   totalSteps,
   withTopBorder,
+  tree,
+  parentSessionId,
+  depth = 0,
 }: {
   steps: ChatStreamStep[];
   totalSteps: number;
   withTopBorder?: boolean;
+  tree?: ChatStreamTree;
+  parentSessionId?: string;
+  depth?: number;
 }) {
+  const childIds =
+    tree && parentSessionId ? tree.children[parentSessionId] ?? [] : [];
+  let createTaskCallIndex = 0;
   return (
     <ul
       className={cn(
@@ -37,12 +56,35 @@ export function ToolStepList({
         withTopBorder ? "mt-3 pt-2 border-t border-border/45" : "mt-1.5",
       )}
     >
-      {steps.map((step, idx) => {
+      {steps.flatMap((step, idx) => {
         const isLatest = idx === steps.length - 1;
         if (step.kind === "tool_result") {
-          return <ResultRow key={step.event_id} step={step} isLatest={isLatest} />;
+          return [<ResultRow key={step.event_id} step={step} isLatest={isLatest} />];
         }
-        return <CallRow key={step.event_id} step={step} isLatest={isLatest} />;
+        const isCreateTask =
+          step.kind === "tool_call" && step.tool_name === "create_task";
+        const inlineChildId =
+          isCreateTask && tree
+            ? childIds[createTaskCallIndex++]
+            : undefined;
+        const rows: ReactElement[] = [
+          <CallRow key={step.event_id} step={step} isLatest={isLatest} />,
+        ];
+        if (inlineChildId) {
+          // <li> wrapper keeps the <ul> children list valid; the
+          // InlineICTranscript itself owns its indentation + border-l
+          // so there's no extra row chrome.
+          rows.push(
+            <li key={`${step.event_id}-child`}>
+              <InlineICTranscript
+                sessionId={inlineChildId}
+                tree={tree!}
+                depth={depth + 1}
+              />
+            </li>,
+          );
+        }
+        return rows;
       })}
       {totalSteps > steps.length ? (
         <li className="text-[10px] text-muted-foreground/50 pl-5 pt-0.5">

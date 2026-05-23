@@ -22,7 +22,7 @@ import type {
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { AgentDisplay } from "@/lib/types/agents";
 import type { AgentNetwork } from "@/lib/types/agent-network";
-import type { SessionDisplay } from "@/lib/types/sessions";
+import type { SessionDisplay, SessionTreeResponse } from "@/lib/types/sessions";
 import type { FactCounts, MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
 import type { InboxItem } from "@/lib/types/inbox";
@@ -492,6 +492,17 @@ export const api = {
       fetchJson<SessionDisplay>(`/session/${encodeURIComponent(shortId)}`, {
         signal: opts.signal,
       }),
+    /**
+     * Hydration fallback for useChatStreamTree. Path param is the FULL
+     * session id (e.g. `sess_abc123def...`), not the short_id — the SSE
+     * stream keys spawn events on the full id so the chat hook needs
+     * the same address space when reconciling on reload.
+     */
+    tree: (id: string, opts: ReadOptions = {}) =>
+      fetchJson<SessionTreeResponse>(
+        `/session/${encodeURIComponent(id)}/tree`,
+        { signal: opts.signal },
+      ),
   },
   memory: {
     listFacts: (filter: { scope?: MemoryScope } = {}, opts: ReadOptions = {}) =>

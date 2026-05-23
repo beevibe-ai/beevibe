@@ -52,6 +52,14 @@ const eventInvalidations: Record<string, InvalidationKey[]> = {
     // pure waste.
     queryKeys.chat.historyAll,
   ],
+  // Emitted by trg_session_spawned_notify (see
+  // migrations/1781100000000_add-session-parent-and-spawn-trigger.sql)
+  // when a child session is inserted with parent_session_id set — i.e.
+  // a team agent's create_task tool spawned an IC. The event id is the
+  // PARENT session id; data carries the child id, agent, task, intent.
+  // useChatStreamTree consumes the inline data; this entry just keeps
+  // session lists in sync with the new row.
+  "session.spawned": [queryKeys.sessions.all],
   "memory.fact.created": [queryKeys.memory.all],
   "memory.fact.deleted": [queryKeys.memory.all],
   "promotion.created": [queryKeys.promotions.all, queryKeys.memory.all],
