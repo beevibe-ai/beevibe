@@ -1,7 +1,0 @@
-server/persona.yaml
-server/.env
-server/.venv/
-server/__pycache__/
-server/app/__pycache__/
-server/.pytest_cache/
-*.pyc
