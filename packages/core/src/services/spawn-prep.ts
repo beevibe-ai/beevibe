@@ -125,11 +125,13 @@ history is gone.
 Layer 1 — core memory (small, in-context per session, rendered into your
 system prompt at session start as <core_memory>...</core_memory>):
 - Edit via mcp__beevibe__update_core_memory(block_name, operation, content,
-  old_content?). operation ∈ {append, replace}.
-- Common blocks: persona / domain / constraints / learnings.
-- Use for STABLE shifts: persona updates ("I now also handle X"),
-  long-term constraint changes, durable patterns that should appear in
-  every future session's briefing.
+  old_content?). operation ∈ {append, replace} — see the tool's
+  description for the append-vs-replace decision criterion (append is
+  for accumulating-list blocks only; narrative blocks must be rewritten
+  via a consolidating replace).
+- Use for STABLE shifts: persona consolidations, long-term constraint
+  changes, durable patterns that should appear in every future
+  session's briefing.
 - Treat as expensive real estate — every byte is in every future system
   prompt.
 
