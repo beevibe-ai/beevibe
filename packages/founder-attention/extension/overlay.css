@@ -1,0 +1,202 @@
+#fa-panel {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  z-index: 2147483600;
+  width: 380px;
+  max-height: 72vh;
+  background: #15202b;
+  color: #e7e9ea;
+  border: 1px solid #2f3336;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.45);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 13px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#fa-panel.fa-collapsed {
+  max-height: 44px;
+}
+
+#fa-panel.fa-collapsed .fa-status,
+#fa-panel.fa-collapsed .fa-list {
+  display: none;
+}
+
+#fa-panel .fa-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2f3336;
+  background: #1d2733;
+}
+
+#fa-panel .fa-title {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+
+#fa-panel .fa-meta {
+  flex: 1;
+  font-size: 11px;
+  color: #8b98a5;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#fa-panel button {
+  background: #1d9bf0;
+  color: white;
+  border: 0;
+  border-radius: 8px;
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#fa-panel .fa-btn-toggle {
+  background: transparent;
+  color: #8b98a5;
+  border: 1px solid #2f3336;
+  width: 26px;
+  padding: 0;
+  line-height: 24px;
+}
+
+#fa-panel .fa-status {
+  padding: 8px 12px;
+  color: #8b98a5;
+  font-size: 12px;
+  min-height: 18px;
+}
+
+#fa-panel .fa-list {
+  overflow-y: auto;
+  padding: 8px 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+#fa-panel .fa-empty {
+  color: #8b98a5;
+  padding: 16px 8px;
+}
+
+#fa-panel .fa-card {
+  border: 1px solid #2f3336;
+  border-radius: 10px;
+  padding: 10px;
+  background: #192633;
+}
+
+#fa-panel .fa-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+#fa-panel .fa-author {
+  font-weight: 600;
+  font-size: 12px;
+  color: #e7e9ea;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+}
+
+#fa-panel .fa-score {
+  font-weight: 700;
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 999px;
+}
+
+#fa-panel .fa-score-hot {
+  background: #ff4d4f;
+  color: white;
+}
+
+#fa-panel .fa-score-warm {
+  background: #f59e0b;
+  color: white;
+}
+
+#fa-panel .fa-score-cold {
+  background: #2f3336;
+  color: #8b98a5;
+}
+
+#fa-panel .fa-tag {
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: #00ba7c;
+  color: white;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+#fa-panel .fa-preview {
+  font-size: 12px;
+  color: #c8d1da;
+  line-height: 1.35;
+  max-height: 60px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  margin-bottom: 6px;
+}
+
+#fa-panel .fa-why {
+  font-size: 11px;
+  color: #8b98a5;
+  margin-bottom: 8px;
+  font-style: italic;
+}
+
+#fa-panel .fa-drafts {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+#fa-panel .fa-draft-btn {
+  background: #243340;
+  color: #e7e9ea;
+  text-align: left;
+  border-radius: 8px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-weight: 400;
+  white-space: normal;
+}
+
+#fa-panel .fa-draft-btn:hover {
+  background: #2c4054;
+}
+
+#fa-panel .fa-draft-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #8b98a5;
+  font-weight: 700;
+}
+
+#fa-panel .fa-draft-text {
+  font-size: 12px;
+  line-height: 1.4;
+}

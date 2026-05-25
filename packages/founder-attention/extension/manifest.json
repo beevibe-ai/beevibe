@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "Founder Attention Agent",
+  "version": "0.0.1",
+  "description": "Surfaces high-signal X tweets and drafts reply variants. You review and post manually.",
+  "permissions": ["storage", "clipboardWrite"],
+  "host_permissions": [
+    "https://x.com/*",
+    "https://twitter.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Founder Attention Agent",
+    "default_popup": "popup.html"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://x.com/*", "https://twitter.com/*"],
+      "js": ["content.js"],
+      "css": ["overlay.css"],
+      "run_at": "document_idle"
+    }
+  ]
+}

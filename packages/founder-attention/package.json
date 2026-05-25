@@ -1,0 +1,10 @@
+{
+  "name": "@beevibe/founder-attention",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Founder Attention Agent — Chrome extension + Python backend that surfaces high-signal X tweets and drafts reply variants for human-in-the-loop posting.",
+  "scripts": {
+    "server": "cd server && uv run uvicorn app.main:app --reload --port 8787",
+    "server:install": "cd server && uv sync"
+  }
+}
