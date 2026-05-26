@@ -138,4 +138,22 @@ describe("api mutations", () => {
       });
     });
   });
+
+  describe("newsletter", () => {
+    it("subscribe(input) POSTs to /newsletter/subscribe", async () => {
+      await api.newsletter.subscribe({
+        email: "alice@example.com",
+        source: "community",
+        website: "",
+      });
+      expect(fetchJsonMock).toHaveBeenCalledWith("/newsletter/subscribe", {
+        method: "POST",
+        body: {
+          email: "alice@example.com",
+          source: "community",
+          website: "",
+        },
+      });
+    });
+  });
 });

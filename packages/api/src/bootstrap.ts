@@ -54,6 +54,7 @@ import { createChatRouter } from "./routes/chat.js";
 import { createRuntimesRouter } from "./routes/runtimes.js";
 import { createSignupRouter } from "./routes/signup.js";
 import { createSigninRouter } from "./routes/signin.js";
+import { createNewsletterRouter } from "./routes/newsletter.js";
 import { createMeRouter } from "./routes/me.js";
 import { createRoomRouter } from "./routes/room.js";
 import { createStreamAuthMiddleware, streamTokenAdapter } from "./auth/middleware.js";
@@ -371,6 +372,11 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     enabled: process.env.BEEVIBE_SIGNUP_ENABLED !== "0",
   });
   server.getApp().use(signinRouter);
+
+  // Public newsletter capture for the community layer. Mounted before
+  // the root view router so it remains unauthenticated.
+  const newsletterRouter = createNewsletterRouter({ pool });
+  server.getApp().use(newsletterRouter);
 
   // SSE auth adapter — must run ahead of viewRouter's root-mounted
   // header-only auth, which would otherwise 401 EventSource requests
