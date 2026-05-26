@@ -11,9 +11,9 @@
  */
 
 import { promises as fs } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ApiClient } from "./api-client.js";
+import { getConfigRoot } from "./config.js";
 
 interface RuntimeSkillFile {
   path: string;
@@ -28,15 +28,17 @@ interface RuntimeSkillsResponse {
   skills: RuntimeSkill[];
 }
 
-export function skillsCacheDir(): string {
-  return join(homedir(), ".beevibe", "skills");
+export function skillsCacheDir(configRoot?: string): string {
+  return join(getConfigRoot(configRoot), "skills");
 }
 
 const VERSION_FILE = ".version";
 
-export async function readCachedVersion(): Promise<string | undefined> {
+export async function readCachedVersion(
+  configRoot?: string,
+): Promise<string | undefined> {
   try {
-    return (await fs.readFile(join(skillsCacheDir(), VERSION_FILE), "utf8"))
+    return (await fs.readFile(join(skillsCacheDir(configRoot), VERSION_FILE), "utf8"))
       .trim();
   } catch {
     return undefined;
@@ -44,14 +46,17 @@ export async function readCachedVersion(): Promise<string | undefined> {
 }
 
 /**
- * Fetch /runtime/skills, write the bundle to `~/.beevibe/skills/`.
+ * Fetch /runtime/skills, write the bundle to `<configRoot>/skills/`.
  * No-op when the server's version matches the local cache. Returns the
- * resolved cache path (always equal to `skillsCacheDir()`).
+ * resolved cache path (always equal to `skillsCacheDir(configRoot)`).
  */
-export async function syncSkillsCache(api: ApiClient): Promise<string> {
-  const cache = skillsCacheDir();
+export async function syncSkillsCache(
+  api: ApiClient,
+  configRoot?: string,
+): Promise<string> {
+  const cache = skillsCacheDir(configRoot);
 
-  const cached = await readCachedVersion();
+  const cached = await readCachedVersion(configRoot);
   const res = await api.get<RuntimeSkillsResponse>("/runtime/skills");
   if (!res) {
     if (cached) return cache; // server flaky; keep what we have

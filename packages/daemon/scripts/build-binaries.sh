@@ -61,13 +61,19 @@ for entry in "${TARGETS[@]}"; do
   # ~/.beevibe/config.json — a repo-checkout .env has no business
   # leaking in. Disable both at build time so launching the daemon from
   # any directory is deterministic.
+  # __DEV_BUILD__=false flips the dev-only multi-instance gate
+  # (config.ts:isDevBuild()) to false, so the compiled binary rejects
+  # --config-root / BEEVIBE_CONFIG_ROOT with exit 2. tsx / tsc-built
+  # runs never have the define applied; `typeof __DEV_BUILD__` returns
+  # "undefined" there → isDevBuild() returns true.
   bun build src/main.ts \
     --compile \
     --no-compile-autoload-dotenv \
     --no-compile-autoload-bunfig \
     --target="$target" \
     --outfile="$OUTDIR/$outname" \
-    --define "BEEVIBE_DAEMON_VERSION=\"$VERSION\""
+    --define "BEEVIBE_DAEMON_VERSION=\"$VERSION\"" \
+    --define "__DEV_BUILD__=false"
 done
 
 echo ""

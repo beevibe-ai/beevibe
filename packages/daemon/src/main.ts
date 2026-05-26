@@ -11,8 +11,14 @@
  * with `--no-compile-autoload-dotenv --no-compile-autoload-bunfig`
  * (see packages/daemon/scripts/build-binaries.sh) so launching from
  * inside a beevibe checkout doesn't silently slurp the repo's .env.
+ *
+ * Dev-only `--config-root <path>` (or `BEEVIBE_CONFIG_ROOT` env) shifts
+ * the on-disk root from `~/.beevibe` so two daemons authenticated as
+ * different `bv_u_` accounts can coexist on one machine. Rejected in
+ * compiled-prod via `isDevBuild()` — see config.ts.
  */
 
+import { isDevBuild } from "./config.js";
 import { runSetup } from "./setup.js";
 import { runStart } from "./start.js";
 import { runSync } from "./sync.js";
@@ -23,6 +29,7 @@ interface Flags {
   userToken?: string;
   deviceName?: string;
   externalId?: string;
+  configRoot?: string;
 }
 
 function parseFlags(argv: string[]): Flags {
@@ -42,9 +49,44 @@ function parseFlags(argv: string[]): Flags {
     } else if (arg === "--external-id" && next) {
       flags.externalId = next;
       i += 1;
+    } else if (arg === "--config-root" && next) {
+      flags.configRoot = next;
+      i += 1;
     }
   }
   return flags;
+}
+
+/**
+ * Resolve the effective config-root override and enforce the dev-only
+ * gate. Returns `undefined` when neither the flag nor the env are set
+ * — that's the normal path, and `getConfigRoot(undefined)` falls
+ * through to `~/.beevibe`.
+ *
+ * Compiled-prod (`isDevBuild() === false`): both the flag and the env
+ * are rejected with exit code 2 and a clear message. This is the
+ * belt-and-suspenders side of the gate; the compile-time
+ * `__DEV_BUILD__=false` define is what theoretically lets the
+ * bundler dead-code-eliminate the multi-instance code paths, but
+ * bun build doesn't always DCE without `--minify`, so the runtime
+ * guard is the load-bearing one.
+ */
+function resolveConfigRoot(flag: string | undefined): string | undefined {
+  const env = process.env.BEEVIBE_CONFIG_ROOT;
+  const hasOverride = (flag && flag.length > 0) || (env && env.length > 0);
+  if (!hasOverride) return undefined;
+
+  if (!isDevBuild()) {
+    const source = flag ? "--config-root" : "BEEVIBE_CONFIG_ROOT";
+    console.error(
+      `${source} is a dev-only knob and is not available in this build. ` +
+        `Reinstall via npm/curl without the override, or use a source checkout ` +
+        `(pnpm dev) if you need multi-instance.`,
+    );
+    process.exit(2);
+  }
+
+  return flag && flag.length > 0 ? flag : env;
 }
 
 function printHelp(): void {
@@ -66,6 +108,12 @@ function printHelp(): void {
       "",
       "update flags:",
       "  --yes, -y                  skip the install-this-update prompt",
+      "",
+      "dev-only flags (source builds only — rejected in compiled binaries):",
+      "  --config-root <path>       shift the daemon's on-disk root from ~/.beevibe.",
+      "                             Lets two daemons coexist on one machine as",
+      "                             different accounts. Also settable via the",
+      "                             BEEVIBE_CONFIG_ROOT env var.",
     ].join("\n"),
   );
 }
@@ -77,8 +125,10 @@ async function main(): Promise<void> {
     return;
   }
 
+  const flags = parseFlags(rest);
+  const configRoot = resolveConfigRoot(flags.configRoot);
+
   if (command === "setup") {
-    const flags = parseFlags(rest);
     if (!flags.api || !flags.userToken) {
       console.error("setup requires --api and --user-token");
       printHelp();
@@ -89,20 +139,22 @@ async function main(): Promise<void> {
       userToken: flags.userToken,
       deviceName: flags.deviceName,
       externalId: flags.externalId,
+      configRoot,
     });
     console.log(`Registered as ${cfg.daemon_id}`);
     console.log(`Runtimes: ${cfg.runtimes.map((r) => `${r.cli} (${r.id})`).join(", ")}`);
-    console.log("Config saved to ~/.beevibe/config.json");
+    const configLabel = configRoot ? `${configRoot}/config.json` : "~/.beevibe/config.json";
+    console.log(`Config saved to ${configLabel}`);
     return;
   }
 
   if (command === "start") {
-    await runStart();
+    await runStart({ configRoot });
     return;
   }
 
   if (command === "sync") {
-    const result = await runSync();
+    const result = await runSync({ configRoot });
     if (result.added.length === 0) {
       console.log("No new CLIs detected.");
     } else {

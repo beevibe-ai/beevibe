@@ -26,6 +26,11 @@ export interface SetupOptions {
    * PATH for known CLI names.
    */
   detectedClis?: Array<{ cli: string; cli_version?: string }>;
+  /**
+   * Dev-only override for `~/.beevibe`. Threaded down from the
+   * `--config-root` flag in main.ts. Unset for normal use.
+   */
+  configRoot?: string;
 }
 
 export async function runSetup(options: SetupOptions): Promise<DaemonConfig> {
@@ -73,7 +78,7 @@ export async function runSetup(options: SetupOptions): Promise<DaemonConfig> {
     daemon_token: body.daemon_token,
     runtimes: body.runtimes,
   };
-  saveConfig(config);
+  saveConfig(config, options.configRoot);
   return config;
 }
 

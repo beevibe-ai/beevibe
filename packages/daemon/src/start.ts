@@ -3,16 +3,25 @@
  * Holds the process until SIGINT/SIGTERM.
  */
 
+import { join } from "node:path";
 import { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import { createDefaultRuntimeRegistry } from "@beevibe/core/adapters/runtime-registry";
 import { ApiClient } from "./api-client.js";
 import { Claimer } from "./claimer.js";
-import { loadConfig } from "./config.js";
+import { getConfigRoot, loadConfig } from "./config.js";
 import { syncSkillsCache } from "./skills-cache.js";
 import { Supervisor } from "./supervisor.js";
 
-export async function runStart(): Promise<void> {
-  const cfg = loadConfig();
+export interface StartOptions {
+  /**
+   * Dev-only override for `~/.beevibe`. Threaded down from the
+   * `--config-root` flag in main.ts. Unset for normal use.
+   */
+  configRoot?: string;
+}
+
+export async function runStart(options: StartOptions = {}): Promise<void> {
+  const cfg = loadConfig(options.configRoot);
   if (!cfg) {
     throw new Error(
       "No daemon config found. Run `beevibe-daemon setup --api <url> --user-token <bv_u_…>` first.",
@@ -24,24 +33,33 @@ export async function runStart(): Promise<void> {
     daemonToken: cfg.daemon_token,
   });
 
-  // Pull the latest skills bundle into ~/.beevibe/skills before any
+  // Pull the latest skills bundle into <configRoot>/skills before any
   // workspace sync runs. Per-agent tier filter happens in
   // LocalWorkspaceManager.ensureWorkspace.
-  const skillsSourceDir = await syncSkillsCache(api).catch((err: unknown) => {
-    console.warn(
-      "[daemon] skills sync failed; continuing without skills:",
-      err instanceof Error ? err.message : String(err),
-    );
-    return undefined;
-  });
+  const skillsSourceDir = await syncSkillsCache(api, options.configRoot).catch(
+    (err: unknown) => {
+      console.warn(
+        "[daemon] skills sync failed; continuing without skills:",
+        err instanceof Error ? err.message : String(err),
+      );
+      return undefined;
+    },
+  );
 
+  // With --config-root set, default workspaces to a sibling of the
+  // override so a second daemon's agent workspaces don't collide with
+  // the first's. WORKSPACE_ROOT still wins when set explicitly (CI,
+  // bespoke layouts).
+  const resolvedConfigRoot = getConfigRoot(options.configRoot);
   const runtimeRegistry = createDefaultRuntimeRegistry();
   const workspaceManager = new LocalWorkspaceManager({
     mcpServerUrl: `${cfg.api_url}/mcp`,
     runtimeRegistry,
     skillsSourceDir: skillsSourceDir ?? "/dev/null",
-    // env override lets tests / dev override ~/.beevibe/workspaces.
-    workspaceRoot: process.env.WORKSPACE_ROOT,
+    workspaceRoot:
+      process.env.WORKSPACE_ROOT && process.env.WORKSPACE_ROOT.length > 0
+        ? process.env.WORKSPACE_ROOT
+        : join(resolvedConfigRoot, "workspaces"),
   });
 
   const supervisor = new Supervisor();
