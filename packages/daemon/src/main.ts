@@ -106,9 +106,10 @@ function printHelp(): void {
       "",
       "dev-only flags (source builds only — rejected in compiled binaries):",
       "  --config-root <path>       shift the daemon's on-disk root from ~/.beevibe.",
-      "                             Lets two daemons coexist on one machine as",
-      "                             different accounts. Also settable via the",
-      "                             BEEVIBE_CONFIG_ROOT env var.",
+      "                             Applies to setup / start / sync (list always",
+      "                             scans $HOME). Lets two daemons coexist on one",
+      "                             machine as different accounts. Also settable",
+      "                             via the BEEVIBE_CONFIG_ROOT env var.",
     ].join("\n"),
   );
 }
@@ -120,10 +121,8 @@ async function main(): Promise<void> {
     return;
   }
 
-  // `list` scans $HOME for every config root rather than operating on a
-  // single one, so it doesn't take --config-root. Handle it before
-  // resolveConfigRoot so the dev-only gate never fires for `list`
-  // (introspection is useful in prod builds too).
+  // `list` scans $HOME, so --config-root doesn't apply and the dev-only
+  // gate shouldn't fire for it. Handle it before resolveConfigRoot.
   if (command === "list") {
     runList({ json: rest.includes("--json") });
     return;

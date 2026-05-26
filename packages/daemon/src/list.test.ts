@@ -38,12 +38,12 @@ describe("discoverDaemons", () => {
   });
 
   it("returns an empty array when no .beevibe* dir exists", () => {
-    expect(discoverDaemons({ home })).toEqual([]);
+    expect(discoverDaemons(home)).toEqual([]);
   });
 
   it("finds a single ~/.beevibe daemon", () => {
     writeConfigDir(home, ".beevibe", sampleConfig({ daemon_id: "dmn_solo" }));
-    const records = discoverDaemons({ home });
+    const records = discoverDaemons(home);
     expect(records).toHaveLength(1);
     expect(records[0]).toMatchObject({
       config_root: join(home, ".beevibe"),
@@ -60,7 +60,7 @@ describe("discoverDaemons", () => {
     writeConfigDir(home, ".beevibe-B", sampleConfig({ daemon_id: "dmn_B" }));
     writeConfigDir(home, ".beevibe-A", sampleConfig({ daemon_id: "dmn_A" }));
     writeConfigDir(home, ".beevibe", sampleConfig({ daemon_id: "dmn_default" }));
-    const records = discoverDaemons({ home });
+    const records = discoverDaemons(home);
     expect(records.map((r) => r.daemon_id)).toEqual([
       "dmn_default",
       "dmn_A",
@@ -73,25 +73,25 @@ describe("discoverDaemons", () => {
     const badPath = join(home, ".beevibe-bad");
     mkdirSync(badPath, { recursive: true });
     writeFileSync(join(badPath, "config.json"), "{ not json");
-    const records = discoverDaemons({ home });
+    const records = discoverDaemons(home);
     expect(records.map((r) => r.daemon_id)).toEqual(["dmn_valid"]);
   });
 
   it("silently skips dirs whose config.json parses but isn't a beevibe daemon config", () => {
     writeConfigDir(home, ".beevibe-other", { unrelated: "tool" });
-    expect(discoverDaemons({ home })).toEqual([]);
+    expect(discoverDaemons(home)).toEqual([]);
   });
 
   it("silently skips dirs that have no config.json at all", () => {
     mkdirSync(join(home, ".beevibe-empty"), { recursive: true });
-    expect(discoverDaemons({ home })).toEqual([]);
+    expect(discoverDaemons(home)).toEqual([]);
   });
 
   it("ignores entries in $HOME that don't start with .beevibe", () => {
     mkdirSync(join(home, "Documents"), { recursive: true });
     mkdirSync(join(home, ".config"), { recursive: true });
     writeFileSync(join(home, ".bashrc"), "");
-    expect(discoverDaemons({ home })).toEqual([]);
+    expect(discoverDaemons(home)).toEqual([]);
   });
 
   it("masks the daemon_token in token_preview and never leaks the secret", () => {
@@ -100,7 +100,7 @@ describe("discoverDaemons", () => {
       ".beevibe",
       sampleConfig({ daemon_token: "bv_d_supersecretMIDDLEpartXYZ9999" }),
     );
-    const [record] = discoverDaemons({ home });
+    const [record] = discoverDaemons(home);
     expect(record?.token_preview).toMatch(/^bv_d_/);
     expect(record?.token_preview).not.toContain("supersecret");
     expect(record?.token_preview).not.toContain("MIDDLE");
@@ -110,7 +110,7 @@ describe("discoverDaemons", () => {
 
   it("returns [] when $HOME itself is unreadable", () => {
     rmSync(home, { recursive: true, force: true });
-    expect(discoverDaemons({ home })).toEqual([]);
+    expect(discoverDaemons(home)).toEqual([]);
   });
 });
 

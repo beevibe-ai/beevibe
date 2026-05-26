@@ -4,16 +4,14 @@
  * anything else under a config root.
  *
  * Discovery is a filesystem scan of $HOME for `.beevibe*` dirs whose
- * `config.json` parses as a beevibe DaemonConfig. Anything that doesn't
- * parse (corrupt JSON, unrelated tool sharing the `.beevibe-*` prefix)
- * is silently skipped — the false-positive rate from "just ship a glob"
- * stays at zero without us needing a registry file.
+ * `config.json` parses as a beevibe DaemonConfig. Non-matching dirs
+ * (corrupt JSON, unrelated tools sharing the prefix) are skipped.
  */
 
-import { readdirSync, readFileSync, statSync } from "node:fs";
+import { readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import type { DaemonConfig } from "./config.js";
+import { getConfigPath, loadConfig, type DaemonConfig } from "./config.js";
 
 /** Public output shape — one record per discovered daemon. */
 export interface DaemonRecord {
@@ -25,21 +23,10 @@ export interface DaemonRecord {
   token_preview: string;
   /** ISO mtime of <config_root>/config.json. */
   last_sync: string;
-  /**
-   * Best-effort "is the daemon process running" check. Always `"unknown"`
-   * today — implementing a non-fragile cross-platform detector would
-   * either miss source/tsx runs or false-positive on unrelated processes.
-   * Punted to a follow-up.
-   */
+  /** Reserved for a future process-detection check; always `"unknown"` today. */
   running: "unknown";
 }
 
-/**
- * Mask a `bv_d_` daemon token for display. The token is an auth
- * credential — show the prefix plus the last 4 chars so two roots can
- * be told apart visually, but never the middle. Same pattern as Stripe
- * keys (`sk_test_…wxyz`) and GitHub PATs in their UI.
- */
 function tokenPreview(token: string): string {
   if (!token.startsWith("bv_d_")) return "(invalid)";
   const tail = token.slice("bv_d_".length);
@@ -47,6 +34,9 @@ function tokenPreview(token: string): string {
   return `bv_d_…${tail.slice(-4)}`;
 }
 
+// loadConfig() does an unchecked `as DaemonConfig` cast — `list` reads
+// arbitrary `.beevibe*` dirs (potentially unrelated tools), so the
+// shape must be structurally validated before trusting fields.
 function isDaemonConfig(x: unknown): x is DaemonConfig {
   if (!x || typeof x !== "object") return false;
   const c = x as Record<string, unknown>;
@@ -60,61 +50,49 @@ function isDaemonConfig(x: unknown): x is DaemonConfig {
 }
 
 function tryLoad(configRoot: string): DaemonRecord | undefined {
-  const cfgPath = join(configRoot, "config.json");
-  let raw: string;
+  let cfg: DaemonConfig | undefined;
+  try {
+    cfg = loadConfig(configRoot);
+  } catch {
+    return undefined;
+  }
+  if (!cfg || !isDaemonConfig(cfg)) return undefined;
   let mtime: Date;
   try {
-    raw = readFileSync(cfgPath, "utf8");
-    mtime = statSync(cfgPath).mtime;
+    mtime = statSync(getConfigPath(configRoot)).mtime;
   } catch {
     return undefined;
   }
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw);
-  } catch {
-    return undefined;
-  }
-  if (!isDaemonConfig(parsed)) return undefined;
   return {
     config_root: configRoot,
-    daemon_id: parsed.daemon_id,
-    api_url: parsed.api_url,
-    external_id: parsed.external_id,
-    token_preview: tokenPreview(parsed.daemon_token),
+    daemon_id: cfg.daemon_id,
+    api_url: cfg.api_url,
+    external_id: cfg.external_id,
+    token_preview: tokenPreview(cfg.daemon_token),
     last_sync: mtime.toISOString(),
     running: "unknown",
   };
-}
-
-export interface DiscoverOptions {
-  /** Override $HOME for testing. */
-  home?: string;
 }
 
 /**
  * Scan $HOME for `.beevibe*` directories with a parseable daemon
  * config.json. Returns one record per match, sorted by config_root for
  * stable output. Unreadable dirs and non-daemon configs are skipped.
+ *
+ * `home` exists for tests; the CLI always uses the real `homedir()`.
  */
-export function discoverDaemons(options: DiscoverOptions = {}): DaemonRecord[] {
-  const home = options.home ?? homedir();
-  let entries: string[];
+export function discoverDaemons(home: string = homedir()): DaemonRecord[] {
+  let entries: Array<{ name: string; isDirectory: () => boolean }>;
   try {
-    entries = readdirSync(home);
+    entries = readdirSync(home, { withFileTypes: true });
   } catch {
     return [];
   }
   const records: DaemonRecord[] = [];
   for (const entry of entries) {
-    if (!entry.startsWith(".beevibe")) continue;
-    const configRoot = join(home, entry);
-    try {
-      if (!statSync(configRoot).isDirectory()) continue;
-    } catch {
-      continue;
-    }
-    const rec = tryLoad(configRoot);
+    if (!entry.name.startsWith(".beevibe")) continue;
+    if (!entry.isDirectory()) continue;
+    const rec = tryLoad(join(home, entry.name));
     if (rec) records.push(rec);
   }
   return records.sort((a, b) => a.config_root.localeCompare(b.config_root));
@@ -161,11 +139,8 @@ export function renderList(records: DaemonRecord[], json: boolean): string {
 
 export interface ListOptions {
   json?: boolean;
-  /** Override $HOME for testing; CLI always uses the real home. */
-  home?: string;
 }
 
 export function runList(options: ListOptions = {}): void {
-  const records = discoverDaemons({ home: options.home });
-  console.log(renderList(records, options.json === true));
+  console.log(renderList(discoverDaemons(), options.json === true));
 }
