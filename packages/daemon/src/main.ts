@@ -1,10 +1,11 @@
 #!/usr/bin/env node
 /**
- * `beevibe-daemon` CLI entry. Four subcommands:
+ * `beevibe-daemon` CLI entry. Five subcommands:
  *   - setup --api <url> --user-token <bv_u_…> [--device-name <name>]
  *   - start
  *   - sync       Re-detect CLIs on PATH and register newly-installed ones.
  *   - update [--yes]
+ *   - list [--json]   Read-only introspection of local daemon instances.
  *
  * The daemon owns its own config (~/.beevibe/config.json) and has no
  * legitimate reason to read a local .env. Compiled binaries are built
@@ -14,6 +15,7 @@
  */
 
 import { CONFIG_ROOT_ENV, getConfigPath, isDevBuild } from "./config.js";
+import { formatJson, formatTable, runList } from "./list.js";
 import { runSetup } from "./setup.js";
 import { runStart } from "./start.js";
 import { runSync } from "./sync.js";
@@ -88,6 +90,7 @@ function printHelp(): void {
       "  start    Run the daemon: claim pending sessions and spawn the CLI.",
       "  sync     Re-detect CLIs on PATH and register newly-installed ones.",
       "  update   Check for and install a newer daemon binary (brew/curl installs).",
+      "  list     List daemon instances on this machine (read-only).",
       "",
       "setup flags:",
       "  --api, -a <url>            beevibe api base URL (e.g. http://localhost:3000)",
@@ -97,6 +100,9 @@ function printHelp(): void {
       "",
       "update flags:",
       "  --yes, -y                  skip the install-this-update prompt",
+      "",
+      "list flags:",
+      "  --json                     emit a JSON array of daemons instead of a table",
       "",
       "dev-only flags (source builds only — rejected in compiled binaries):",
       "  --config-root <path>       shift the daemon's on-disk root from ~/.beevibe.",
@@ -159,6 +165,13 @@ async function main(): Promise<void> {
   if (command === "update") {
     const skipPrompt = rest.includes("--yes") || rest.includes("-y");
     await runUpdate({ skipPrompt });
+    return;
+  }
+
+  if (command === "list") {
+    const result = await runList();
+    const asJson = rest.includes("--json");
+    console.log(asJson ? formatJson(result) : formatTable(result));
     return;
   }
 

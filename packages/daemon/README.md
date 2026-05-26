@@ -8,7 +8,7 @@ For full setup, see the [root README](../../README.md).
 
 ## Run it
 
-Three subcommands. `setup` once; `start` to claim sessions; `update` for the brew/curl install path.
+Five subcommands. `setup` once; `start` to claim sessions; `update` for the brew/curl install path; `list` to introspect daemons on this machine.
 
 ```bash
 # 1. one-time registration with an api server
@@ -25,6 +25,13 @@ beevibe-daemon start
 beevibe-daemon update
 #   downloads latest GitHub release, SHA-256 verifies, atomic rename.
 #   For npm / source installs, prints the right install command and bails.
+
+# 4. list local daemon instances
+beevibe-daemon list
+#   scans $HOME for .beevibe* dirs containing a valid config.json
+#   and prints one row per daemon (config_root, daemon_id, api_url,
+#   running, last_sync). Read-only — never writes to any config.
+beevibe-daemon list --json   # structured output for scripting
 ```
 
 `setup` flags:
@@ -36,7 +43,9 @@ beevibe-daemon update
 | `--device-name` | `<user>@<hostname>` | Human label shown in the Runtimes panel. |
 | `--external-id` | `<hostname>` | Stable per-machine id; lets `setup` re-run idempotently. |
 
-`start` takes no flags — everything comes from `~/.beevibe/config.json` + env. `update` takes `--yes` / `-y` to skip the confirmation prompt.
+`start` takes no flags — everything comes from `~/.beevibe/config.json` + env. `update` takes `--yes` / `-y` to skip the confirmation prompt. `list` takes `--json` to emit a JSON array instead of a human-readable table; it never authenticates against the api (everything is read from local `config.json` files).
+
+The `RUNNING` column is a best-effort `ps` scan for `beevibe-daemon start` processes whose argv contains `--config-root <root>`. A daemon launched purely via the `BEEVIBE_CONFIG_ROOT` env var doesn't show up in `ps` output and reports `unknown` rather than `no`. Default-root daemons (no flag, no env) are detected correctly.
 
 ## Setup flow
 
@@ -130,6 +139,7 @@ src/
 ├── setup.ts           runSetup: detect CLIs, POST /runtime/register, write config
 ├── start.ts           runStart: load config, sync skills, build Supervisor + Claimer
 ├── update.ts          runUpdate: GitHub-release self-update for compiled binaries
+├── list.ts            runList: filesystem scan of $HOME/.beevibe* for daemon configs
 ├── config.ts          load/save ~/.beevibe/config.json (DaemonConfig shape)
 ├── api-client.ts      thin GET/POST/claim over /runtime/* with bv_d_ auth + WS open
 ├── claimer.ts         WS push + 30s HTTP poll + 15s heartbeat + WS reconnect
