@@ -94,12 +94,12 @@ describe("summaryToDisplay — status breakdown + legend", () => {
     expect(status_breakdown[2]?.color).toBe("blocked");
   });
 
-  it("maps cancelled to the pending color (de-emphasized terminal state)", () => {
+  it("maps cancelled to its own color (terminal state, distinct from pending)", () => {
     const data: DashboardSummary = {
       ...emptyData(),
       status_breakdown: [{ status: "cancelled", count: 1, percent: 100 }],
     };
-    expect(summaryToDisplay(data).status_breakdown[0]?.color).toBe("pending");
+    expect(summaryToDisplay(data).status_breakdown[0]?.color).toBe("cancelled");
   });
 
   it("legend uses the bucket as the color and humanizes the label", () => {
