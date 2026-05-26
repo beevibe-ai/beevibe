@@ -141,6 +141,7 @@ const LEGEND_LABEL: Record<LegendBucket, string> = {
   blocked: "Blocked",
   done: "Done",
   failed: "Failed",
+  cancelled: "Cancelled",
 };
 
 function legendToDisplay(data: StatusLegendData): StatusLegendEntry {

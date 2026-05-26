@@ -8,6 +8,7 @@ const COLOR_CLASS = {
   blocked: "bg-status-blocked",
   done: "bg-status-done",
   failed: "bg-status-failed",
+  cancelled: "bg-status-cancelled",
 } as const;
 
 const DOT_CLASS = {
@@ -17,6 +18,7 @@ const DOT_CLASS = {
   blocked: "bg-status-blocked",
   done: "bg-status-done",
   failed: "bg-status-failed",
+  cancelled: "bg-status-cancelled",
 } as const;
 
 export function StatusBreakdownBar({

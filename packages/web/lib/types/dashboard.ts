@@ -35,7 +35,7 @@ export interface StatusBreakdownEntry {
 }
 
 export interface StatusLegendEntry {
-  color: "review" | "done" | "blocked" | "failed" | "running" | "pending";
+  color: "review" | "done" | "blocked" | "failed" | "cancelled" | "running" | "pending";
   label: string;
   count: number;
 }
