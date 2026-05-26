@@ -8,7 +8,7 @@ For full setup, see the [root README](../../README.md).
 
 ## Run it
 
-Three subcommands. `setup` once; `start` to claim sessions; `update` for the brew/curl install path.
+Subcommands: `setup` once; `start` to claim sessions; `update` for the brew/curl install path; `sync` to pick up newly-installed CLIs; `list` to introspect what's set up on this machine.
 
 ```bash
 # 1. one-time registration with an api server
@@ -25,6 +25,12 @@ beevibe-daemon start
 beevibe-daemon update
 #   downloads latest GitHub release, SHA-256 verifies, atomic rename.
 #   For npm / source installs, prints the right install command and bails.
+
+# 4. inspect what's on this machine
+beevibe-daemon list
+#   scans $HOME for .beevibe* dirs with a daemon config.json, prints one
+#   row per instance: config root, daemon_id, token preview, api, device,
+#   last sync. Read-only. Add --json for scripting.
 ```
 
 `setup` flags:
@@ -116,6 +122,27 @@ pnpm dev start --config-root $HOME/.beevibe-B
 - **Device name is not auto-suffixed.** Both daemons register as `<user>@<hostname>` in the Runtimes panel by default. Use `--device-name "MBP (account-B)"` at `setup` time if you want them visually distinct.
 - **Same OS user only.** Different OS users on one machine already isolate via `homedir()`; this flag is for running two accounts as the SAME OS user.
 
+## Listing local daemons
+
+`beevibe-daemon list` scans `$HOME` for `.beevibe*` directories that contain a parseable daemon `config.json` and prints one row per match. Useful for "which `bv_d_` am I? what's my daemon_id?" and for seeing the two coexisting accounts when running multi-instance.
+
+```text
+$ beevibe-daemon list
+CONFIG ROOT             DAEMON ID    TOKEN         API                    DEVICE          LAST SYNC                  RUNNING
+/Users/me/.beevibe      dmn_abc123   bv_d_…wxyz    https://api.beevibe.io  laptop.local    2026-05-26T01:23:45.000Z   unknown
+/Users/me/.beevibe-B    dmn_def456   bv_d_…qrst    http://localhost:3000   laptop.local    2026-05-26T01:25:10.000Z   unknown
+2 daemons found.
+```
+
+Behavior:
+
+- **Read-only.** Never writes anything under any config root.
+- **Available in every build.** Not gated by `__DEV_BUILD__` — works in compiled binaries, the npm bundle, and source/tsx runs.
+- **Skips silently.** A `.beevibe-*` directory whose `config.json` is missing, malformed, or doesn't match the `DaemonConfig` shape is dropped from the output rather than warned about. Keeps false positives at zero when the user has unrelated `.beevibe-*` dirs.
+- **TOKEN column is a masked preview** (`bv_d_…<last 4>`) — enough to distinguish two daemons visually, never the full secret. For the actual owner identity, look up the `DAEMON ID` in the api's Runtimes panel.
+- **RUNNING is always `unknown` today.** Cross-platform process detection that doesn't false-positive on every `tsx watch` run is non-trivial; punted to a follow-up. Use `ps -ax | grep beevibe-daemon` for now.
+- **`--json` flag** emits a top-level array for scripting (`beevibe-daemon list --json | jq '.[].daemon_id'`).
+
 ## What it doesn't do
 
 - **No MCP proxy.** The CLI calls `/mcp` directly using the `bv_a_` token in `mcp-config.json`. The daemon's job stops at writing the file and supervising the subprocess.
@@ -129,14 +156,16 @@ src/
 ├── main.ts            CLI arg parser + subcommand dispatch
 ├── setup.ts           runSetup: detect CLIs, POST /runtime/register, write config
 ├── start.ts           runStart: load config, sync skills, build Supervisor + Claimer
+├── sync.ts            runSync: re-detect CLIs, POST /runtime/sync, persist new runtime ids
 ├── update.ts          runUpdate: GitHub-release self-update for compiled binaries
-├── config.ts          load/save ~/.beevibe/config.json (DaemonConfig shape)
+├── list.ts            runList: scan $HOME for .beevibe* config roots, print one row each
+├── config.ts          load/save <configRoot>/config.json (DaemonConfig shape)
 ├── api-client.ts      thin GET/POST/claim over /runtime/* with bv_d_ auth + WS open
 ├── claimer.ts         WS push + 30s HTTP poll + 15s heartbeat + WS reconnect
 ├── supervisor.ts      bounded concurrency cap with per-session AbortControllers
 ├── spawner.ts         runDispatch: workspace + ClaudeCodeRuntime + batched events
-├── skills-cache.ts    syncSkillsCache: pull /runtime/skills into ~/.beevibe/skills/
-└── supervisor.test.ts vitest unit tests
+├── skills-cache.ts    syncSkillsCache: pull /runtime/skills into <configRoot>/skills/
+└── *.test.ts          vitest unit tests
 ```
 
 ## Build distribution
