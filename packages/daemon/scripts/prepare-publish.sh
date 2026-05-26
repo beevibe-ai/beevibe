@@ -40,11 +40,8 @@ VERSION="$(node -p "require('./package.json').version")"
 # Bundle: --target=node produces ES modules consumable by `node dist/main.js`.
 # --external ws keeps ws as a runtime dep (it has prebuilds) so it loads
 # from the installer's node_modules rather than being inlined.
-# __DEV_BUILD__=false flips the dev-only multi-instance gate
-# (config.ts:isDevBuild()) to false, so the npm-published bundle rejects
-# --config-root / BEEVIBE_CONFIG_ROOT with exit 2. Source-checkout runs
-# never have the define applied; `typeof __DEV_BUILD__` returns
-# "undefined" there → isDevBuild() returns true.
+# __DEV_BUILD__=false rejects --config-root in this artifact (see
+# config.ts:isDevBuild). Source / tsx runs have no define → dev.
 bun build src/main.ts \
   --target=node \
   --outfile="$OUTDIR/dist/main.js" \

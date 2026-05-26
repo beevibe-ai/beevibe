@@ -13,10 +13,7 @@ import { syncSkillsCache } from "./skills-cache.js";
 import { Supervisor } from "./supervisor.js";
 
 export interface StartOptions {
-  /**
-   * Dev-only override for `~/.beevibe`. Threaded down from the
-   * `--config-root` flag in main.ts. Unset for normal use.
-   */
+  /** Dev-only `~/.beevibe` override; see config.ts:getConfigRoot. */
   configRoot?: string;
 }
 
@@ -46,11 +43,8 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
     },
   );
 
-  // With --config-root set, default workspaces to a sibling of the
-  // override so a second daemon's agent workspaces don't collide with
-  // the first's. WORKSPACE_ROOT still wins when set explicitly (CI,
-  // bespoke layouts).
-  const resolvedConfigRoot = getConfigRoot(options.configRoot);
+  // WORKSPACE_ROOT env wins (CI / bespoke layouts); otherwise default
+  // workspaces under the configRoot so a second daemon doesn't collide.
   const runtimeRegistry = createDefaultRuntimeRegistry();
   const workspaceManager = new LocalWorkspaceManager({
     mcpServerUrl: `${cfg.api_url}/mcp`,
@@ -59,7 +53,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
     workspaceRoot:
       process.env.WORKSPACE_ROOT && process.env.WORKSPACE_ROOT.length > 0
         ? process.env.WORKSPACE_ROOT
-        : join(resolvedConfigRoot, "workspaces"),
+        : join(getConfigRoot(options.configRoot), "workspaces"),
   });
 
   const supervisor = new Supervisor();

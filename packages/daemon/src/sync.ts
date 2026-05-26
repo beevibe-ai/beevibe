@@ -26,10 +26,7 @@ export interface SyncResult {
 }
 
 export interface SyncOptions {
-  /**
-   * Dev-only override for `~/.beevibe`. Threaded down from the
-   * `--config-root` flag in main.ts. Unset for normal use.
-   */
+  /** Dev-only `~/.beevibe` override; see config.ts:getConfigRoot. */
   configRoot?: string;
 }
 

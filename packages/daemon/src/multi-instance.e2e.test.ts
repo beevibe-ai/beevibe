@@ -1,16 +1,9 @@
 /**
- * End-to-end test for the dev-only multi-instance config-root feature.
- *
- * Skipped by default — runs two real `runSetup` calls against a local
- * HTTP stub of `/runtime/register`, exercising the full filesystem
- * isolation invariant: two daemons authenticated as different accounts
- * each write their own config.json and skills-cache under independent
- * `configRoot`s. Enable by:
+ * E2E for the dev-only --config-root feature. Opt-in:
  *
  *   BEEVIBE_E2E_MULTI_INSTANCE=1 pnpm --filter @beevibe/daemon test
  *
- * Follows the `packages/sandbox/src/docker.e2e.test.ts` pattern — opt-in
- * via env var so CI defaults stay fast.
+ * Same opt-in pattern as packages/sandbox/src/docker.e2e.test.ts.
  */
 import { createServer, type Server } from "node:http";
 import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -51,6 +44,9 @@ async function startStubApi(): Promise<StubServer> {
   const server: Server = createServer((req, res) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("error", () => {
+      if (!res.headersSent) res.writeHead(400).end();
+    });
     req.on("end", () => {
       const body = chunks.length > 0 ? JSON.parse(Buffer.concat(chunks).toString("utf8")) : {};
       if (req.url === "/runtime/register" && req.method === "POST") {
@@ -139,24 +135,17 @@ describeOrSkip("multi-instance daemon isolation (e2e)", () => {
       detectedClis: [{ cli: "claude", cli_version: "1.0.0" }],
     });
 
-    // Each setup must have written its config.json under its own root only.
     expect(existsSync(join(rootA, "config.json"))).toBe(true);
     expect(existsSync(join(rootB, "config.json"))).toBe(true);
 
-    // Tokens are distinct.
     expect(cfgA.daemon_token).not.toBe(cfgB.daemon_token);
     expect(cfgA.daemon_id).not.toBe(cfgB.daemon_id);
 
-    // loadConfig reads each root's own state — the cross-contamination
-    // bug being prevented.
-    const loadedA = loadConfig(rootA);
-    const loadedB = loadConfig(rootB);
-    expect(loadedA?.daemon_token).toBe(cfgA.daemon_token);
-    expect(loadedB?.daemon_token).toBe(cfgB.daemon_token);
-    expect(loadedA?.daemon_token).not.toBe(loadedB?.daemon_token);
+    expect(loadConfig(rootA)?.daemon_token).toBe(cfgA.daemon_token);
+    expect(loadConfig(rootB)?.daemon_token).toBe(cfgB.daemon_token);
 
-    // The on-disk JSON file under A must NOT mention B's token, and
-    // vice versa.
+    // On-disk: each root's JSON references only its own token — the
+    // cross-contamination bug being prevented.
     const rawA = readFileSync(join(rootA, "config.json"), "utf8");
     const rawB = readFileSync(join(rootB, "config.json"), "utf8");
     expect(rawA).toContain(cfgA.daemon_token);
@@ -164,7 +153,6 @@ describeOrSkip("multi-instance daemon isolation (e2e)", () => {
     expect(rawB).toContain(cfgB.daemon_token);
     expect(rawB).not.toContain(cfgA.daemon_token);
 
-    // The api saw two distinct registrations carrying each user's bv_u_.
     expect(api.registrations).toHaveLength(2);
     expect(api.registrations[0]?.authorization).toBe("Bearer bv_u_account_A");
     expect(api.registrations[1]?.authorization).toBe("Bearer bv_u_account_B");

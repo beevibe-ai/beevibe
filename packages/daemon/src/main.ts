@@ -11,14 +11,9 @@
  * with `--no-compile-autoload-dotenv --no-compile-autoload-bunfig`
  * (see packages/daemon/scripts/build-binaries.sh) so launching from
  * inside a beevibe checkout doesn't silently slurp the repo's .env.
- *
- * Dev-only `--config-root <path>` (or `BEEVIBE_CONFIG_ROOT` env) shifts
- * the on-disk root from `~/.beevibe` so two daemons authenticated as
- * different `bv_u_` accounts can coexist on one machine. Rejected in
- * compiled-prod via `isDevBuild()` — see config.ts.
  */
 
-import { isDevBuild } from "./config.js";
+import { CONFIG_ROOT_ENV, getConfigPath, isDevBuild } from "./config.js";
 import { runSetup } from "./setup.js";
 import { runStart } from "./start.js";
 import { runSync } from "./sync.js";
@@ -59,25 +54,19 @@ function parseFlags(argv: string[]): Flags {
 
 /**
  * Resolve the effective config-root override and enforce the dev-only
- * gate. Returns `undefined` when neither the flag nor the env are set
- * — that's the normal path, and `getConfigRoot(undefined)` falls
- * through to `~/.beevibe`.
- *
- * Compiled-prod (`isDevBuild() === false`): both the flag and the env
- * are rejected with exit code 2 and a clear message. This is the
- * belt-and-suspenders side of the gate; the compile-time
- * `__DEV_BUILD__=false` define is what theoretically lets the
- * bundler dead-code-eliminate the multi-instance code paths, but
- * bun build doesn't always DCE without `--minify`, so the runtime
- * guard is the load-bearing one.
+ * gate. Returns `undefined` when neither flag nor env is set, so
+ * downstream `getConfigRoot(undefined)` falls through to `~/.beevibe`.
+ * Compiled-prod rejects either knob with exit 2 — runtime guard
+ * because `bun build` without `--minify` may not DCE the dead branch.
  */
 function resolveConfigRoot(flag: string | undefined): string | undefined {
-  const env = process.env.BEEVIBE_CONFIG_ROOT;
-  const hasOverride = (flag && flag.length > 0) || (env && env.length > 0);
-  if (!hasOverride) return undefined;
+  const env = process.env[CONFIG_ROOT_ENV];
+  const hasFlag = flag && flag.length > 0;
+  const hasEnv = env && env.length > 0;
+  if (!hasFlag && !hasEnv) return undefined;
 
   if (!isDevBuild()) {
-    const source = flag ? "--config-root" : "BEEVIBE_CONFIG_ROOT";
+    const source = hasFlag ? "--config-root" : CONFIG_ROOT_ENV;
     console.error(
       `${source} is a dev-only knob and is not available in this build. ` +
         `Reinstall via npm/curl without the override, or use a source checkout ` +
@@ -86,7 +75,7 @@ function resolveConfigRoot(flag: string | undefined): string | undefined {
     process.exit(2);
   }
 
-  return flag && flag.length > 0 ? flag : env;
+  return hasFlag ? flag : env;
 }
 
 function printHelp(): void {
@@ -143,8 +132,7 @@ async function main(): Promise<void> {
     });
     console.log(`Registered as ${cfg.daemon_id}`);
     console.log(`Runtimes: ${cfg.runtimes.map((r) => `${r.cli} (${r.id})`).join(", ")}`);
-    const configLabel = configRoot ? `${configRoot}/config.json` : "~/.beevibe/config.json";
-    console.log(`Config saved to ${configLabel}`);
+    console.log(`Config saved to ${getConfigPath(configRoot)}`);
     return;
   }
 

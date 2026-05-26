@@ -1,14 +1,8 @@
 /**
- * On-disk daemon configuration. Lives in `<configRoot>/config.json` and
- * survives restarts. Set during `beevibe-daemon setup`; consulted by
- * every subsequent `beevibe-daemon start`.
- *
- * `configRoot` defaults to `~/.beevibe` and can be overridden per process
- * (dev builds only) via `--config-root` or `BEEVIBE_CONFIG_ROOT`. The
- * override exists so a developer can run two daemons on one machine
- * authenticated as different `bv_u_` accounts without the second `setup`
- * clobbering the first daemon's `bv_d_` token. Prod (Bun-compiled binary
- * or npm-bundle) rejects the flag and env via `isDevBuild()` in main.ts.
+ * On-disk daemon configuration. Lives in `<configRoot>/config.json`,
+ * which defaults to `~/.beevibe/config.json` and survives restarts.
+ * Set during `beevibe-daemon setup`; consulted by every subsequent
+ * `beevibe-daemon start`.
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
@@ -31,46 +25,30 @@ export interface DaemonConfig {
   runtimes: Array<{ id: string; cli: string }>;
 }
 
-/**
- * Baked in by `bun build --define __DEV_BUILD__=false` for the binary /
- * npm-publish artifacts (see scripts/build-binaries.sh,
- * scripts/prepare-publish.sh). Non-bundled runs (tsx, `tsc → node`,
- * vitest) never have the define applied, which is why `isDevBuild()`
- * probes via `typeof` — the global is undeclared in those contexts and
- * referencing it directly would ReferenceError.
- */
+/** Env-var entry point for the dev-only --config-root override. */
+export const CONFIG_ROOT_ENV = "BEEVIBE_CONFIG_ROOT";
+
+// Set to `false` by `bun build --define __DEV_BUILD__=false` in
+// scripts/build-binaries.sh + scripts/prepare-publish.sh. Non-bundled
+// runs leave it undeclared — `typeof` is what keeps tsx/vitest from
+// throwing ReferenceError. Same pattern as BEEVIBE_DAEMON_VERSION in
+// update.ts.
 declare const __DEV_BUILD__: boolean;
 
-/**
- * True when running from source (tsx / tsc-built dist / vitest). False
- * only in artifacts built by build-binaries.sh / prepare-publish.sh,
- * which pass `--define "__DEV_BUILD__=false"`.
- *
- * Multi-instance entry points (`--config-root`, `BEEVIBE_CONFIG_ROOT`)
- * gate on this — prod builds reject both with exit code 2 so an end
- * user can't accidentally fork a daemon's state.
- */
+/** True for source / tsx / tsc / vitest runs; false only for compiled-prod artifacts. */
 export function isDevBuild(): boolean {
-  // typeof on an undeclared global returns "undefined" rather than
-  // throwing — same global-probe pattern as BEEVIBE_DAEMON_VERSION in
-  // update.ts. Compiled-prod sets the define to `false` explicitly.
   return typeof __DEV_BUILD__ === "undefined" ? true : __DEV_BUILD__;
 }
 
 /**
- * Resolve the daemon's on-disk root directory. Precedence:
- *   1. explicit `override` arg (the `--config-root` flag)
- *   2. `BEEVIBE_CONFIG_ROOT` env var
- *   3. `~/.beevibe` (unchanged default)
- *
- * Default behavior is identical to the pre-flag world — with no
- * override and no env, paths resolve to `~/.beevibe/...` exactly as
- * before. The override path is dev-only; main.ts rejects it in
- * compiled-prod via `isDevBuild()`.
+ * Resolve the daemon's on-disk root. Precedence: explicit `override`
+ * → `BEEVIBE_CONFIG_ROOT` env → `~/.beevibe`. Empty strings on either
+ * input are treated as unset — guards against `WORKSPACE_ROOT=`-style
+ * .env leaks (same defensive pattern as LocalWorkspaceManager).
  */
 export function getConfigRoot(override?: string): string {
   if (override && override.length > 0) return override;
-  const fromEnv = process.env.BEEVIBE_CONFIG_ROOT;
+  const fromEnv = process.env[CONFIG_ROOT_ENV];
   if (fromEnv && fromEnv.length > 0) return fromEnv;
   return join(homedir(), ".beevibe");
 }
