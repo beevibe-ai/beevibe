@@ -503,6 +503,18 @@ function rosterSection(names: readonly string[]): string {
  */
 export type SessionSurfaceKind = "task" | "chat" | "human_mcp" | "respond";
 
+/**
+ * SessionSurfaceKind → lifecycle reminder. `human_mcp` shares the chat
+ * reminder (chat lifecycle, different UI grammar). Lookup-table form so
+ * TS flags missing cases when SessionSurfaceKind grows.
+ */
+const LIFECYCLE_REMINDER_BY_KIND: Record<SessionSurfaceKind, string> = {
+  task: BEEVIBE_LIFECYCLE_REMINDER_TASK,
+  chat: BEEVIBE_LIFECYCLE_REMINDER_CHAT,
+  human_mcp: BEEVIBE_LIFECYCLE_REMINDER_CHAT,
+  respond: BEEVIBE_LIFECYCLE_REMINDER_RESPOND,
+};
+
 export function composeSystemPromptAppend(
   agentSystemPromptAddition: string | undefined,
   briefingSystemPromptAppend: string,
@@ -535,12 +547,7 @@ export function composeSystemPromptAppend(
     extra?: string;
   } = {},
 ): string {
-  const lifecycleReminder =
-    options.sessionKind === "respond"
-      ? BEEVIBE_LIFECYCLE_REMINDER_RESPOND
-      : options.sessionKind === "chat" || options.sessionKind === "human_mcp"
-        ? BEEVIBE_LIFECYCLE_REMINDER_CHAT
-        : BEEVIBE_LIFECYCLE_REMINDER_TASK;
+  const lifecycleReminder = LIFECYCLE_REMINDER_BY_KIND[options.sessionKind ?? "task"];
   // CHAT_DIRECTIVES is the beevibe chat UI grammar — only fires for
   // sessions actually rendered in our chat surface. human_mcp uses
   // chat lifecycle but skips this block.

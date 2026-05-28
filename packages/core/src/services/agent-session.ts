@@ -98,6 +98,35 @@ export interface AgentSessionRunInput {
 }
 
 /**
+ * Resolve the session.type to write at row insert AND to feed into the
+ * lifecycle-reminder router. Defaults: if no explicit type, `task` when
+ * a taskId is set, else `chat` — matches the legacy fallback.
+ */
+function deriveSessionType(
+  input: Pick<AgentSessionRunInput, "type" | "taskId">,
+): SessionType {
+  return input.type ?? (input.taskId ? "task" : "chat");
+}
+
+/**
+ * SessionType → SessionSurfaceKind. Lookup table (vs ternary) so TS
+ * flags any missing case when SessionType grows. Mesh responder shapes
+ * (mesh_ask / mesh_negotiate / blocker) route to `respond` — they have
+ * no own-task and must NOT receive the task lifecycle's "always call
+ * update_progress" imperative. `run_repo` never reaches this path in
+ * practice (sandbox orchestrator uses its own hardcoded prompt), but
+ * defensively maps to `respond` since the child also has no own-task.
+ */
+const SESSION_KIND_BY_TYPE: Record<SessionType, SessionSurfaceKind> = {
+  task: "task",
+  chat: "chat",
+  mesh_ask: "respond",
+  mesh_negotiate: "respond",
+  blocker: "respond",
+  run_repo: "respond",
+};
+
+/**
  * Orchestrates one CLI invocation end-to-end:
  *
  * 1. Load the agent (agent.runtime_config.system_prompt_addition is the
@@ -139,7 +168,7 @@ export class AgentSession {
         agent_id: input.agentId,
         task_id: input.taskId,
         prior_session_id: input.priorSessionId,
-        type: input.type ?? (input.taskId ? "task" : "chat"),
+        type: deriveSessionType(input),
         intent: input.intent,
         // Inline mesh / chat paths spawn the CLI immediately, so this row
         // skips the 'pending' state entirely. Required now that the DB
@@ -167,23 +196,10 @@ export class AgentSession {
         (err as Error).message,
       );
     }
-    // Lifecycle reminder routing mirrors the session.type written at
-    // row insert (line 138 above). Mesh responders (mesh_ask /
-    // mesh_negotiate / blocker) have no own-task and must NOT call
-    // update_progress on the caller's task — see
+    // Route mesh responders (no own-task) to the respond variant — see
     // BEEVIBE_LIFECYCLE_REMINDER_RESPOND. Pre-this-routing they fell
-    // through to the task reminder and routinely clobbered the
-    // caller's task state.
-    const sessionType: SessionType =
-      input.type ?? (input.taskId ? "task" : "chat");
-    const sessionKind: SessionSurfaceKind =
-      sessionType === "mesh_ask" ||
-      sessionType === "mesh_negotiate" ||
-      sessionType === "blocker"
-        ? "respond"
-        : sessionType === "chat"
-          ? "chat"
-          : "task";
+    // through to the task reminder and clobbered the caller's task.
+    const sessionKind = SESSION_KIND_BY_TYPE[deriveSessionType(input)];
     const system_prompt_append = composeSystemPromptAppend(
       agent.runtime_config.system_prompt_addition,
       briefing.systemPromptAppend,
