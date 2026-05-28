@@ -138,6 +138,27 @@ export class LocalWorkspaceManager implements WorkspaceManager {
 }
 
 /**
+ * Per-server tool-call timeout the mcp-config.json declares for the
+ * beevibe HTTP MCP server. Default in Claude Code is ~60-120s, which
+ * is shorter than DEFAULT_ASK_TIMEOUT_MS (5 min) in
+ * `packages/api/src/mesh/server.ts`. Without this override, an agent
+ * calling `ask` waits for the api's resolver but the CLI's MCP client
+ * gives up first and surfaces "timed out after 120 seconds" to the
+ * agent even though the api is still happily waiting for the
+ * responder — and would resolve on a 3-minute answer that nobody is
+ * listening for anymore. 10 minutes covers ASK + NEGOTIATE rounds
+ * plus headroom.
+ *
+ * Known caveat (anthropics/claude-code#20335, #43791, #16837): the
+ * timeout field is reported to be ignored for some HTTP/SSE transport
+ * cases in 2.1.x. Setting it has no downside if ignored; if honored,
+ * it fixes the asker-side premature-timeout. Real fix is a non-
+ * blocking ask protocol (return request_id, poll for status) — this
+ * is a best-effort knob until that lands.
+ */
+export const MCP_TOOL_TIMEOUT_MS = 10 * 60_000;
+
+/**
  * The mcp-config.json the spawner writes into each agent's workspace.
  * Exported so the daemon (`@beevibe/daemon`) can produce byte-identical
  * configs — the MCP server's parser sees one shape regardless of which
@@ -155,6 +176,7 @@ export function buildMcpConfig(apiKey: string, mcpServerUrl: string): string {
           beevibe: {
             type: "http",
             url: mcpServerUrl,
+            timeout: MCP_TOOL_TIMEOUT_MS,
             headers: {
               Authorization: `Bearer ${apiKey}`,
               "X-Beevibe-Session": "${BEEVIBE_SESSION_ID}",

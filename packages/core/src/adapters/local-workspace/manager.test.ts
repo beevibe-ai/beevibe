@@ -219,6 +219,24 @@ describe("LocalWorkspaceManager", () => {
       );
     });
 
+    it("declares a 10-minute per-tool timeout to outlast the api's mesh-resolver wait", async () => {
+      // DEFAULT_ASK_TIMEOUT_MS in api/src/mesh/server.ts is 5 min; Claude
+      // Code's MCP client otherwise defaults to ~60-120s for HTTP and
+      // surfaces a premature "timed out" error to the asker. 10 min
+      // covers ask + negotiate rounds plus headroom. Reduce → re-open
+      // the asker-side premature-timeout bug. (Some 2.1.x versions may
+      // ignore this field per anthropics/claude-code#20335 — setting
+      // it has no downside, and is the only path that fixes it when
+      // honored.)
+      const ws = await manager.ensureWorkspace({
+        agent: makeAgent({ id: "agent_to" }),
+      });
+      const parsed = JSON.parse(
+        readFileSync(join(ws.path, "mcp-config.json"), "utf-8"),
+      );
+      expect(parsed.mcpServers.beevibe.timeout).toBe(10 * 60_000);
+    });
+
     it.skipIf(process.platform === "win32")(
       "mcp-config.json is written with mode 0o600 (file contains secrets)",
       async () => {

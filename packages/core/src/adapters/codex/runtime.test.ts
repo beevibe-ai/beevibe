@@ -156,6 +156,14 @@ describe("CodexRuntime.execute", () => {
     expect(lastOptions!.args).toContain(
       'mcp_servers.beevibe.default_tools_approval_mode="approve"',
     );
+    // Regression: codex's default per-tool-call timeout is shorter than
+    // the api's mesh-resolver wait (5 min for ask/negotiate). Without
+    // this override, the asker sees a premature timeout while the api
+    // is still waiting for the responder. 600s = 10 min, matching the
+    // Claude Code mcp-config.json `timeout` field.
+    expect(lastOptions!.args).toContain(
+      "mcp_servers.beevibe.tool_timeout_sec=600",
+    );
   });
 
   it("strips OPENAI_API_KEY / OPENAI_AUTH_TOKEN from the spawned env to preserve subscription auth", async () => {
