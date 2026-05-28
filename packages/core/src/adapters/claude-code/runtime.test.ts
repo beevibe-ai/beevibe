@@ -138,6 +138,44 @@ describe("ClaudeCodeRuntime.execute", () => {
     expect(lastOptions!.args).not.toContain("--append-system-prompt");
   });
 
+  it("forwards context.allowed_tools as --allowedTools <comma-joined>", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime().execute(
+      ctx({ allowed_tools: ["Read", "Grep", "mcp__beevibe__update_progress"] }),
+    );
+    const idx = lastOptions!.args!.indexOf("--allowedTools");
+    expect(idx).toBeGreaterThan(-1);
+    expect(lastOptions!.args![idx + 1]).toBe(
+      "Read,Grep,mcp__beevibe__update_progress",
+    );
+  });
+
+  it("forwards context.disallowed_tools as --disallowedTools <comma-joined>", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime().execute(
+      ctx({ disallowed_tools: ["Bash", "Write"] }),
+    );
+    const idx = lastOptions!.args!.indexOf("--disallowedTools");
+    expect(idx).toBeGreaterThan(-1);
+    expect(lastOptions!.args![idx + 1]).toBe("Bash,Write");
+  });
+
+  it("omits both tool flags when neither is set (default Claude behavior)", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime().execute(ctx({}));
+    expect(lastOptions!.args).not.toContain("--allowedTools");
+    expect(lastOptions!.args).not.toContain("--disallowedTools");
+  });
+
+  it("omits the flags when the list is empty (defensive against empty arrays from upstream)", async () => {
+    mockRunCli();
+    await new ClaudeCodeRuntime().execute(
+      ctx({ allowed_tools: [], disallowed_tools: [] }),
+    );
+    expect(lastOptions!.args).not.toContain("--allowedTools");
+    expect(lastOptions!.args).not.toContain("--disallowedTools");
+  });
+
   it("merges context.env into the spawned process env (session id reaches MCP subprocesses)", async () => {
     mockRunCli();
     await new ClaudeCodeRuntime().execute(

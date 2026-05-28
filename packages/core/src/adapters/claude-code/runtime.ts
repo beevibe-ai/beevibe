@@ -91,6 +91,12 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     if (context.system_prompt_append.length > 0) {
       args.push("--append-system-prompt", context.system_prompt_append);
     }
+    if (context.allowed_tools && context.allowed_tools.length > 0) {
+      args.push("--allowedTools", context.allowed_tools.join(","));
+    }
+    if (context.disallowed_tools && context.disallowed_tools.length > 0) {
+      args.push("--disallowedTools", context.disallowed_tools.join(","));
+    }
 
     const env: Record<string, string | undefined> = { ...process.env };
     for (const key of NESTING_GUARD_VARS) delete env[key];

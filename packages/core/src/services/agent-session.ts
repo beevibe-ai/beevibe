@@ -27,6 +27,8 @@ export {
   getAgentTemplate,
   listAgentTemplates,
   isKnownAgentTemplate,
+  resolveTemplateToolFlags,
+  UNIVERSAL_AGENT_TOOLS,
   CTO_BEE_TEMPLATE,
 } from "../templates/index.js";
 export type { AgentTemplate, TemplateMcpServer } from "../templates/types.js";

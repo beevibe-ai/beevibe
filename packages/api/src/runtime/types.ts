@@ -89,6 +89,20 @@ export interface DispatchPayload {
   resume_session_id?: string;
   model?: string;
   max_turns?: number;
+  /**
+   * Tool allowlist resolved from the agent's template
+   * (see `resolveTemplateToolFlags`). Daemon passes through to
+   * `claude --allowedTools <comma-joined>`. Universal platform tools
+   * (update_progress, archival_memory_*, etc.) are already merged in by
+   * the resolver — daemon does no further mutation.
+   */
+  allowed_tools?: readonly string[];
+  /**
+   * Tool denylist resolved from the agent's template. Daemon passes
+   * through to `claude --disallowedTools <comma-joined>`. Universal
+   * platform tools have already been stripped by the resolver.
+   */
+  disallowed_tools?: readonly string[];
   /** Session-scoped env vars; daemon merges with its own when spawning. */
   env: Record<string, string>;
   type: SessionType;

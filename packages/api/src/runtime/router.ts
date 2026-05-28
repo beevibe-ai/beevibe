@@ -30,6 +30,7 @@ import {
   composeIntent,
   composeSystemPromptAppend,
   getAgentTemplate,
+  resolveTemplateToolFlags,
   teamAgentRoutingDirective,
 } from "@beevibe/core/services/agent-session";
 import { transitionTaskOnClaim } from "@beevibe/core/services/dispatch-service";
@@ -564,10 +565,13 @@ async function composeDispatchPayload(
       : "";
 
   // Agent template — when set, pulls a role-shaped system prompt into
-  // composeSystemPromptAppend alongside team routing. Unknown values
-  // (e.g. a template removed from the registry but still on the row)
-  // resolve to null and behave like a plain agent.
+  // composeSystemPromptAppend alongside team routing AND drives the
+  // tool allow/deny lists threaded to Claude Code via `--allowedTools` /
+  // `--disallowedTools`. Unknown values (e.g. a template removed from the
+  // registry but still on the row) resolve to null and behave like a
+  // plain agent.
   const template = getAgentTemplate(agent.agent_template);
+  const toolFlags = resolveTemplateToolFlags(template);
 
   // Persist briefing snapshot for the session detail page. Awaited (was
   // fire-and-forget) so /runtime/claim can't return before the snapshot
@@ -634,6 +638,8 @@ async function composeDispatchPayload(
     resume_session_id: priorSession?.cli_session_id,
     model: agent.runtime_config.model,
     max_turns: agent.runtime_config.max_turns,
+    allowed_tools: toolFlags.allowed_tools,
+    disallowed_tools: toolFlags.disallowed_tools,
     env: { BEEVIBE_SESSION_ID: session.id, BEEVIBE_AGENT_ID: agent.id },
     type: session.type,
     mcp_server_url: deps.mcpServerUrl,
