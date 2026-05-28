@@ -26,6 +26,7 @@ export interface AgentRow {
   max_mesh_sessions: number | null;
   max_negotiation_rounds: number | null;
   preferred_runtime_id: string | null;
+  agent_template: string | null;
   archived_at: Date | null;
   created_at: Date;
   updated_at: Date;

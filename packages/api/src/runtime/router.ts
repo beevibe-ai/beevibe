@@ -29,6 +29,7 @@ import type { MemoryAgent } from "@beevibe/core/services/memory";
 import {
   composeIntent,
   composeSystemPromptAppend,
+  getAgentTemplate,
   teamAgentRoutingDirective,
 } from "@beevibe/core/services/agent-session";
 import { transitionTaskOnClaim } from "@beevibe/core/services/dispatch-service";
@@ -562,6 +563,12 @@ async function composeDispatchPayload(
       ? teamAgentRoutingDirective(subordinates.map((s) => s.name))
       : "";
 
+  // Agent template — when set, pulls a role-shaped system prompt into
+  // composeSystemPromptAppend alongside team routing. Unknown values
+  // (e.g. a template removed from the registry but still on the row)
+  // resolve to null and behave like a plain agent.
+  const template = getAgentTemplate(agent.agent_template);
+
   // Persist briefing snapshot for the session detail page. Awaited (was
   // fire-and-forget) so /runtime/claim can't return before the snapshot
   // lands — eliminates a race where the session detail page would read
@@ -621,6 +628,7 @@ async function composeDispatchPayload(
         sessionKind: isChat ? "chat" : "task",
         appendOnboardingDirectives: isOnboarding,
         extra: teamRouting,
+        templateSystemPrompt: template?.system_prompt,
       },
     ),
     resume_session_id: priorSession?.cli_session_id,

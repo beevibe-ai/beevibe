@@ -23,6 +23,13 @@ export {
   composeSystemPromptAppend,
   teamAgentRoutingDirective,
 } from "./spawn-prep.js";
+export {
+  getAgentTemplate,
+  listAgentTemplates,
+  isKnownAgentTemplate,
+  CTO_BEE_TEMPLATE,
+} from "../templates/index.js";
+export type { AgentTemplate, TemplateMcpServer } from "../templates/types.js";
 
 export interface AgentSessionDeps {
   agentRepo: AgentRepository;

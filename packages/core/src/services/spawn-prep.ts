@@ -438,6 +438,14 @@ export function composeSystemPromptAppend(
   briefingSystemPromptAppend: string,
   options: {
     /**
+     * Role-shaped prompt addition from the agent's template (when
+     * `agent.agent_template` resolves to a known template). Slotted
+     * just above the per-agent baseline so the static role identity
+     * caches well; operator's `system_prompt_addition` still wins
+     * when it overlaps because it's appended after.
+     */
+    templateSystemPrompt?: string;
+    /**
      * Which session surface is being spawned. Drives both the
      * lifecycle reminder variant AND whether CHAT_DIRECTIVES is
      * appended.
@@ -474,6 +482,7 @@ export function composeSystemPromptAppend(
     BEEVIBE_MEMORY_REMINDER,
     isChatSurface ? CHAT_DIRECTIVES : "",
     options.extra ?? "",
+    options.templateSystemPrompt ?? "",
     agentSystemPromptAddition ?? "",
     briefingSystemPromptAppend,
     options.appendOnboardingDirectives ? ONBOARDING_DIRECTIVES : "",
