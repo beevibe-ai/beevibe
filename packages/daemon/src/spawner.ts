@@ -23,6 +23,7 @@ import type {
 } from "@beevibe/core";
 import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
+import { error, log, warn } from "./logger.js";
 import { runRepoDispatch } from "./repo-runs.js";
 
 export interface DispatchPayload {
@@ -113,7 +114,7 @@ export async function runDispatch(
   // One log line per spawn, same `sess=` token as claimer.ts and the
   // exit line below, so one session id grep'd from a daemon log shows
   // the full lifecycle.
-  console.log(
+  log(
     `[daemon/spawn] sess=${payload.session_id} agent=${payload.agent_id} runtime=${payload.runtime_type} type=${payload.type} cwd=${ws.path}`,
   );
 
@@ -141,7 +142,7 @@ export async function runDispatch(
     try {
       await deps.api.post("/runtime/events", { events });
     } catch (err) {
-      console.warn(
+      warn(
         "[daemon/spawner] /runtime/events POST failed; events dropped:",
         err instanceof Error ? err.message : String(err),
       );
@@ -224,9 +225,9 @@ export async function runDispatch(
   };
 
   if (status === "succeeded") {
-    console.log(`[daemon/spawn] sess=${payload.session_id} exit=0`);
+    log(`[daemon/spawn] sess=${payload.session_id} exit=0`);
   } else {
-    console.error(
+    error(
       `[daemon/spawn] sess=${payload.session_id} status=${status} exit=${done.exit_code}` +
         (errorDetail ? `\n  error:\n    ${errorDetail.split("\n").join("\n    ")}` : ""),
     );
@@ -235,7 +236,7 @@ export async function runDispatch(
   try {
     await deps.api.post("/runtime/done", done);
   } catch (err) {
-    console.error(
+    error(
       "[daemon/spawner] /runtime/done POST failed:",
       err instanceof Error ? err.message : String(err),
     );

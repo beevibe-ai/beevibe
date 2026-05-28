@@ -9,6 +9,7 @@ import { createDefaultRuntimeRegistry } from "@beevibe/core/adapters/runtime-reg
 import { ApiClient } from "./api-client.js";
 import { Claimer } from "./claimer.js";
 import { getConfigRoot, loadConfig } from "./config.js";
+import { log, warn } from "./logger.js";
 import { syncSkillsCache } from "./skills-cache.js";
 import { Supervisor } from "./supervisor.js";
 
@@ -35,7 +36,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
   // LocalWorkspaceManager.ensureWorkspace.
   const skillsSourceDir = await syncSkillsCache(api, options.configRoot).catch(
     (err: unknown) => {
-      console.warn(
+      warn(
         "[daemon] skills sync failed; continuing without skills:",
         err instanceof Error ? err.message : String(err),
       );
@@ -65,7 +66,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
     runtimeIds: cfg.runtimes.map((r) => r.id),
   });
   claimer.start();
-  console.log(
+  log(
     `[daemon] started (${cfg.daemon_id} → ${cfg.api_url}, ${cfg.runtimes.length} runtime(s))`,
   );
 
@@ -73,7 +74,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
   const stop = async (signal: string): Promise<void> => {
     if (stopped) return;
     stopped = true;
-    console.log(`[daemon] received ${signal}; stopping`);
+    log(`[daemon] received ${signal}; stopping`);
     await claimer.stop();
     process.exit(0);
   };
@@ -86,7 +87,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
   // self-healing, so logging and continuing is the right behavior under
   // Node 20+'s default `--unhandled-rejections=throw`.
   process.on("unhandledRejection", (reason) => {
-    console.warn(
+    warn(
       "[daemon] unhandledRejection (continuing):",
       reason instanceof Error ? reason.message : String(reason),
     );
