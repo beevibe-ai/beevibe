@@ -6,7 +6,10 @@ import {
   getAgentTemplate,
   isKnownAgentTemplate,
   listAgentTemplates,
+  resolveTemplateToolFlags,
+  UNIVERSAL_AGENT_TOOLS,
 } from "./index.js";
+import type { AgentTemplate } from "./types.js";
 
 describe("agent template registry", () => {
   it("resolves cto-bee by name", () => {
@@ -100,5 +103,87 @@ describe("buildMcpConfig with extra servers", () => {
     const oldShape = buildMcpConfig("bv_a_x", "http://x");
     const newShapeNoExtras = buildMcpConfig("bv_a_x", "http://x", undefined);
     expect(oldShape).toBe(newShapeNoExtras);
+  });
+});
+
+describe("resolveTemplateToolFlags", () => {
+  function tpl(extras: Partial<AgentTemplate>): AgentTemplate {
+    return {
+      name: "test",
+      display_name: "Test",
+      description: "",
+      system_prompt: "",
+      ...extras,
+    };
+  }
+
+  it("returns empty when no template", () => {
+    expect(resolveTemplateToolFlags(null)).toEqual({});
+    expect(resolveTemplateToolFlags(undefined)).toEqual({});
+  });
+
+  it("returns empty when template has no tool fields (existing templates unaffected)", () => {
+    expect(resolveTemplateToolFlags(tpl({}))).toEqual({});
+  });
+
+  it("unions universal tools into allowed_tools so the platform survives narrowing", () => {
+    const { allowed_tools, disallowed_tools } = resolveTemplateToolFlags(
+      tpl({ allowed_tools: ["Read", "Grep"] }),
+    );
+    expect(disallowed_tools).toBeUndefined();
+    expect(allowed_tools).toContain("Read");
+    expect(allowed_tools).toContain("Grep");
+    // Every universal tool must survive narrowing.
+    for (const universal of UNIVERSAL_AGENT_TOOLS) {
+      expect(allowed_tools).toContain(universal);
+    }
+  });
+
+  it("deduplicates when allowed_tools overlaps universal tools", () => {
+    const { allowed_tools } = resolveTemplateToolFlags(
+      tpl({
+        allowed_tools: ["Read", "mcp__beevibe__update_progress"],
+      }),
+    );
+    const updateProgressCount = (allowed_tools ?? []).filter(
+      (t) => t === "mcp__beevibe__update_progress",
+    ).length;
+    expect(updateProgressCount).toBe(1);
+  });
+
+  it("strips universal tools from disallowed_tools so the platform survives mistakes", () => {
+    const { disallowed_tools } = resolveTemplateToolFlags(
+      tpl({
+        disallowed_tools: ["Bash", "mcp__beevibe__update_progress", "Write"],
+      }),
+    );
+    expect(disallowed_tools).toContain("Bash");
+    expect(disallowed_tools).toContain("Write");
+    expect(disallowed_tools).not.toContain("mcp__beevibe__update_progress");
+  });
+
+  it("returns no disallowed_tools field when every entry is a universal tool (avoids passing an empty flag)", () => {
+    const result = resolveTemplateToolFlags(
+      tpl({ disallowed_tools: [...UNIVERSAL_AGENT_TOOLS] }),
+    );
+    expect(result.disallowed_tools).toBeUndefined();
+  });
+
+  it("supports allowed_tools and disallowed_tools coexisting", () => {
+    const { allowed_tools, disallowed_tools } = resolveTemplateToolFlags(
+      tpl({
+        allowed_tools: ["Read"],
+        disallowed_tools: ["Bash"],
+      }),
+    );
+    expect(allowed_tools).toContain("Read");
+    expect(disallowed_tools).toEqual(["Bash"]);
+  });
+});
+
+describe("CTO_BEE_TEMPLATE tool flags", () => {
+  it("does not restrict tools — the CTO Bee needs Read/Grep/Bash to review", () => {
+    expect(CTO_BEE_TEMPLATE.allowed_tools).toBeUndefined();
+    expect(CTO_BEE_TEMPLATE.disallowed_tools).toBeUndefined();
   });
 });

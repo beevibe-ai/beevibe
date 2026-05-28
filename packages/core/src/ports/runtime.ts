@@ -114,6 +114,23 @@ export interface RuntimeContext {
   /** CLI session to resume (sets --resume for Claude Code). */
   resume_session_id?: string;
 
+  /**
+   * Tool allowlist resolved from the agent's template (see
+   * `resolveTemplateToolFlags`). When set, the runtime passes the list
+   * to Claude Code via `--allowedTools <comma-joined>`. Universal
+   * platform tools are already merged in by the resolver — adapters
+   * pass through unchanged.
+   */
+  allowed_tools?: readonly string[];
+
+  /**
+   * Tool denylist resolved from the agent's template (see
+   * `resolveTemplateToolFlags`). Threaded through to Claude Code's
+   * `--disallowedTools`. Universal platform tools have already been
+   * stripped by the resolver.
+   */
+  disallowed_tools?: readonly string[];
+
   /** Real-time step notifier — fires whenever the runtime observes a tool-use event. */
   onStep?: (step: RuntimeStep) => void;
 

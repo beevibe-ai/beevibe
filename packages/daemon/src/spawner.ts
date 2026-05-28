@@ -36,6 +36,10 @@ export interface DispatchPayload {
   resume_session_id?: string;
   model?: string;
   max_turns?: number;
+  /** Tool allowlist resolved server-side; forwarded to `claude --allowedTools`. */
+  allowed_tools?: readonly string[];
+  /** Tool denylist resolved server-side; forwarded to `claude --disallowedTools`. */
+  disallowed_tools?: readonly string[];
   env: Record<string, string>;
   type: "task" | "mesh_ask" | "mesh_negotiate" | "blocker" | "chat" | "run_repo";
   mcp_server_url: string;
@@ -178,6 +182,8 @@ export async function runDispatch(
       max_turns: payload.max_turns,
       env: payload.env,
       resume_session_id: payload.resume_session_id,
+      allowed_tools: payload.allowed_tools,
+      disallowed_tools: payload.disallowed_tools,
       abort_signal: abortSignal,
       onStep,
     });
