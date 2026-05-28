@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   BEEVIBE_LIFECYCLE_REMINDER_CHAT,
+  BEEVIBE_LIFECYCLE_REMINDER_RESPOND,
   BEEVIBE_LIFECYCLE_REMINDER_TASK,
   CHAT_DIRECTIVES,
   composeSystemPromptAppend,
@@ -68,6 +69,32 @@ describe("teamAgentRoutingDirective", () => {
     expect(out).toContain("mcp__beevibe__check_work_status");
     expect(out).toContain("mcp__beevibe__get_task");
     expect(out.toLowerCase()).toContain("never infer");
+  });
+
+  it("requires verifying work products before re-dispatching delegated work", () => {
+    // Failure mode: team agent re-dispatches a previously-delegated
+    // task believing "they hadn't started" without checking the
+    // subordinate's actual deliverables. Result: duplicate PRs /
+    // documents / artifacts for the same task. The fix is mandatory
+    // verification via list_work_products + get_work_product before
+    // any create_task that re-does prior work.
+    const out = teamAgentRoutingDirective(["frontend"]);
+    expect(out).toContain("Verify before acting on delegated work");
+    expect(out).toContain("mcp__beevibe__list_work_products");
+    expect(out).toContain("mcp__beevibe__get_work_product");
+    expect(out.toLowerCase()).toContain("requires evidence");
+  });
+
+  it("verification directive is generic across deliverable types (not engineering-only)", () => {
+    // Earlier draft was scoped to `gh pr list` which only catches the
+    // PR case. The current directive must enumerate the work-product
+    // type space so document/analysis/design/artifact deliveries get
+    // the same protection from duplicate re-dispatch.
+    const out = teamAgentRoutingDirective(["frontend"]).toLowerCase();
+    expect(out).not.toContain("gh pr list");
+    for (const t of ["document", "analysis", "design", "artifact"]) {
+      expect(out).toContain(t);
+    }
   });
 });
 
@@ -195,6 +222,45 @@ describe("composeSystemPromptAppend lifecycle branching", () => {
     expect(out).not.toContain(BEEVIBE_LIFECYCLE_REMINDER_TASK);
   });
 
+  it("uses the respond variant when sessionKind is 'respond'", () => {
+    // Mesh responders (mesh_ask / mesh_negotiate / blocker) have no
+    // own-task and must not be told "always call update_progress."
+    // Pre-fix they fell through to the task reminder and clobbered
+    // the caller's task state on exit.
+    const out = composeSystemPromptAppend(undefined, "<core_memory/>", {
+      sessionKind: "respond",
+    });
+    expect(out).toContain(BEEVIBE_LIFECYCLE_REMINDER_RESPOND);
+    expect(out).not.toContain(BEEVIBE_LIFECYCLE_REMINDER_TASK);
+    expect(out).not.toContain(BEEVIBE_LIFECYCLE_REMINDER_CHAT);
+  });
+
+  it("respond variant explicitly bans update_progress (the cross-task clobber)", () => {
+    // Load-bearing: this is exactly the rule that prevents a parent
+    // agent's blocker session from calling update_progress(child_task,
+    // "done") and reverting the needs_revision state revise_task just
+    // set. Removing this language re-opens the bug.
+    expect(BEEVIBE_LIFECYCLE_REMINDER_RESPOND).toMatch(
+      /DO NOT call mcp__beevibe__update_progress/,
+    );
+    expect(BEEVIBE_LIFECYCLE_REMINDER_RESPOND.toLowerCase()).toContain(
+      "no task of your own",
+    );
+  });
+
+  it("respond variant names the three mesh shapes + their terminal action", () => {
+    // The agent needs to know which tool closes its session for each
+    // intent shape — otherwise it falls back to inventing one (the
+    // bug attractor). Each shape → exactly one terminal tool.
+    expect(BEEVIBE_LIFECYCLE_REMINDER_RESPOND).toContain("mesh-ask");
+    expect(BEEVIBE_LIFECYCLE_REMINDER_RESPOND).toContain("respond_ask");
+    expect(BEEVIBE_LIFECYCLE_REMINDER_RESPOND).toContain("mesh-negotiate");
+    expect(BEEVIBE_LIFECYCLE_REMINDER_RESPOND).toContain("respond_negotiate");
+    expect(BEEVIBE_LIFECYCLE_REMINDER_RESPOND).toContain("mesh-blocker");
+    expect(BEEVIBE_LIFECYCLE_REMINDER_RESPOND).toContain("revise_task");
+    expect(BEEVIBE_LIFECYCLE_REMINDER_RESPOND).toContain("escalate_to_humans");
+  });
+
   it("task variant carries the task-tracking directives", () => {
     // Load-bearing task directives the variant must keep.
     expect(BEEVIBE_LIFECYCLE_REMINDER_TASK).toContain("update_progress");
@@ -256,13 +322,17 @@ describe("composeSystemPromptAppend lifecycle branching", () => {
     expect(CHAT_DIRECTIVES.toUpperCase()).toContain("BANNED");
   });
 
-  it("both variants share the outer <beevibe_lifecycle> tag so downstream parsing is stable", () => {
+  it("all variants share the outer <beevibe_lifecycle> tag so downstream parsing is stable", () => {
     // Anything parsing system-prompt sections by tag (telemetry,
     // future skill discovery, etc.) shouldn't have to branch on
     // variant — only the body changes.
-    expect(BEEVIBE_LIFECYCLE_REMINDER_TASK.startsWith("<beevibe_lifecycle>")).toBe(true);
-    expect(BEEVIBE_LIFECYCLE_REMINDER_TASK.trimEnd().endsWith("</beevibe_lifecycle>")).toBe(true);
-    expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT.startsWith("<beevibe_lifecycle>")).toBe(true);
-    expect(BEEVIBE_LIFECYCLE_REMINDER_CHAT.trimEnd().endsWith("</beevibe_lifecycle>")).toBe(true);
+    for (const variant of [
+      BEEVIBE_LIFECYCLE_REMINDER_TASK,
+      BEEVIBE_LIFECYCLE_REMINDER_CHAT,
+      BEEVIBE_LIFECYCLE_REMINDER_RESPOND,
+    ]) {
+      expect(variant.startsWith("<beevibe_lifecycle>")).toBe(true);
+      expect(variant.trimEnd().endsWith("</beevibe_lifecycle>")).toBe(true);
+    }
   });
 });

@@ -11,7 +11,11 @@ import type {
 import type { SessionEventRepository } from "../ports/session-event-repo.js";
 import type { SessionRepository } from "../ports/session-repo.js";
 import type { MemoryAgent } from "./memory/memory-agent.js";
-import { composeIntent, composeSystemPromptAppend } from "./spawn-prep.js";
+import {
+  composeIntent,
+  composeSystemPromptAppend,
+  type SessionSurfaceKind,
+} from "./spawn-prep.js";
 
 export {
   BEEVIBE_LIFECYCLE_REMINDER_TASK,
@@ -163,10 +167,32 @@ export class AgentSession {
         (err as Error).message,
       );
     }
+    // Lifecycle reminder routing mirrors the session.type written at
+    // row insert (line 138 above). Mesh responders (mesh_ask /
+    // mesh_negotiate / blocker) have no own-task and must NOT call
+    // update_progress on the caller's task — see
+    // BEEVIBE_LIFECYCLE_REMINDER_RESPOND. Pre-this-routing they fell
+    // through to the task reminder and routinely clobbered the
+    // caller's task state.
+    const sessionType: SessionType =
+      input.type ?? (input.taskId ? "task" : "chat");
+    const sessionKind: SessionSurfaceKind =
+      sessionType === "mesh_ask" ||
+      sessionType === "mesh_negotiate" ||
+      sessionType === "blocker"
+        ? "respond"
+        : sessionType === "chat"
+          ? "chat"
+          : "task";
     const system_prompt_append = composeSystemPromptAppend(
       agent.runtime_config.system_prompt_addition,
       briefing.systemPromptAppend,
-      input.extraSystemPromptAppend ? { extra: input.extraSystemPromptAppend } : {},
+      {
+        sessionKind,
+        ...(input.extraSystemPromptAppend
+          ? { extra: input.extraSystemPromptAppend }
+          : {}),
+      },
     );
     const intent = composeIntent(input.intent, briefing.userMessagePrefix);
 

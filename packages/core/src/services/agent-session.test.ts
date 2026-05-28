@@ -182,6 +182,49 @@ describe("AgentSession.run", () => {
     expect(out.status).toBe("succeeded");
   });
 
+  it.each([
+    ["mesh_ask" as const, "respond_ask"],
+    ["mesh_negotiate" as const, "respond_negotiate"],
+    ["blocker" as const, "revise_task"],
+  ])(
+    "%s session gets the respond lifecycle (NO update_progress imperative)",
+    async (type, terminalTool) => {
+      // Pre-fix bug: mesh sessions inherited BEEVIBE_LIFECYCLE_REMINDER_TASK
+      // and were told "Before exiting any task session, you MUST call
+      // mcp__beevibe__update_progress." On exit, with no own-task, they
+      // grabbed the caller's task_id from the intent and clobbered the
+      // caller's task state (most painful: a parent's blocker session
+      // calling update_progress(child_task, "done") right after
+      // revise_task, silently reverting needs_revision).
+      //
+      // Fix: route mesh_ask / mesh_negotiate / blocker → respond
+      // variant, which explicitly says "DO NOT call update_progress"
+      // and names the right terminal tool per shape.
+      vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
+      vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
+      vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({
+        systemPromptAppend: "",
+        userMessagePrefix: "",
+        snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] },
+      });
+      vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
+      vi.mocked(sessionRepo.update).mockImplementation(async (id) => makeSession(id));
+
+      await service.run({
+        agentId: "agent_1",
+        intent: "<mesh-blocker task_id=\"task_X\">…</mesh-blocker>",
+        workspace: WORKSPACE,
+        type,
+      });
+
+      const append = vi.mocked(runtime.execute).mock.calls[0]![0].system_prompt_append;
+      expect(append).toContain("DO NOT call mcp__beevibe__update_progress");
+      expect(append).toContain(terminalTool);
+      // Negative: must not carry the task-only "MUST call update_progress" imperative.
+      expect(append).not.toMatch(/MUST call mcp__beevibe__update_progress/);
+    },
+  );
+
   it("creates the session row BEFORE calling runtime.execute (so onSpawn has an id)", async () => {
     const createdIds: string[] = [];
     vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
