@@ -63,12 +63,14 @@ describe("getDashboardSummary", () => {
       [
         { status: "pending", count: 1 },
         { status: "assigned", count: 2 },
+        { status: "needs_revision", count: 9 },
         { status: "in_progress", count: 3 },
         { status: "revision", count: 4 },
         { status: "review", count: 5 },
         { status: "blocked", count: 6 },
         { status: "done", count: 7 },
         { status: "failed", count: 8 },
+        { status: "cancelled", count: 11 },
       ],
       [],
       makeTrendRows(),
@@ -77,12 +79,13 @@ describe("getDashboardSummary", () => {
     ]);
     const { status_legend } = await getDashboardSummary(pool);
     const map = new Map(status_legend.map((l) => [l.bucket, l.count]));
-    expect(map.get("pending")).toBe(3); // pending + assigned
+    expect(map.get("pending")).toBe(12); // pending + assigned + needs_revision
     expect(map.get("running")).toBe(7); // in_progress + revision
     expect(map.get("review")).toBe(5);
     expect(map.get("blocked")).toBe(6);
     expect(map.get("done")).toBe(7);
     expect(map.get("failed")).toBe(8);
+    expect(map.get("cancelled")).toBe(11);
   });
 
   it("aggregates fleet counts across hierarchies and computes active total", async () => {

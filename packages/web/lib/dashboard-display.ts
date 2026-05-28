@@ -119,7 +119,7 @@ const STATUS_COLOR: Record<TaskStatus, StatusBreakdownEntry["color"]> = {
   blocked: "blocked",
   done: "done",
   failed: "failed",
-  cancelled: "pending",
+  cancelled: "cancelled",
 };
 
 function breakdownToDisplay(data: StatusBreakdownData): StatusBreakdownEntry {
@@ -141,6 +141,7 @@ const LEGEND_LABEL: Record<LegendBucket, string> = {
   blocked: "Blocked",
   done: "Done",
   failed: "Failed",
+  cancelled: "Cancelled",
 };
 
 function legendToDisplay(data: StatusLegendData): StatusLegendEntry {

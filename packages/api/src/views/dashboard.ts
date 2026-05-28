@@ -238,10 +238,11 @@ function legendBucket(status: TaskStatus): LegendBucket {
       return "done";
     case "failed":
       return "failed";
+    case "cancelled":
+      return "cancelled";
     case "pending":
     case "assigned":
     case "needs_revision":
-    case "cancelled":
       return "pending";
   }
 }

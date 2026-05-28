@@ -1,4 +1,5 @@
 import type { TaskStatus } from "@beevibe/core";
+import type { LegendBucket } from "@beevibe/api/views/types";
 
 // ── Display shapes the home page binds against ─────────────────────────────
 //
@@ -28,14 +29,14 @@ export interface KpiStat {
 export interface StatusBreakdownEntry {
   status: TaskStatus | "running_group" | "pending_group";
   label: string;
-  color: "pending" | "running" | "review" | "blocked" | "done" | "failed";
+  color: LegendBucket;
   count: number;
   percent: number;
   opacity?: number;
 }
 
 export interface StatusLegendEntry {
-  color: "review" | "done" | "blocked" | "failed" | "running" | "pending";
+  color: LegendBucket;
   label: string;
   count: number;
 }

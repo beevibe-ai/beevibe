@@ -1,23 +1,19 @@
 import { cn } from "@/lib/utils";
-import type { StatusBreakdownEntry, StatusLegendEntry } from "@/lib/types/dashboard";
+import type {
+  LegendBucket,
+  StatusBreakdownEntry,
+  StatusLegendEntry,
+} from "@/lib/types/dashboard";
 
-const COLOR_CLASS = {
+const BG_CLASS: Record<LegendBucket, string> = {
   pending: "bg-status-pending",
   running: "bg-status-running",
   review: "bg-status-review",
   blocked: "bg-status-blocked",
   done: "bg-status-done",
   failed: "bg-status-failed",
-} as const;
-
-const DOT_CLASS = {
-  pending: "bg-status-pending",
-  running: "bg-status-running",
-  review: "bg-status-review",
-  blocked: "bg-status-blocked",
-  done: "bg-status-done",
-  failed: "bg-status-failed",
-} as const;
+  cancelled: "bg-status-cancelled",
+};
 
 export function StatusBreakdownBar({
   entries,
@@ -42,7 +38,7 @@ export function StatusBreakdownBar({
         {entries.map((e, i) => (
           <div
             key={`${e.status}-${i}`}
-            className={COLOR_CLASS[e.color]}
+            className={BG_CLASS[e.color]}
             style={{ width: `${e.percent}%`, opacity: e.opacity ?? 1 }}
             title={`${e.label} ${e.count}`}
           />
@@ -51,7 +47,7 @@ export function StatusBreakdownBar({
       <div className="grid grid-cols-2 gap-x-6 gap-y-1.5 text-xs">
         {legend.map((l) => (
           <div key={l.label} className="flex items-center gap-2">
-            <span className={cn("h-1.5 w-1.5 rounded-full", DOT_CLASS[l.color])} />
+            <span className={cn("h-1.5 w-1.5 rounded-full", BG_CLASS[l.color])} />
             <span className="text-muted-foreground flex-1">{l.label}</span>
             <span className="font-mono tabular-nums">{l.count}</span>
           </div>

@@ -361,7 +361,7 @@ export interface StatusBreakdownData {
 
 /**
  * Legend entries are coarser than the breakdown: lifecycle groupings
- * mapped onto the UI's 6 status dots. The mapper (web) joins these with
+ * mapped onto the UI's status dots. The mapper (web) joins these with
  * label + color.
  */
 export type LegendBucket =
@@ -369,6 +369,7 @@ export type LegendBucket =
   | "done"
   | "blocked"
   | "failed"
+  | "cancelled"
   | "running"
   | "pending";
 
