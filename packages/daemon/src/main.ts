@@ -13,6 +13,7 @@
  * inside a beevibe checkout doesn't silently slurp the repo's .env.
  */
 
+import { CONFIG_ROOT_ENV, getConfigPath, isDevBuild } from "./config.js";
 import { runSetup } from "./setup.js";
 import { runStart } from "./start.js";
 import { runSync } from "./sync.js";
@@ -23,6 +24,7 @@ interface Flags {
   userToken?: string;
   deviceName?: string;
   externalId?: string;
+  configRoot?: string;
 }
 
 function parseFlags(argv: string[]): Flags {
@@ -42,9 +44,38 @@ function parseFlags(argv: string[]): Flags {
     } else if (arg === "--external-id" && next) {
       flags.externalId = next;
       i += 1;
+    } else if (arg === "--config-root" && next) {
+      flags.configRoot = next;
+      i += 1;
     }
   }
   return flags;
+}
+
+/**
+ * Resolve the effective config-root override and enforce the dev-only
+ * gate. Returns `undefined` when neither flag nor env is set, so
+ * downstream `getConfigRoot(undefined)` falls through to `~/.beevibe`.
+ * Compiled-prod rejects either knob with exit 2 — runtime guard
+ * because `bun build` without `--minify` may not DCE the dead branch.
+ */
+function resolveConfigRoot(flag: string | undefined): string | undefined {
+  const env = process.env[CONFIG_ROOT_ENV];
+  const hasFlag = flag && flag.length > 0;
+  const hasEnv = env && env.length > 0;
+  if (!hasFlag && !hasEnv) return undefined;
+
+  if (!isDevBuild()) {
+    const source = hasFlag ? "--config-root" : CONFIG_ROOT_ENV;
+    console.error(
+      `${source} is a dev-only knob and is not available in this build. ` +
+        `Reinstall via npm/curl without the override, or use a source checkout ` +
+        `(pnpm dev) if you need multi-instance.`,
+    );
+    process.exit(2);
+  }
+
+  return hasFlag ? flag : env;
 }
 
 function printHelp(): void {
@@ -66,6 +97,12 @@ function printHelp(): void {
       "",
       "update flags:",
       "  --yes, -y                  skip the install-this-update prompt",
+      "",
+      "dev-only flags (source builds only — rejected in compiled binaries):",
+      "  --config-root <path>       shift the daemon's on-disk root from ~/.beevibe.",
+      "                             Lets two daemons coexist on one machine as",
+      "                             different accounts. Also settable via the",
+      "                             BEEVIBE_CONFIG_ROOT env var.",
     ].join("\n"),
   );
 }
@@ -77,8 +114,10 @@ async function main(): Promise<void> {
     return;
   }
 
+  const flags = parseFlags(rest);
+  const configRoot = resolveConfigRoot(flags.configRoot);
+
   if (command === "setup") {
-    const flags = parseFlags(rest);
     if (!flags.api || !flags.userToken) {
       console.error("setup requires --api and --user-token");
       printHelp();
@@ -89,20 +128,21 @@ async function main(): Promise<void> {
       userToken: flags.userToken,
       deviceName: flags.deviceName,
       externalId: flags.externalId,
+      configRoot,
     });
     console.log(`Registered as ${cfg.daemon_id}`);
     console.log(`Runtimes: ${cfg.runtimes.map((r) => `${r.cli} (${r.id})`).join(", ")}`);
-    console.log("Config saved to ~/.beevibe/config.json");
+    console.log(`Config saved to ${getConfigPath(configRoot)}`);
     return;
   }
 
   if (command === "start") {
-    await runStart();
+    await runStart({ configRoot });
     return;
   }
 
   if (command === "sync") {
-    const result = await runSync();
+    const result = await runSync({ configRoot });
     if (result.added.length === 0) {
       console.log("No new CLIs detected.");
     } else {

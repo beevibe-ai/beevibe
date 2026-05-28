@@ -11,7 +11,7 @@
 
 import { KNOWN_CLIS } from "@beevibe/core";
 import { ApiClient } from "./api-client.js";
-import { loadConfig, saveConfig, CONFIG_PATH, type DaemonConfig } from "./config.js";
+import { getConfigPath, loadConfig, saveConfig, type DaemonConfig } from "./config.js";
 import { detectClis } from "./detect-clis.js";
 
 interface SyncResponse {
@@ -25,11 +25,16 @@ export interface SyncResult {
   runtimes: Array<{ id: string; cli: string }>;
 }
 
-export async function runSync(): Promise<SyncResult> {
-  const config = loadConfig();
+export interface SyncOptions {
+  /** Dev-only `~/.beevibe` override; see config.ts:getConfigRoot. */
+  configRoot?: string;
+}
+
+export async function runSync(options: SyncOptions = {}): Promise<SyncResult> {
+  const config = loadConfig(options.configRoot);
   if (!config) {
     throw new Error(
-      `No daemon config at ${CONFIG_PATH}. Run 'beevibe-daemon setup' first.`,
+      `No daemon config at ${getConfigPath(options.configRoot)}. Run 'beevibe-daemon setup' first.`,
     );
   }
 
@@ -55,7 +60,7 @@ export async function runSync(): Promise<SyncResult> {
   const added = body.runtimes.filter((r) => !before.has(r.cli));
 
   const next: DaemonConfig = { ...config, runtimes: body.runtimes };
-  saveConfig(next);
+  saveConfig(next, options.configRoot);
 
   return { added, runtimes: body.runtimes };
 }

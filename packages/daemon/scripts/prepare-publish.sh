@@ -40,11 +40,14 @@ VERSION="$(node -p "require('./package.json').version")"
 # Bundle: --target=node produces ES modules consumable by `node dist/main.js`.
 # --external ws keeps ws as a runtime dep (it has prebuilds) so it loads
 # from the installer's node_modules rather than being inlined.
+# __DEV_BUILD__=false rejects --config-root in this artifact (see
+# config.ts:isDevBuild). Source / tsx runs have no define → dev.
 bun build src/main.ts \
   --target=node \
   --outfile="$OUTDIR/dist/main.js" \
   --external ws \
-  --define "BEEVIBE_DAEMON_VERSION=\"$VERSION\""
+  --define "BEEVIBE_DAEMON_VERSION=\"$VERSION\"" \
+  --define "__DEV_BUILD__=false"
 
 # Make the bundled entry executable since `bin` points at it.
 chmod +x "$OUTDIR/dist/main.js"

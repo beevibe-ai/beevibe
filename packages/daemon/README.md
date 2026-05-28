@@ -93,6 +93,29 @@ Each workspace contains `mcp-config.json` (mode `0600`) with `Bearer <bv_a_…>`
 
 Skills cache: `~/.beevibe/skills/`, version-gated via `.version`. Refreshed on every `start`.
 
+## Multi-instance (dev only)
+
+Two daemons can run on one machine, authenticated as two different `bv_u_` accounts, by giving each its own `--config-root`. The api already supports this — the `daemon` table is keyed by `(owner_person_id, external_id)`, so two daemons with the same hostname but different owners coexist as separate rows.
+
+```bash
+# Terminal 1 — account A
+pnpm dev setup --config-root $HOME/.beevibe-A --api http://localhost:3000 --user-token bv_u_A…
+pnpm dev start --config-root $HOME/.beevibe-A
+
+# Terminal 2 — account B
+pnpm dev setup --config-root $HOME/.beevibe-B --api http://localhost:3000 --user-token bv_u_B…
+pnpm dev start --config-root $HOME/.beevibe-B
+```
+
+`BEEVIBE_CONFIG_ROOT` is an equivalent env-var entry point. Each instance writes its own `config.json`, skills cache, and workspaces under the override; defaults are unchanged (`~/.beevibe/...`) when neither the flag nor the env is set.
+
+**Hard restrictions:**
+
+- **Dev/source builds only.** Compiled binaries (brew/curl install path) and the npm-published bundle reject both `--config-root` and `BEEVIBE_CONFIG_ROOT` with exit code 2. The gate is the `__DEV_BUILD__` compile-time define set by `scripts/build-binaries.sh` and `scripts/prepare-publish.sh`, backed by a runtime check in `main.ts`. To run multi-instance, use `pnpm dev` against a source checkout.
+- **`update` operates on the shared binary.** `beevibe-daemon update` rewrites `process.execPath`, which is the same file both instances spawn from. Running `update` from one instance affects the other on its next launch. Acceptable for dev testing of the update flow; the running daemon keeps its open inode on POSIX so it doesn't crash mid-session.
+- **Device name is not auto-suffixed.** Both daemons register as `<user>@<hostname>` in the Runtimes panel by default. Use `--device-name "MBP (account-B)"` at `setup` time if you want them visually distinct.
+- **Same OS user only.** Different OS users on one machine already isolate via `homedir()`; this flag is for running two accounts as the SAME OS user.
+
 ## What it doesn't do
 
 - **No MCP proxy.** The CLI calls `/mcp` directly using the `bv_a_` token in `mcp-config.json`. The daemon's job stops at writing the file and supervising the subprocess.
