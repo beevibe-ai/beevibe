@@ -15,6 +15,7 @@ import WebSocket from "ws";
 import { RUNTIME_HEARTBEAT_INTERVAL_MS, type RuntimeRegistry } from "@beevibe/core";
 import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
+import { error, log, warn } from "./logger.js";
 import type { Supervisor } from "./supervisor.js";
 import { runDispatch, type DispatchPayload } from "./spawner.js";
 
@@ -103,7 +104,7 @@ export class Claimer {
 
     ws.on("open", () => {
       this.wsReconnectAttempts = 0;
-      console.log(
+      log(
         `[daemon] connected: ${this.cfg.runtimeIds.length} runtime(s) subscribed`,
       );
     });
@@ -130,7 +131,7 @@ export class Claimer {
     });
 
     ws.on("error", (err) => {
-      console.warn("[daemon] ws error:", err.message);
+      warn("[daemon] ws error:", err.message);
       // Triggers `close`; reconnect lives there.
     });
   }
@@ -143,7 +144,7 @@ export class Claimer {
       1_000 * Math.pow(2, this.wsReconnectAttempts - 1),
       this.wsReconnectMaxDelayMs,
     );
-    console.warn(`[daemon] ws disconnected; reconnecting in ${delay}ms`);
+    warn(`[daemon] ws disconnected; reconnecting in ${delay}ms`);
     this.wsReconnectTimer = setTimeout(() => {
       this.wsReconnectTimer = undefined;
       this.connectWs();
@@ -157,7 +158,7 @@ export class Claimer {
         runtime_ids: this.cfg.runtimeIds,
       });
     } catch (err) {
-      console.warn(
+      warn(
         "[daemon] heartbeat failed:",
         err instanceof Error ? err.message : String(err),
       );
@@ -186,7 +187,7 @@ export class Claimer {
       try {
         payload = await this.cfg.api.claim<DispatchPayload>(runtimeId);
       } catch (err) {
-        console.warn(
+        warn(
           `[daemon] claim failed for runtime=${runtimeId}:`,
           err instanceof Error ? err.message : String(err),
         );
@@ -196,7 +197,7 @@ export class Claimer {
       // Visibility: every claim shows up in the daemon's stdout. The
       // spawner logs the matching cwd + exit lines so one session id
       // can be grep'd end-to-end.
-      console.log(
+      log(
         `[daemon/claim] sess=${payload.session_id} agent=${payload.agent_id} runtime=${runtimeId}`,
       );
       const ctrl = this.cfg.supervisor.start(payload.session_id);
@@ -210,7 +211,7 @@ export class Claimer {
         ctrl.signal,
       )
         .catch((err: unknown) =>
-          console.error(
+          error(
             `[daemon] dispatch ${payload.session_id} failed:`,
             err instanceof Error ? err.message : String(err),
           ),

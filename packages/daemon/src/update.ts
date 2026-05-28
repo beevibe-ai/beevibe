@@ -27,6 +27,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createInterface } from "node:readline/promises";
+import { error, log } from "./logger.js";
 
 // Baked in by `bun build --compile --define BEEVIBE_DAEMON_VERSION="…"`
 // when produced by scripts/build-binaries.sh. The `typeof` guard below is
@@ -152,48 +153,48 @@ async function promptYesNo(question: string): Promise<boolean> {
 export async function runUpdate(opts: { skipPrompt?: boolean } = {}): Promise<void> {
   const current = currentVersion();
   if (!current) {
-    console.log("Could not determine current daemon version.");
-    console.log("If you installed via npm:  npm update -g @beevibe/daemon");
-    console.log("If you installed from source: git pull && pnpm install && pnpm build");
+    log("Could not determine current daemon version.");
+    log("If you installed via npm:  npm update -g @beevibe/daemon");
+    log("If you installed from source: git pull && pnpm install && pnpm build");
     process.exit(2);
   }
 
   if (!isCompiledBinary()) {
-    console.log(`Current version: ${current}`);
-    console.log("This binary was not produced by the standalone build path.");
-    console.log("If you installed via npm:  npm update -g @beevibe/daemon");
-    console.log("If you installed from source: git pull && pnpm install && pnpm build");
+    log(`Current version: ${current}`);
+    log("This binary was not produced by the standalone build path.");
+    log("If you installed via npm:  npm update -g @beevibe/daemon");
+    log("If you installed from source: git pull && pnpm install && pnpm build");
     return;
   }
 
   const asset = platformAsset();
   if (!asset) {
-    console.error(`Unsupported platform: ${process.platform}/${process.arch}`);
-    console.error("Pre-built binaries are only published for darwin-arm64, darwin-x64, linux-x64, linux-arm64.");
+    error(`Unsupported platform: ${process.platform}/${process.arch}`);
+    error("Pre-built binaries are only published for darwin-arm64, darwin-x64, linux-x64, linux-arm64.");
     process.exit(2);
   }
 
-  console.log(`Current version: ${current}`);
-  console.log("Checking for updates…");
+  log(`Current version: ${current}`);
+  log("Checking for updates…");
 
   const release = await fetchLatestRelease();
   if (!release) {
-    console.log("No releases published yet — nothing to update to.");
+    log("No releases published yet — nothing to update to.");
     return;
   }
   const latest = release.tag_name;
-  console.log(`Latest version: ${latest}`);
+  log(`Latest version: ${latest}`);
 
   if (compareSemver(current, latest) >= 0) {
-    console.log("Already on the latest version.");
+    log("Already on the latest version.");
     return;
   }
 
-  console.log(`Update available: ${current} → ${latest}`);
+  log(`Update available: ${current} → ${latest}`);
   if (!opts.skipPrompt) {
     const proceed = await promptYesNo("Install this update now?");
     if (!proceed) {
-      console.log("Update cancelled.");
+      log("Update cancelled.");
       return;
     }
   }
@@ -201,7 +202,7 @@ export async function runUpdate(opts: { skipPrompt?: boolean } = {}): Promise<vo
   const stagingDir = mkdtempSync(join(tmpdir(), "beevibe-daemon-update-"));
   const stagingPath = join(stagingDir, asset);
   try {
-    console.log(`Downloading ${asset}…`);
+    log(`Downloading ${asset}…`);
     const downloadUrl = `${DOWNLOAD_BASE}/${latest}/${asset}`;
     const [actualSha, expectedSha] = await Promise.all([
       downloadAndHash(downloadUrl, stagingPath),
@@ -209,9 +210,9 @@ export async function runUpdate(opts: { skipPrompt?: boolean } = {}): Promise<vo
     ]);
 
     if (actualSha !== expectedSha) {
-      console.error(`Checksum mismatch — refusing to install.`);
-      console.error(`  expected: ${expectedSha}`);
-      console.error(`  actual:   ${actualSha}`);
+      error(`Checksum mismatch — refusing to install.`);
+      error(`  expected: ${expectedSha}`);
+      error(`  actual:   ${actualSha}`);
       process.exit(3);
     }
 
@@ -220,14 +221,14 @@ export async function runUpdate(opts: { skipPrompt?: boolean } = {}): Promise<vo
       renameSync(stagingPath, process.execPath);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      console.error(`Failed to replace ${process.execPath}: ${msg}`);
-      console.error(`The new binary is at ${stagingPath} — install manually if needed.`);
+      error(`Failed to replace ${process.execPath}: ${msg}`);
+      error(`The new binary is at ${stagingPath} — install manually if needed.`);
       // Don't clean up the stagingDir if we leave the new binary behind
       // for manual install.
       return;
     }
 
-    console.log(`Updated to ${latest}. Restart the daemon to pick up the new binary.`);
+    log(`Updated to ${latest}. Restart the daemon to pick up the new binary.`);
   } finally {
     rmSync(stagingDir, { recursive: true, force: true });
   }

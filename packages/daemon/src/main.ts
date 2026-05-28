@@ -14,6 +14,7 @@
  */
 
 import { CONFIG_ROOT_ENV, getConfigPath, isDevBuild } from "./config.js";
+import { error, log } from "./logger.js";
 import { runSetup } from "./setup.js";
 import { runStart } from "./start.js";
 import { runSync } from "./sync.js";
@@ -67,7 +68,7 @@ function resolveConfigRoot(flag: string | undefined): string | undefined {
 
   if (!isDevBuild()) {
     const source = hasFlag ? "--config-root" : CONFIG_ROOT_ENV;
-    console.error(
+    error(
       `${source} is a dev-only knob and is not available in this build. ` +
         `Reinstall via npm/curl without the override, or use a source checkout ` +
         `(pnpm dev) if you need multi-instance.`,
@@ -79,7 +80,7 @@ function resolveConfigRoot(flag: string | undefined): string | undefined {
 }
 
 function printHelp(): void {
-  console.log(
+  log(
     [
       "Usage: beevibe-daemon <command> [flags]",
       "",
@@ -119,7 +120,7 @@ async function main(): Promise<void> {
 
   if (command === "setup") {
     if (!flags.api || !flags.userToken) {
-      console.error("setup requires --api and --user-token");
+      error("setup requires --api and --user-token");
       printHelp();
       process.exit(2);
     }
@@ -130,9 +131,9 @@ async function main(): Promise<void> {
       externalId: flags.externalId,
       configRoot,
     });
-    console.log(`Registered as ${cfg.daemon_id}`);
-    console.log(`Runtimes: ${cfg.runtimes.map((r) => `${r.cli} (${r.id})`).join(", ")}`);
-    console.log(`Config saved to ${getConfigPath(configRoot)}`);
+    log(`Registered as ${cfg.daemon_id}`);
+    log(`Runtimes: ${cfg.runtimes.map((r) => `${r.cli} (${r.id})`).join(", ")}`);
+    log(`Config saved to ${getConfigPath(configRoot)}`);
     return;
   }
 
@@ -144,14 +145,14 @@ async function main(): Promise<void> {
   if (command === "sync") {
     const result = await runSync({ configRoot });
     if (result.added.length === 0) {
-      console.log("No new CLIs detected.");
+      log("No new CLIs detected.");
     } else {
-      console.log(
+      log(
         `Added ${result.added.length} runtime(s): ${result.added
           .map((r) => `${r.cli} (${r.id})`)
           .join(", ")}.`,
       );
-      console.log("Restart the daemon to pick up the new runtime(s).");
+      log("Restart the daemon to pick up the new runtime(s).");
     }
     return;
   }
@@ -162,12 +163,12 @@ async function main(): Promise<void> {
     return;
   }
 
-  console.error(`Unknown command: ${command}`);
+  error(`Unknown command: ${command}`);
   printHelp();
   process.exit(2);
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.stack ?? err.message : String(err));
+  error(err instanceof Error ? err.stack ?? err.message : String(err));
   process.exit(1);
 });

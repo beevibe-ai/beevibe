@@ -16,6 +16,7 @@
 import type { SessionEventKind, TerminalSessionStatus } from "@beevibe/core";
 import { runRepoAgent, type TranscriptEvent } from "@beevibe/sandbox/orchestrator";
 import type { ApiClient } from "./api-client.js";
+import { error, log, warn } from "./logger.js";
 import type { DispatchPayload, RunRepoArtifact } from "./spawner.js";
 
 export interface RunRepoDeps {
@@ -41,7 +42,7 @@ export async function runRepoDispatch(
     throw new Error("run_repo dispatch missing payload.run_repo");
   }
 
-  console.log(
+  log(
     `[daemon/repo-run] sess=${payload.session_id} repo_run=${rr.repo_run_id} repo=${rr.repo_url}`,
   );
 
@@ -61,7 +62,7 @@ export async function runRepoDispatch(
     try {
       await deps.api.post("/runtime/events", { events });
     } catch (err) {
-      console.warn(
+      warn(
         "[daemon/repo-run] /runtime/events POST failed:",
         err instanceof Error ? err.message : String(err),
       );
@@ -183,11 +184,11 @@ export async function runRepoDispatch(
   };
 
   if (status === "succeeded") {
-    console.log(
+    log(
       `[daemon/repo-run] sess=${payload.session_id} succeeded artifacts=${artifacts.length}`,
     );
   } else {
-    console.error(
+    error(
       `[daemon/repo-run] sess=${payload.session_id} status=${status}` +
         (result.error ? `\n  error:\n    ${result.error.split("\n").join("\n    ")}` : ""),
     );
@@ -196,7 +197,7 @@ export async function runRepoDispatch(
   try {
     await deps.api.post("/runtime/done", done);
   } catch (err) {
-    console.error(
+    error(
       "[daemon/repo-run] /runtime/done POST failed:",
       err instanceof Error ? err.message : String(err),
     );
