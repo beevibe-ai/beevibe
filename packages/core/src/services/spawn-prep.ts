@@ -28,11 +28,13 @@
  * block; the agent is expected to drive the task to a terminal state via
  * `update_progress` and record deliverables as `work_product` rows).
  *
- * Chat sessions get the {@link BEEVIBE_LIFECYCLE_REMINDER_CHAT} variant
- * instead — selected by `composeSystemPromptAppend` based on the
- * `appendChatDirectives` flag. Mesh-ask / blocker-response sessions
- * currently fall through to the task variant; those are still
- * task-anchored (the answering agent is responding inside a task lifecycle).
+ * Chat sessions get {@link BEEVIBE_LIFECYCLE_REMINDER_CHAT}; mesh
+ * sessions (mesh_ask / mesh_negotiate / blocker) get
+ * {@link BEEVIBE_LIFECYCLE_REMINDER_RESPOND}. The "always call
+ * update_progress" rule below is task-only — callers/responders on the
+ * other surfaces have no own-task to close, and applying this rule
+ * there causes cross-task clobbering (the responder reaches for
+ * update_progress reflexively and writes onto the caller's task).
  */
 export const BEEVIBE_LIFECYCLE_REMINDER_TASK = `<beevibe_lifecycle>
 You are a beevibe agent (BEEVIBE_AGENT_ID env identifies you). Critical
@@ -95,6 +97,65 @@ behavioral rules for every task session:
  * cache prefix alongside the task variant; the prefix swap is per-session
  * so neither path pollutes the other's cache.
  */
+/**
+ * Lifecycle reminder for **mesh** sessions where one agent's session is
+ * spawned to respond to another agent's request. Three shapes:
+ *
+ *   - `mesh_ask` — intent has `<mesh-ask request_id=...>`. Contract:
+ *     call `respond_ask(request_id, ...)` exactly once and exit.
+ *   - `mesh_negotiate` — intent has `<mesh-negotiate negotiation_id=...
+ *     round=...>`. Contract: call `respond_negotiate(...)` for this
+ *     round and exit (rounds are managed by the logic layer).
+ *   - `blocker` — intent has `<mesh-blocker task_id=...>` +
+ *     `<context type="blocker_report">`. Contract: investigate, then
+ *     either `revise_task(task_id, feedback)` to unblock the
+ *     subordinate OR `escalate_to_humans`. The `task_id` in
+ *     `<mesh-blocker>` is the subordinate's task — NOT yours.
+ *
+ * Critical: responders have NO task of their own. State transitions on
+ * the referenced task are owned by the logic layer
+ * (`markBlocked` from the subordinate's `report_blocker`,
+ * `reviseTask` from `revise_task`) — responders must NOT call
+ * `update_progress`. Doing so clobbers state set by the logic layer
+ * (e.g., overwrites `needs_revision` with `done` after `revise_task`).
+ */
+export const BEEVIBE_LIFECYCLE_REMINDER_RESPOND = `<beevibe_lifecycle>
+You are a beevibe agent (BEEVIBE_AGENT_ID env identifies you) spawned to
+respond to another agent's request. This session has NO <task id="..."/>
+block in your intent — you have no task of your own to close. Whatever
+task_id appears in your intent (e.g. in <mesh-blocker task_id="…">) is
+the CALLER's task; state transitions on it are owned by the logic
+layer, NOT by you.
+
+1. Your contract is determined by your intent's mesh shape:
+   - <mesh-ask request_id="…"> → call
+     mcp__beevibe__respond_ask(request_id, ...) exactly once, then exit.
+   - <mesh-negotiate negotiation_id="…" round="N"> → call
+     mcp__beevibe__respond_negotiate(...) for this round, then exit
+     (the logic layer manages round transitions; you don't loop here).
+   - <mesh-blocker task_id="X"> → investigate, then either
+     mcp__beevibe__revise_task(task_id="X", feedback="…") to unblock
+     the subordinate OR mcp__beevibe__escalate_to_humans if you can't
+     resolve. Either is terminal; exit after.
+
+2. DO NOT call mcp__beevibe__update_progress in this session. The
+   caller's task state is mutated by the logic layer (markBlocked when
+   the subordinate reported the blocker, reviseTask when you fix it,
+   children-rollup when subtasks settle). Calling update_progress with
+   the task_id from your intent would overwrite that state — the most
+   common misfire is update_progress(caller_task, "done") right after
+   revise_task, which silently reverts the blocked → needs_revision
+   transition that just fired.
+
+3. The "always call update_progress at exit" rule applies to task
+   sessions only. It does not apply here. Exit cleanly after your
+   contract action above.
+
+4. Memory management (see <beevibe_memory>) still applies — durable
+   learnings from the response (e.g., "this subordinate gets blocked
+   on X repeatedly") are worth save_memory.
+</beevibe_lifecycle>`;
+
 export const BEEVIBE_LIFECYCLE_REMINDER_CHAT = `<beevibe_lifecycle>
 You are a beevibe agent (BEEVIBE_AGENT_ID env identifies you) responding
 in a 1:1 chat with the user. This session is conversational — there is
@@ -397,6 +458,13 @@ C) **Propose spawning a specialist** — when the work is substantive single-dom
 **Stop signal:** if you find yourself producing a substantial single-domain deliverable yourself (writing real production code, a full design doc, a finished analysis for one domain), you slipped into lane B without realizing — pull back and route.
 
 **Tracking delegated work:** Before stating the status, progress, or completion of any task you previously delegated, call mcp__beevibe__check_work_status or mcp__beevibe__get_task to confirm current state. Never infer from chat history or memory — task state changes asynchronously while you're not looking, and stale assumptions ("both still running" when one finished) are the most common tracking failure.
+
+**Verify before acting on delegated work:** Before calling mcp__beevibe__create_task to redo work you previously delegated, OR before judging that a previous delegation "didn't start" / "lost no progress" / "needs a fresh attempt," run BOTH:
+
+- mcp__beevibe__list_work_products(task_id) — every deliverable the subordinate already shipped surfaces here regardless of type (PR, document, analysis, design, artifact, preview, …).
+- mcp__beevibe__get_work_product(work_product_id) on any relevant row — read the body, url, and current state to confirm what was delivered and whether it's still usable.
+
+Work products survive task-status changes. A task that was cancelled, failed, or even erroneously marked done CAN still have shipped output. Treat "they hadn't started" as a claim that requires evidence, not a default. Re-dispatching without verifying is how duplicate work products (two PRs for the same task, two reports for the same analysis) get created.
 </team_agent_routing>`;
 }
 
@@ -433,7 +501,19 @@ function rosterSection(names: readonly string[]): string {
  *   6. briefing            — changes per-session (memory blocks update)
  *   7. onboarding          — one-shot, never re-fires (tail slot is fine)
  */
-export type SessionSurfaceKind = "task" | "chat" | "human_mcp";
+export type SessionSurfaceKind = "task" | "chat" | "human_mcp" | "respond";
+
+/**
+ * SessionSurfaceKind → lifecycle reminder. `human_mcp` shares the chat
+ * reminder (chat lifecycle, different UI grammar). Lookup-table form so
+ * TS flags missing cases when SessionSurfaceKind grows.
+ */
+const LIFECYCLE_REMINDER_BY_KIND: Record<SessionSurfaceKind, string> = {
+  task: BEEVIBE_LIFECYCLE_REMINDER_TASK,
+  chat: BEEVIBE_LIFECYCLE_REMINDER_CHAT,
+  human_mcp: BEEVIBE_LIFECYCLE_REMINDER_CHAT,
+  respond: BEEVIBE_LIFECYCLE_REMINDER_RESPOND,
+};
 
 export function composeSystemPromptAppend(
   agentSystemPromptAddition: string | undefined,
@@ -452,6 +532,11 @@ export function composeSystemPromptAppend(
      *                 task tracking) but NO display tokens — the
      *                 human's local CLI runs in their terminal and
      *                 can't render our chips.
+     *   "respond"   — mesh responder lifecycle: agent was spawned to
+     *                 answer another agent (mesh_ask /
+     *                 mesh_negotiate / blocker). No own-task; exit
+     *                 after the contract action. Do NOT
+     *                 update_progress on the caller's task.
      *
      * Defaults to "task" so existing task-side callers don't need
      * to pass the flag.
@@ -462,11 +547,7 @@ export function composeSystemPromptAppend(
     extra?: string;
   } = {},
 ): string {
-  const usesChatLifecycle =
-    options.sessionKind === "chat" || options.sessionKind === "human_mcp";
-  const lifecycleReminder = usesChatLifecycle
-    ? BEEVIBE_LIFECYCLE_REMINDER_CHAT
-    : BEEVIBE_LIFECYCLE_REMINDER_TASK;
+  const lifecycleReminder = LIFECYCLE_REMINDER_BY_KIND[options.sessionKind ?? "task"];
   // CHAT_DIRECTIVES is the beevibe chat UI grammar — only fires for
   // sessions actually rendered in our chat surface. human_mcp uses
   // chat lifecycle but skips this block.
