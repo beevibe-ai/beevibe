@@ -10,6 +10,7 @@ import type {
   Workspace,
 } from "../../ports/runtime.js";
 import { runCliProcess } from "../claude-code/spawn.js";
+import { MCP_TOOL_TIMEOUT_MS } from "../local-workspace/manager.js";
 import {
   extractCodexStepEvents,
   parseCodexEventLine,
@@ -86,6 +87,13 @@ export class CodexRuntime implements AgentRuntime {
         // Workspace-write keeps filesystem safety; this opens MCP only.
         "-c",
         `mcp_servers.beevibe.default_tools_approval_mode=${tomlString("approve")}`,
+        // Match Claude Code's mcp-config.json `timeout` field — see
+        // MCP_TOOL_TIMEOUT_MS doc-comment for why. Codex's TOML key is
+        // `tool_timeout_sec` (seconds, not ms), so convert. Without
+        // this, the asker side gives up before the api's mesh-resolver
+        // (5 min) has a chance to fire.
+        "-c",
+        `mcp_servers.beevibe.tool_timeout_sec=${MCP_TOOL_TIMEOUT_MS / 1000}`,
       );
     }
 

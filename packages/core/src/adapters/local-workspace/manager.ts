@@ -156,7 +156,7 @@ export class LocalWorkspaceManager implements WorkspaceManager {
  * blocking ask protocol (return request_id, poll for status) — this
  * is a best-effort knob until that lands.
  */
-const MCP_TOOL_TIMEOUT_MS = 10 * 60_000;
+export const MCP_TOOL_TIMEOUT_MS = 10 * 60_000;
 
 /**
  * The mcp-config.json the spawner writes into each agent's workspace.
