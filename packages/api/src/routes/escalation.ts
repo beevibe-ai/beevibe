@@ -91,6 +91,33 @@ export function createEscalationRouter(deps: EscalationRoutesDeps): Router {
   const router = Router();
   router.use(deps.authMiddleware);
 
+  router.get("/:id", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "missing_escalation_id" });
+      return;
+    }
+    try {
+      const escalation = await deps.escalationService.getReview(id);
+      res.json({ ok: true, escalation });
+    } catch (err) {
+      if (err instanceof EscalationNotFoundError) {
+        res.status(404).json({ error: "escalation_not_found", message: err.message });
+        return;
+      }
+      if (err instanceof NegotiationNotFoundError) {
+        res.status(404).json({ error: "negotiation_not_found", message: err.message });
+        return;
+      }
+      console.error("[escalation route]", err);
+      res.status(500).json({
+        error: "internal_error",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  });
+
   router.post("/:id/resolve", async (req, res) => {
     if (!requireHuman(req, res)) return;
     const id = req.params.id;

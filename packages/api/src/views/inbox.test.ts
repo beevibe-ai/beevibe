@@ -32,7 +32,7 @@ const escalationRow = {
   kind: "escalation_pending" as const,
   title: "Empty-state copy direction",
   detail: "ux specialist ↔ frontend specialist",
-  href: "/mesh#esc-esc_x",
+  href: "/escalations/esc_x",
   age_at: new Date("2026-05-04T08:00:00Z"),
 };
 
@@ -84,11 +84,11 @@ describe("listInbox", () => {
     expect(items).toEqual([]);
   });
 
-  it("includes /tasks/ paths for task kinds and /mesh#esc- for escalations", async () => {
+  it("includes /tasks/ paths for task kinds and /escalations/ for escalations", async () => {
     const pool = makeMockPool([reviewRow, blockedRow, escalationRow]);
     const items = await listInbox(pool, "per_w");
     expect(items[0]?.href).toBe("/tasks/task_a");
     expect(items[1]?.href).toBe("/tasks/task_b");
-    expect(items[2]?.href).toMatch(/^\/mesh#esc-/);
+    expect(items[2]?.href).toMatch(/^\/escalations\//);
   });
 });

@@ -62,7 +62,8 @@ export class MeshMaxRoundsError extends Error {
     },
   ) {
     super(
-      `negotiation ${meta.negotiationId} hit max_rounds (${meta.rounds_completed}/${meta.max_rounds}); call escalate_to_humans`,
+      `negotiation ${meta.negotiationId} reached the ${meta.max_rounds}-exchange limit ` +
+        `(${meta.rounds_completed} messages exchanged); call escalate_to_humans`,
     );
     this.name = "MeshMaxRoundsError";
   }

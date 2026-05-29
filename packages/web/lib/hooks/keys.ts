@@ -46,6 +46,10 @@ export const queryKeys = {
     all: ["inbox"] as const,
     list: () => ["inbox", "list"] as const,
   },
+  escalations: {
+    all: ["escalations"] as const,
+    detail: (id: string) => ["escalations", "detail", id] as const,
+  },
   agentNetwork: {
     all: ["agent-network"] as const,
     self: () => ["agent-network", "self"] as const,

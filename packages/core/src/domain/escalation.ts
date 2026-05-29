@@ -13,6 +13,8 @@
  * slots.
  */
 
+import type { NegotiationDecision } from "./negotiation.js";
+
 /**
  * A single proposal an agent submits during escalate_to_humans /
  * add_to_escalation. Plain content; no source tagging — that's the
@@ -72,4 +74,31 @@ export interface Escalation {
 
   created_at: Date;
   updated_at: Date;
+}
+
+/**
+ * A side's last negotiation-round message, surfaced as a fallback when that
+ * side never filed proposals into the escalation — e.g. its mesh client
+ * dropped before the escalation sentinel could land, so add_to_escalation
+ * never fired. Lets a human reviewer see both positions even when one slot
+ * is empty. The proposal text isn't lost; it lives in negotiation_round.
+ */
+export interface RecoveredPosition {
+  from_round: number;
+  decision: NegotiationDecision;
+  message: string;
+}
+
+/**
+ * An escalation prepared for human review: the stored row plus a recovered
+ * fallback (see RecoveredPosition) for any side that never submitted. Pure
+ * read-time composition — the underlying escalation row is never mutated.
+ */
+export interface EscalationReview extends Escalation {
+  /** Display names of the two agents, resolved from the negotiation. Falls
+   *  back to the agent id if the agent was since deleted. */
+  initiator_agent_name: string;
+  counterparty_agent_name: string;
+  initiator_recovered?: RecoveredPosition;
+  counterparty_recovered?: RecoveredPosition;
 }

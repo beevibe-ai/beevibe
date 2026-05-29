@@ -213,6 +213,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const escalationService = new EscalationService({
     escalationRepo,
     negotiationRepo,
+    negotiationRoundRepo,
     taskRepo,
     agentRepo,
     dispatchService,

@@ -26,6 +26,7 @@ import type { SessionDisplay, SessionTreeResponse } from "@/lib/types/sessions";
 import type { FactCounts, MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
 import type { InboxItem } from "@/lib/types/inbox";
+import type { EscalationReviewDetail } from "@/lib/types/escalations";
 import type { Lifecycle } from "@/lib/tasks-grouping";
 
 export type TaskView = "all" | "mine";
@@ -671,6 +672,11 @@ export const api = {
       fetchJson<HealthResponse>("/health/runtime", { signal: opts.signal }),
   },
   escalations: {
+    get: (id: string, opts: ReadOptions = {}) =>
+      fetchJson<{ ok: true; escalation: EscalationReviewDetail }>(
+        `/escalation/${encodeURIComponent(id)}`,
+        { signal: opts.signal },
+      ),
     resolve: (id: string, input: EscalationResolveInput) =>
       fetchJson<{
         ok: true;
