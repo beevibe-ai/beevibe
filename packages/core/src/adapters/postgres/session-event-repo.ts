@@ -60,38 +60,4 @@ export class PostgresSessionEventRepository implements SessionEventRepository {
     );
     return rows.map(rowToEvent);
   }
-
-  async listForSessions(
-    sessionIds: string[],
-    limitPerSession = 100,
-  ): Promise<Map<string, SessionEvent[]>> {
-    const out = new Map<string, SessionEvent[]>();
-    for (const sid of sessionIds) out.set(sid, []);
-    if (sessionIds.length === 0) return out;
-    // Per-session LIMIT via a windowed query: rank events by created_at
-    // within each session, then keep the most recent N. Output is
-    // ordered ASC overall but per-session ASC inside the cap.
-    const { rows } = await this.pool.query<EventRow>(
-      `WITH ranked AS (
-         SELECT *,
-                ROW_NUMBER() OVER (
-                  PARTITION BY session_id
-                  ORDER BY created_at DESC
-                ) AS rn
-           FROM session_event
-          WHERE session_id = ANY($1::text[])
-       )
-       SELECT id, session_id, kind, content, tool_name, created_at
-         FROM ranked
-        WHERE rn <= $2
-        ORDER BY session_id, created_at ASC`,
-      [sessionIds, limitPerSession],
-    );
-    for (const row of rows) {
-      const list = out.get(row.session_id) ?? [];
-      list.push(rowToEvent(row));
-      out.set(row.session_id, list);
-    }
-    return out;
-  }
 }

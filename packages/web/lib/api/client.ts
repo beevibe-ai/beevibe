@@ -312,23 +312,6 @@ export interface ChatHistoryMessage {
   open_view?: { path: string; label?: string };
   suggested_actions?: SuggestedAction[];
   repo_cards?: ChatRepoCard[];
-  /**
-   * Intermediate reasoning + tool-call transcript for the session that
-   * produced this agent message. Absent for user messages and for
-   * legacy agent messages whose session has no recorded events.
-   */
-  steps?: ChatHistoryStep[];
-}
-
-export interface ChatHistoryStep {
-  event_id: string;
-  /** Mirror of SessionEventKind in `@beevibe/core` — kept as a literal
-   *  string union here so this file stays import-free of core. If a new
-   *  kind is added there, add it here too (TS will not catch the drift).
-   */
-  kind: "agent" | "tool_call" | "tool_result" | "summary";
-  tool_name: string | null;
-  content: string;
 }
 
 export interface ChatHistoryResponse {
