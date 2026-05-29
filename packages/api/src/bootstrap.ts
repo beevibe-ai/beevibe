@@ -455,7 +455,6 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     personRepo,
     runtimeRepo,
     sessionRepo,
-    sessionEventRepo,
     dispatchService,
     chatResolver,
     hub: daemonHub,
