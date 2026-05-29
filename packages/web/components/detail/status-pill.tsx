@@ -1,4 +1,9 @@
-import type { TaskStatus, SessionStatus, EscalationStatus } from "@beevibe/core";
+import type {
+  TaskStatus,
+  SessionStatus,
+  EscalationStatus,
+  NegotiationStatus,
+} from "@beevibe/core";
 import { cn } from "@/lib/utils";
 
 const TASK_PILL: Record<TaskStatus, { dot: string; bg: string; text: string; label: string }> = {
@@ -64,6 +69,31 @@ const ESCALATION_PILL: Record<EscalationStatus, { dot: string; bg: string; text:
 
 export function EscalationStatusPill({ status, className }: { status: EscalationStatus; className?: string }) {
   const config = ESCALATION_PILL[status];
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 h-6 px-2 rounded text-xs font-medium",
+        config.bg,
+        config.text,
+        className,
+      )}
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", config.dot)} />
+      {config.label}
+    </span>
+  );
+}
+
+const NEGOTIATION_PILL: Record<NegotiationStatus, { dot: string; bg: string; text: string; label: string }> = {
+  active: { dot: "bg-status-running", bg: "bg-status-running/10", text: "text-status-running", label: "active" },
+  accepted: { dot: "bg-status-done", bg: "bg-status-done/10", text: "text-status-done", label: "accepted" },
+  rejected: { dot: "bg-status-failed", bg: "bg-status-failed/10", text: "text-status-failed", label: "rejected" },
+  escalated: { dot: "bg-status-review", bg: "bg-status-review/10", text: "text-status-review", label: "escalated" },
+  cancelled: { dot: "bg-status-cancelled", bg: "bg-secondary", text: "text-muted-foreground", label: "cancelled" },
+};
+
+export function NegotiationStatusPill({ status, className }: { status: NegotiationStatus; className?: string }) {
+  const config = NEGOTIATION_PILL[status];
   return (
     <span
       className={cn(

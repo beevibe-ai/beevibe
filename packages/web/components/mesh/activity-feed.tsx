@@ -189,10 +189,18 @@ function AskRow({ ask, dim, highlighted, selectedAgent, onEnter, onLeave }: RowP
     dim && "opacity-40",
   );
 
-  // Each mesh ask is anchored to the source task that initiated it; the task
-  // detail page is the canonical surface for the full conversation. Defensive
-  // fallback to unlinked when source_task_short_id is missing.
-  if (!ask.source_task_short_id) {
+  // Negotiations have a dedicated transcript page (`/negotiations/:id`);
+  // ask + blocker rows route to the source task (the task page renders the
+  // blocker text and is the natural context for an ask). Falls back to an
+  // unlinked div if neither hook is available.
+  const href =
+    ask.type === "negotiate"
+      ? `/negotiations/${ask.id}`
+      : ask.source_task_short_id
+        ? `/tasks/${ask.source_task_short_id}`
+        : null;
+
+  if (!href) {
     return (
       <li>
         <div className={className} onMouseEnter={onEnter} onMouseLeave={onLeave}>
@@ -205,7 +213,7 @@ function AskRow({ ask, dim, highlighted, selectedAgent, onEnter, onLeave }: RowP
   return (
     <li>
       <Link
-        href={`/tasks/${ask.source_task_short_id}`}
+        href={href}
         className={cn(className, "cursor-pointer")}
         onMouseEnter={onEnter}
         onMouseLeave={onLeave}

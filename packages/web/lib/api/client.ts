@@ -27,6 +27,7 @@ import type { FactCounts, MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
 import type { InboxItem } from "@/lib/types/inbox";
 import type { EscalationReviewDetail } from "@/lib/types/escalations";
+import type { NegotiationReviewDetail } from "@/lib/types/negotiations";
 import type { Lifecycle } from "@/lib/tasks-grouping";
 
 export type TaskView = "all" | "mine";
@@ -670,6 +671,13 @@ export const api = {
       ),
     health: (opts: ReadOptions = {}) =>
       fetchJson<HealthResponse>("/health/runtime", { signal: opts.signal }),
+  },
+  negotiations: {
+    get: (id: string, opts: ReadOptions = {}) =>
+      fetchJson<{ ok: true; negotiation: NegotiationReviewDetail }>(
+        `/negotiation/${encodeURIComponent(id)}`,
+        { signal: opts.signal },
+      ),
   },
   escalations: {
     get: (id: string, opts: ReadOptions = {}) =>
