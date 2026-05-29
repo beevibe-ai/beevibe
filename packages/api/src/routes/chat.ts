@@ -103,9 +103,14 @@ export interface HistoryStep {
   content: string;
 }
 
-/** Per-session cap on persisted steps attached to a message. */
+/**
+ * Per-session cap × per-event truncation bounds the response. Worst case
+ * is HISTORY_LIMIT/2 agent messages × STEPS_PER_MESSAGE_LIMIT events ×
+ * STEP_CONTENT_TRUNCATE bytes ≈ 2.5 MB; typical step content is far
+ * shorter so real payloads land in the 100–400 KB range. Tune both
+ * together if the chat-history response starts feeling sluggish.
+ */
 const STEPS_PER_MESSAGE_LIMIT = 100;
-/** Per-event content cap in the persisted-step DTO. */
 const STEP_CONTENT_TRUNCATE = 1000;
 
 // Generic 500 — internal error text stays in server logs, indexed by
@@ -565,7 +570,6 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
 
     const truncated = chain.sessions.slice(-Math.ceil(HISTORY_LIMIT / 2)); // each session = 2 messages
     const messages = chainToMessages({ head_id: chain.head_id, sessions: truncated });
-    await attachStepsToMessages(messages, deps.sessionEventRepo);
     const latest = chain.sessions[chain.sessions.length - 1]!;
     // Surface the tail session's id when it's still in flight so the
     // chat UI can resume its "agent is thinking" indicator after a
@@ -585,11 +589,14 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
     // configured CLI is different — the next turn WILL still run on the
     // pinned CLI (correct, because resume needs the original .jsonl),
     // but the user should know why their new runtime isn't being used.
-    const runtimeMismatch = await detectRuntimeMismatch(
-      deps,
-      latest.runtime_id,
-      agent.runtime_config.type,
-    );
+    //
+    // attachStepsToMessages and detectRuntimeMismatch both depend only
+    // on data already in scope (`messages` and `latest.runtime_id`);
+    // run them concurrently to keep the chat-history p50 down.
+    const [, runtimeMismatch] = await Promise.all([
+      attachStepsToMessages(messages, deps.sessionEventRepo),
+      detectRuntimeMismatch(deps, latest.runtime_id, agent.runtime_config.type),
+    ]);
 
     res.json({
       ok: true,

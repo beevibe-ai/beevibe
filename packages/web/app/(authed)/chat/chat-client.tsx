@@ -660,15 +660,52 @@ function OpenViewCta({ open_view }: { open_view: { path: string; label?: string 
 }
 
 /**
- * Render the tool-call transcript for a persisted agent message. Mirrors
- * the live `<Thinking>` "Working" section so users see the same reasoning
- * trail in conversation history that they saw streaming live, instead of
- * losing it when the session ended.
- *
- * Only `tool_call` / `tool_result` events render here (same filter as the
- * live view). `agent` text deltas don't apply — the final agent message
- * is in the bubble above. `agent_reasoning` and `summary` are
- * intentionally omitted to keep the trail focused on observable actions.
+ * Labeled wrapper around `<ToolStepList>` used by both the live
+ * `<Thinking>` "Working" section and the persisted `<PersistedSteps>`
+ * "Reasoning" section. Same chrome (uppercase label + step list); only
+ * the label and the `withTopBorder` interaction with neighboring agent
+ * text differ.
+ */
+function StepsSection({
+  label,
+  steps,
+  totalSteps,
+  className,
+  withTopBorder,
+  tree,
+  parentSessionId,
+}: {
+  label: string;
+  steps: ChatStreamStep[];
+  totalSteps: number;
+  className?: string;
+  withTopBorder?: boolean;
+  tree?: ChatStreamTree;
+  parentSessionId?: string;
+}) {
+  return (
+    <div className={className}>
+      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/45">
+        {label}
+      </div>
+      <ToolStepList
+        steps={steps}
+        totalSteps={totalSteps}
+        {...(withTopBorder ? { withTopBorder: true } : {})}
+        {...(tree ? { tree } : {})}
+        {...(parentSessionId ? { parentSessionId } : {})}
+      />
+    </div>
+  );
+}
+
+/**
+ * Render the tool-call transcript for a persisted agent message — same
+ * chrome as the live `<Thinking>` "Working" section so users see the
+ * same trail in history that they saw streaming. Only `tool_call` /
+ * `tool_result` events render (same filter as live); `agent` is the
+ * final message text (in the bubble above), `summary` is omitted to
+ * keep the trail focused on observable actions.
  */
 function PersistedSteps({ steps }: { steps?: ChatHistoryStep[] }) {
   if (!steps || steps.length === 0) return null;
@@ -684,12 +721,12 @@ function PersistedSteps({ steps }: { steps?: ChatHistoryStep[] }) {
     received_at: 0,
   }));
   return (
-    <div className="mt-3">
-      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/45">
-        Reasoning
-      </div>
-      <ToolStepList steps={adapted} totalSteps={adapted.length} />
-    </div>
+    <StepsSection
+      label="Reasoning"
+      steps={adapted}
+      totalSteps={adapted.length}
+      className="mt-3"
+    />
   );
 }
 
@@ -758,18 +795,15 @@ function Thinking({
           </div>
         )}
         {recentTools.length > 0 ? (
-          <div className={cn(hasWorkingText ? "mt-3" : "mt-2")}>
-            <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/45">
-              Working
-            </div>
-            <ToolStepList
-              steps={recentTools}
-              totalSteps={toolSteps.length}
-              withTopBorder={hasWorkingText}
-              tree={tree}
-              parentSessionId={rootSessionId}
-            />
-          </div>
+          <StepsSection
+            label="Working"
+            steps={recentTools}
+            totalSteps={toolSteps.length}
+            className={cn(hasWorkingText ? "mt-3" : "mt-2")}
+            withTopBorder={hasWorkingText}
+            {...(tree ? { tree } : {})}
+            {...(rootSessionId ? { parentSessionId: rootSessionId } : {})}
+          />
         ) : null}
       </div>
     </div>
