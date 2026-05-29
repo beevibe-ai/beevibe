@@ -212,9 +212,29 @@ export function useChat(opts: UseChatOptions = {}) {
       }
       // Conversation list (sidebar) needs to see the new chain.
       queryClient.invalidateQueries({ queryKey: queryKeys.chat.conversations() });
-      // The "latest" conversation slot may now be stale — when the chat
-      // surface drops the `?new=1` param it'll refetch and land on the
-      // chain we just created.
+      // HAND OFF the just-completed turn into the "latest" cache slot
+      // BEFORE ChatClient strips `?new=1` from the URL. Without this
+      // seed, the cleanup useEffect (chat-client.tsx, fires once
+      // `messages.length > 0 && !isSubmitting`) rewrites the URL,
+      // React Query flips `queryKey` from chat.history(FRESH_CACHE_ID)
+      // to chat.history(undefined), and the new slot is empty during
+      // refetch — producing the "mid-session blank" symptom (composer,
+      // messages, and thinking block all disappear together for a few
+      // seconds; refresh brings the in-flight state back but
+      // useChatStream's accumulated SSE steps are gone because the
+      // re-render reset its state).
+      //
+      // We invalidate AFTER seeding so the slot is marked stale and
+      // React Query will refetch in the background to confirm with
+      // server state; staleTime: Infinity keeps the seeded data
+      // displayed during that refetch, so there's no flicker.
+      const handed = queryClient.getQueryData<ChatHistoryResponse>(queryKey);
+      if (handed) {
+        queryClient.setQueryData(
+          queryKeys.chat.history(undefined),
+          handed,
+        );
+      }
       queryClient.invalidateQueries({
         queryKey: queryKeys.chat.history(undefined),
       });
