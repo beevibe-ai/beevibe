@@ -8,7 +8,7 @@
  * human can click into a mesh row and see what's being discussed.
  */
 
-import { Router, type RequestHandler, type Response } from "express";
+import { Router, type RequestHandler } from "express";
 import {
   type NegotiationService,
   NegotiationNotFoundError,
@@ -18,18 +18,6 @@ import { requireHuman } from "../auth/middleware.js";
 export interface NegotiationRoutesDeps {
   authMiddleware: RequestHandler;
   negotiationService: NegotiationService;
-}
-
-function handleNegotiationError(err: unknown, res: Response): void {
-  if (err instanceof NegotiationNotFoundError) {
-    res.status(404).json({ error: "negotiation_not_found", message: err.message });
-    return;
-  }
-  console.error("[negotiation route]", err);
-  res.status(500).json({
-    error: "internal_error",
-    message: err instanceof Error ? err.message : String(err),
-  });
 }
 
 export function createNegotiationRouter(deps: NegotiationRoutesDeps): Router {
@@ -47,7 +35,15 @@ export function createNegotiationRouter(deps: NegotiationRoutesDeps): Router {
       const negotiation = await deps.negotiationService.getReview(id);
       res.json({ ok: true, negotiation });
     } catch (err) {
-      handleNegotiationError(err, res);
+      if (err instanceof NegotiationNotFoundError) {
+        res.status(404).json({ error: "negotiation_not_found", message: err.message });
+        return;
+      }
+      console.error("[negotiation route]", err);
+      res.status(500).json({
+        error: "internal_error",
+        message: err instanceof Error ? err.message : String(err),
+      });
     }
   });
 

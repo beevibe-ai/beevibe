@@ -5,9 +5,13 @@ import type {
   NegotiationRepository,
   NegotiationRoundRepository,
 } from "../ports/negotiation-repo.js";
-import { NegotiationNotFoundError } from "./escalation-service.js";
-
-export { NegotiationNotFoundError };
+export class NegotiationNotFoundError extends Error {
+  readonly code = "NEGOTIATION_NOT_FOUND";
+  constructor(id: string) {
+    super(`Negotiation ${id} not found`);
+    this.name = "NegotiationNotFoundError";
+  }
+}
 
 export interface NegotiationServiceDeps {
   negotiationRepo: NegotiationRepository;

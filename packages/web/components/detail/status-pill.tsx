@@ -6,7 +6,14 @@ import type {
 } from "@beevibe/core";
 import { cn } from "@/lib/utils";
 
-const TASK_PILL: Record<TaskStatus, { dot: string; bg: string; text: string; label: string }> = {
+interface DotPillConfig {
+  dot: string;
+  bg: string;
+  text: string;
+  label: string;
+}
+
+const TASK_PILL: Record<TaskStatus, DotPillConfig> = {
   review: { dot: "bg-status-review", bg: "bg-status-review/10", text: "text-status-review", label: "review" },
   blocked: { dot: "bg-status-blocked", bg: "bg-status-blocked/10", text: "text-status-blocked", label: "blocked" },
   in_progress: { dot: "bg-status-running animate-pulse-breathe", bg: "bg-status-running/10", text: "text-status-running", label: "in progress" },
@@ -27,8 +34,21 @@ const SESSION_PILL: Record<SessionStatus, { bg: string; text: string; label: str
   cancelled: { bg: "bg-secondary", text: "text-muted-foreground", label: "cancelled" },
 };
 
-export function TaskStatusPill({ status, className }: { status: TaskStatus; className?: string }) {
-  const config = TASK_PILL[status];
+const ESCALATION_PILL: Record<EscalationStatus, DotPillConfig> = {
+  pending: { dot: "bg-status-review", bg: "bg-status-review/10", text: "text-status-review", label: "pending" },
+  resolved: { dot: "bg-status-done", bg: "bg-status-done/10", text: "text-status-done", label: "resolved" },
+  cancelled: { dot: "bg-status-cancelled", bg: "bg-secondary", text: "text-muted-foreground", label: "cancelled" },
+};
+
+const NEGOTIATION_PILL: Record<NegotiationStatus, DotPillConfig> = {
+  active: { dot: "bg-status-running", bg: "bg-status-running/10", text: "text-status-running", label: "active" },
+  accepted: { dot: "bg-status-done", bg: "bg-status-done/10", text: "text-status-done", label: "accepted" },
+  rejected: { dot: "bg-status-failed", bg: "bg-status-failed/10", text: "text-status-failed", label: "rejected" },
+  escalated: { dot: "bg-status-review", bg: "bg-status-review/10", text: "text-status-review", label: "escalated" },
+  cancelled: { dot: "bg-status-cancelled", bg: "bg-secondary", text: "text-muted-foreground", label: "cancelled" },
+};
+
+function DotPill({ config, className }: { config: DotPillConfig; className?: string }) {
   return (
     <span
       className={cn(
@@ -42,6 +62,10 @@ export function TaskStatusPill({ status, className }: { status: TaskStatus; clas
       {config.label}
     </span>
   );
+}
+
+export function TaskStatusPill({ status, className }: { status: TaskStatus; className?: string }) {
+  return <DotPill config={TASK_PILL[status]} className={className} />;
 }
 
 export function SessionStatusPill({ status, className }: { status: SessionStatus; className?: string }) {
@@ -61,52 +85,12 @@ export function SessionStatusPill({ status, className }: { status: SessionStatus
   );
 }
 
-const ESCALATION_PILL: Record<EscalationStatus, { dot: string; bg: string; text: string; label: string }> = {
-  pending: { dot: "bg-status-review", bg: "bg-status-review/10", text: "text-status-review", label: "pending" },
-  resolved: { dot: "bg-status-done", bg: "bg-status-done/10", text: "text-status-done", label: "resolved" },
-  cancelled: { dot: "bg-status-cancelled", bg: "bg-secondary", text: "text-muted-foreground", label: "cancelled" },
-};
-
 export function EscalationStatusPill({ status, className }: { status: EscalationStatus; className?: string }) {
-  const config = ESCALATION_PILL[status];
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 h-6 px-2 rounded text-xs font-medium",
-        config.bg,
-        config.text,
-        className,
-      )}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full", config.dot)} />
-      {config.label}
-    </span>
-  );
+  return <DotPill config={ESCALATION_PILL[status]} className={className} />;
 }
 
-const NEGOTIATION_PILL: Record<NegotiationStatus, { dot: string; bg: string; text: string; label: string }> = {
-  active: { dot: "bg-status-running", bg: "bg-status-running/10", text: "text-status-running", label: "active" },
-  accepted: { dot: "bg-status-done", bg: "bg-status-done/10", text: "text-status-done", label: "accepted" },
-  rejected: { dot: "bg-status-failed", bg: "bg-status-failed/10", text: "text-status-failed", label: "rejected" },
-  escalated: { dot: "bg-status-review", bg: "bg-status-review/10", text: "text-status-review", label: "escalated" },
-  cancelled: { dot: "bg-status-cancelled", bg: "bg-secondary", text: "text-muted-foreground", label: "cancelled" },
-};
-
 export function NegotiationStatusPill({ status, className }: { status: NegotiationStatus; className?: string }) {
-  const config = NEGOTIATION_PILL[status];
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-1.5 h-6 px-2 rounded text-xs font-medium",
-        config.bg,
-        config.text,
-        className,
-      )}
-    >
-      <span className={cn("h-1.5 w-1.5 rounded-full", config.dot)} />
-      {config.label}
-    </span>
-  );
+  return <DotPill config={NEGOTIATION_PILL[status]} className={className} />;
 }
 
 export function PriorityPill({ priority }: { priority: string }) {

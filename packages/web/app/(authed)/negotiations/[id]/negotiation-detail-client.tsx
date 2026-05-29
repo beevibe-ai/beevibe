@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, AlertTriangle, MessagesSquare, Scale } from "lucide-react";
+import { AlertTriangle, MessagesSquare, Scale } from "lucide-react";
+import { MeshBackLink } from "@/components/detail/mesh-back-link";
 import { useNegotiation } from "@/lib/hooks/use-negotiations";
 import { isApiConfigured } from "@/lib/api/config";
 import { ChatMarkdown } from "@/components/chat/markdown";
@@ -17,16 +18,6 @@ import type {
   NegotiationReviewDetail,
   NegotiationRoundDetail,
 } from "@/lib/types/negotiations";
-
-const MeshBackLink = () => (
-  <Link
-    href="/mesh"
-    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-3"
-  >
-    <ArrowLeft className="h-3 w-3" />
-    Mesh
-  </Link>
-);
 
 export function NegotiationDetailClient({ negotiationId }: { negotiationId: string }) {
   const { data, isLoading, isError } = useNegotiation(negotiationId);

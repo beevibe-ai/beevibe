@@ -24,8 +24,8 @@ import {
   type ResolveSelector,
   EscalationNotFoundError,
   EscalationStateError,
-  NegotiationNotFoundError,
 } from "@beevibe/core/services/escalation-service";
+import { NegotiationNotFoundError } from "@beevibe/core/services/negotiation-service";
 import { requireHuman } from "../auth/middleware.js";
 
 export interface EscalationRoutesDeps {

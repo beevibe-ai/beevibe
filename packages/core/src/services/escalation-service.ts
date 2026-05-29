@@ -16,6 +16,7 @@ import type {
 import type { TaskRepository } from "../ports/task-repo.js";
 import { buildIntent, type ResumeReason } from "./agent-session.js";
 import type { DispatchService } from "./dispatch-service.js";
+import { NegotiationNotFoundError } from "./negotiation-service.js";
 
 export class EscalationNotFoundError extends Error {
   readonly code = "ESCALATION_NOT_FOUND";
@@ -30,14 +31,6 @@ export class EscalationStateError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "EscalationStateError";
-  }
-}
-
-export class NegotiationNotFoundError extends Error {
-  readonly code = "NEGOTIATION_NOT_FOUND";
-  constructor(id: string) {
-    super(`Negotiation ${id} not found`);
-    this.name = "NegotiationNotFoundError";
   }
 }
 
