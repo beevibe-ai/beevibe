@@ -19,6 +19,7 @@ import {
   PostgresCoreMemoryRepository,
   PostgresEscalationRepository,
   PostgresNegotiationRepository,
+  PostgresNegotiationRoundRepository,
   PostgresPersonRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
@@ -50,6 +51,7 @@ describe("escalation routes — integration", () => {
   let taskRepo: PostgresTaskRepository;
   let workProductRepo: PostgresWorkProductRepository;
   let negotiationRepo: PostgresNegotiationRepository;
+  let negotiationRoundRepo: PostgresNegotiationRoundRepository;
   let escalationRepo: PostgresEscalationRepository;
   let escalationService: EscalationService;
 
@@ -62,10 +64,12 @@ describe("escalation routes — integration", () => {
     taskRepo = new PostgresTaskRepository(pool);
     workProductRepo = new PostgresWorkProductRepository(pool);
     negotiationRepo = new PostgresNegotiationRepository(pool);
+    negotiationRoundRepo = new PostgresNegotiationRoundRepository(pool);
     escalationRepo = new PostgresEscalationRepository(pool);
     escalationService = new EscalationService({
       escalationRepo,
       negotiationRepo,
+      negotiationRoundRepo,
       taskRepo,
       agentRepo,
     });
@@ -408,5 +412,90 @@ describe("escalation routes — integration", () => {
   it("missing token → 401", async () => {
     const res = await request(makeApp()).post("/escalation/esc_x/resolve");
     expect(res.status).toBe(401);
+  });
+
+  it("GET /:id returns both sides' proposals when both submitted", async () => {
+    const seed = await seedEscalation();
+    const res = await request(makeApp())
+      .get(`/escalation/${seed.escalation.id}`)
+      .set("Authorization", `Bearer ${seed.humanApiKey}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.escalation.id).toBe(seed.escalation.id);
+    expect(res.body.escalation.initiator_proposals).toHaveLength(2);
+    expect(res.body.escalation.counterparty_proposals).toHaveLength(2);
+    expect(res.body.escalation.initiator_agent_name).toBe("Team A");
+    expect(res.body.escalation.counterparty_agent_name).toBe("Team B");
+    expect(res.body.escalation.initiator_recovered).toBeUndefined();
+    expect(res.body.escalation.counterparty_recovered).toBeUndefined();
+  });
+
+  it("GET /:id backfills the un-submitted side from negotiation rounds", async () => {
+    const owner = await provisionUser(
+      { personRepo },
+      { id: personId(), name: "Owner", email: "owner-backfill@example.com" },
+    );
+    const teamA = await provisionAgent(
+      { agentRepo, coreMemoryRepo },
+      { id: agentId(), name: "Team A", owner_id: owner.person.id, hierarchy_level: "team", runtime_config: DEFAULT_RUNTIME_CONFIG },
+    );
+    const teamB = await provisionAgent(
+      { agentRepo, coreMemoryRepo },
+      { id: agentId(), name: "Team B", owner_id: owner.person.id, hierarchy_level: "team", runtime_config: DEFAULT_RUNTIME_CONFIG },
+    );
+    const sa = await sessionRepo.create({ id: sessionId(), agent_id: teamA.agent.id, type: "task", status: "succeeded", intent: "i" });
+    const sb = await sessionRepo.create({ id: sessionId(), agent_id: teamB.agent.id, type: "mesh_negotiate", status: "succeeded", intent: "j" });
+    const negotiation = await negotiationRepo.create({
+      id: negotiationId(),
+      initiator_agent_id: teamA.agent.id,
+      initiator_session_id: sa.id,
+      counterparty_agent_id: teamB.agent.id,
+      counterparty_session_id: sb.id,
+      max_rounds: 3,
+    });
+    await negotiationRepo.update(negotiation.id, { status: "escalated" });
+    await negotiationRoundRepo.create({ id: "round_a1", negotiation_id: negotiation.id, round_number: 1, from_agent_id: teamA.agent.id, decision: "propose", message: "A opening proposal" });
+    await negotiationRoundRepo.create({ id: "round_b2", negotiation_id: negotiation.id, round_number: 2, from_agent_id: teamB.agent.id, decision: "counter", message: "B counter" });
+    await negotiationRoundRepo.create({ id: "round_a3", negotiation_id: negotiation.id, round_number: 3, from_agent_id: teamA.agent.id, decision: "counter", message: "A latest position" });
+
+    // Counterparty escalated; initiator never filed (slot stays empty).
+    const esc = await escalationRepo.create({
+      id: escalationId(),
+      negotiation_id: negotiation.id,
+      initiator_session_id: sa.id,
+      counterparty_session_id: sb.id,
+      summary: "Stuck; counterparty escalated.",
+      initiator_open_questions: [],
+      escalated_by_role: "counterparty",
+    });
+    await escalationRepo.update(esc.id, {
+      counterparty_proposals: [{ title: "B plan", description: "do B" }],
+      counterparty_open_questions: [],
+      counterparty_submitted_at: new Date(),
+    });
+
+    const res = await request(makeApp())
+      .get(`/escalation/${esc.id}`)
+      .set("Authorization", `Bearer ${owner.apiKey}`);
+
+    expect(res.status).toBe(200);
+    expect(res.body.escalation.initiator_submitted_at == null).toBe(true);
+    expect(res.body.escalation.initiator_agent_name).toBe("Team A");
+    expect(res.body.escalation.counterparty_agent_name).toBe("Team B");
+    expect(res.body.escalation.initiator_recovered).toMatchObject({
+      from_round: 3,
+      decision: "counter",
+      message: "A latest position",
+    });
+    expect(res.body.escalation.counterparty_recovered).toBeUndefined();
+  });
+
+  it("GET /:id → 404 for unknown id", async () => {
+    const seed = await seedEscalation();
+    const res = await request(makeApp())
+      .get("/escalation/esc_does_not_exist")
+      .set("Authorization", `Bearer ${seed.humanApiKey}`);
+    expect(res.status).toBe(404);
+    expect(res.body.error).toBe("escalation_not_found");
   });
 });

@@ -1,4 +1,4 @@
-import type { TaskStatus, SessionStatus } from "@beevibe/core";
+import type { TaskStatus, SessionStatus, EscalationStatus } from "@beevibe/core";
 import { cn } from "@/lib/utils";
 
 const TASK_PILL: Record<TaskStatus, { dot: string; bg: string; text: string; label: string }> = {
@@ -51,6 +51,29 @@ export function SessionStatusPill({ status, className }: { status: SessionStatus
       )}
     >
       {config.pulse ? <span className="animate-pulse-breathe h-1.5 w-1.5 rounded-full bg-status-running" /> : null}
+      {config.label}
+    </span>
+  );
+}
+
+const ESCALATION_PILL: Record<EscalationStatus, { dot: string; bg: string; text: string; label: string }> = {
+  pending: { dot: "bg-status-review", bg: "bg-status-review/10", text: "text-status-review", label: "pending" },
+  resolved: { dot: "bg-status-done", bg: "bg-status-done/10", text: "text-status-done", label: "resolved" },
+  cancelled: { dot: "bg-status-cancelled", bg: "bg-secondary", text: "text-muted-foreground", label: "cancelled" },
+};
+
+export function EscalationStatusPill({ status, className }: { status: EscalationStatus; className?: string }) {
+  const config = ESCALATION_PILL[status];
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1.5 h-6 px-2 rounded text-xs font-medium",
+        config.bg,
+        config.text,
+        className,
+      )}
+    >
+      <span className={cn("h-1.5 w-1.5 rounded-full", config.dot)} />
       {config.label}
     </span>
   );

@@ -1,12 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Escalation, Proposal } from "../domain/escalation.js";
-import type { Negotiation } from "../domain/negotiation.js";
+import type { Agent } from "../domain/agent.js";
+import type { Negotiation, NegotiationRound } from "../domain/negotiation.js";
 import type { Task } from "../domain/task.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type { EscalationRepository } from "../ports/escalation-repo.js";
-import type { NegotiationRepository } from "../ports/negotiation-repo.js";
+import type {
+  NegotiationRepository,
+  NegotiationRoundRepository,
+} from "../ports/negotiation-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
 import {
+  EscalationNotFoundError,
   EscalationService,
   EscalationStateError,
   NegotiationNotFoundError,
@@ -51,6 +56,7 @@ function makeEsc(overrides: Partial<Escalation> = {}): Escalation {
 
 let escalationRepo: EscalationRepository;
 let negotiationRepo: NegotiationRepository;
+let negotiationRoundRepo: NegotiationRoundRepository;
 let taskRepo: TaskRepository;
 let agentRepo: AgentRepository;
 let svc: EscalationService;
@@ -68,6 +74,11 @@ beforeEach(() => {
     findActiveBetween: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
+  };
+  negotiationRoundRepo = {
+    listByNegotiation: vi.fn(),
+    findLatest: vi.fn(),
+    create: vi.fn(),
   };
   taskRepo = {
     findById: vi.fn(),
@@ -106,7 +117,13 @@ beforeEach(() => {
     update: vi.fn(),
     delete: vi.fn(),
   };
-  svc = new EscalationService({ escalationRepo, negotiationRepo, taskRepo, agentRepo });
+  svc = new EscalationService({
+    escalationRepo,
+    negotiationRepo,
+    negotiationRoundRepo,
+    taskRepo,
+    agentRepo,
+  });
 });
 
 describe("EscalationService.create", () => {
@@ -423,5 +440,99 @@ describe("EscalationService.resolve", () => {
         selector: { source: "counterparty", source_index: 0 },
       }),
     ).rejects.toBeInstanceOf(EscalationStateError);
+  });
+});
+
+describe("EscalationService.getReview", () => {
+  function makeRound(overrides: Partial<NegotiationRound> = {}): NegotiationRound {
+    return {
+      id: "round_1",
+      negotiation_id: "neg_1",
+      round_number: 1,
+      from_agent_id: "agent_a",
+      decision: "propose",
+      message: "round message",
+      sent_at: new Date(),
+      ...overrides,
+    };
+  }
+
+  beforeEach(() => {
+    vi.mocked(agentRepo.findById).mockImplementation(
+      async (id: string) =>
+        ({
+          id,
+          name: id === "agent_a" ? "Alice team" : id === "agent_b" ? "Bob team" : id,
+        }) as unknown as Agent,
+    );
+  });
+
+  it("backfills the un-submitted side from its last round (counterparty escalated)", async () => {
+    vi.mocked(escalationRepo.findById).mockResolvedValue(
+      makeEsc({
+        escalated_by_role: "counterparty",
+        counterparty_proposals: [{ title: "B", description: "b" }],
+        counterparty_submitted_at: new Date(),
+        initiator_submitted_at: undefined,
+      }),
+    );
+    vi.mocked(negotiationRepo.findById).mockResolvedValue(makeNeg());
+    vi.mocked(negotiationRoundRepo.listByNegotiation).mockResolvedValue([
+      makeRound({ round_number: 1, from_agent_id: "agent_a", decision: "propose", message: "A opening" }),
+      makeRound({ id: "round_2", round_number: 2, from_agent_id: "agent_b", decision: "counter", message: "B counter" }),
+      makeRound({ id: "round_3", round_number: 3, from_agent_id: "agent_a", decision: "counter", message: "A latest" }),
+    ]);
+
+    const review = await svc.getReview("esc_1");
+
+    expect(review.initiator_recovered).toEqual({
+      from_round: 3,
+      decision: "counter",
+      message: "A latest",
+    });
+    expect(review.counterparty_recovered).toBeUndefined();
+    expect(review.initiator_agent_name).toBe("Alice team");
+    expect(review.counterparty_agent_name).toBe("Bob team");
+  });
+
+  it("includes agent names without a round fetch when both sides submitted", async () => {
+    vi.mocked(escalationRepo.findById).mockResolvedValue(
+      makeEsc({
+        initiator_submitted_at: new Date(),
+        counterparty_submitted_at: new Date(),
+      }),
+    );
+    vi.mocked(negotiationRepo.findById).mockResolvedValue(makeNeg());
+
+    const review = await svc.getReview("esc_1");
+
+    expect(review.initiator_recovered).toBeUndefined();
+    expect(review.counterparty_recovered).toBeUndefined();
+    expect(review.initiator_agent_name).toBe("Alice team");
+    expect(review.counterparty_agent_name).toBe("Bob team");
+    expect(negotiationRoundRepo.listByNegotiation).not.toHaveBeenCalled();
+  });
+
+  it("leaves recovered undefined when the un-submitted side has no rounds", async () => {
+    vi.mocked(escalationRepo.findById).mockResolvedValue(
+      makeEsc({
+        escalated_by_role: "counterparty",
+        counterparty_submitted_at: new Date(),
+        initiator_submitted_at: undefined,
+      }),
+    );
+    vi.mocked(negotiationRepo.findById).mockResolvedValue(makeNeg());
+    vi.mocked(negotiationRoundRepo.listByNegotiation).mockResolvedValue([
+      makeRound({ round_number: 2, from_agent_id: "agent_b", decision: "counter", message: "B only" }),
+    ]);
+
+    const review = await svc.getReview("esc_1");
+
+    expect(review.initiator_recovered).toBeUndefined();
+  });
+
+  it("throws EscalationNotFoundError for a missing escalation", async () => {
+    vi.mocked(escalationRepo.findById).mockResolvedValue(undefined);
+    await expect(svc.getReview("esc_missing")).rejects.toThrow(EscalationNotFoundError);
   });
 });

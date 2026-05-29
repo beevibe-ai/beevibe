@@ -1,13 +1,18 @@
 import type {
   Escalation,
+  EscalationReview,
   Proposal,
+  RecoveredPosition,
   ResolutionProposal,
 } from "../domain/escalation.js";
 import type { NextDispatchContext } from "../domain/task.js";
 import { escalationId as makeEscalationId, taskId as makeTaskId } from "../domain/ids.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type { EscalationRepository } from "../ports/escalation-repo.js";
-import type { NegotiationRepository } from "../ports/negotiation-repo.js";
+import type {
+  NegotiationRepository,
+  NegotiationRoundRepository,
+} from "../ports/negotiation-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
 import { buildIntent, type ResumeReason } from "./agent-session.js";
 import type { DispatchService } from "./dispatch-service.js";
@@ -47,6 +52,7 @@ export class NotPartyError extends Error {
 export interface EscalationServiceDeps {
   escalationRepo: EscalationRepository;
   negotiationRepo: NegotiationRepository;
+  negotiationRoundRepo: NegotiationRoundRepository;
   taskRepo: TaskRepository;
   agentRepo: AgentRepository;
   /**
@@ -236,6 +242,54 @@ export class EscalationService {
     });
 
     return updated;
+  }
+
+  /**
+   * Read an escalation prepared for human review. When a side never filed
+   * proposals (its `*_submitted_at` is unset — e.g. its mesh client dropped
+   * before the escalation sentinel landed, so add_to_escalation never fired)
+   * its last negotiation-round message is surfaced as a recovered fallback,
+   * so the human sees both positions even when one slot is empty. Read-time
+   * only — the escalation row is never mutated.
+   */
+  async getReview(escalationId: string): Promise<EscalationReview> {
+    const esc = await this.deps.escalationRepo.findById(escalationId);
+    if (!esc) throw new EscalationNotFoundError(escalationId);
+
+    const neg = await this.deps.negotiationRepo.findById(esc.negotiation_id);
+    if (!neg) throw new NegotiationNotFoundError(esc.negotiation_id);
+
+    const [initiatorAgent, counterpartyAgent] = await Promise.all([
+      this.deps.agentRepo.findById(neg.initiator_agent_id),
+      this.deps.agentRepo.findById(neg.counterparty_agent_id),
+    ]);
+
+    let initiatorRecovered: RecoveredPosition | undefined;
+    let counterpartyRecovered: RecoveredPosition | undefined;
+    const needInitiator = !esc.initiator_submitted_at;
+    const needCounterparty = !esc.counterparty_submitted_at;
+    if (needInitiator || needCounterparty) {
+      const rounds = await this.deps.negotiationRoundRepo.listByNegotiation(neg.id);
+      const lastFrom = (agentId: string): RecoveredPosition | undefined => {
+        for (let i = rounds.length - 1; i >= 0; i--) {
+          const r = rounds[i];
+          if (r && r.from_agent_id === agentId) {
+            return { from_round: r.round_number, decision: r.decision, message: r.message };
+          }
+        }
+        return undefined;
+      };
+      if (needInitiator) initiatorRecovered = lastFrom(neg.initiator_agent_id);
+      if (needCounterparty) counterpartyRecovered = lastFrom(neg.counterparty_agent_id);
+    }
+
+    return {
+      ...esc,
+      initiator_agent_name: initiatorAgent?.name ?? neg.initiator_agent_id,
+      counterparty_agent_name: counterpartyAgent?.name ?? neg.counterparty_agent_id,
+      initiator_recovered: initiatorRecovered,
+      counterparty_recovered: counterpartyRecovered,
+    };
   }
 
   /**

@@ -86,7 +86,7 @@ WITH inbox AS (
     'escalation_pending'::text               AS kind,
     LEFT(e.summary, ${TITLE_TRUNCATE})       AS title,
     ai.name || ' ↔ ' || ac.name              AS detail,
-    '/mesh#esc-' || e.id                     AS href,
+    '/escalations/' || e.id                  AS href,
     e.created_at                             AS age_at
   FROM escalation e
   JOIN negotiation n ON n.id = e.negotiation_id

@@ -17,7 +17,7 @@
  * executor picks both up within ≤30s.
  */
 
-import { Router, type RequestHandler } from "express";
+import { Router, type RequestHandler, type Response } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   type EscalationService,
@@ -87,9 +87,44 @@ function buildSelector(body: unknown):
   };
 }
 
+function handleEscalationError(err: unknown, res: Response): void {
+  if (err instanceof EscalationNotFoundError) {
+    res.status(404).json({ error: "escalation_not_found", message: err.message });
+    return;
+  }
+  if (err instanceof NegotiationNotFoundError) {
+    res.status(404).json({ error: "negotiation_not_found", message: err.message });
+    return;
+  }
+  if (err instanceof EscalationStateError) {
+    res.status(409).json({ error: "invalid_state", message: err.message });
+    return;
+  }
+  console.error("[escalation route]", err);
+  res.status(500).json({
+    error: "internal_error",
+    message: err instanceof Error ? err.message : String(err),
+  });
+}
+
 export function createEscalationRouter(deps: EscalationRoutesDeps): Router {
   const router = Router();
   router.use(deps.authMiddleware);
+
+  router.get("/:id", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const id = req.params.id;
+    if (!id) {
+      res.status(400).json({ error: "missing_escalation_id" });
+      return;
+    }
+    try {
+      const escalation = await deps.escalationService.getReview(id);
+      res.json({ ok: true, escalation });
+    } catch (err) {
+      handleEscalationError(err, res);
+    }
+  });
 
   router.post("/:id/resolve", async (req, res) => {
     if (!requireHuman(req, res)) return;
@@ -132,23 +167,7 @@ export function createEscalationRouter(deps: EscalationRoutesDeps): Router {
         note: "Both sides will resume via executor in ≤30s.",
       });
     } catch (err) {
-      if (err instanceof EscalationNotFoundError) {
-        res.status(404).json({ error: "escalation_not_found", message: err.message });
-        return;
-      }
-      if (err instanceof NegotiationNotFoundError) {
-        res.status(404).json({ error: "negotiation_not_found", message: err.message });
-        return;
-      }
-      if (err instanceof EscalationStateError) {
-        res.status(409).json({ error: "invalid_state", message: err.message });
-        return;
-      }
-      console.error("[escalation route]", err);
-      res.status(500).json({
-        error: "internal_error",
-        message: err instanceof Error ? err.message : String(err),
-      });
+      handleEscalationError(err, res);
     }
   });
 
