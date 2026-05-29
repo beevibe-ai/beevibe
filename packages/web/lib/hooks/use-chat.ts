@@ -212,32 +212,22 @@ export function useChat(opts: UseChatOptions = {}) {
       }
       // Conversation list (sidebar) needs to see the new chain.
       queryClient.invalidateQueries({ queryKey: queryKeys.chat.conversations() });
-      // HAND OFF the just-completed turn into the "latest" cache slot
-      // BEFORE ChatClient strips `?new=1` from the URL. Without this
-      // seed, the cleanup useEffect (chat-client.tsx, fires once
-      // `messages.length > 0 && !isSubmitting`) rewrites the URL,
-      // React Query flips `queryKey` from chat.history(FRESH_CACHE_ID)
-      // to chat.history(undefined), and the new slot is empty during
-      // refetch — producing the "mid-session blank" symptom (composer,
-      // messages, and thinking block all disappear together for a few
-      // seconds; refresh brings the in-flight state back but
-      // useChatStream's accumulated SSE steps are gone because the
-      // re-render reset its state).
-      //
-      // We invalidate AFTER seeding so the slot is marked stale and
-      // React Query will refetch in the background to confirm with
-      // server state; staleTime: Infinity keeps the seeded data
-      // displayed during that refetch, so there's no flicker.
+      // Seed the "latest" cache slot before invalidating it, so the
+      // moment ChatClient's URL-strip useEffect (fires on
+      // `messages.length > 0 && !isSubmitting`) flips `queryKey`
+      // from FRESH_CACHE_ID → undefined, the new slot already has
+      // the just-completed turn. Without the seed, the slot is empty
+      // until refetch lands and the whole chat surface (composer,
+      // messages, thinking block) blanks for a beat — and the
+      // re-render wipes useChatStream's accumulated SSE steps.
+      // Pairing: seed populates the slot for the immediate read; the
+      // invalidate after marks it stale so React Query refetches in
+      // the background. `staleTime: Infinity` keeps the seeded data
+      // displayed during that refetch — no flicker.
+      const latestKey = queryKeys.chat.history(undefined);
       const handed = queryClient.getQueryData<ChatHistoryResponse>(queryKey);
-      if (handed) {
-        queryClient.setQueryData(
-          queryKeys.chat.history(undefined),
-          handed,
-        );
-      }
-      queryClient.invalidateQueries({
-        queryKey: queryKeys.chat.history(undefined),
-      });
+      if (handed) queryClient.setQueryData(latestKey, handed);
+      queryClient.invalidateQueries({ queryKey: latestKey });
     },
     onError: (err) => {
       // agent_offline (503) is special: the api persisted the session row
