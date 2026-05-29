@@ -12,6 +12,8 @@ import { DetailShell } from "@/components/detail/detail-shell";
 import { FooterField } from "@/components/detail/footer-field";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
+import { EscalationStatusPill } from "@/components/detail/status-pill";
+import { MutationError } from "@/components/mutation-error";
 import { formatRelativeTime } from "@/lib/format";
 import type { EscalationResolveInput } from "@/lib/api/client";
 import type {
@@ -21,6 +23,16 @@ import type {
 } from "@/lib/types/escalations";
 
 type Side = "initiator" | "counterparty";
+
+interface SideView {
+  label: string;
+  agentName: string;
+  escalated: boolean;
+  proposals?: EscalationProposal[];
+  openQuestions: string[];
+  submittedAt?: string;
+  recovered?: EscalationRecoveredPosition;
+}
 
 const MeshBackLink = () => (
   <Link
@@ -75,21 +87,26 @@ export function EscalationDetailClient({ escalationId }: { escalationId: string 
   return <EscalationDetailLoaded esc={data.escalation} />;
 }
 
-function EscalationStatusPill({ status }: { status: EscalationReviewDetail["status"] }) {
-  const styles =
-    status === "resolved"
-      ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
-      : status === "cancelled"
-        ? "bg-muted text-muted-foreground"
-        : "bg-amber-500/10 text-amber-600 dark:text-amber-400";
-  return (
-    <span className={`inline-flex items-center h-6 px-2 rounded text-xs font-medium ${styles}`}>
-      {status}
-    </span>
-  );
-}
-
 function EscalationDetailLoaded({ esc }: { esc: EscalationReviewDetail }) {
+  const initiator: SideView = {
+    label: "Initiator",
+    agentName: esc.initiator_agent_name,
+    escalated: esc.escalated_by_role === "initiator",
+    proposals: esc.initiator_proposals,
+    openQuestions: esc.initiator_open_questions,
+    submittedAt: esc.initiator_submitted_at,
+    recovered: esc.initiator_recovered,
+  };
+  const counterparty: SideView = {
+    label: "Counterparty",
+    agentName: esc.counterparty_agent_name,
+    escalated: esc.escalated_by_role === "counterparty",
+    proposals: esc.counterparty_proposals,
+    openQuestions: esc.counterparty_open_questions,
+    submittedAt: esc.counterparty_submitted_at,
+    recovered: esc.counterparty_recovered,
+  };
+
   return (
     <DetailShell nav={<MeshBackLink />}>
       <header className="mb-6">
@@ -115,24 +132,8 @@ function EscalationDetailLoaded({ esc }: { esc: EscalationReviewDetail }) {
       </header>
 
       <div className="grid grid-cols-2 gap-4 mb-6">
-        <SideCard
-          label="Initiator"
-          agentName={esc.initiator_agent_name}
-          escalated={esc.escalated_by_role === "initiator"}
-          proposals={esc.initiator_proposals}
-          openQuestions={esc.initiator_open_questions}
-          submittedAt={esc.initiator_submitted_at}
-          recovered={esc.initiator_recovered}
-        />
-        <SideCard
-          label="Counterparty"
-          agentName={esc.counterparty_agent_name}
-          escalated={esc.escalated_by_role === "counterparty"}
-          proposals={esc.counterparty_proposals}
-          openQuestions={esc.counterparty_open_questions}
-          submittedAt={esc.counterparty_submitted_at}
-          recovered={esc.counterparty_recovered}
-        />
+        <SideCard side={initiator} />
+        <SideCard side={counterparty} />
       </div>
 
       {esc.status === "pending" ? <ResolveForm esc={esc} /> : <ResolvedView esc={esc} />}
@@ -156,23 +157,8 @@ function EscalationDetailLoaded({ esc }: { esc: EscalationReviewDetail }) {
   );
 }
 
-function SideCard({
-  label,
-  agentName,
-  escalated,
-  proposals,
-  openQuestions,
-  submittedAt,
-  recovered,
-}: {
-  label: string;
-  agentName: string;
-  escalated: boolean;
-  proposals?: EscalationProposal[];
-  openQuestions: string[];
-  submittedAt?: string;
-  recovered?: EscalationRecoveredPosition;
-}) {
+function SideCard({ side }: { side: SideView }) {
+  const { label, agentName, escalated, proposals, openQuestions, submittedAt, recovered } = side;
   const hasProposals = (proposals?.length ?? 0) > 0;
   return (
     <section className="rounded-lg border border-border bg-card p-4">
@@ -264,34 +250,35 @@ function ResolveForm({ esc }: { esc: EscalationReviewDetail }) {
 
   const [mode, setMode] = useState<"pick" | "human">(pickable.length > 0 ? "pick" : "human");
   const [picked, setPicked] = useState(0);
-  const [title, setTitle] = useState(pickable[0]?.proposal.title ?? "");
-  const [description, setDescription] = useState(pickable[0]?.proposal.description ?? "");
+  // `undefined` = use the picked proposal's value; any string (incl. "") =
+  // the user overrode it. Avoids the title/description-shadow-the-proposal
+  // sync dance and makes "edited" a single boolean derived from these.
+  const [editedTitle, setEditedTitle] = useState<string | undefined>(undefined);
+  const [editedDescription, setEditedDescription] = useState<string | undefined>(undefined);
   const [notes, setNotes] = useState("");
+
+  const selected = pickable[picked];
+  const sourceTitle = mode === "pick" ? selected?.proposal.title ?? "" : "";
+  const sourceDescription = mode === "pick" ? selected?.proposal.description ?? "" : "";
+  const displayTitle = editedTitle ?? sourceTitle;
+  const displayDescription = editedDescription ?? sourceDescription;
+  const isEdited =
+    mode === "pick" && (editedTitle !== undefined || editedDescription !== undefined);
+  const canSubmit =
+    displayTitle.trim().length > 0 &&
+    displayDescription.trim().length > 0 &&
+    !resolve.isPending;
 
   const selectProposal = (i: number) => {
     setPicked(i);
-    setTitle(pickable[i]?.proposal.title ?? "");
-    setDescription(pickable[i]?.proposal.description ?? "");
+    setEditedTitle(undefined);
+    setEditedDescription(undefined);
   };
-
   const switchMode = (m: "pick" | "human") => {
     setMode(m);
-    if (m === "pick") {
-      selectProposal(picked);
-    } else {
-      setTitle("");
-      setDescription("");
-    }
+    setEditedTitle(undefined);
+    setEditedDescription(undefined);
   };
-
-  const selected = pickable[picked];
-  const isEdited =
-    mode === "pick" &&
-    !!selected &&
-    (title.trim() !== selected.proposal.title ||
-      description.trim() !== selected.proposal.description);
-  const canSubmit =
-    title.trim().length > 0 && description.trim().length > 0 && !resolve.isPending;
 
   const submit = () => {
     if (!canSubmit) return;
@@ -299,8 +286,8 @@ function ResolveForm({ esc }: { esc: EscalationReviewDetail }) {
     if (mode === "human") {
       input = {
         source: "human",
-        title: title.trim(),
-        description: description.trim(),
+        title: displayTitle.trim(),
+        description: displayDescription.trim(),
         resolution_notes: notes.trim() || undefined,
       };
     } else {
@@ -308,9 +295,9 @@ function ResolveForm({ esc }: { esc: EscalationReviewDetail }) {
       input = {
         source: selected.side,
         source_index: selected.index,
-        edited_title: title.trim() !== selected.proposal.title ? title.trim() : undefined,
+        edited_title: editedTitle !== undefined ? editedTitle.trim() : undefined,
         edited_description:
-          description.trim() !== selected.proposal.description ? description.trim() : undefined,
+          editedDescription !== undefined ? editedDescription.trim() : undefined,
         resolution_notes: notes.trim() || undefined,
       };
     }
@@ -319,6 +306,8 @@ function ResolveForm({ esc }: { esc: EscalationReviewDetail }) {
 
   const inputClass =
     "w-full rounded border border-border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring";
+  const labelClass =
+    "block text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-1";
 
   return (
     <section className="rounded-lg border border-border bg-card p-5 mb-6">
@@ -369,30 +358,26 @@ function ResolveForm({ esc }: { esc: EscalationReviewDetail }) {
 
       <div className="space-y-3">
         <div>
-          <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-1">
-            Title
-          </label>
+          <label className={labelClass}>Title</label>
           <input
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
+            value={displayTitle}
+            onChange={(e) => setEditedTitle(e.target.value)}
             placeholder="Decision title"
             className={inputClass}
           />
         </div>
         <div>
-          <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-1">
-            Description
-          </label>
+          <label className={labelClass}>Description</label>
           <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
+            value={displayDescription}
+            onChange={(e) => setEditedDescription(e.target.value)}
             placeholder="What both sides should do"
             rows={4}
             className={inputClass}
           />
         </div>
         <div>
-          <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-medium mb-1">
+          <label className={labelClass}>
             Notes <span className="text-muted-foreground/60 normal-case">(optional)</span>
           </label>
           <textarea
@@ -411,11 +396,7 @@ function ResolveForm({ esc }: { esc: EscalationReviewDetail }) {
         </p>
       ) : null}
 
-      {resolve.isError ? (
-        <div className="mt-3 text-xs text-status-failed">
-          Couldn&apos;t resolve: {resolve.error instanceof Error ? resolve.error.message : "error"}
-        </div>
-      ) : null}
+      <MutationError mutation={resolve} verb="resolve" />
 
       <div className="flex items-center justify-between mt-4">
         <p className="text-[11px] text-muted-foreground">Both sides resume via executor in ≤30s.</p>
