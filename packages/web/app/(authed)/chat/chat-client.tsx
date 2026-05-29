@@ -16,6 +16,7 @@ import { isApiConfigured } from "@/lib/api/config";
 import {
   api,
   type ChatConversationsResponse,
+  type ChatHistoryStep,
   type ChatRepoCard,
   type SuggestedAction,
 } from "@/lib/api/client";
@@ -497,6 +498,7 @@ function Bubble({
         )}
         {!isUser ? (
           <>
+            <PersistedSteps steps={message.steps} />
             {refIds.length > 0 ? <ReferenceCards ids={refIds} /> : null}
             {message.repo_cards && message.repo_cards.length > 0 ? (
               <RepoCards cards={message.repo_cards} />
@@ -654,6 +656,40 @@ function OpenViewCta({ open_view }: { open_view: { path: string; label?: string 
       {open_view.label ?? "Open this"}
       <ArrowRight className="h-3 w-3" />
     </Link>
+  );
+}
+
+/**
+ * Render the tool-call transcript for a persisted agent message. Mirrors
+ * the live `<Thinking>` "Working" section so users see the same reasoning
+ * trail in conversation history that they saw streaming live, instead of
+ * losing it when the session ended.
+ *
+ * Only `tool_call` / `tool_result` events render here (same filter as the
+ * live view). `agent` text deltas don't apply — the final agent message
+ * is in the bubble above. `agent_reasoning` and `summary` are
+ * intentionally omitted to keep the trail focused on observable actions.
+ */
+function PersistedSteps({ steps }: { steps?: ChatHistoryStep[] }) {
+  if (!steps || steps.length === 0) return null;
+  const toolSteps = steps.filter(
+    (s) => s.kind === "tool_call" || s.kind === "tool_result",
+  );
+  if (toolSteps.length === 0) return null;
+  const adapted: ChatStreamStep[] = toolSteps.map((s) => ({
+    event_id: s.event_id,
+    kind: s.kind as ChatStreamStep["kind"],
+    ...(s.tool_name ? { tool_name: s.tool_name } : {}),
+    content: s.content,
+    received_at: 0,
+  }));
+  return (
+    <div className="mt-3">
+      <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/45">
+        Reasoning
+      </div>
+      <ToolStepList steps={adapted} totalSteps={adapted.length} />
+    </div>
   );
 }
 

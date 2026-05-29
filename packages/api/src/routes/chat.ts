@@ -30,6 +30,8 @@ import {
   type KnownCli,
   type PersonRepository,
   type RuntimeRepository,
+  type SessionEventKind,
+  type SessionEventRepository,
   type SessionRepository,
 } from "@beevibe/core";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
@@ -49,6 +51,12 @@ export interface ChatRoutesDeps {
   /** Needed by GET /chat to flag conversations pinned to an old CLI. */
   runtimeRepo: RuntimeRepository;
   sessionRepo: SessionRepository;
+  /**
+   * Used by GET /chat to attach the intermediate-step transcript
+   * (tool calls, reasoning, summaries) to each agent message so the
+   * persisted view matches what the user saw live.
+   */
+  sessionEventRepo: SessionEventRepository;
   /**
    * Phase 4 daemon-first chat path: dispatchService inserts a pending
    * session, the daemon (or executor for null-runtime agents) claims +
@@ -77,7 +85,28 @@ interface HistoryMessage {
   open_view?: { path: string; label?: string };
   suggested_actions?: SuggestedAction[];
   repo_cards?: RepoCard[];
+  /**
+   * Intermediate reasoning + tool-call transcript for the session that
+   * produced this agent message. Empty / absent for user messages and
+   * for legacy agent messages whose session has no recorded events.
+   * Same shape as the typing-indicator `recent_steps` so the same web
+   * component can render both live and persisted views.
+   */
+  steps?: HistoryStep[];
 }
+
+export interface HistoryStep {
+  event_id: string;
+  kind: SessionEventKind;
+  tool_name: string | null;
+  /** Truncated to STEP_CONTENT_TRUNCATE chars in the response. */
+  content: string;
+}
+
+/** Per-session cap on persisted steps attached to a message. */
+const STEPS_PER_MESSAGE_LIMIT = 100;
+/** Per-event content cap in the persisted-step DTO. */
+const STEP_CONTENT_TRUNCATE = 1000;
 
 // Generic 500 — internal error text stays in server logs, indexed by
 // request_id the client can paste into a bug report.
@@ -236,6 +265,40 @@ export function failureMessageFor(s: {
   const summary = s.result_summary?.trim();
   if (summary && !isBareCliExitMessage(summary)) return summary;
   return DAEMON_LOG_POINTER;
+}
+
+/**
+ * Attach intermediate-step transcripts (tool calls, agent reasoning,
+ * summaries) to each agent message in-place. Single batched query for
+ * every session id present on an agent message. Truncates long events
+ * to keep the response bounded.
+ */
+async function attachStepsToMessages(
+  messages: HistoryMessage[],
+  sessionEventRepo: SessionEventRepository,
+): Promise<void> {
+  const sessionIds = messages
+    .filter((m) => m.role === "agent" && m.session_id)
+    .map((m) => m.session_id!);
+  if (sessionIds.length === 0) return;
+  const eventsBySession = await sessionEventRepo.listForSessions(
+    sessionIds,
+    STEPS_PER_MESSAGE_LIMIT,
+  );
+  for (const message of messages) {
+    if (message.role !== "agent" || !message.session_id) continue;
+    const events = eventsBySession.get(message.session_id) ?? [];
+    if (events.length === 0) continue;
+    message.steps = events.map((e) => ({
+      event_id: e.id,
+      kind: e.kind,
+      tool_name: e.tool_name ?? null,
+      content:
+        e.content.length > STEP_CONTENT_TRUNCATE
+          ? e.content.slice(0, STEP_CONTENT_TRUNCATE) + "…"
+          : e.content,
+    }));
+  }
 }
 
 function chainToMessages(chain: ConversationChain): HistoryMessage[] {
@@ -502,6 +565,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
 
     const truncated = chain.sessions.slice(-Math.ceil(HISTORY_LIMIT / 2)); // each session = 2 messages
     const messages = chainToMessages({ head_id: chain.head_id, sessions: truncated });
+    await attachStepsToMessages(messages, deps.sessionEventRepo);
     const latest = chain.sessions[chain.sessions.length - 1]!;
     // Surface the tail session's id when it's still in flight so the
     // chat UI can resume its "agent is thinking" indicator after a

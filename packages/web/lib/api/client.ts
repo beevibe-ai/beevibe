@@ -312,6 +312,25 @@ export interface ChatHistoryMessage {
   open_view?: { path: string; label?: string };
   suggested_actions?: SuggestedAction[];
   repo_cards?: ChatRepoCard[];
+  /**
+   * Intermediate reasoning + tool-call transcript for the session that
+   * produced this agent message. Absent for user messages and for
+   * legacy agent messages whose session has no recorded events.
+   */
+  steps?: ChatHistoryStep[];
+}
+
+export interface ChatHistoryStep {
+  event_id: string;
+  /** Same kinds the SSE stream emits — see SessionEventKind in core. */
+  kind:
+    | "tool_call"
+    | "tool_result"
+    | "agent"
+    | "agent_reasoning"
+    | "summary";
+  tool_name: string | null;
+  content: string;
 }
 
 export interface ChatHistoryResponse {
