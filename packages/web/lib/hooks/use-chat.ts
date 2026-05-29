@@ -6,6 +6,7 @@ import {
   api,
   type ChatHistoryMessage,
   type ChatHistoryResponse,
+  type ChatHistoryStep,
   type ChatRepoCard,
   type ChatTurnResponse,
   type SuggestedAction,
@@ -29,6 +30,14 @@ export interface ChatMessage {
   suggested_actions?: SuggestedAction[];
   /** Resolved `<repo_card>` directives — rendered as a structured repo list. */
   repo_cards?: ChatRepoCard[];
+  /**
+   * Intermediate reasoning + tool calls for this agent message's
+   * session, attached by the backend. Absent on user messages and on
+   * legacy agent messages whose session has no recorded events. The
+   * UI renders them above the message content to mirror the live
+   * Thinking view.
+   */
+  steps?: ChatHistoryStep[];
 }
 
 let nextLocalId = 0;
@@ -54,6 +63,7 @@ function fromHistory(m: ChatHistoryMessage): ChatMessage {
     ...(m.open_view ? { open_view: m.open_view } : {}),
     ...(m.suggested_actions ? { suggested_actions: m.suggested_actions } : {}),
     ...(m.repo_cards ? { repo_cards: m.repo_cards } : {}),
+    ...(m.steps && m.steps.length > 0 ? { steps: m.steps } : {}),
   };
 }
 
