@@ -1,0 +1,43 @@
+{
+  "name": "@beevibe/crystal",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Beevibe Crystal - turn AI sessions into shareable, queryable capsules. 3D crystal ball viewer + chat + mind map navigation.",
+  "license": "Apache-2.0",
+  "author": "Zhe Pang",
+  "homepage": "https://github.com/beevibe-ai/beevibe/tree/main/packages/beevibe-crystal",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/beevibe-ai/beevibe.git",
+    "directory": "packages/beevibe-crystal"
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -n server,viewer -c blue,magenta \"pnpm run server\" \"pnpm run viewer\"",
+    "server": "node server.mjs",
+    "viewer": "vite",
+    "build": "vite build",
+    "typecheck": "pnpm run lint",
+    "lint": "node --check server.mjs && node --check vite.config.js",
+    "preview": "vite preview",
+    "clean": "rm -rf dist .capsules"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
+    "@react-three/drei": "^9.114.0",
+    "@react-three/fiber": "^8.17.10",
+    "@xyflow/react": "^12.10.2",
+    "dagre": "^0.8.5",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^6.28.0",
+    "remark-gfm": "^4.0.1",
+    "three": "^0.169.0"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.7.0",
+    "concurrently": "^9.0.1",
+    "vite": "^5.4.21"
+  }
+}
