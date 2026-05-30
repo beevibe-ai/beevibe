@@ -8,12 +8,14 @@ import { MeshAskSkeleton } from "@/components/skeletons";
 import { MeshActivityFeed } from "@/components/mesh/activity-feed";
 import { MeshGraphStatic } from "@/components/mesh/graph-static";
 import { ChainBudget } from "@/components/mesh/chain-budget";
+import { MeshWindowPills } from "@/components/mesh/window-pills";
 import { useMeshOverview } from "@/lib/hooks/use-mesh";
 import { isApiConfigured } from "@/lib/api/config";
-import type { MeshDisplay, MeshHover } from "@/lib/types/mesh";
+import type { MeshDisplay, MeshHover, MeshWindow } from "@/lib/types/mesh";
 
 export function MeshClient() {
-  const { data, isLoading, isError } = useMeshOverview();
+  const [meshWindow, setMeshWindow] = useState<MeshWindow>("24h");
+  const { data, isLoading, isError } = useMeshOverview({ window: meshWindow });
 
   return (
     <div className="flex-1 overflow-auto">
@@ -27,6 +29,7 @@ export function MeshClient() {
               chain so loops can&rsquo;t run away.
             </p>
           </div>
+          <MeshWindowPills value={meshWindow} onChange={setMeshWindow} />
         </div>
 
         <Body data={data} isLoading={isLoading} isError={isError} />

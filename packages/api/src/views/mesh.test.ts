@@ -11,7 +11,7 @@
  *   5) SUMMARY_SQL        → total counts
  */
 import { describe, it, expect } from "vitest";
-import { getMeshOverview } from "./mesh.js";
+import { getMeshOverview, isMeshWindow } from "./mesh.js";
 import { makeMockPool } from "./test-helpers.js";
 
 const baseAsk = {
@@ -276,5 +276,28 @@ describe("getMeshOverview — nodes + edges + summary", () => {
     ]);
     const { summary } = await getMeshOverview(pool);
     expect(summary).toEqual({ asks_24h: 12, in_flight: 3, edge_count: 7 });
+  });
+
+  it("accepts an explicit window parameter without crashing", async () => {
+    const pool = makeMockPool([[], [], [], [], []]);
+    await expect(getMeshOverview(pool, "7d")).resolves.toBeDefined();
+    await expect(getMeshOverview(pool, "all")).resolves.toBeDefined();
+  });
+});
+
+describe("isMeshWindow", () => {
+  it("accepts the four valid windows", () => {
+    expect(isMeshWindow("24h")).toBe(true);
+    expect(isMeshWindow("7d")).toBe(true);
+    expect(isMeshWindow("30d")).toBe(true);
+    expect(isMeshWindow("all")).toBe(true);
+  });
+
+  it("rejects unknown strings and non-string inputs", () => {
+    expect(isMeshWindow("60d")).toBe(false);
+    expect(isMeshWindow("24H")).toBe(false);
+    expect(isMeshWindow("")).toBe(false);
+    expect(isMeshWindow(undefined)).toBe(false);
+    expect(isMeshWindow(7)).toBe(false);
   });
 });

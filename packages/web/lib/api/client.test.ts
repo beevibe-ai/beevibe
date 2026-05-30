@@ -98,10 +98,10 @@ describe("api client (reads)", () => {
       expect(fetchJsonMock).toHaveBeenCalledWith("/promotion", { signal: undefined });
     });
 
-    it("mesh.overview() hits /mesh with optional since", async () => {
-      await api.mesh.overview({ since: "2026-04-30T00:00:00Z" });
+    it("mesh.overview() hits /mesh with optional window", async () => {
+      await api.mesh.overview({ window: "7d" });
       expect(fetchJsonMock).toHaveBeenCalledWith("/mesh", {
-        query: { since: "2026-04-30T00:00:00Z" },
+        query: { window: "7d" },
         signal: undefined,
       });
     });

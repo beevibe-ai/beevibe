@@ -1,5 +1,6 @@
 import type { TaskListFilter } from "@/lib/api/client";
 import type { MemoryScope } from "@beevibe/core";
+import type { MeshWindow } from "@/lib/types/mesh";
 
 export const queryKeys = {
   tasks: {
@@ -27,7 +28,7 @@ export const queryKeys = {
   },
   mesh: {
     all: ["mesh"] as const,
-    overview: (filter: { since?: string }) => ["mesh", "overview", filter] as const,
+    overview: (filter: { window?: MeshWindow }) => ["mesh", "overview", filter] as const,
   },
   dashboard: {
     all: ["dashboard"] as const,
