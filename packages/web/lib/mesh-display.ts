@@ -46,6 +46,10 @@ function askToDisplay(data: MeshAskData): MeshAsk {
     status: DISPLAY_STATUS[data.status],
     duration_label: formatDurationLabel(data.started_at, data.completed_at),
     intent: data.intent,
+    // Drives activity-feed's click-through to /tasks/:id. The field name is
+    // legacy ("short_id"); the route accepts the full task id and the SQL
+    // returns it on every mesh kind that has a source task.
+    source_task_short_id: data.source_task_id,
     chain_depth:
       data.rounds_completed !== undefined && data.max_rounds !== undefined
         ? `${data.rounds_completed}/${data.max_rounds}`

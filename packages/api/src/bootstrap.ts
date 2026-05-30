@@ -34,6 +34,7 @@ import {
 } from "@beevibe/core/services/memory";
 import { TaskService } from "@beevibe/core/services/task-service";
 import { EscalationService } from "@beevibe/core/services/escalation-service";
+import { NegotiationService } from "@beevibe/core/services/negotiation-service";
 import { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { DaemonOrphanReaper } from "@beevibe/core/services/orphan-reaper";
 import { buildPostDispatchHook } from "@beevibe/core/services/post-dispatch";
@@ -48,6 +49,7 @@ import { createLearnedSkillsRouter } from "./routes/learned-skills.js";
 import { createFindRepoRouter } from "./routes/find-repo.js";
 import { createCapabilitiesRouter } from "./routes/capabilities.js";
 import { createEscalationRouter } from "./routes/escalation.js";
+import { createNegotiationRouter } from "./routes/negotiation.js";
 import { createViewRouter } from "./routes/view.js";
 import { createStreamRouter } from "./routes/stream.js";
 import { createChatRouter } from "./routes/chat.js";
@@ -219,6 +221,14 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     dispatchService,
   });
 
+  // Read-only review of negotiations for the /negotiations/:id web page.
+  const negotiationService = new NegotiationService({
+    negotiationRepo,
+    negotiationRoundRepo,
+    agentRepo,
+    escalationRepo,
+  });
+
   // M6.4 mesh server: in-process A2A broker. Reuses LocalWorkspaceManager
   // + runtime registry from M5 (shared across executor + api per the M6
   // composition-root design — both processes can spawn target agent CLIs
@@ -352,6 +362,12 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     pool,
   });
   server.getApp().use("/escalation", escalationRouter);
+
+  const negotiationRouter = createNegotiationRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    negotiationService,
+  });
+  server.getApp().use("/negotiation", negotiationRouter);
 
   // Phase 8 — self-serve signup. UNAUTHENTICATED. MUST be mounted
   // BEFORE viewRouter (the read-only mount below has no path prefix

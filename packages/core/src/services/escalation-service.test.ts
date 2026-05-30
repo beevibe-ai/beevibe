@@ -14,9 +14,9 @@ import {
   EscalationNotFoundError,
   EscalationService,
   EscalationStateError,
-  NegotiationNotFoundError,
   NotPartyError,
 } from "./escalation-service.js";
+import { NegotiationNotFoundError } from "./negotiation-service.js";
 
 function makeNeg(overrides: Partial<Negotiation> = {}): Negotiation {
   return {

@@ -70,6 +70,10 @@
       "types": "./dist/services/escalation-service.d.ts",
       "default": "./dist/services/escalation-service.js"
     },
+    "./services/negotiation-service": {
+      "types": "./dist/services/negotiation-service.d.ts",
+      "default": "./dist/services/negotiation-service.js"
+    },
     "./services/dispatch-service": {
       "types": "./dist/services/dispatch-service.d.ts",
       "default": "./dist/services/dispatch-service.js"

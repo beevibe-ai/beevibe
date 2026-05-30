@@ -53,3 +53,17 @@ export interface NegotiationRound {
   message: string;
   sent_at: Date;
 }
+
+/**
+ * A negotiation prepared for human review: the row plus the full round
+ * transcript, both agent display names, and the linked escalation id when
+ * the cap was hit. Resolved at read-time — the underlying row is never
+ * mutated.
+ */
+export interface NegotiationReview extends Negotiation {
+  initiator_agent_name: string;
+  counterparty_agent_name: string;
+  rounds: NegotiationRound[];
+  /** Set when status === 'escalated' and the escalation row exists. */
+  escalation_id?: string;
+}
