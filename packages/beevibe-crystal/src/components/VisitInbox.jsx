@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 
 // Controlled body — Capsule.jsx owns the open/closed state and renders the
 // toggle in the page header. Pass `open=false` to render nothing.
@@ -6,11 +6,12 @@ export default function VisitInbox({ capsuleId, open }) {
   const [status, setStatus] = useState("idle"); // idle | loading | ok | error
   const [visits, setVisits] = useState([]);
   const [error, setError] = useState("");
-  const fetched = useRef(false);
 
   useEffect(() => {
-    if (!open || fetched.current) return;
-    fetched.current = true;
+    if (!open) return;
+    // No once-guard ref here: under React StrictMode the effect runs twice,
+    // and a ref guard would let the first (cancelled) run win and strand
+    // status on "loading" forever. The `cancelled` flag + deps handle it.
     setStatus("loading");
     let cancelled = false;
     (async () => {
