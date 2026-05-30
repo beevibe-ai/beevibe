@@ -10,6 +10,7 @@ import {
   PostgresNegotiationRoundRepository,
   PostgresAgentProvisionEventRepository,
   PostgresPersonRepository,
+  PostgresPersonSecretRepository,
   PostgresRepoRunRepository,
   PostgresRoomRepository,
   PostgresRuntimeRepository,
@@ -48,6 +49,7 @@ import { createRepoRunsRouter } from "./routes/repo-runs.js";
 import { createLearnedSkillsRouter } from "./routes/learned-skills.js";
 import { createFindRepoRouter } from "./routes/find-repo.js";
 import { createCapabilitiesRouter } from "./routes/capabilities.js";
+import { createSecretsRouter } from "./routes/secrets.js";
 import { createEscalationRouter } from "./routes/escalation.js";
 import { createNegotiationRouter } from "./routes/negotiation.js";
 import { createViewRouter } from "./routes/view.js";
@@ -143,6 +145,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const repoRunRepo = new PostgresRepoRunRepository(pool);
   const learnedSkillRepo = new PostgresLearnedSkillRepository(pool);
   const skillOutcomeRepo = new PostgresSkillOutcomeRepository(pool);
+  const personSecretRepo = new PostgresPersonSecretRepository(pool);
 
   const skillsDir =
     cfg.skillsSourceDir ?? path.resolve(process.cwd(), "skills");
@@ -337,6 +340,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     learnedSkillRepo,
     embeddings: embed,
     personRepo,
+    personSecretRepo,
   });
   server.getApp().use("/mcp", mcpRouter);
 
@@ -424,6 +428,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     taskRepo,
     repoRunRepo,
     workProductRepo,
+    personSecretRepo,
     hub: daemonHub,
     makeMemoryAgent,
     mcpServerUrl: cfg.mcpServerUrl,
@@ -529,9 +534,21 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     workProductRepo,
     repoRunRepo,
     learnedSkillRepo,
+    personSecretRepo,
     dispatchService,
   });
   server.getApp().use("/capabilities", capabilitiesRouter);
+
+  // Per-person encrypted secret store — drives sandbox env injection
+  // for use_repo runs (so cloud-API-using repos like
+  // architecture-deep-research can call OPENAI / search providers).
+  // See migration 1781200000000_add-person-secret.sql for the threat
+  // model. Requires BEEVIBE_SECRETS_KEY in the api server's env.
+  const secretsRouter = createSecretsRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    personSecretRepo,
+  });
+  server.getApp().use("/secrets", secretsRouter);
 
   // Phase 8 — onboarding/identity surface (bv_u_).
   // GET /me, POST /me/onboarding/complete, GET /health/runtime.

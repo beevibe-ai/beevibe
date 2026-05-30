@@ -63,6 +63,15 @@ export interface RunRepoDispatch {
     max_install_attempts?: number;
     disk_mb?: number;
   };
+  /**
+   * Decrypted env vars to inject into the sandbox container via
+   * `docker run --env NAME=VALUE`. Resolved server-side at
+   * /runtime/claim from the caller's person_secret store (only
+   * names the user authorized via use_repo({ secrets: [...] })).
+   * The daemon must NEVER log values from this map — orchestrator
+   * code already avoids echoing env into transcripts.
+   */
+  sandbox_env?: Record<string, string>;
 }
 
 export interface RunRepoArtifact {

@@ -36,3 +36,4 @@ export {
   PostgresSkillOutcomeRepository,
   newSkillOutcomeId,
 } from "./repo-run-repo.js";
+export { PostgresPersonSecretRepository } from "./person-secret-repo.js";

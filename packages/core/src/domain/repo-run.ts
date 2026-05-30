@@ -53,6 +53,13 @@ export interface RepoRun {
   learned_skill_id?: string;
   /** Discovery candidates considered for this run (debug only). */
   ranker_candidates?: unknown;
+  /**
+   * Names (not values) of person_secret rows the caller asked to be
+   * injected into the sandbox container as env vars. Resolved + decrypted
+   * at /runtime/claim time so decrypted values never persist in the DB.
+   * Empty / undefined when use_repo was called without secrets.
+   */
+  requested_secret_names?: string[];
 
   started_at: Date;
   ended_at?: Date;

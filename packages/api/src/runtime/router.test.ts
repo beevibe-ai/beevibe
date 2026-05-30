@@ -110,6 +110,13 @@ describe("/runtime — integration", () => {
       workProductRepo: {
         create: vi.fn(async () => ({})),
       } as unknown as import("@beevibe/core").WorkProductRepository,
+      personSecretRepo: {
+        listByPerson: vi.fn(async () => []),
+        findRecord: vi.fn(async () => undefined),
+        findRecordsByNames: vi.fn(async () => new Map()),
+        upsert: vi.fn(),
+        delete: vi.fn(async () => false),
+      } as unknown as import("@beevibe/core").PersonSecretRepository,
       hub,
       makeMemoryAgent: () => makeMemoryAgentStub(),
       mcpServerUrl: "http://api.test/mcp",

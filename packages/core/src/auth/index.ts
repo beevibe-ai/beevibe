@@ -4,3 +4,4 @@ export * from "./constants.js";
 export * from "./find-user-agent.js";
 export * from "./password.js";
 export * from "./provision.js";
+export * from "./secrets.js";

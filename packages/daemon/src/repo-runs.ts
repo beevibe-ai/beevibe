@@ -122,6 +122,11 @@ export async function runRepoDispatch(
     input_filename: rr.input_filename,
     claude_bin: CLAUDE_BIN,
     max_runtime_seconds: (rr.limits?.wall_clock_minutes ?? 20) * 60,
+    // Decrypted secrets the api resolved at /runtime/claim and shipped
+    // in the DispatchPayload. createSandbox feeds them to
+    // `docker run --env` so the sandboxed child can read them as
+    // process.env.<NAME>. Never logged or echoed into the transcript.
+    sandbox_env: rr.sandbox_env,
     on_state: (s) => {
       pushNew(s.transcript);
       // Walk new tool-call events to capture install/invocation hints.

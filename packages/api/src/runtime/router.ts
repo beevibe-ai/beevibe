@@ -12,6 +12,7 @@ import {
   type AgentRepository,
   type DaemonRepository,
   type PersonRepository,
+  type PersonSecretRepository,
   type RepoRunRepository,
   type RepoRunStatus,
   type Session,
@@ -22,6 +23,7 @@ import {
   type WorkProductRepository,
 } from "@beevibe/core";
 import {
+  decryptSecret,
   generateDaemonApiKey,
   hashDaemonToken,
 } from "@beevibe/core/auth";
@@ -62,6 +64,14 @@ export interface RuntimeRouterDeps {
   repoRunRepo: RepoRunRepository;
   /** Capability Network: artifacts from a run_repo come back here as work_products. */
   workProductRepo: WorkProductRepository;
+  /**
+   * Per-person encrypted secret store. composeDispatchPayload reads
+   * repo_run.requested_secret_names at /runtime/claim time and uses
+   * this repo to resolve + decrypt the values so they can ride along
+   * in DispatchPayload.run_repo.sandbox_env to the daemon's
+   * docker run --env path.
+   */
+  personSecretRepo: PersonSecretRepository;
   hub: DaemonHub;
   /** Per-agent factory for prepareBriefing at claim time. */
   makeMemoryAgent: (agentId: string) => MemoryAgent;
@@ -587,10 +597,47 @@ async function composeDispatchPayload(
       );
       return null;
     }
+    // Resolve + decrypt the requested secrets here, at claim time, so
+    // decrypted values never persist in the DB. If a name was deleted
+    // between the use_repo call and this claim, it's silently omitted
+    // (graceful degradation — the run still gets whatever IS available).
+    let sandboxEnv: Record<string, string> | undefined;
+    const requested = repoRun.requested_secret_names ?? [];
+    if (requested.length > 0) {
+      try {
+        const records = await deps.personSecretRepo.findRecordsByNames(
+          agent.owner_id,
+          requested,
+        );
+        const env: Record<string, string> = {};
+        for (const name of requested) {
+          const record = records.get(name);
+          if (!record) continue;
+          try {
+            env[name] = decryptSecret(record);
+          } catch (err) {
+            // A decrypt failure here means an admin rotated
+            // BEEVIBE_SECRETS_KEY without re-encrypting rows. Don't
+            // leak the original error (could carry key/IV fragments);
+            // just drop the secret from the env so the rest still
+            // flow through.
+            console.warn(
+              `[runtime/claim] secret decrypt failed for ${name}: ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        }
+        if (Object.keys(env).length > 0) sandboxEnv = env;
+      } catch (err) {
+        console.warn(
+          `[runtime/claim] secret resolution failed: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
     runRepoSidecar = {
       repo_run_id: repoRun.id,
       repo_url: repoRun.repo_url,
       goal: repoRun.goal,
+      sandbox_env: sandboxEnv,
     };
     // Flip the row's status to running so the UI shows the right pill
     // the moment the daemon claims; daemon will overwrite at /done.

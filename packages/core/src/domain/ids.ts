@@ -27,3 +27,4 @@ export const agentProvisionEventId = (): string => generateId("ape");
 export const repoRunId = (): string => generateId("repo");
 export const learnedSkillId = (): string => generateId("skill");
 export const skillOutcomeId = (): string => generateId("sout");
+export const personSecretId = (): string => generateId("psec");
