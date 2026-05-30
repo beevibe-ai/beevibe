@@ -3,13 +3,6 @@
 import { cn } from "@/lib/utils";
 import { MESH_WINDOWS, type MeshWindow } from "@/lib/types/mesh";
 
-const WINDOW_LABEL: Record<MeshWindow, string> = {
-  "24h": "24h",
-  "7d": "7d",
-  "30d": "30d",
-  all: "All time",
-};
-
 interface Props {
   value: MeshWindow;
   onChange: (value: MeshWindow) => void;
@@ -32,7 +25,7 @@ export function MeshWindowPills({ value, onChange }: Props) {
                 : "text-muted-foreground hover:text-foreground hover:bg-secondary",
             )}
           >
-            {WINDOW_LABEL[w]}
+            {w === "all" ? "All time" : w}
           </button>
         );
       })}

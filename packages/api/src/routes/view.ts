@@ -48,7 +48,7 @@ import { listAgents, getAgent } from "../views/agents.js";
 import { getSessionByShortId, getSessionTree, AmbiguousShortIdError } from "../views/sessions.js";
 import { listMemoryFactCounts, listMemoryFacts } from "../views/memory.js";
 import { getDashboardSummary } from "../views/dashboard.js";
-import { getMeshOverview, isMeshWindow } from "../views/mesh.js";
+import { DEFAULT_MESH_WINDOW, getMeshOverview, isMeshWindow } from "../views/mesh.js";
 import { listPromotions } from "../views/promotions.js";
 import { listActivity } from "../views/activity.js";
 import { getWorkProduct } from "../views/work-product.js";
@@ -502,7 +502,8 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.get("/mesh", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const window = isMeshWindow(req.query.window) ? req.query.window : "24h";
+    const raw = req.query.window;
+    const window = isMeshWindow(raw) ? raw : DEFAULT_MESH_WINDOW;
     try {
       const overview = await getMeshOverview(deps.pool, window);
       res.json(overview);

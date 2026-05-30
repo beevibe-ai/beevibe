@@ -19,11 +19,10 @@
  * The asks/edges/nodes/summary all union both sources so the activity feed +
  * graph + KPIs reflect the full mesh picture.
  *
- * The time window is parameterized via {@link MeshWindow}. The default is
- * "24h" to match the prior behavior; `"all"` lifts the time predicate so
- * everything ever recorded shows (still capped by the row LIMIT). The
- * `asks_24h` summary KPI stays hardcoded at 24h regardless of window — it
- * answers "what happened today", not "what's in the current view".
+ * The time window is parameterized via {@link MeshWindow}. `"all"` lifts
+ * the time predicate (still capped by the row LIMIT). `asks_24h` stays
+ * hardcoded at 24h — it answers "what happened today", not "what's in the
+ * current view".
  */
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
@@ -40,7 +39,7 @@ import type {
 import { MESH_WINDOWS } from "./types.js";
 
 const ASKS_LIMIT = 50;
-const DEFAULT_WINDOW: MeshWindow = "24h";
+export const DEFAULT_MESH_WINDOW: MeshWindow = "24h";
 
 const WINDOW_INTERVAL: Record<Exclude<MeshWindow, "all">, string> = {
   "24h": "24 hours",
@@ -285,7 +284,7 @@ function extractMeshIntent(intent: string): string {
 
 export async function getMeshOverview(
   pool: Pool,
-  window: MeshWindow = DEFAULT_WINDOW,
+  window: MeshWindow = DEFAULT_MESH_WINDOW,
 ): Promise<MeshOverview> {
   const { negWindow, sessWindow } = buildWindowFragments(window);
 

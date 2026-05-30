@@ -520,12 +520,11 @@ export interface MeshSummaryData {
 }
 
 /**
- * Time window the mesh page can show. Driven by the header pill row; the
- * default is "24h" to match the prior behavior. `"all"` lifts the time
- * filter entirely (still capped by the row LIMIT).
+ * Time window the mesh page can show. Driven by the header pill row.
+ * `"all"` lifts the time filter entirely (still capped by the row LIMIT).
  */
-export type MeshWindow = "24h" | "7d" | "30d" | "all";
-export const MESH_WINDOWS: readonly MeshWindow[] = ["24h", "7d", "30d", "all"];
+export const MESH_WINDOWS = ["24h", "7d", "30d", "all"] as const;
+export type MeshWindow = (typeof MESH_WINDOWS)[number];
 
 export interface MeshOverview {
   asks: MeshAskData[];
