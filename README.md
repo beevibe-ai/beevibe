@@ -7,7 +7,7 @@
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](./LICENSE)
 [![GitHub stars](https://img.shields.io/github/stars/beevibe-ai/beevibe?style=social)](https://github.com/beevibe-ai/beevibe)
 
-[Architecture](#architecture) · [Concepts](#core-concepts) · [Quick Start](#quick-start) · [Deploy](./DEPLOYMENT.md) · [Contributing](./CONTRIBUTING.md)
+[Architecture](#architecture) · [Crystal](./packages/beevibe-crystal) · [Concepts](#core-concepts) · [Quick Start](#quick-start) · [Deploy](./DEPLOYMENT.md) · [Contributing](./CONTRIBUTING.md)
 
 </div>
 
@@ -28,6 +28,29 @@ different engineers.
 
 Beevibe is **self-hosted**. You own the Postgres database, the Node
 services, the local daemon processes, and the CLI binaries doing the work.
+
+## Beevibe Crystal
+
+Beevibe Crystal turns a Claude Code session into a shareable, queryable
+capsule. It is the public artifact layer for Beevibe: instead of sending a
+raw transcript, you publish a link that teammates can ask questions about.
+
+Try it from the repo root:
+
+```bash
+pnpm install
+pnpm crystal:dev
+```
+
+Then open <http://localhost:5273> or run `/crystal:publish` from Claude Code.
+See [packages/beevibe-crystal](./packages/beevibe-crystal) for details.
+
+To install the Claude Code command:
+
+```bash
+claude plugin marketplace add beevibe-ai/claude-plugins
+claude plugin install crystal@beevibe
+```
 
 ## Why Beevibe?
 
@@ -99,6 +122,7 @@ For a deeper version of any layer, see the package READMEs:
 - [packages/daemon](./packages/daemon/README.md) — local CLI claimer + spawner
 - [packages/scheduler](./packages/scheduler/README.md) — server-side fallback claimant
 - [packages/web](./packages/web/README.md) — Next.js dashboard
+- [packages/beevibe-crystal](./packages/beevibe-crystal/README.md) — shareable, queryable agent-session capsules
 
 ## Core Concepts
 

@@ -1,6 +1,7 @@
 # Heavy / dev-only / sensitive paths excluded from Docker build contexts.
 node_modules
 **/node_modules
+packages/beevibe-crystal
 .next
 **/.next
 dist
