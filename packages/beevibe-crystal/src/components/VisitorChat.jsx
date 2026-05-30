@@ -119,7 +119,10 @@ function VisitorChatInner({ capsule, onActivity }, ref) {
     } catch (e) {
       setMessages(prior);
       setInput(q);
-      setError(e.message || String(e));
+      // Keep the technical detail (e.g. "server is missing ANTHROPIC_API_KEY")
+      // in the console for debugging, but never surface it to a visitor.
+      console.error("crystal chat failed:", e);
+      setError("This capsule can't answer right now. Try again in a bit.");
     } finally {
       setBusy(false);
     }
@@ -164,7 +167,7 @@ function VisitorChatInner({ capsule, onActivity }, ref) {
             )
           )
         )}
-        {error && <div className="cb-fail-text">Error: {error}</div>}
+        {error && <div className="cb-fail-text">{error}</div>}
         <div ref={endRef} aria-hidden />
       </div>
 
