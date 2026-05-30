@@ -79,6 +79,26 @@ export interface UseChatOptions {
  */
 const FRESH_CACHE_ID = "__draft__";
 
+/**
+ * Errors the POST /chat handler returns when the session is already
+ * persisted server-side and the daemon will keep running it to completion.
+ * Either way, the eventual `session.updated` SSE invalidates chat history
+ * and the agent reply lands without the user needing to retry — so we
+ * preserve the optimistic user message and keep the thinking indicator on
+ * instead of rolling everything back.
+ *
+ *   - 503 `agent_offline` — no daemon connected yet; session is queued.
+ *   - 504 `chat_turn_timeout` — POST exceeded CHAT_TURN_TIMEOUT_MS (90s);
+ *     daemon is still running the agent and will resolve in the background.
+ *     This is the common case for long mesh chains.
+ */
+export function isInFlightAfterError(err: unknown): boolean {
+  if (!(err instanceof ApiError)) return false;
+  if (err.status === 503 && err.errorCode === "agent_offline") return true;
+  if (err.status === 504 && err.errorCode === "chat_turn_timeout") return true;
+  return false;
+}
+
 /** Empty response shape used to seed a fresh-cache entry. */
 const FRESH_HISTORY: ChatHistoryResponse = {
   ok: true,
@@ -230,14 +250,20 @@ export function useChat(opts: UseChatOptions = {}) {
       queryClient.invalidateQueries({ queryKey: latestKey });
     },
     onError: (err) => {
-      // agent_offline (503) is special: the api persisted the session row
-      // before rejecting, so the turn is queued, not lost. Keep the user
-      // message AND in_flight_session_id visible — refresh would show
-      // them anyway from the server, and rolling back here creates a
-      // flicker of "vanished, then back on refresh". When the daemon
-      // reconnects and the session completes, session.updated SSE
-      // invalidates chat queries and the response auto-appears.
-      if (err instanceof ApiError && err.errorCode === "agent_offline") return;
+      // "In flight after error" errors (see isInFlightAfterError) mean
+      // the session is persisted server-side and the daemon will keep
+      // running. Keep the user message AND in_flight_session_id visible —
+      // rolling back creates a "vanished, then back on refresh" flicker.
+      // Also hand the slot off to `latest` so the ?new=1 URL strip
+      // (cleanup effect in chat-client.tsx) doesn't flash through an
+      // empty latest slot on its way to the SSE-recovered reply.
+      if (isInFlightAfterError(err)) {
+        const latestKey = queryKeys.chat.history(undefined);
+        const handed = queryClient.getQueryData<ChatHistoryResponse>(queryKey);
+        if (handed) queryClient.setQueryData(latestKey, handed);
+        queryClient.invalidateQueries({ queryKey: latestKey });
+        return;
+      }
 
       // Other errors (429 rate limit, 400 validation, etc.) reject the
       // turn before persistence — roll back the optimistic user message
@@ -284,15 +310,12 @@ export function useChat(opts: UseChatOptions = {}) {
   const serverInFlightSessionId = history.data?.in_flight_session_id;
   const inFlightSessionId = localSendingSessionId ?? serverInFlightSessionId;
 
-  // agent_offline is benign: the api persisted the session row and a
-  // daemon will claim it when one comes online. The optimistic user
-  // message + spinner already convey "in flight"; surfacing the 503
-  // as a red banner is misleading (the response DOES arrive — via the
-  // SSE invalidation once the queued session completes).
-  const isOfflineQueued =
-    mutation.error instanceof ApiError &&
-    mutation.error.errorCode === "agent_offline";
-  const exposedError = isOfflineQueued ? null : mutation.error;
+  // Errors classified as "in flight after error" are benign: the api
+  // persisted the session row and the daemon will deliver the reply via
+  // SSE. The optimistic user message + spinner already convey "in flight";
+  // surfacing the 503/504 as a red banner is misleading (the response DOES
+  // arrive — via the SSE invalidation once the session completes).
+  const exposedError = isInFlightAfterError(mutation.error) ? null : mutation.error;
 
   return {
     messages,
