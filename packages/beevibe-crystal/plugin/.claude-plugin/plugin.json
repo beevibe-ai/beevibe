@@ -1,0 +1,23 @@
+{
+  "name": "crystal",
+  "version": "0.1.0",
+  "description": "Beevibe Crystal - publish your current Claude Code session as a queryable capsule. Visitors can ask it questions and get answers in your voice, with the full session as context.",
+  "author": {
+    "name": "Beevibe",
+    "url": "https://github.com/beevibe-ai"
+  },
+  "repository": "https://github.com/beevibe-ai/beevibe/tree/main/packages/beevibe-crystal",
+  "license": "Apache-2.0",
+  "homepage": "https://github.com/beevibe-ai/beevibe/tree/main/packages/beevibe-crystal",
+  "keywords": [
+    "claude-code",
+    "share",
+    "session",
+    "capsule",
+    "crystal-ball",
+    "beevibe"
+  ],
+  "commands": [
+    "./commands/publish.md"
+  ]
+}

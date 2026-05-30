@@ -1,0 +1,37 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "beevibe",
+  "description": "Beevibe Claude Code plugins for sharing, researching, and coordinating AI agent work.",
+  "owner": {
+    "name": "Beevibe",
+    "email": "hello@beevibe.ai",
+    "url": "https://github.com/beevibe-ai"
+  },
+  "plugins": [
+    {
+      "name": "crystal",
+      "description": "Beevibe Crystal - publish your current Claude Code session as a queryable capsule. Visitors get a share URL; the capsule answers in your voice with the full session as context.",
+      "author": {
+        "name": "Beevibe"
+      },
+      "category": "collaboration",
+      "source": "./packages/beevibe-crystal/plugin",
+      "homepage": "https://github.com/beevibe-ai/beevibe/tree/main/packages/beevibe-crystal"
+    },
+    {
+      "name": "adr",
+      "description": "Architecture Deep Research - scan a repo, draft a PRD, run live deep research, and get a cited handoff for system-design decisions.",
+      "author": {
+        "name": "Beevibe"
+      },
+      "category": "agent-orchestration",
+      "source": {
+        "source": "git-subdir",
+        "url": "https://github.com/beevibe-ai/architecture-deep-research.git",
+        "path": "plugin",
+        "ref": "main"
+      },
+      "homepage": "https://github.com/beevibe-ai/architecture-deep-research"
+    }
+  ]
+}

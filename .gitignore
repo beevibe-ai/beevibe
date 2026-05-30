@@ -15,3 +15,4 @@ coverage/
 .gstack/
 .vercel/
 agent_*/
+packages/beevibe-crystal/.capsules/
