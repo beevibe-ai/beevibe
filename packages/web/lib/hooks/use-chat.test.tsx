@@ -3,13 +3,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, act, waitFor } from "@testing-library/react";
 import type { ReactNode } from "react";
 
+// `fresh: true` disables the history query (enabled: !fresh), so we only
+// need to mock the send path here.
 vi.mock("@/lib/api/client", () => ({
-  api: {
-    chat: {
-      history: vi.fn(),
-      send: vi.fn(),
-    },
-  },
+  api: { chat: { send: vi.fn() } },
 }));
 
 vi.mock("@/lib/api/config", () => ({
@@ -22,7 +19,6 @@ import { ApiError } from "@/lib/api/http";
 import { queryKeys } from "./keys";
 
 const sendMock = vi.mocked(api.chat.send);
-const historyMock = vi.mocked(api.chat.history);
 
 function makeWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -34,7 +30,6 @@ function makeWrapper() {
 
 beforeEach(() => {
   sendMock.mockReset();
-  historyMock.mockReset();
 });
 
 afterEach(() => {

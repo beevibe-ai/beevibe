@@ -172,6 +172,22 @@ export function useChat(opts: UseChatOptions = {}) {
   // source of truth for what to chain onto next.
   const priorSessionId = history.data?.prior_session_id ?? undefined;
 
+  // Copy whatever's now in the current cache slot into the `latest`
+  // slot, then mark `latest` stale so a background refetch lands. Used
+  // by both onSuccess (after the agent reply) and the in-flight-after-
+  // error branch of onError (504/503): the moment ChatClient's URL-strip
+  // useEffect flips `queryKey` FRESH_CACHE_ID → undefined, the new slot
+  // already has data. Without this seed, the slot is empty until the
+  // refetch lands and the chat surface blanks for a beat — wiping
+  // useChatStream's accumulated SSE steps. `staleTime: Infinity` keeps
+  // the seeded data displayed during the background refetch.
+  const handLatestSlot = () => {
+    const latestKey = queryKeys.chat.history(undefined);
+    const handed = queryClient.getQueryData<ChatHistoryResponse>(queryKey);
+    if (handed) queryClient.setQueryData(latestKey, handed);
+    queryClient.invalidateQueries({ queryKey: latestKey });
+  };
+
   const mutation = useMutation<
     ChatTurnResponse,
     Error,
@@ -232,36 +248,15 @@ export function useChat(opts: UseChatOptions = {}) {
       }
       // Conversation list (sidebar) needs to see the new chain.
       queryClient.invalidateQueries({ queryKey: queryKeys.chat.conversations() });
-      // Seed the "latest" cache slot before invalidating it, so the
-      // moment ChatClient's URL-strip useEffect (fires on
-      // `messages.length > 0 && !isSubmitting`) flips `queryKey`
-      // from FRESH_CACHE_ID → undefined, the new slot already has
-      // the just-completed turn. Without the seed, the slot is empty
-      // until refetch lands and the whole chat surface (composer,
-      // messages, thinking block) blanks for a beat — and the
-      // re-render wipes useChatStream's accumulated SSE steps.
-      // Pairing: seed populates the slot for the immediate read; the
-      // invalidate after marks it stale so React Query refetches in
-      // the background. `staleTime: Infinity` keeps the seeded data
-      // displayed during that refetch — no flicker.
-      const latestKey = queryKeys.chat.history(undefined);
-      const handed = queryClient.getQueryData<ChatHistoryResponse>(queryKey);
-      if (handed) queryClient.setQueryData(latestKey, handed);
-      queryClient.invalidateQueries({ queryKey: latestKey });
+      handLatestSlot();
     },
     onError: (err) => {
       // "In flight after error" errors (see isInFlightAfterError) mean
       // the session is persisted server-side and the daemon will keep
       // running. Keep the user message AND in_flight_session_id visible —
       // rolling back creates a "vanished, then back on refresh" flicker.
-      // Also hand the slot off to `latest` so the ?new=1 URL strip
-      // (cleanup effect in chat-client.tsx) doesn't flash through an
-      // empty latest slot on its way to the SSE-recovered reply.
       if (isInFlightAfterError(err)) {
-        const latestKey = queryKeys.chat.history(undefined);
-        const handed = queryClient.getQueryData<ChatHistoryResponse>(queryKey);
-        if (handed) queryClient.setQueryData(latestKey, handed);
-        queryClient.invalidateQueries({ queryKey: latestKey });
+        handLatestSlot();
         return;
       }
 
