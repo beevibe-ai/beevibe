@@ -31,26 +31,32 @@ services, the local daemon processes, and the CLI binaries doing the work.
 
 ## Beevibe Crystal
 
-Beevibe Crystal turns a Claude Code session into a shareable, queryable
-capsule. It is the public artifact layer for Beevibe: instead of sending a
-raw transcript, you publish a link that teammates can ask questions about.
+Beevibe Crystal is the shareable artifact layer for Beevibe. It turns a
+Claude Code session into a capsule with a public viewer, mind map, and chat,
+so teammates can inspect the thinking instead of reading a raw transcript.
 
-Try it from the repo root:
+Run Crystal locally from the repo root:
 
 ```bash
 pnpm install
+export ANTHROPIC_API_KEY=sk-ant-...
 pnpm crystal:dev
 ```
 
-Then open <http://localhost:5273> or run `/crystal:publish` from Claude Code.
-See [packages/beevibe-crystal](./packages/beevibe-crystal) for details.
-
-To install the Claude Code command:
+Install the Claude Code command:
 
 ```bash
 claude plugin marketplace add beevibe-ai/claude-plugins
 claude plugin install crystal@beevibe
 ```
+
+Then open <http://localhost:5273>, or run `/crystal:publish` inside a Claude
+Code session to publish the current session.
+
+Crystal lives in this monorepo as `@beevibe/crystal`, but it is not part of
+the default Railway/Docker app deploy. The api, scheduler, and web images stay
+focused on the core Beevibe stack. See
+[packages/beevibe-crystal](./packages/beevibe-crystal) for details.
 
 ## Why Beevibe?
 

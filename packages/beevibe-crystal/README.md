@@ -10,9 +10,24 @@ session context behind it.
 If this is useful, star the parent project:
 <https://github.com/beevibe-ai/beevibe>
 
-## Two Ways To Publish
+## Quick Start
 
-### A. `/crystal:publish` (recommended)
+From the Beevibe repo root, start the local Crystal server and viewer:
+
+```bash
+pnpm install
+export ANTHROPIC_API_KEY=sk-ant-...   # required for visitor chat
+pnpm crystal:dev
+```
+
+The viewer runs on <http://localhost:5273>. The server stores capsules under
+`packages/beevibe-crystal/.capsules`.
+
+## Publish From Claude Code
+
+Crystal still works like a Claude Code plugin. The plugin source lives in this
+package at [`plugin/`](./plugin), while real users install it from the small
+Beevibe plugin marketplace repo so the install command stays clean.
 
 Install the Claude Code plugin once:
 
@@ -41,31 +56,18 @@ The installed plugin command at
 session's `.jsonl`, POSTs it to your local Crystal server, and prints the
 share URL.
 
-### B. Drag And Drop
+## Publish By Drag And Drop
 
 Open <http://localhost:5273>, drop a `.jsonl` file, and Crystal creates the
 same capsule. This is useful for republishing an archived session or importing
 a non-Claude-Code source later.
 
-## Run Locally
-
-From the Beevibe repo root:
-
-```bash
-pnpm install
-export ANTHROPIC_API_KEY=sk-ant-...   # required for visitor chat
-pnpm crystal:dev
-```
-
-Or run the two processes separately:
+You can also run the two local processes separately:
 
 ```bash
 pnpm crystal:server   # API on :5274
 pnpm crystal:viewer   # web on :5273
 ```
-
-Then either drop a file on `localhost:5273`, or run `/crystal:publish` in a
-Claude Code session.
 
 ## Env Vars
 
