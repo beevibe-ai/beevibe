@@ -19,6 +19,7 @@ import type {
   DashboardSummary,
   MeshOverview,
 } from "./types";
+import type { MeshWindow } from "@/lib/types/mesh";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { AgentDisplay } from "@/lib/types/agents";
 import type { AgentNetwork } from "@/lib/types/agent-network";
@@ -547,7 +548,7 @@ export const api = {
       }),
   },
   mesh: {
-    overview: (filter: { since?: string } = {}, opts: ReadOptions = {}) =>
+    overview: (filter: { window?: MeshWindow } = {}, opts: ReadOptions = {}) =>
       fetchJson<MeshOverview>("/mesh", { query: { ...filter }, signal: opts.signal }),
   },
   dashboard: {

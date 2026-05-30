@@ -18,6 +18,11 @@
  *
  * The asks/edges/nodes/summary all union both sources so the activity feed +
  * graph + KPIs reflect the full mesh picture.
+ *
+ * The time window is parameterized via {@link MeshWindow}. `"all"` lifts
+ * the time predicate (still capped by the row LIMIT). `asks_24h` stays
+ * hardcoded at 24h — it answers "what happened today", not "what's in the
+ * current view".
  */
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
@@ -29,22 +34,53 @@ import type {
   GraphNodeData,
   GraphEdgeData,
   MeshSummaryData,
+  MeshWindow,
 } from "./types.js";
+import { MESH_WINDOWS } from "./types.js";
 
 const ASKS_LIMIT = 50;
-const WINDOW = "24 hours";
+export const DEFAULT_MESH_WINDOW: MeshWindow = "24h";
 
-// Reused SQL fragments — interpolated into the queries below so the
-// negotiation/session window filters and the from="..." caller extraction
-// stay in sync across all 5 queries.
-const NEGO_WINDOW = `created_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'active'`;
-const SESS_WINDOW = `type IN ('mesh_ask', 'blocker') AND (started_at >= NOW() - INTERVAL '${WINDOW}' OR status = 'running')`;
+const WINDOW_INTERVAL: Record<Exclude<MeshWindow, "all">, string> = {
+  "24h": "24 hours",
+  "7d": "7 days",
+  "30d": "30 days",
+};
+
+export function isMeshWindow(value: unknown): value is MeshWindow {
+  return typeof value === "string" && (MESH_WINDOWS as readonly string[]).includes(value);
+}
+
+/**
+ * Build the per-source WHERE-fragment pair for a given window. `negWindow`
+ * applies to `negotiation` rows (created_at + always-include-active);
+ * `sessWindow` to `session` rows (type filter + started_at + always-include-
+ * running). `"all"` drops the time predicate entirely (active/running rows
+ * were already always-included, so this only widens history).
+ */
+function buildWindowFragments(window: MeshWindow): {
+  negWindow: string;
+  sessWindow: string;
+} {
+  if (window === "all") {
+    return {
+      negWindow: "TRUE",
+      sessWindow: "type IN ('mesh_ask', 'blocker')",
+    };
+  }
+  const interval = WINDOW_INTERVAL[window];
+  return {
+    negWindow: `created_at >= NOW() - INTERVAL '${interval}' OR status = 'active'`,
+    sessWindow: `type IN ('mesh_ask', 'blocker') AND (started_at >= NOW() - INTERVAL '${interval}' OR status = 'running')`,
+  };
+}
+
 // Use the indexed `caller_agent_id` column with a regex fallback for any
 // pre-backfill row that slipped through (defense in depth — the migration
 // `1780100000000_add-session-caller-agent-id.sql` populated existing rows).
 const SESS_FROM = `COALESCE(caller_agent_id, substring(intent FROM 'from="([^"]+)"'))`;
 
-const NEGOTIATIONS_SQL = /* sql */ `
+const negotiationsSql = (negWindow: string) => /* sql */ `
 SELECT
   n.id,
   n.initiator_agent_id     AS caller_id,
@@ -63,7 +99,7 @@ JOIN agent ca ON ca.id = n.initiator_agent_id
 JOIN agent ta ON ta.id = n.counterparty_agent_id
 LEFT JOIN negotiation_round nr1
   ON nr1.negotiation_id = n.id AND nr1.round_number = 1
-WHERE n.created_at >= NOW() - INTERVAL '${WINDOW}' OR n.status = 'active'
+WHERE ${negWindow}
 ORDER BY n.created_at DESC
 LIMIT $1
 `;
@@ -73,7 +109,7 @@ LIMIT $1
  * the intent XML as `from="agent_xxx"` — extract via regex. Body is the
  * inner text up to the closing tag (we strip the wrapper for preview).
  */
-const MESH_SESSIONS_SQL = /* sql */ `
+const meshSessionsSql = (sessWindow: string) => /* sql */ `
 SELECT
   s.id,
   ${SESS_FROM}              AS caller_id,
@@ -89,7 +125,7 @@ SELECT
 FROM session s
 LEFT JOIN agent ca ON ca.id = ${SESS_FROM}
 JOIN agent ta ON ta.id = s.agent_id
-WHERE ${SESS_WINDOW}
+WHERE ${sessWindow}
 ORDER BY s.started_at DESC
 LIMIT $1
 `;
@@ -99,19 +135,19 @@ LIMIT $1
  * session rows so the graph reflects the full mesh picture.
  * `bool_or(is_live)` derives node liveness without a second pass.
  */
-const NODES_SQL = /* sql */ `
+const nodesSql = (negWindow: string, sessWindow: string) => /* sql */ `
 WITH endpoints AS (
   SELECT initiator_agent_id AS agent_id, (status = 'active') AS is_live
-  FROM negotiation WHERE ${NEGO_WINDOW}
+  FROM negotiation WHERE ${negWindow}
   UNION ALL
   SELECT counterparty_agent_id AS agent_id, (status = 'active') AS is_live
-  FROM negotiation WHERE ${NEGO_WINDOW}
+  FROM negotiation WHERE ${negWindow}
   UNION ALL
   SELECT agent_id, (status = 'running') AS is_live
-  FROM session WHERE ${SESS_WINDOW}
+  FROM session WHERE ${sessWindow}
   UNION ALL
   SELECT ${SESS_FROM} AS agent_id, (status = 'running') AS is_live
-  FROM session WHERE ${SESS_WINDOW} AND ${SESS_FROM} IS NOT NULL
+  FROM session WHERE ${sessWindow} AND ${SESS_FROM} IS NOT NULL
 )
 SELECT
   a.id,
@@ -126,15 +162,15 @@ ORDER BY
   a.name ASC
 `;
 
-const EDGES_SQL = /* sql */ `
+const edgesSql = (negWindow: string, sessWindow: string) => /* sql */ `
 WITH pairs AS (
   SELECT initiator_agent_id AS from_id, counterparty_agent_id AS to_id,
          (status = 'active') AS is_live
-  FROM negotiation WHERE ${NEGO_WINDOW}
+  FROM negotiation WHERE ${negWindow}
   UNION ALL
   SELECT ${SESS_FROM} AS from_id, agent_id AS to_id,
          (status = 'running') AS is_live
-  FROM session WHERE ${SESS_WINDOW} AND ${SESS_FROM} IS NOT NULL
+  FROM session WHERE ${sessWindow} AND ${SESS_FROM} IS NOT NULL
 )
 SELECT
   from_id,
@@ -146,20 +182,20 @@ GROUP BY from_id, to_id
 ORDER BY count DESC
 `;
 
-const SUMMARY_SQL = /* sql */ `
+const summarySql = (negWindow: string, sessWindow: string) => /* sql */ `
 WITH activity AS (
   SELECT (status = 'active') AS is_live, created_at,
          initiator_agent_id AS a, counterparty_agent_id AS b
-  FROM negotiation WHERE ${NEGO_WINDOW}
+  FROM negotiation WHERE ${negWindow}
   UNION ALL
   SELECT (status = 'running') AS is_live, started_at AS created_at,
          ${SESS_FROM} AS a, agent_id AS b
-  FROM session WHERE ${SESS_WINDOW}
+  FROM session WHERE ${sessWindow}
 )
 SELECT
-  COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '${WINDOW}')::int  AS asks_24h,
-  COUNT(*) FILTER (WHERE is_live)::int                                     AS in_flight,
-  COUNT(DISTINCT (a, b)) FILTER (WHERE a IS NOT NULL)::int                 AS edge_count
+  COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours')::int  AS asks_24h,
+  COUNT(*) FILTER (WHERE is_live)::int                                    AS in_flight,
+  COUNT(DISTINCT (a, b)) FILTER (WHERE a IS NOT NULL)::int                AS edge_count
 FROM activity
 `;
 
@@ -246,14 +282,19 @@ function extractMeshIntent(intent: string): string {
   return (match?.[1] ?? intent).trim() || "(no message)";
 }
 
-export async function getMeshOverview(pool: Pool): Promise<MeshOverview> {
+export async function getMeshOverview(
+  pool: Pool,
+  window: MeshWindow = DEFAULT_MESH_WINDOW,
+): Promise<MeshOverview> {
+  const { negWindow, sessWindow } = buildWindowFragments(window);
+
   const [negotiationsResult, meshSessionsResult, nodesResult, edgesResult, summaryResult] =
     await Promise.all([
-      pool.query<NegotiationsRow>(NEGOTIATIONS_SQL, [ASKS_LIMIT]),
-      pool.query<MeshSessionsRow>(MESH_SESSIONS_SQL, [ASKS_LIMIT]),
-      pool.query<NodesRow>(NODES_SQL),
-      pool.query<EdgesRow>(EDGES_SQL),
-      pool.query<SummaryRow>(SUMMARY_SQL),
+      pool.query<NegotiationsRow>(negotiationsSql(negWindow), [ASKS_LIMIT]),
+      pool.query<MeshSessionsRow>(meshSessionsSql(sessWindow), [ASKS_LIMIT]),
+      pool.query<NodesRow>(nodesSql(negWindow, sessWindow)),
+      pool.query<EdgesRow>(edgesSql(negWindow, sessWindow)),
+      pool.query<SummaryRow>(summarySql(negWindow, sessWindow)),
     ]);
 
   const negotiationAsks: MeshAskData[] = negotiationsResult.rows.map((r) => {

@@ -91,4 +91,7 @@ export type {
   GraphNodeData,
   GraphEdgeData,
   MeshSummaryData,
+  MeshWindow,
 } from "@beevibe/api/views/types";
+
+export { MESH_WINDOWS } from "@beevibe/api/views/types";

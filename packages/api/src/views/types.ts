@@ -519,6 +519,13 @@ export interface MeshSummaryData {
   edge_count: number;
 }
 
+/**
+ * Time window the mesh page can show. Driven by the header pill row.
+ * `"all"` lifts the time filter entirely (still capped by the row LIMIT).
+ */
+export const MESH_WINDOWS = ["24h", "7d", "30d", "all"] as const;
+export type MeshWindow = (typeof MESH_WINDOWS)[number];
+
 export interface MeshOverview {
   asks: MeshAskData[];
   graph: { nodes: GraphNodeData[]; edges: GraphEdgeData[] };
