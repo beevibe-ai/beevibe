@@ -57,6 +57,11 @@ export function isMeshWindow(value: unknown): value is MeshWindow {
  * `sessWindow` to `session` rows (type filter + started_at + always-include-
  * running). `"all"` drops the time predicate entirely (active/running rows
  * were already always-included, so this only widens history).
+ *
+ * Columns are qualified with `n.` / `s.` so the fragment is safe to drop into
+ * queries that also `JOIN agent` — `agent.created_at` collides with
+ * `negotiation.created_at` otherwise. The corresponding FROM clauses below
+ * therefore alias `negotiation n` and `session s`.
  */
 function buildWindowFragments(window: MeshWindow): {
   negWindow: string;
@@ -65,13 +70,13 @@ function buildWindowFragments(window: MeshWindow): {
   if (window === "all") {
     return {
       negWindow: "TRUE",
-      sessWindow: "type IN ('mesh_ask', 'blocker')",
+      sessWindow: "s.type IN ('mesh_ask', 'blocker')",
     };
   }
   const interval = WINDOW_INTERVAL[window];
   return {
-    negWindow: `created_at >= NOW() - INTERVAL '${interval}' OR status = 'active'`,
-    sessWindow: `type IN ('mesh_ask', 'blocker') AND (started_at >= NOW() - INTERVAL '${interval}' OR status = 'running')`,
+    negWindow: `n.created_at >= NOW() - INTERVAL '${interval}' OR n.status = 'active'`,
+    sessWindow: `s.type IN ('mesh_ask', 'blocker') AND (s.started_at >= NOW() - INTERVAL '${interval}' OR s.status = 'running')`,
   };
 }
 
@@ -137,17 +142,17 @@ LIMIT $1
  */
 const nodesSql = (negWindow: string, sessWindow: string) => /* sql */ `
 WITH endpoints AS (
-  SELECT initiator_agent_id AS agent_id, (status = 'active') AS is_live
-  FROM negotiation WHERE ${negWindow}
+  SELECT n.initiator_agent_id AS agent_id, (n.status = 'active') AS is_live
+  FROM negotiation n WHERE ${negWindow}
   UNION ALL
-  SELECT counterparty_agent_id AS agent_id, (status = 'active') AS is_live
-  FROM negotiation WHERE ${negWindow}
+  SELECT n.counterparty_agent_id AS agent_id, (n.status = 'active') AS is_live
+  FROM negotiation n WHERE ${negWindow}
   UNION ALL
-  SELECT agent_id, (status = 'running') AS is_live
-  FROM session WHERE ${sessWindow}
+  SELECT s.agent_id, (s.status = 'running') AS is_live
+  FROM session s WHERE ${sessWindow}
   UNION ALL
-  SELECT ${SESS_FROM} AS agent_id, (status = 'running') AS is_live
-  FROM session WHERE ${sessWindow} AND ${SESS_FROM} IS NOT NULL
+  SELECT ${SESS_FROM} AS agent_id, (s.status = 'running') AS is_live
+  FROM session s WHERE ${sessWindow} AND ${SESS_FROM} IS NOT NULL
 )
 SELECT
   a.id,
@@ -164,13 +169,13 @@ ORDER BY
 
 const edgesSql = (negWindow: string, sessWindow: string) => /* sql */ `
 WITH pairs AS (
-  SELECT initiator_agent_id AS from_id, counterparty_agent_id AS to_id,
-         (status = 'active') AS is_live
-  FROM negotiation WHERE ${negWindow}
+  SELECT n.initiator_agent_id AS from_id, n.counterparty_agent_id AS to_id,
+         (n.status = 'active') AS is_live
+  FROM negotiation n WHERE ${negWindow}
   UNION ALL
-  SELECT ${SESS_FROM} AS from_id, agent_id AS to_id,
-         (status = 'running') AS is_live
-  FROM session WHERE ${sessWindow} AND ${SESS_FROM} IS NOT NULL
+  SELECT ${SESS_FROM} AS from_id, s.agent_id AS to_id,
+         (s.status = 'running') AS is_live
+  FROM session s WHERE ${sessWindow} AND ${SESS_FROM} IS NOT NULL
 )
 SELECT
   from_id,
@@ -184,13 +189,13 @@ ORDER BY count DESC
 
 const summarySql = (negWindow: string, sessWindow: string) => /* sql */ `
 WITH activity AS (
-  SELECT (status = 'active') AS is_live, created_at,
-         initiator_agent_id AS a, counterparty_agent_id AS b
-  FROM negotiation WHERE ${negWindow}
+  SELECT (n.status = 'active') AS is_live, n.created_at,
+         n.initiator_agent_id AS a, n.counterparty_agent_id AS b
+  FROM negotiation n WHERE ${negWindow}
   UNION ALL
-  SELECT (status = 'running') AS is_live, started_at AS created_at,
-         ${SESS_FROM} AS a, agent_id AS b
-  FROM session WHERE ${sessWindow}
+  SELECT (s.status = 'running') AS is_live, s.started_at AS created_at,
+         ${SESS_FROM} AS a, s.agent_id AS b
+  FROM session s WHERE ${sessWindow}
 )
 SELECT
   COUNT(*) FILTER (WHERE created_at >= NOW() - INTERVAL '24 hours')::int  AS asks_24h,
