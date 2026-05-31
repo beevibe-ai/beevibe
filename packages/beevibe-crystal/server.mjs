@@ -26,6 +26,9 @@ const PORT = Number(process.env.PORT || 5274);
 const VIEWER_URL = (process.env.CRYSTAL_VIEWER_URL || "http://localhost:5273").replace(/\/$/, "");
 const MODEL = process.env.CRYSTAL_BALL_MODEL || "claude-sonnet-4-5";
 const MAX_TOKENS = Number(process.env.CRYSTAL_BALL_MAX_TOKENS || 1024);
+// Enrichment (lede + gist + starters + a multi-branch map) emits a chunk of
+// JSON; 1800 truncated it on long sessions, leaving capsules with no map.
+const GIST_MAX_TOKENS = Number(process.env.CRYSTAL_GIST_MAX_TOKENS || 4096);
 const MAX_BODY = 25 * 1024 * 1024; // 25 MB — long Claude Code sessions get hefty
 
 let anthropicClient;
@@ -157,7 +160,7 @@ async function generateGistAndStarters(capsule) {
   const session = flattenCapsule(capsule);
   const result = await client.messages.create({
     model: MODEL,
-    max_tokens: 1800,
+    max_tokens: GIST_MAX_TOKENS,
     system: [
       `You are reading a Claude Code session that the publisher chose to share.`,
       `Produce a JSON object with four fields:`,
@@ -204,12 +207,28 @@ async function generateGistAndStarters(capsule) {
     ].join("\n"),
     messages: [{ role: "user", content: "Output the JSON now." }],
   });
+  if (result.stop_reason === "max_tokens") {
+    console.warn(
+      `gist generation: response hit max_tokens (${GIST_MAX_TOKENS}) and was truncated — ` +
+        `the JSON map is likely incomplete. Raise CRYSTAL_GIST_MAX_TOKENS if this recurs.`
+    );
+  }
   const text = (result.content || [])
     .filter((b) => b.type === "text")
     .map((b) => b.text)
     .join("\n")
     .trim();
-  return parseJsonLoose(text);
+  const parsed = parseJsonLoose(text);
+  // parseJsonLoose returns {} on any parse failure. That used to be silent, so
+  // a truncated/garbled response looked identical to "no key" — capsules just
+  // shipped with no lede or map and nothing in the logs. Make it observable.
+  if (text && !parsed.lede && !parsed.map) {
+    console.warn(
+      `gist generation: model output did not parse into enrichment (lede/map empty). ` +
+        `First 200 chars: ${text.slice(0, 200)}`
+    );
+  }
+  return parsed;
 }
 
 // Models occasionally wrap JSON in ```json fences or prepend a sentence.
