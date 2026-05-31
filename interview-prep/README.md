@@ -63,12 +63,18 @@ LLM_PROVIDER=google
 GOOGLE_API_KEY=your_key_here
 GOOGLE_MODEL=gemma-4-4b-it   # or a larger Gemma 4 variant for higher quality
 SEND_AUDIO=true              # set false if your endpoint rejects the recorded audio format
+
+# Rate limiting — protects your paid API on a public URL
+RATE_LIMIT_MAX=30            # model calls per IP per window (0 disables)
+RATE_LIMIT_WINDOW_SEC=3600
+UPSTASH_REDIS_REST_URL=      # optional, see below
+UPSTASH_REDIS_REST_TOKEN=
 ```
 
 ### Vercel (recommended — repo already uses Vercel)
 
-1. Create a Vercel project and set its **Root Directory** to `interview-prep`.
-2. Framework preset: **Next.js** (auto-detected).
+1. Create a Vercel project from this repo and set its **Root Directory** to `interview-prep`.
+2. Framework preset: **Next.js** (auto-detected; a `vercel.json` is included).
 3. Add the env vars above in **Project Settings → Environment Variables**.
 4. Deploy. Vercel serves over **HTTPS**, which the camera, mic, and Web Speech API require.
 
@@ -82,9 +88,22 @@ Notes for hosted serverless:
 `npm run build && npm run start` behind an HTTPS reverse proxy works too — just serve it
 over TLS and set the same env vars.
 
-> ⚠️ **Before a public launch:** this MVP has **no auth and no rate limiting**, so every call
-> hits your paid Google API key. For a broad audience you'll want at least per-IP rate
-> limiting (and likely a usage cap / lightweight access gate) to control cost and abuse.
+### Cost / abuse protection (rate limiting)
+
+The `/api/chat` endpoint — the one that costs money — is **rate limited per IP**
+(`RATE_LIMIT_MAX` calls per `RATE_LIMIT_WINDOW_SEC`). Over the limit returns HTTP 429 and the
+app shows a friendly "hit the practice limit" message.
+
+- **Out of the box:** a best-effort in-memory limiter (per serverless instance).
+- **For a real public launch:** add a free **Upstash Redis** database
+  (https://console.upstash.com) and set `UPSTASH_REDIS_REST_URL` /
+  `UPSTASH_REDIS_REST_TOKEN`. The limiter then enforces limits **durably across Vercel's
+  whole serverless fleet** (the in-memory fallback resets on every cold start and isn't
+  shared between instances, so it's only a soft guard). No SDK is added — it uses Upstash's
+  REST API directly.
+
+There is still **no login** — anyone with the URL can practice (within the rate limit). Add
+accounts later if you need per-user history or stricter control.
 
 ---
 

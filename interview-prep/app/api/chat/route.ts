@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { chat } from '@/lib/llm';
 import { buildSystem, formatDelivery } from '@/lib/prompts';
+import { clientIp, rateLimit } from '@/lib/rate-limit';
 import type { ChatMessage, ChatRequestBody } from '@/lib/types';
 
 export const runtime = 'nodejs';
@@ -12,6 +13,15 @@ export const maxDuration = 60;
 const sendAudio = process.env.SEND_AUDIO !== 'false';
 
 export async function POST(req: NextRequest) {
+  // Protect the paid model endpoint from runaway cost/abuse on a public URL.
+  const rl = await rateLimit(clientIp(req));
+  if (!rl.allowed) {
+    return NextResponse.json(
+      { error: "You've hit the practice limit for now — give it a little while and try again." },
+      { status: 429, headers: { 'Retry-After': String(rl.resetSec) } },
+    );
+  }
+
   try {
     const body = (await req.json()) as Partial<ChatRequestBody>;
     const messages: ChatMessage[] = Array.isArray(body.messages) ? body.messages : [];
