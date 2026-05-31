@@ -1,4 +1,4 @@
-import type { ChatMessage } from './types';
+import type { AudioClip, ChatMessage } from './types';
 
 export type Provider = 'ollama' | 'google';
 
@@ -17,10 +17,19 @@ export function getModelLabel(): string {
  * running conversation and returns the assistant's reply text. The provider is
  * selected at runtime from LLM_PROVIDER so the same code path works locally
  * (Ollama) or hosted (Google AI).
+ *
+ * `audio`, when present, is the candidate's spoken turn. It is attached to the
+ * latest user message for multimodal models that can hear it (Google AI). The
+ * transcript + delivery signals already in the message text carry the content
+ * regardless, so providers that can't ingest audio still work.
  */
-export async function chat(system: string, messages: ChatMessage[]): Promise<string> {
+export async function chat(
+  system: string,
+  messages: ChatMessage[],
+  audio?: AudioClip | null,
+): Promise<string> {
   return getProvider() === 'google'
-    ? chatGoogle(system, messages)
+    ? chatGoogle(system, messages, audio)
     : chatOllama(system, messages);
 }
 
@@ -57,7 +66,13 @@ async function chatOllama(system: string, messages: ChatMessage[]): Promise<stri
   return data.message?.content?.trim() ?? '';
 }
 
-async function chatGoogle(system: string, messages: ChatMessage[]): Promise<string> {
+type GooglePart = { text?: string; inlineData?: { mimeType: string; data: string } };
+
+async function chatGoogle(
+  system: string,
+  messages: ChatMessage[],
+  audio?: AudioClip | null,
+): Promise<string> {
   const key = process.env.GOOGLE_API_KEY;
   if (!key) throw new Error('GOOGLE_API_KEY is not set (LLM_PROVIDER=google).');
   const model = process.env.GOOGLE_MODEL || 'gemma-4-4b-it';
@@ -69,7 +84,7 @@ async function chatGoogle(system: string, messages: ChatMessage[]): Promise<stri
     ? messages
     : [{ role: 'user', content: "Let's begin." }];
 
-  const contents: Array<{ role: 'user' | 'model'; parts: Array<{ text: string }> }> = [];
+  const contents: Array<{ role: 'user' | 'model'; parts: GooglePart[] }> = [];
   let systemInjected = false;
   for (const m of source) {
     const role = m.role === 'assistant' ? 'model' : 'user';
@@ -82,6 +97,16 @@ async function chatGoogle(system: string, messages: ChatMessage[]): Promise<stri
   }
   if (!systemInjected) {
     contents.unshift({ role: 'user', parts: [{ text: system }] });
+  }
+
+  // Attach the spoken audio to the most recent user turn so the model can hear it.
+  if (audio) {
+    for (let i = contents.length - 1; i >= 0; i--) {
+      if (contents[i].role === 'user') {
+        contents[i].parts.push({ inlineData: { mimeType: audio.mimeType, data: audio.data } });
+        break;
+      }
+    }
   }
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${key}`;

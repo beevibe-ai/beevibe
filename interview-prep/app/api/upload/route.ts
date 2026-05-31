@@ -3,8 +3,11 @@ import { extractText } from '@/lib/extract';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+export const maxDuration = 30;
 
-const MAX_FILE_BYTES = 10 * 1024 * 1024; // 10 MB per file
+// Kept under common serverless request-body limits (e.g. Vercel ~4.5 MB) so
+// uploads work on hosted deployments, not just locally.
+const MAX_FILE_BYTES = 4 * 1024 * 1024; // 4 MB per file
 
 export async function POST(req: NextRequest) {
   try {
@@ -19,7 +22,7 @@ export async function POST(req: NextRequest) {
     for (const file of files) {
       if (file.size > MAX_FILE_BYTES) {
         return NextResponse.json(
-          { error: `"${file.name}" is larger than 10 MB.` },
+          { error: `"${file.name}" is larger than 4 MB.` },
           { status: 413 },
         );
       }
