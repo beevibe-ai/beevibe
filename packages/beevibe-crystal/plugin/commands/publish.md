@@ -8,15 +8,30 @@ When the user invokes `/crystal:publish` (or asks any of the trigger phrases abo
 
 ## Step 0 — Pre-flight (one-line bash, no narration)
 
-Confirm the server is reachable. The default is local; override with `CRYSTAL_BALL_SERVER_URL`.
+Confirm the server is reachable **and** has an API key (visitor chat needs it). The
+default is local; override with `CRYSTAL_BALL_SERVER_URL`.
 
 ```bash
 CRYSTAL_SERVER="${CRYSTAL_BALL_SERVER_URL:-http://127.0.0.1:5274}"
-curl -fsS --max-time 2 "$CRYSTAL_SERVER/api/health" >/dev/null \
-  || { echo "Beevibe Crystal server not reachable at $CRYSTAL_SERVER. Start it with 'pnpm crystal:server' in the Beevibe repo, or set CRYSTAL_BALL_SERVER_URL to a hosted instance."; exit 1; }
+HEALTH="$(curl -fsS --max-time 2 "$CRYSTAL_SERVER/api/health" 2>/dev/null)" || {
+  echo "Beevibe Crystal server not reachable at $CRYSTAL_SERVER.";
+  echo "Quick public try:  pnpm crystal:serve   (server + Cloudflare tunnel + a public URL)";
+  echo "Local only:        pnpm crystal:server";
+  echo "Or set CRYSTAL_BALL_SERVER_URL to a hosted instance.";
+  exit 1;
+}
+echo "$HEALTH" | grep -q '"hasKey":true' || {
+  echo "Crystal server is up but has no Anthropic API key — visitor chat won't answer.";
+  echo "Paste your key in your TERMINAL (not in this chat — a key typed here would be";
+  echo "saved inside the capsule you publish):  pnpm crystal:setup";
+  echo "Then restart the server.";
+  exit 1;
+}
 ```
 
-If the server isn't up, surface the message verbatim to the user and stop. Don't try to auto-start it — they may want to publish to a hosted instance.
+If either check fails, surface the message verbatim to the user and stop. Don't try
+to auto-start the server or ask for the key here — the key must be entered out of
+band via `pnpm crystal:setup` so it never lands in the published session.
 
 ## Step 1 — Find the current session file
 

@@ -13,6 +13,8 @@
 
 import http from "node:http";
 import fs from "node:fs/promises";
+import { readFileSync } from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
@@ -22,6 +24,21 @@ import { ID_RE, isCapsule, textOfContent } from "./src/lib/schema.js";
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const STORE_DIR = path.join(HERE, ".capsules");
+
+// Backfill config from ~/.beevibe/crystal/config.json (written by
+// `pnpm crystal:setup`) so a user who pasted their key once never has to
+// export it. Env always wins, matching adr-doctor's precedence.
+const CONFIG_PATH = path.join(os.homedir(), ".beevibe", "crystal", "config.json");
+try {
+  const cfg = JSON.parse(readFileSync(CONFIG_PATH, "utf8"));
+  for (const k of ["ANTHROPIC_API_KEY", "CRYSTAL_BALL_MODEL", "CRYSTAL_BALL_MAX_TOKENS", "CRYSTAL_VIEWER_URL"]) {
+    if (!process.env[k]?.trim() && cfg[k] != null && String(cfg[k]).trim()) {
+      process.env[k] = String(cfg[k]);
+    }
+  }
+} catch {
+  // No config file (or unreadable) — env-only operation is fine.
+}
 const PORT = Number(process.env.PORT || 5274);
 const VIEWER_URL = (process.env.CRYSTAL_VIEWER_URL || "http://localhost:5273").replace(/\/$/, "");
 const MODEL = process.env.CRYSTAL_BALL_MODEL || "claude-sonnet-4-5";

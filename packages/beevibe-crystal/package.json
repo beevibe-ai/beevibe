@@ -16,9 +16,12 @@
     "dev": "concurrently -n server,viewer -c blue,magenta \"pnpm run server\" \"pnpm run viewer\"",
     "server": "node server.mjs",
     "viewer": "vite",
+    "setup": "node crystal-doctor.mjs setup",
+    "doctor": "node crystal-doctor.mjs",
+    "serve": "node crystal-serve.mjs",
     "build": "vite build",
     "typecheck": "pnpm run lint",
-    "lint": "node --check server.mjs && node --check vite.config.js",
+    "lint": "node --check server.mjs && node --check vite.config.js && node --check crystal-doctor.mjs && node --check crystal-serve.mjs",
     "preview": "vite preview",
     "clean": "rm -rf dist .capsules"
   },

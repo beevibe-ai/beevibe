@@ -12,16 +12,22 @@ If this is useful, star the parent project:
 
 ## Quick Start
 
-From the Beevibe repo root, start the local Crystal server and viewer:
+Paste your Anthropic API key once (in your terminal — never in a Claude chat,
+since Crystal publishes the session), then start a public tunnel:
 
 ```bash
 pnpm install
-export ANTHROPIC_API_KEY=sk-ant-...   # required for visitor chat
-pnpm crystal:dev
+pnpm crystal:setup    # prompts for your key → ~/.beevibe/crystal/config.json (0600)
+pnpm crystal:serve    # server + viewer behind a Cloudflare quick tunnel → public URL
 ```
 
-The viewer runs on <http://localhost:5273>. The server stores capsules under
-`packages/beevibe-crystal/.capsules`.
+`crystal:serve` prints a `https://*.trycloudflare.com` URL anyone can open. It's
+ephemeral — the URL lives only while the process runs. Then run `/crystal:publish`
+in a Claude Code session and the capsule link uses that public URL.
+
+Local only (no tunnel): `pnpm crystal:dev` — viewer on <http://localhost:5273>,
+capsules stored under `packages/beevibe-crystal/.capsules`. Check key status any
+time with `pnpm crystal:doctor`.
 
 ## Publish From Claude Code
 
