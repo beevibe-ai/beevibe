@@ -8,9 +8,10 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-// Forwarding raw audio to the model can be disabled (e.g. if your Gemma 4
-// endpoint rejects the recorded format). Transcript + delivery signals still flow.
-const sendAudio = process.env.SEND_AUDIO !== 'false';
+// Off by default: the hosted Gemini API Gemma 4 models (26b-a4b, 31b) are
+// text+image only and reject audio. Enable only with an audio-capable variant
+// (local E2B/E4B, audio <= 30s). Transcript + delivery signals always flow.
+const sendAudio = process.env.SEND_AUDIO === 'true';
 
 export async function POST(req: NextRequest) {
   // Protect the paid model endpoint from runaway cost/abuse on a public URL.

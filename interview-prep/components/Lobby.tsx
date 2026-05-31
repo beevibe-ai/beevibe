@@ -39,8 +39,8 @@ export default function Lobby({
         <h1 className="text-2xl font-semibold tracking-tight">Interview Prep — mock call</h1>
         <p className="text-sm text-slate-500">
           Upload your resume and project notes, then jump on a call. The coach speaks, you
-          speak back. It hears how you actually sound — pace, filler, where you trail off — and
-          helps you get it natural, not memorised.
+          speak back. It picks up on how you actually sound — pace, filler, where you trail
+          off — and helps you get it natural, not memorised.
         </p>
       </div>
 

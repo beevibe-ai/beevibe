@@ -8,7 +8,7 @@ export function getProvider(): Provider {
 
 export function getModelLabel(): string {
   return getProvider() === 'google'
-    ? process.env.GOOGLE_MODEL || 'gemma-4-4b-it'
+    ? process.env.GOOGLE_MODEL || 'gemma-4-26b-a4b-it'
     : process.env.OLLAMA_MODEL || 'gemma4';
 }
 
@@ -75,7 +75,10 @@ async function chatGoogle(
 ): Promise<string> {
   const key = process.env.GOOGLE_API_KEY;
   if (!key) throw new Error('GOOGLE_API_KEY is not set (LLM_PROVIDER=google).');
-  const model = process.env.GOOGLE_MODEL || 'gemma-4-4b-it';
+  // Hosted Gemini API Gemma 4 models: gemma-4-26b-a4b-it (MoE, lighter) and
+  // gemma-4-31b-it (dense). Both are text+image only — audio is not supported
+  // on the hosted variants (only the local E2B/E4B models accept audio).
+  const model = process.env.GOOGLE_MODEL || 'gemma-4-26b-a4b-it';
 
   // Gemma models on the Google API do not accept a separate system instruction,
   // so we fold the system prompt into the first user turn for broad
