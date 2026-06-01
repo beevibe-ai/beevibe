@@ -60,11 +60,14 @@ describe("listAgents", () => {
 
 describe("getAgent", () => {
   it("returns undefined when missing", async () => {
-    const pool = makeMockPool([[], [], [], [], []]);
+    // getAgent fires 6 queries in parallel — agent, blocks, recent
+    // sessions, recent chat threads, mesh hints, delta metrics.
+    const pool = makeMockPool([[], [], [], [], [], []]);
     expect(await getAgent(pool, "agt_missing")).toBeUndefined();
   });
 
-  it("aggregates blocks, recent sessions, mesh hints, and delta metrics", async () => {
+  it("aggregates blocks, recent sessions, chat threads, mesh hints, and delta metrics", async () => {
+    const lastTurnAt = new Date("2026-05-30T10:00:00Z");
     const pool = makeMockPool([
       [
         {
@@ -105,6 +108,15 @@ describe("getAgent", () => {
       ],
       [
         {
+          conversation_id: "sess_chat0001",
+          turn_count: 4,
+          last_at: lastTurnAt,
+          intent_first: "hey what's the status of the migration?",
+          last_status: "succeeded",
+        },
+      ],
+      [
+        {
           id: "neg_1",
           target_name: "Charlie",
           created_at: new Date(),
@@ -125,8 +137,53 @@ describe("getAgent", () => {
     expect(detail?.recent_sessions).toHaveLength(1);
     expect(detail?.recent_sessions[0]?.short_id).toBe("qwerty");
     expect(detail?.recent_sessions[0]?.title).toBe("Bill rewrite");
+    expect(detail?.recent_chat_threads).toHaveLength(1);
+    expect(detail?.recent_chat_threads[0]?.conversation_id).toBe("sess_chat0001");
+    expect(detail?.recent_chat_threads[0]?.turn_count).toBe(4);
+    expect(detail?.recent_chat_threads[0]?.title).toBe(
+      "hey what's the status of the migration?",
+    );
+    expect(detail?.recent_chat_threads[0]?.last_status).toBe("succeeded");
     expect(detail?.outgoing_mesh_hints).toHaveLength(1);
     expect(detail?.outgoing_mesh_hints[0]?.target).toBe("Charlie");
     expect(detail?.owner_label).toBe("Wendy");
+  });
+
+  it("truncates the chat thread title to 80 chars", async () => {
+    const longIntent = "x".repeat(200);
+    const pool = makeMockPool([
+      [
+        {
+          id: "agt_x",
+          name: "X",
+          owner_id: "per_w",
+          owner_label: "Wendy",
+          parent_agent_id: null,
+          hierarchy_level: "ic",
+          review_policy: null,
+          runtime_config: { type: "claude" },
+          created_at: new Date(),
+          updated_at: new Date(),
+          sessions_count: 0,
+          facts_learned: 0,
+        },
+      ],
+      [],
+      [],
+      [
+        {
+          conversation_id: "sess_long",
+          turn_count: 1,
+          last_at: new Date(),
+          intent_first: longIntent,
+          last_status: "running",
+        },
+      ],
+      [],
+      [],
+    ]);
+    const detail = await getAgent(pool, "agt_x");
+    expect(detail?.recent_chat_threads[0]?.title.length).toBe(80);
+    expect(detail?.recent_chat_threads[0]?.title.endsWith("…")).toBe(true);
   });
 });

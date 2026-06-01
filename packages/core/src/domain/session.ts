@@ -170,6 +170,19 @@ export interface Session {
    * same task) and `caller_agent_id` (mesh ask/negotiate initiator).
    */
   parent_session_id?: string;
+  /**
+   * Chat conversation thread id — the session id of the FIRST turn in
+   * the thread. Subsequent turns in the same conversation inherit this
+   * value via the INSERT SQL in the postgres SessionRepository
+   * (COALESCE(explicit, prior.conversation_id, own id) when
+   * type='chat'). NULL for non-chat sessions; they don't participate in
+   * a conversation thread.
+   *
+   * Materializes the head id that `groupIntoConversations` used to walk
+   * for in JS, so the views layer can GROUP BY conversation_id without
+   * pulling every chat row into application code.
+   */
+  conversation_id?: string;
   started_at?: Date;
   completed_at?: Date;
   created_at: Date;

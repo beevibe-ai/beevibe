@@ -217,6 +217,60 @@ describe("PostgresSessionRepository", () => {
     expect(same.status).toBe("running");
   });
 
+  describe("conversation_id", () => {
+    // The thread identifier lives in SQL: the INSERT CASE picks
+    //   explicit-from-caller → prior.conversation_id → own id (chat) → NULL
+    // so every call site lands the right value without each caller
+    // having to remember the policy.
+
+    it("is NULL for non-chat sessions", async () => {
+      const s = await sessions.create(newSession({ type: "task", task_id: task }));
+      expect(s.conversation_id).toBeUndefined();
+    });
+
+    it("first chat turn (no prior) stamps conversation_id = own id", async () => {
+      const head = await sessions.create(newSession({ type: "chat", intent: "hi" }));
+      expect(head.conversation_id).toBe(head.id);
+    });
+
+    it("second chat turn inherits the prior's conversation_id", async () => {
+      const turn1 = await sessions.create(newSession({ type: "chat", intent: "hi" }));
+      const turn2 = await sessions.create(
+        newSession({
+          type: "chat",
+          intent: "follow up",
+          prior_session_id: turn1.id,
+        }),
+      );
+      expect(turn2.conversation_id).toBe(turn1.id);
+      // The third turn keeps the same head, not turn2's id — verifies
+      // chains of arbitrary depth converge on the head, not the last
+      // pointer.
+      const turn3 = await sessions.create(
+        newSession({
+          type: "chat",
+          intent: "again",
+          prior_session_id: turn2.id,
+        }),
+      );
+      expect(turn3.conversation_id).toBe(turn1.id);
+    });
+
+    it("explicit conversation_id wins over the auto-resolution", async () => {
+      // Caller-provided wins. Used by tests / future callers that pre-
+      // compute the value (analogous to sessionIdOverride).
+      const head = await sessions.create(newSession({ type: "chat", intent: "hi" }));
+      const grafted = await sessions.create(
+        newSession({
+          type: "chat",
+          intent: "spliced in",
+          conversation_id: head.id,
+        }),
+      );
+      expect(grafted.conversation_id).toBe(head.id);
+    });
+  });
+
   describe("softDeleteChatChain", () => {
     it("walks the chain backwards and stamps every session as deleted", async () => {
       const turn1 = await sessions.create(newSession({ type: "chat", intent: "hi" }));

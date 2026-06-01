@@ -93,8 +93,18 @@ LEFT JOIN active_agents aa ON aa.agent_id = a.id
 GROUP BY a.hierarchy_level
 `;
 
+// Active-sessions KPI semantic: count of sessions whose work is
+// long-running enough to be a meaningful "is anything actively running"
+// signal. Chat turns are short-lived (LLM round-trip then terminal), so
+// including them made the gauge oscillate between 0 and N mid-
+// conversation — see PR description for the bug report. Excluding only
+// `type = 'chat'` keeps task / mesh_ask / mesh_negotiate / blocker /
+// run_repo in the count, which all represent meaningful in-flight work.
 const RUNNING_SESSIONS_SQL = /* sql */ `
-SELECT COUNT(*)::int AS n FROM session WHERE status = 'running'
+SELECT COUNT(*)::int AS n
+  FROM session
+ WHERE status = 'running'
+   AND type != 'chat'
 `;
 
 const TREND_SQL = /* sql */ `
@@ -131,9 +141,14 @@ WITH days AS (
   FROM generate_series(0, $1 - 1) AS i
 ),
 sessions_per_day AS (
+  -- Excludes chat to match the RUNNING_SESSIONS_SQL gauge semantic
+  -- (chat turns oscillate the live value and do not represent
+  -- meaningful in-flight work). The sparkline shown next to the
+  -- active_sessions KPI value must agree with the value itself.
   SELECT (started_at AT TIME ZONE 'UTC')::date AS day, COUNT(*)::int AS n
   FROM session
   WHERE started_at >= CURRENT_DATE - $1::int
+    AND type != 'chat'
   GROUP BY day
 ),
 review_per_day AS (

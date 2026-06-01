@@ -13,6 +13,7 @@ import type {
   AgentDetail,
   CoreBlockDisplay,
   RecentSession,
+  RecentChatThread,
   OutgoingMeshHint,
   AgentMetrics,
 } from "./types.js";
@@ -127,6 +128,10 @@ WHERE agent_id = $1
 ORDER BY block_name ASC
 `;
 
+// Excludes chat sessions — each chat turn is its own session row and on
+// heavily-chatted agents those rows used to drown out actual task work
+// in this list. Chat conversations are surfaced separately as collapsed
+// thread cards via DETAIL_SQL_RECENT_CHAT_THREADS below.
 const DETAIL_SQL_RECENT_SESSIONS = /* sql */ `
 SELECT
   s.id, s.intent, s.status, s.task_id, s.created_at,
@@ -134,7 +139,36 @@ SELECT
 FROM session s
 LEFT JOIN task t ON t.id = s.task_id
 WHERE s.agent_id = $1
+  AND s.type != 'chat'
 ORDER BY s.created_at DESC
+LIMIT 5
+`;
+
+// Recent chat conversations, collapsed by `conversation_id`. One card
+// per thread with turn count + last-turn timestamp. The migration
+// (1781200000000_add-session-conversation-id.sql) backfilled
+// conversation_id for every chat row by walking prior_session_id; new
+// turns inherit it via the postgres SessionRepository INSERT, so this
+// query reliably groups by it.
+//
+// `intent_first` shows the first message of the thread (most useful as
+// a title); `last_status` lets the UI flag still-running threads.
+// Soft-deleted threads are excluded so a recently-deleted conversation
+// doesn't reappear on the agent's detail page.
+const DETAIL_SQL_RECENT_CHAT_THREADS = /* sql */ `
+SELECT
+  conversation_id,
+  COUNT(*)::int AS turn_count,
+  MAX(created_at) AS last_at,
+  (ARRAY_AGG(intent ORDER BY created_at ASC))[1] AS intent_first,
+  (ARRAY_AGG(status ORDER BY created_at DESC))[1] AS last_status
+FROM session
+WHERE agent_id = $1
+  AND type = 'chat'
+  AND conversation_id IS NOT NULL
+  AND deleted_at IS NULL
+GROUP BY conversation_id
+ORDER BY last_at DESC
 LIMIT 5
 `;
 
@@ -207,6 +241,14 @@ interface RecentSessionRow {
   task_title: string | null;
 }
 
+interface RecentChatThreadRow {
+  conversation_id: string;
+  turn_count: number;
+  last_at: Date;
+  intent_first: string;
+  last_status: SessionStatus;
+}
+
 interface MeshHintRow {
   id: string;
   target_name: string;
@@ -233,14 +275,21 @@ export async function getAgent(
   pool: Pool,
   id: string,
 ): Promise<AgentDetail | undefined> {
-  const [agentResult, blockResult, recentResult, meshResult, deltaResult] =
-    await Promise.all([
-      pool.query<AgentRow>(DETAIL_SQL_AGENT, [id]),
-      pool.query<BlockRow>(DETAIL_SQL_BLOCKS, [id]),
-      pool.query<RecentSessionRow>(DETAIL_SQL_RECENT_SESSIONS, [id]),
-      pool.query<MeshHintRow>(DETAIL_SQL_MESH_HINTS, [id]),
-      pool.query<DeltaMetricsRow>(DETAIL_SQL_DELTA_METRICS, [id]),
-    ]);
+  const [
+    agentResult,
+    blockResult,
+    recentResult,
+    chatThreadResult,
+    meshResult,
+    deltaResult,
+  ] = await Promise.all([
+    pool.query<AgentRow>(DETAIL_SQL_AGENT, [id]),
+    pool.query<BlockRow>(DETAIL_SQL_BLOCKS, [id]),
+    pool.query<RecentSessionRow>(DETAIL_SQL_RECENT_SESSIONS, [id]),
+    pool.query<RecentChatThreadRow>(DETAIL_SQL_RECENT_CHAT_THREADS, [id]),
+    pool.query<MeshHintRow>(DETAIL_SQL_MESH_HINTS, [id]),
+    pool.query<DeltaMetricsRow>(DETAIL_SQL_DELTA_METRICS, [id]),
+  ]);
   const agentRow = agentResult.rows[0];
   if (!agentRow) return undefined;
   const deltaRow = deltaResult.rows[0];
@@ -263,6 +312,17 @@ export async function getAgent(
     age: formatRelativeShort(s.created_at),
   }));
 
+  const recent_chat_threads: RecentChatThread[] = chatThreadResult.rows.map((t) => ({
+    conversation_id: t.conversation_id,
+    title:
+      t.intent_first.length <= 80
+        ? t.intent_first
+        : t.intent_first.slice(0, 79) + "…",
+    turn_count: Number(t.turn_count),
+    age: formatRelativeShort(t.last_at),
+    last_status: recentSessionStatus(t.last_status),
+  }));
+
   const outgoing_mesh_hints: OutgoingMeshHint[] = meshResult.rows.map((m) => ({
     target: m.target_name,
     intent: (m.opening_message ?? "(no message)").slice(0, 80),
@@ -282,6 +342,7 @@ export async function getAgent(
     core_blocks,
     metrics,
     recent_sessions,
+    recent_chat_threads,
     outgoing_mesh_hints,
   };
 }
