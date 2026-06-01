@@ -194,6 +194,16 @@ describe("getDashboardSummary", () => {
     );
     expect(kpiTrendSql).toBeDefined();
     expect(kpiTrendSql).toContain("type != 'chat'");
+
+    // FLEET_SQL's active_agents CTE drives the per-hierarchy "X
+    // active / Y total" bar. Without the chat filter it'd flicker the
+    // bar for chat-heavy agents on every LLM round-trip — same root
+    // cause as the gauge bug, different widget.
+    const fleetSql = sqlSeen.find(
+      (s) => s.includes("active_agents") && s.includes("FROM session"),
+    );
+    expect(fleetSql).toBeDefined();
+    expect(fleetSql).toContain("type != 'chat'");
   });
 
   it("handles 0 totals without dividing by zero", async () => {

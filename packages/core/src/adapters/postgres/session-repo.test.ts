@@ -228,6 +228,20 @@ describe("PostgresSessionRepository", () => {
       expect(s.conversation_id).toBeUndefined();
     });
 
+    it("is NULL for non-chat sessions even when caller passes an explicit conversation_id", async () => {
+      // Guards against a task / mesh / blocker row leaking into the
+      // chat-thread rollup index. The type check must short-circuit
+      // before the explicit-override branch.
+      const s = await sessions.create(
+        newSession({
+          type: "task",
+          task_id: task,
+          conversation_id: "sess_someone_elses_chat",
+        }),
+      );
+      expect(s.conversation_id).toBeUndefined();
+    });
+
     it("first chat turn (no prior) stamps conversation_id = own id", async () => {
       const head = await sessions.create(newSession({ type: "chat", intent: "hi" }));
       expect(head.conversation_id).toBe(head.id);

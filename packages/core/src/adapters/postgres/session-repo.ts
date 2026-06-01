@@ -268,7 +268,9 @@ export class PostgresSessionRepository implements SessionRepository {
     //      subselect returns NULL when prior_session_id is NULL or the
     //      prior row is gone — soft-deleted or pruned);
     //   3. else this is a new thread — stamp the row's own id.
-    // For non-chat sessions, conversation_id stays NULL.
+    // Non-chat sessions ALWAYS get NULL — the type check guards the
+    // whole expression so a caller passing an explicit conversation_id
+    // on a task / mesh row can't leak it into the chat-thread index.
     const { rows } = await this.pool.query<SessionRow>(
       `INSERT INTO session (
          id, agent_id, task_id, prior_session_id,
@@ -289,8 +291,8 @@ export class PostgresSessionRepository implements SessionRepository {
          $16, COALESCE($17, 'daemon'), $18, $19,
          $20,
          CASE
-           WHEN $22::text IS NOT NULL THEN $22::text
            WHEN $5 = 'chat' THEN COALESCE(
+             $22::text,
              (SELECT conversation_id FROM session WHERE id = $4),
              $1
            )

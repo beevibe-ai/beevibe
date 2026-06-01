@@ -80,9 +80,17 @@ FROM task
 GROUP BY status
 `;
 
+// `active_agents` matches the RUNNING_SESSIONS_SQL semantic — an agent
+// is "active" when it has at least one long-running (non-chat) session
+// in flight. Including chat here would let a chat-heavy agent flicker
+// between active and idle on every LLM round-trip, the same bug that
+// motivated the chat exclusion on the active_sessions KPI.
 const FLEET_SQL = /* sql */ `
 WITH active_agents AS (
-  SELECT DISTINCT agent_id FROM session WHERE status = 'running'
+  SELECT DISTINCT agent_id
+    FROM session
+   WHERE status = 'running'
+     AND type != 'chat'
 )
 SELECT
   a.hierarchy_level AS hier,

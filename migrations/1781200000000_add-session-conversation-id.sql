@@ -61,6 +61,21 @@ UPDATE session
   FROM heads h
  WHERE session.id = h.id;
 
+-- Defensive fallback: any chat row whose conversation_id is still NULL
+-- after the recursive walk is a member of a chat-only cycle in
+-- prior_session_id (data corruption — chains should only point backward
+-- in time). The recursive CTE skips cycles because neither node
+-- qualifies for the base case (each has a chat prior), and the
+-- inductive step never seeds them. Without this fallback the cycle
+-- members vanish from DETAIL_SQL_RECENT_CHAT_THREADS (which filters
+-- `conversation_id IS NOT NULL`); groupIntoConversations in JS would
+-- have surfaced them via its visited-set bail. Stamping each survivor
+-- as its own thread head matches that JS contract.
+UPDATE session
+   SET conversation_id = id
+ WHERE type = 'chat'
+   AND conversation_id IS NULL;
+
 -- Partial index for the agent detail "recent chat threads" rollup
 -- (GROUP BY conversation_id WHERE agent_id=$1 AND type='chat') and the
 -- planned chat history lookup that will replace the JS walk. Restricting
