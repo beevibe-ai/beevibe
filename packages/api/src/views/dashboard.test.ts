@@ -165,6 +165,47 @@ describe("getDashboardSummary", () => {
     expect(summary.kpis.find((k) => k.kind === "active_sessions")?.value).toBe(10);
   });
 
+  it("RUNNING_SESSIONS_SQL filters out chat — preserves the gauge across chat-turn churn", async () => {
+    // Spy on the SQL text to lock in the chat-exclusion filter. Without
+    // it, a chat-heavy agent caused the gauge to oscillate between 0
+    // and N every time an LLM round-trip flipped a short-lived
+    // type='chat' row from running to succeeded.
+    const sqlSeen: string[] = [];
+    const query = vi.fn(async (sql: unknown) => {
+      const text = String(sql);
+      sqlSeen.push(text);
+      if (text.includes("FROM days") && text.includes("active_sessions")) return { rows: makeKpiTrendRows() };
+      if (text.includes("FROM days")) return { rows: makeTrendRows() };
+      return { rows: [] };
+    });
+    const pool = { query } as unknown as Pool;
+    await getDashboardSummary(pool);
+    const runningSessionsSql = sqlSeen.find(
+      (s) =>
+        s.includes("COUNT(*)::int AS n") &&
+        s.includes("FROM session") &&
+        s.includes("status = 'running'"),
+    );
+    expect(runningSessionsSql).toBeDefined();
+    expect(runningSessionsSql).toContain("type != 'chat'");
+
+    const kpiTrendSql = sqlSeen.find(
+      (s) => s.includes("sessions_per_day") && s.includes("FROM session"),
+    );
+    expect(kpiTrendSql).toBeDefined();
+    expect(kpiTrendSql).toContain("type != 'chat'");
+
+    // FLEET_SQL's active_agents CTE drives the per-hierarchy "X
+    // active / Y total" bar. Without the chat filter it'd flicker the
+    // bar for chat-heavy agents on every LLM round-trip — same root
+    // cause as the gauge bug, different widget.
+    const fleetSql = sqlSeen.find(
+      (s) => s.includes("active_agents") && s.includes("FROM session"),
+    );
+    expect(fleetSql).toBeDefined();
+    expect(fleetSql).toContain("type != 'chat'");
+  });
+
   it("handles 0 totals without dividing by zero", async () => {
     const pool = makeMockPool([[], [], makeTrendRows(), [], makeKpiTrendRows()]);
     const { status_total, status_breakdown, fleet_total, fleet } = await getDashboardSummary(pool);

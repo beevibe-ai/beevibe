@@ -260,6 +260,17 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   async create(input: NewSession): Promise<Session> {
+    // conversation_id resolution policy lives in the INSERT itself so
+    // every call site (DispatchService, AgentSession's legacy inline
+    // path, tests) gets it for free. For chat sessions:
+    //   1. an explicit caller-provided conversation_id wins;
+    //   2. else inherit from the prior session's conversation_id (the
+    //      subselect returns NULL when prior_session_id is NULL or the
+    //      prior row is gone — soft-deleted or pruned);
+    //   3. else this is a new thread — stamp the row's own id.
+    // Non-chat sessions ALWAYS get NULL — the type check guards the
+    // whole expression so a caller passing an explicit conversation_id
+    // on a task / mesh row can't leak it into the chat-thread index.
     const { rows } = await this.pool.query<SessionRow>(
       `INSERT INTO session (
          id, agent_id, task_id, prior_session_id,
@@ -269,6 +280,7 @@ export class PostgresSessionRepository implements SessionRepository {
          result_summary, exit_code, error, usage,
          runtime_id, spawn_mode, room_id, caller_agent_id,
          parent_session_id,
+         conversation_id,
          started_at, completed_at
        ) VALUES (
          $1, $2, $3, $4,
@@ -278,6 +290,14 @@ export class PostgresSessionRepository implements SessionRepository {
          $12, $13, $14, $15,
          $16, COALESCE($17, 'daemon'), $18, $19,
          $20,
+         CASE
+           WHEN $5 = 'chat' THEN COALESCE(
+             $22::text,
+             (SELECT conversation_id FROM session WHERE id = $4),
+             $1
+           )
+           ELSE NULL
+         END,
          $21, NULL
        )
        RETURNING *`,
@@ -303,6 +323,7 @@ export class PostgresSessionRepository implements SessionRepository {
         input.caller_agent_id ?? null,
         input.parent_session_id ?? null,
         input.started_at ?? null,
+        input.conversation_id ?? null,
       ],
     );
     return rowToSession(rows[0]!);
@@ -368,6 +389,7 @@ function rowToSession(row: SessionRow): Session {
     room_id: row.room_id ?? undefined,
     caller_agent_id: row.caller_agent_id ?? undefined,
     parent_session_id: row.parent_session_id ?? undefined,
+    conversation_id: row.conversation_id ?? undefined,
     started_at: row.started_at ?? undefined,
     completed_at: row.completed_at ?? undefined,
     created_at: row.created_at,

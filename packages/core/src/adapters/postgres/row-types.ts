@@ -73,6 +73,7 @@ export interface SessionRow {
   room_id: string | null;
   caller_agent_id: string | null;
   parent_session_id: string | null;
+  conversation_id: string | null;
   started_at: Date | null;
   completed_at: Date | null;
   created_at: Date;

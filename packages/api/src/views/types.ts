@@ -123,6 +123,34 @@ export interface RecentSession {
   age: string;
 }
 
+/**
+ * Recent chat conversation surfaced on the agent detail page as one
+ * collapsed card per thread. Each thread groups N chat-turn sessions
+ * sharing the same `conversation_id` (the head turn's session id —
+ * stamped by the postgres SessionRepository INSERT, backfilled by
+ * migration 1781200000000). The web renders this as an expandable card
+ * showing the first message as the title and `turn_count` turns inside.
+ *
+ * Distinct from `RecentSession` (which now excludes chat) — task
+ * sessions render as today, one row per session.
+ */
+export interface RecentChatThread {
+  /** Head session id of the thread; stable across all turns. */
+  conversation_id: string;
+  /** First message of the thread, truncated to 80 chars. */
+  title: string;
+  /** How many chat sessions are in the thread. */
+  turn_count: number;
+  /** Relative-time label for the most recent turn, e.g. "2m". */
+  age: string;
+  /**
+   * Status of the latest turn. Drives the in-flight pip — when a chat
+   * turn is mid-LLM-call, the card shows "running"; on succeeded /
+   * failed / cancelled it goes idle.
+   */
+  last_status: "running" | "succeeded" | "review";
+}
+
 export interface OutgoingMeshHint {
   target: string;
   intent: string;
@@ -153,7 +181,14 @@ export interface AgentMetrics {
 export interface AgentDetail extends AgentDisplay {
   core_blocks: CoreBlockDisplay[];
   metrics: AgentMetrics;
+  /**
+   * Recent non-chat sessions (task / mesh / blocker / run_repo). Chat
+   * sessions are surfaced via `recent_chat_threads` so heavy chat usage
+   * doesn't drown out actual task work in this list.
+   */
   recent_sessions: RecentSession[];
+  /** Recent chat conversations, collapsed by `conversation_id`. */
+  recent_chat_threads: RecentChatThread[];
   outgoing_mesh_hints: OutgoingMeshHint[];
 }
 
