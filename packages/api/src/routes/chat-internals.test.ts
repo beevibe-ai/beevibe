@@ -168,9 +168,7 @@ describe("chainToMessages", () => {
     expect(out[1]?.content).toBe("shipped");
   });
 
-  it("skips the user bubble for a <system-wake>-wrapped intent", () => {
-    // Trigger-inserted wake turn: the intent was system-generated, not
-    // typed by the user. Only the agent's reply should show in chat.
+  it("emits a system message for a <system-wake>-wrapped intent (wrap + 'Decide next steps.' stripped)", () => {
     const s = makeSession({
       id: "sess_wake",
       intent:
@@ -179,11 +177,33 @@ describe("chainToMessages", () => {
       result_summary: "Acknowledged.",
     });
     const out = chainToMessages({ head_id: s.id, sessions: [s] });
-    expect(out.map((m) => m.role)).toEqual(["agent"]);
-    expect(out[0]?.content).toBe("Acknowledged.");
+    expect(out.map((m) => m.role)).toEqual(["system", "agent"]);
+    expect(out[0]?.content).toBe(
+      "1 tasks completed:\n  - X — done. Result: ok",
+    );
+    expect(out[0]?.session_id).toBe("sess_wake");
+    expect(out[1]?.content).toBe("Acknowledged.");
   });
 
-  it("mixed chain: skips wake bubbles, keeps user-typed bubbles", () => {
+  it("emits only the system message for a pending wake (no agent reply yet)", () => {
+    // Streaming scenario: wake session was just inserted by the trigger
+    // and the agent is currently running. The system message must surface
+    // so the user can see what triggered the imminent reply.
+    const s = makeSession({
+      id: "sess_wake",
+      intent:
+        "<system-wake>\n2 tasks completed:\n  - A — done\n  - B — done\nDecide next steps.\n</system-wake>",
+      status: "running",
+      result_summary: undefined,
+    });
+    const out = chainToMessages({ head_id: s.id, sessions: [s] });
+    expect(out.map((m) => m.role)).toEqual(["system"]);
+    expect(out[0]?.content).toContain("2 tasks completed:");
+    expect(out[0]?.content).not.toContain("Decide next steps.");
+    expect(out[0]?.content).not.toContain("<system-wake>");
+  });
+
+  it("mixed chain: system messages alongside normal user/agent turns", () => {
     const turn1 = makeSession({
       id: "sess_1",
       intent: "ship it",
@@ -192,14 +212,29 @@ describe("chainToMessages", () => {
     });
     const wake = makeSession({
       id: "sess_wake",
-      intent: "<system-wake>\n2 tasks completed:\n  - A — done\n  - B — done\nDecide next steps.\n</system-wake>",
+      intent:
+        "<system-wake>\n2 tasks completed:\n  - A — done\n  - B — done\nDecide next steps.\n</system-wake>",
       result_summary: "Both done; running tests.",
       status: "succeeded",
     });
     const out = chainToMessages({ head_id: turn1.id, sessions: [turn1, wake] });
-    expect(out.map((m) => m.role)).toEqual(["user", "agent", "agent"]);
+    expect(out.map((m) => m.role)).toEqual(["user", "agent", "system", "agent"]);
     expect(out[0]?.content).toBe("ship it");
     expect(out[1]?.content).toBe("Dispatched A, B.");
-    expect(out[2]?.content).toBe("Both done; running tests.");
+    expect(out[2]?.content).toContain("2 tasks completed:");
+    expect(out[3]?.content).toBe("Both done; running tests.");
+  });
+
+  it("preserves a 'Wake reason:' prefix in the system message", () => {
+    const s = makeSession({
+      id: "sess_wake",
+      intent:
+        "<system-wake>\nWake reason: deploy progress check\n\n1 tasks completed:\n  - X — done\nDecide next steps.\n</system-wake>",
+      status: "succeeded",
+      result_summary: "ack",
+    });
+    const out = chainToMessages({ head_id: s.id, sessions: [s] });
+    const system = out.find((m) => m.role === "system");
+    expect(system?.content.startsWith("Wake reason: deploy progress check")).toBe(true);
   });
 });

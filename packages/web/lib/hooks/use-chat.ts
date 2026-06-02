@@ -17,7 +17,11 @@ import { queryKeys } from "./keys";
 export interface ChatMessage {
   /** Stable key for React; not persisted. */
   id: string;
-  role: "user" | "agent";
+  /**
+   * `system` is used for autonomous trigger annotations (currently just
+   * watch_tasks fires). UI renders them as compact pills between bubbles.
+   */
+  role: "user" | "agent" | "system";
   content: string;
   /** Set on agent messages so the UI can link to the session detail page. */
   session_id?: string;
