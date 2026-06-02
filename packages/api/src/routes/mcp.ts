@@ -28,6 +28,7 @@ import { sessionId as makeBeevibeSid } from "@beevibe/core";
 import type { TaskService } from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
+import type { WatchService } from "@beevibe/core/services/watch-service";
 import type { MeshServer } from "../mesh/server.js";
 import { assembleTools } from "../tools/assemble.js";
 import { buildInstructions } from "../tools/instructions.js";
@@ -61,6 +62,8 @@ export interface McpRouterDeps {
   embeddings: EmbeddingService;
   /** Used to read the caller's owner's capability_network_enabled flag. */
   personRepo: PersonRepository;
+  /** Backs team-tier `watch_tasks` / `unwatch`. */
+  watchService: WatchService;
 }
 
 /** Tracked per-MCP-session state. mcpSid ↔ transport + server. */
@@ -282,6 +285,7 @@ async function handleMcpRequest(
       repoRunRepo: deps.repoRunRepo,
       learnedSkillRepo: deps.learnedSkillRepo,
       embeddings: deps.embeddings,
+      watchService: deps.watchService,
     },
   );
 

@@ -86,6 +86,10 @@
       "types": "./dist/services/post-dispatch.d.ts",
       "default": "./dist/services/post-dispatch.js"
     },
+    "./services/watch-service": {
+      "types": "./dist/services/watch-service.d.ts",
+      "default": "./dist/services/watch-service.js"
+    },
     "./services/skills": {
       "types": "./dist/services/skills/index.d.ts",
       "default": "./dist/services/skills/index.js"
