@@ -17,6 +17,16 @@ export type TaskWatchStatus = "waiting" | "fired" | "aborted";
 
 export const TASK_WATCH_MODES: readonly TaskWatchMode[] = ["all", "any"] as const;
 
+/**
+ * Opening / closing tags the watch trigger wraps every wake intent in.
+ * `chat.chainToMessages` checks the opening tag to detect a system-
+ * generated turn and skip the user-bubble push. Keep in sync with the
+ * literal in the PL/pgSQL `bv_build_watch_intent` function — they're a
+ * wire contract between the SQL fire path and the TS renderer.
+ */
+export const SYSTEM_WAKE_INTENT_OPEN = "<system-wake>";
+export const SYSTEM_WAKE_INTENT_CLOSE = "</system-wake>";
+
 export interface TaskWatch {
   id: string;
   /** Session that called watch_tasks; the wake session chains off this via prior_session_id. */

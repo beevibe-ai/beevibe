@@ -47,3 +47,31 @@ export async function truncateAll(pool: Pool): Promise<void> {
     `TRUNCATE ${ALL_TABLES.join(", ")} RESTART IDENTITY CASCADE`,
   );
 }
+
+/**
+ * Insert a daemon + runtime row pair so an integration test can pin a
+ * session to a non-null `runtime_id`. Used by tests that need to assert
+ * runtime-aware behavior (claim routing, watch-tasks wake inheritance,
+ * etc.) without dragging in the daemon HTTP onboarding flow. Returns
+ * the new ids; deleting the rows is unnecessary if the test relies on
+ * `truncateAll` between cases.
+ */
+export async function seedPinnedRuntime(
+  pool: Pool,
+  opts: { personId: string; suffix?: string },
+): Promise<{ daemonId: string; runtimeId: string }> {
+  const suffix = opts.suffix ?? Date.now().toString();
+  const daemonId = `dmn_pin_${suffix}`;
+  const runtimeId = `rt_pin_${suffix}`;
+  await pool.query(
+    `INSERT INTO daemon (id, owner_person_id, external_id, device_name, token_hash)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [daemonId, opts.personId, `ext_${suffix}`, `dev_${suffix}`, `hash_${suffix}`],
+  );
+  await pool.query(
+    `INSERT INTO runtime (id, daemon_id, cli, capabilities)
+     VALUES ($1, $2, 'claude', '{}'::jsonb)`,
+    [runtimeId, daemonId],
+  );
+  return { daemonId, runtimeId };
+}

@@ -1,3 +1,9 @@
+-- SUPERSEDED in part by 1781500000000_fix-task-watch-wake-runtime-and-marker.sql,
+-- which CREATE OR REPLACEs both functions below to (a) inherit runtime_id
+-- onto the wake session row and (b) wrap the intent in <system-wake>...
+-- </system-wake>. This file is the deployed shape kept for historical record;
+-- tune the superseding file when changing the trigger.
+
 -- Trigger that fans terminal task transitions into wake sessions.
 -- A waiting `task_watch` row is an agent's explicit "wake me when these
 -- finish" subscription; this trigger fires on the matching task UPDATE,
