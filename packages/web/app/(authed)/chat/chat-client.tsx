@@ -8,6 +8,7 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowUp,
+  Eye,
   MessageSquare,
   Star,
 } from "lucide-react";
@@ -210,6 +211,9 @@ export function ChatClient() {
                 {messages.map((m, i) => {
                   const prev = messages[i - 1];
                   const isFirstInGroup = !prev || prev.role !== m.role;
+                  if (m.role === "system") {
+                    return <SystemPill key={m.id} content={m.content} />;
+                  }
                   return (
                     <Bubble
                       key={m.id}
@@ -434,6 +438,40 @@ function HeroSection({ title, children }: { title: string; children: React.React
     <div>
       <h2 className="text-xs text-muted-foreground/70 mb-2 px-1">{title}</h2>
       {children}
+    </div>
+  );
+}
+
+/**
+ * System-trigger annotation rendered as a compact pill between bubbles.
+ * Currently sourced from `<system-wake>` intents produced by the
+ * watch_tasks DB trigger ("Watch fired — 2 tasks completed: …"). Tells
+ * the user *why* the agent is suddenly running, without competing with
+ * a real agent reply for visual weight.
+ *
+ * The content is the extracted wake summary (server-side strips the
+ * wrapper tags and the trailing "Decide next steps."). We render the
+ * first line as the headline and the rest as a compact monospace body.
+ */
+function SystemPill({ content }: { content: string }) {
+  const lines = content.split("\n");
+  const headline = lines[0] ?? "";
+  const body = lines.slice(1).join("\n").trim();
+  return (
+    <div className="flex w-full justify-start mt-4">
+      <div className="w-7 mr-2 shrink-0" />
+      <div className="max-w-[78%] rounded-lg border border-border/40 bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
+        <div className="flex items-center gap-1.5 font-medium text-foreground/85">
+          <Eye className="h-3 w-3 shrink-0" />
+          <span>Watch fired</span>
+          <span className="text-muted-foreground/70 font-normal">— {headline}</span>
+        </div>
+        {body ? (
+          <div className="mt-1 whitespace-pre-wrap font-mono text-[11px] leading-5 text-muted-foreground/85">
+            {body}
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }

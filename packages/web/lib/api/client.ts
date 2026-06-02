@@ -308,7 +308,12 @@ export interface SignupResponse {
 
 export interface ChatHistoryMessage {
   id: string;
-  role: "user" | "agent";
+  /**
+   * `system` marks autonomous trigger annotations (e.g. watch_tasks fired —
+   * "2 tasks completed: …"). Rendered as a compact pill between user/agent
+   * bubbles so the user can see *why* the agent is suddenly running.
+   */
+  role: "user" | "agent" | "system";
   content: string;
   session_id?: string;
   view_refs?: string[];

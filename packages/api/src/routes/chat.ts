@@ -24,6 +24,7 @@
 import { randomUUID } from "node:crypto";
 import { Router, type RequestHandler, type Response } from "express";
 import {
+  SYSTEM_WAKE_INTENT_CLOSE,
   SYSTEM_WAKE_INTENT_OPEN,
   isInFlightSessionStatus,
   isKnownCli,
@@ -71,13 +72,34 @@ export interface ChatRoutesDeps {
 
 interface HistoryMessage {
   id: string;
-  role: "user" | "agent";
+  /**
+   * `system` is used for autonomous trigger messages — currently just the
+   * watch_tasks fire ("Watch fired — 2 tasks completed: …"). It tells the
+   * chat surface "the agent's next reply is responding to THIS, not to a
+   * user message," so the UI can render a compact pill above the agent
+   * bubble. The agent never produces system messages directly — they're
+   * derived from the wake session's `<system-wake>`-wrapped intent.
+   */
+  role: "user" | "agent" | "system";
   content: string;
   session_id?: string;
   view_refs?: string[];
   open_view?: { path: string; label?: string };
   suggested_actions?: SuggestedAction[];
   repo_cards?: RepoCard[];
+}
+
+/**
+ * Extract the user-facing summary out of a `<system-wake>`-wrapped intent.
+ * Drops the wrapper tags and the trailing "Decide next steps." prompt
+ * (agent-facing instruction, noise to the human reader).
+ */
+function extractWakeSummary(intent: string): string {
+  return intent
+    .replace(new RegExp(`^${SYSTEM_WAKE_INTENT_OPEN}\\s*`), "")
+    .replace(new RegExp(`\\s*${SYSTEM_WAKE_INTENT_CLOSE}\\s*$`), "")
+    .replace(/\n+Decide next steps\.\s*$/, "")
+    .trim();
 }
 
 // Generic 500 — internal error text stays in server logs, indexed by
@@ -242,11 +264,19 @@ export function failureMessageFor(s: {
 export function chainToMessages(chain: ConversationChain): HistoryMessage[] {
   const messages: HistoryMessage[] = [];
   for (const s of chain.sessions) {
-    // Skip the user-bubble push for system-generated wake turns
-    // (watch_tasks fires). The agent still reads the wake intent via
-    // claude --resume; the chat history just shouldn't render a
-    // fake "user message" the user never typed.
-    if (!s.intent.startsWith(SYSTEM_WAKE_INTENT_OPEN)) {
+    if (s.intent.startsWith(SYSTEM_WAKE_INTENT_OPEN)) {
+      // System-generated wake turn (watch_tasks fired). Emit a `system`
+      // message with the trigger summary so the chat surface can show
+      // the user *why* the agent is suddenly running — and keep the
+      // record on reload. The agent reads the full wrapped intent via
+      // claude --resume; the user only needs the summary.
+      messages.push({
+        id: `w_${s.id}`,
+        role: "system",
+        content: extractWakeSummary(s.intent),
+        session_id: s.id,
+      });
+    } else {
       messages.push({ id: `u_${s.id}`, role: "user", content: s.intent });
     }
     if (s.status === "failed") {
