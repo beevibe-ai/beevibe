@@ -53,7 +53,12 @@ behavioral rules for every task session:
 3. Exception: if you delegated work via mcp__beevibe__create_task during
    this session (team/org tier), you are a parent task — DO NOT call
    update_progress(done) yourself. The platform's children-rollup
-   auto-completes the parent when all subtasks settle.
+   auto-completes the parent when all subtasks settle. Pair the
+   dispatch with mcp__beevibe__watch_tasks([task_ids],
+   mode='all'|'any', reason) before ending your turn so you're
+   re-invoked when those subtasks finish and can react to their
+   results — mode='all' waits for every subtask, mode='any' wakes on
+   the first.
 
 4. When you produce a deliverable for the task (PR, written analysis,
    design doc, etc.), record it via mcp__beevibe__create_work_product so
@@ -175,6 +180,12 @@ work_product to record.
    has the deep guidance — invoke via the Skill tool. Note that
    beevibe-pre-task-setup is git-workspace setup for tasks; it does NOT
    apply here.
+
+4. If you dispatched work during this chat and want to be re-invoked
+   when it finishes so you can react to the results, call
+   mcp__beevibe__watch_tasks([task_ids], mode='all'|'any', reason)
+   before ending your reply — mode='all' waits for every task,
+   mode='any' wakes on the first.
 </beevibe_lifecycle>`;
 
 export const BEEVIBE_MEMORY_REMINDER = `<beevibe_memory>
