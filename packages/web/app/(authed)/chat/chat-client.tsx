@@ -8,7 +8,7 @@ import {
   AlertTriangle,
   ArrowRight,
   ArrowUp,
-  Eye,
+  Bell,
   MessageSquare,
   Star,
 } from "lucide-react";
@@ -448,13 +448,14 @@ function HeroSection({ title, children }: { title: string; children: React.React
  * watch_tasks DB trigger ("Watch fired — 2 tasks completed: …"). Tells
  * the user *why* the agent is suddenly running, without competing with
  * a real agent reply for visual weight.
- *
- * The content is the extracted wake summary (server-side strips the
- * wrapper tags and the trailing "Decide next steps."). We render the
- * first line as the headline and the rest as a compact monospace body.
  */
 function SystemPill({ content }: { content: string }) {
-  const lines = content.split("\n");
+  // The server-extracted wake summary may start with a "Wake reason: <text>"
+  // line followed by a blank line. Split it out so the task summary stays
+  // the headline; otherwise we'd stack "Watch fired — Wake reason:" and
+  // demote the actual completion list into the body.
+  const { reason, summary } = splitWakeReason(content);
+  const lines = summary.split("\n");
   const headline = lines[0] ?? "";
   const body = lines.slice(1).join("\n").trim();
   return (
@@ -462,18 +463,37 @@ function SystemPill({ content }: { content: string }) {
       <div className="w-7 mr-2 shrink-0" />
       <div className="max-w-[78%] rounded-lg border border-border/40 bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
         <div className="flex items-center gap-1.5 font-medium text-foreground/85">
-          <Eye className="h-3 w-3 shrink-0" />
+          <Bell className="h-3 w-3 shrink-0" />
           <span>Watch fired</span>
-          <span className="text-muted-foreground/70 font-normal">— {headline}</span>
+          {headline ? (
+            <span className="text-muted-foreground/70 font-normal">— {headline}</span>
+          ) : null}
         </div>
+        {reason ? (
+          <div className="mt-0.5 text-[11px] italic text-muted-foreground/85">
+            {reason}
+          </div>
+        ) : null}
         {body ? (
-          <div className="mt-1 whitespace-pre-wrap font-mono text-[11px] leading-5 text-muted-foreground/85">
+          <div className="mt-1 whitespace-pre-wrap text-[11px] leading-5 text-muted-foreground/85">
             {body}
           </div>
         ) : null}
       </div>
     </div>
   );
+}
+
+/**
+ * Pull an optional `Wake reason: <text>` prefix off the summary so the UI
+ * can render it as a subtitle. Returns the rest of the summary unchanged
+ * (matches the server's emission contract — see `extractWakeSummary` in
+ * `packages/api/src/routes/chat.ts`).
+ */
+export function splitWakeReason(content: string): { reason?: string; summary: string } {
+  const m = content.match(/^Wake reason: ([^\n]+)\n+/);
+  if (!m) return { summary: content };
+  return { reason: m[1]!.trim(), summary: content.slice(m[0].length) };
 }
 
 function Bubble({

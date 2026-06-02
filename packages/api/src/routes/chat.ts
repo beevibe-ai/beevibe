@@ -95,11 +95,14 @@ interface HistoryMessage {
  * (agent-facing instruction, noise to the human reader).
  */
 function extractWakeSummary(intent: string): string {
-  return intent
-    .replace(new RegExp(`^${SYSTEM_WAKE_INTENT_OPEN}\\s*`), "")
-    .replace(new RegExp(`\\s*${SYSTEM_WAKE_INTENT_CLOSE}\\s*$`), "")
-    .replace(/\n+Decide next steps\.\s*$/, "")
-    .trim();
+  let s = intent;
+  if (s.startsWith(SYSTEM_WAKE_INTENT_OPEN)) {
+    s = s.slice(SYSTEM_WAKE_INTENT_OPEN.length);
+  }
+  if (s.endsWith(SYSTEM_WAKE_INTENT_CLOSE)) {
+    s = s.slice(0, -SYSTEM_WAKE_INTENT_CLOSE.length);
+  }
+  return s.replace(/\n+Decide next steps\.\s*$/, "").trim();
 }
 
 // Generic 500 — internal error text stays in server logs, indexed by
