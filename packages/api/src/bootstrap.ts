@@ -17,6 +17,7 @@ import {
   PostgresSessionRepository,
   PostgresSkillOutcomeRepository,
   PostgresTaskRepository,
+  PostgresTaskWatchRepository,
   PostgresWorkProductRepository,
   createPool,
 } from "@beevibe/core/adapters/postgres";
@@ -36,6 +37,7 @@ import { TaskService } from "@beevibe/core/services/task-service";
 import { EscalationService } from "@beevibe/core/services/escalation-service";
 import { NegotiationService } from "@beevibe/core/services/negotiation-service";
 import { DispatchService } from "@beevibe/core/services/dispatch-service";
+import { WatchService } from "@beevibe/core/services/watch-service";
 import { DaemonOrphanReaper } from "@beevibe/core/services/orphan-reaper";
 import { buildPostDispatchHook } from "@beevibe/core/services/post-dispatch";
 import type { Session } from "@beevibe/core";
@@ -143,6 +145,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const repoRunRepo = new PostgresRepoRunRepository(pool);
   const learnedSkillRepo = new PostgresLearnedSkillRepository(pool);
   const skillOutcomeRepo = new PostgresSkillOutcomeRepository(pool);
+  const taskWatchRepo = new PostgresTaskWatchRepository(pool);
 
   const skillsDir =
     cfg.skillsSourceDir ?? path.resolve(process.cwd(), "skills");
@@ -164,6 +167,17 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     workProductRepo,
     agentRepo,
     sessionRepo,
+  });
+
+  // Backs the team-tier watch_tasks / unwatch tools — register a
+  // task_watch row; when matching tasks transition terminal the M2 DB
+  // trigger inserts a wake session in the waiter's chain so the agent
+  // gets re-invoked via --resume.
+  const watchService = new WatchService({
+    pool,
+    sessionRepo,
+    taskRepo,
+    watchRepo: taskWatchRepo,
   });
 
   // Phase 4 — daemon-facing surface. Hub tracks live WS clients indexed
@@ -337,6 +351,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     learnedSkillRepo,
     embeddings: embed,
     personRepo,
+    watchService,
   });
   server.getApp().use("/mcp", mcpRouter);
 

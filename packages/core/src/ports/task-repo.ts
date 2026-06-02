@@ -17,6 +17,13 @@ export interface TaskListFilter {
 export interface TaskRepository {
   findById(id: string): Promise<Task | undefined>;
 
+  /**
+   * Bulk lookup. Returns rows for the ids that exist, in input order; missing
+   * ids are silently dropped. Single SELECT, used by callers that fan out
+   * per-id reads (e.g. WatchService's already-terminal check).
+   */
+  findByIds(ids: string[]): Promise<Task[]>;
+
   list(filter?: TaskListFilter): Promise<Task[]>;
 
   listByAssignee(assigneeId: string): Promise<Task[]>;

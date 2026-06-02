@@ -26,6 +26,7 @@ import type {
 import type { TaskService } from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
+import type { WatchService } from "@beevibe/core/services/watch-service";
 import type { MeshServer } from "../mesh/server.js";
 import {
   assembleTools,
@@ -67,6 +68,7 @@ function buildMinimalServices(): AssembleToolsServices {
       embed: vi.fn(async () => [1, 0]),
       embedBatch: vi.fn(async (texts: string[]) => texts.map(() => [1, 0])),
     },
+    watchService: {} as unknown as WatchService,
   };
 }
 
@@ -95,9 +97,9 @@ function icCtx(
 }
 
 describe("assembleTools — daemon (full surface)", () => {
-  it("team caller gets the full team surface (26 tools, includes find_repo + use_repo)", () => {
+  it("team caller gets the full team surface (28 tools, includes find_repo + use_repo + watch_tasks/unwatch)", () => {
     const tools = assembleTools(teamCtx(), buildMinimalServices());
-    expect(tools.length).toBe(26);
+    expect(tools.length).toBe(28);
     const names = new Set(tools.map((t) => t.name));
     expect(names.has("create_task")).toBe(true);
     expect(names.has("update_work_product")).toBe(true);
@@ -107,9 +109,11 @@ describe("assembleTools — daemon (full surface)", () => {
     expect(names.has("create_subordinate_agent")).toBe(true);
     expect(names.has("find_repo")).toBe(true);
     expect(names.has("use_repo")).toBe(true);
+    expect(names.has("watch_tasks")).toBe(true);
+    expect(names.has("unwatch")).toBe(true);
   });
 
-  it("ic caller gets the IC surface (15 tools, includes find_repo + use_repo)", () => {
+  it("ic caller gets the IC surface (15 tools, includes find_repo + use_repo; NO watch_tasks)", () => {
     const tools = assembleTools(icCtx(), buildMinimalServices());
     expect(tools.length).toBe(15);
     const names = new Set(tools.map((t) => t.name));
@@ -118,6 +122,8 @@ describe("assembleTools — daemon (full surface)", () => {
     expect(names.has("report_blocker")).toBe(true);
     expect(names.has("find_repo")).toBe(true);
     expect(names.has("use_repo")).toBe(true);
+    expect(names.has("watch_tasks")).toBe(false);
+    expect(names.has("unwatch")).toBe(false);
   });
 
   it("owner with capability_network_enabled=false gets neither find_repo nor use_repo", () => {

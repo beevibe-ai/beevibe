@@ -14,6 +14,7 @@ loadEnv({ path: repoRootEnv });
 
 // Children before parents — saves CASCADE work on every TRUNCATE.
 const ALL_TABLES = [
+  "task_watch",
   "escalation",
   "negotiation_round",
   "negotiation",

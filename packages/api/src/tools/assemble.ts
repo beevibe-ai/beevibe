@@ -15,6 +15,7 @@ import type { CoreMemory, FactStore, MemoryAgent } from "@beevibe/core/services/
 import type { TaskService } from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
+import type { WatchService } from "@beevibe/core/services/watch-service";
 import type { MeshServer } from "../mesh/server.js";
 import { buildIcMeshTools, buildTeamMeshTools } from "./mesh.js";
 import { buildHierarchyTools } from "./hierarchy.js";
@@ -22,6 +23,7 @@ import { createSaveMemoryTool } from "./save-memory.js";
 import { createUpdateCoreMemoryTool } from "./update-core-memory.js";
 import { createUseRepoTool } from "./use-repo.js";
 import { createFindRepoTool } from "./find-repo.js";
+import { buildWatchTools } from "./watch.js";
 import type { AgentTool } from "./types.js";
 
 export interface AssembleToolsServices {
@@ -46,6 +48,8 @@ export interface AssembleToolsServices {
   learnedSkillRepo: LearnedSkillRepository;
   /** Capability Network: powers find_repo's semantic relevance gate. */
   embeddings: EmbeddingService;
+  /** Team-tier `watch_tasks` / `unwatch` — wake-up on dispatched task completion. */
+  watchService: WatchService;
 }
 
 /**
@@ -202,11 +206,22 @@ export function assembleTools(
       ]
     : [];
 
+  // watch_tasks / unwatch are team-only — ICs run one task to completion
+  // and don't typically need to wait on dispatched children.
+  const watchTools: AgentTool[] =
+    ctx.caller.hierarchyLevel === "ic"
+      ? []
+      : buildWatchTools(
+          { agentId: ctx.caller.agentId, sessionId: ctx.beevibeSid },
+          { watchService: services.watchService },
+        );
+
   const all = [
     ...memoryTools,
     ...hierarchyTools,
     ...meshTools,
     ...capabilityTools,
+    ...watchTools,
   ];
   if (ctx.spawnMode === "server_fallback_mesh") {
     return filterForServerFallback(all);

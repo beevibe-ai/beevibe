@@ -1,4 +1,9 @@
-import type { NextDispatchContext, Task, TaskStatus } from "../domain/task.js";
+import {
+  TERMINAL_TASK_STATUSES,
+  type NextDispatchContext,
+  type Task,
+  type TaskStatus,
+} from "../domain/task.js";
 import type { WorkProduct, WorkProductListItem } from "../domain/work-product.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type { SessionRepository } from "../ports/session-repo.js";
@@ -42,8 +47,12 @@ const PARENT_AGENT_REVISE_FROM: readonly TaskStatus[] = ["blocked"];
 /** Cancellation from these requires `force: true`. */
 const TERMINAL_STATUSES: readonly TaskStatus[] = ["done", "cancelled"];
 
-/** A task is "complete" for the parent-rollup check when it is in one of these. */
-const COMPLETE_STATUSES: readonly TaskStatus[] = ["done", "cancelled", "failed"];
+/**
+ * A task is "complete" for the parent-rollup check when it has reached a
+ * terminal status — shared with WatchService so both layers agree on which
+ * statuses count as "done with this work" (whether or not it succeeded).
+ */
+const COMPLETE_STATUSES = TERMINAL_TASK_STATUSES;
 
 export interface TaskServiceDeps {
   taskRepo: TaskRepository;
