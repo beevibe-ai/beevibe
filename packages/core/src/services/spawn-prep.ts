@@ -54,13 +54,13 @@ behavioral rules for every task session:
    this session (team/org tier), you are a parent task — DO NOT call
    update_progress(done) yourself. The platform's children-rollup
    auto-completes the parent when all subtasks settle. If you need
-   to react to a subtask's outcome (downstream work depends on its
-   result, or you want to vet it before declaring the parent done),
-   also call mcp__beevibe__watch_tasks([task_ids], mode='all'|'any',
-   reason) before ending your turn — mode='all' waits for every
-   subtask, mode='any' wakes on the first. Skip the watch if the
-   subtask is well-defined end-state and the children-rollup is
-   enough on its own.
+   to react to a subtask's outcome (downstream work in this session
+   depends on its result, or you want to dispatch follow-up work
+   based on what it produced), also call
+   mcp__beevibe__watch_tasks([task_ids], mode='all'|'any', reason)
+   before ending your turn — mode='all' waits for every subtask,
+   mode='any' wakes on the first. Skip the watch if the subtask is
+   self-contained and the children-rollup is all you need.
 
 4. When you produce a deliverable for the task (PR, written analysis,
    design doc, etc.), record it via mcp__beevibe__create_work_product so
