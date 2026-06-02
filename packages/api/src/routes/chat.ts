@@ -24,6 +24,7 @@
 import { randomUUID } from "node:crypto";
 import { Router, type RequestHandler, type Response } from "express";
 import {
+  SYSTEM_WAKE_INTENT_OPEN,
   isInFlightSessionStatus,
   isKnownCli,
   type AgentRepository,
@@ -245,7 +246,7 @@ export function chainToMessages(chain: ConversationChain): HistoryMessage[] {
     // (watch_tasks fires). The agent still reads the wake intent via
     // claude --resume; the chat history just shouldn't render a
     // fake "user message" the user never typed.
-    if (!s.intent.startsWith("<system-wake>")) {
+    if (!s.intent.startsWith(SYSTEM_WAKE_INTENT_OPEN)) {
       messages.push({ id: `u_${s.id}`, role: "user", content: s.intent });
     }
     if (s.status === "failed") {

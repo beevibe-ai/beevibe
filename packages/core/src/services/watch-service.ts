@@ -190,7 +190,12 @@ export class WatchService {
       // Chat / task chains are runtime-pinned so claude --resume hits the
       // same daemon (and the same on-disk CLI session file) every turn.
       // The trigger does the same; this is the service-side mirror for the
-      // already-terminal race.
+      // already-terminal race. We intentionally use raw inheritance — NOT
+      // dispatchService's resolveRuntimeId fallback chain (override →
+      // prior → agent.preferred_runtime_id) — because the wake's semantic
+      // is "match the chain exactly". If the chain was deliberately null-
+      // routed (server-fallback), falling through to the agent's
+      // preferred runtime would silently re-route mid-conversation.
       runtime_id: waiter.runtime_id,
       type: waiter.type,
       intent,

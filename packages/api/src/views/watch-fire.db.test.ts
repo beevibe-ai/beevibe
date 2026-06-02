@@ -18,13 +18,19 @@ import {
 import { provisionAgent, provisionUser } from "@beevibe/core/auth";
 import {
   DEFAULT_RUNTIME_CONFIG,
+  SYSTEM_WAKE_INTENT_CLOSE,
+  SYSTEM_WAKE_INTENT_OPEN,
   agentId,
   personId,
   sessionId,
   taskId,
   taskWatchId,
 } from "@beevibe/core";
-import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
+import {
+  createTestPool,
+  seedPinnedRuntime,
+  truncateAll,
+} from "@beevibe/core/test-helpers";
 
 describe("trg_task_watch_check — integration", () => {
   let pool: Pool;
@@ -38,6 +44,7 @@ describe("trg_task_watch_check — integration", () => {
   let waiterSessionId: string;
   let teamAgentId: string;
   let icAgentId: string;
+  let ownerPersonId: string;
 
   beforeAll(() => {
     pool = createTestPool();
@@ -87,6 +94,7 @@ describe("trg_task_watch_check — integration", () => {
     waiterSessionId = waiter.id;
     teamAgentId = team.agent.id;
     icAgentId = ic.agent.id;
+    ownerPersonId = owner.person.id;
   });
 
   afterAll(async () => {
@@ -196,39 +204,22 @@ describe("trg_task_watch_check — integration", () => {
     const w = await createWatch([a], "all");
     await tasks.updateProgress(a, "done", "shipped");
     const wake = await findWakeSession(w);
-    expect(wake?.intent.startsWith("<system-wake>")).toBe(true);
-    expect(wake?.intent.endsWith("</system-wake>")).toBe(true);
+    expect(wake?.intent.startsWith(SYSTEM_WAKE_INTENT_OPEN)).toBe(true);
+    expect(wake?.intent.endsWith(SYSTEM_WAKE_INTENT_CLOSE)).toBe(true);
   });
 
   it("inherits waiter.runtime_id on the wake session (runtime-pinning)", async () => {
     // Seed a daemon + runtime + a chat waiter pinned to that runtime;
     // the wake session must inherit the same runtime_id so the user's
     // daemon claims it instead of the server-fallback worker.
-    const suffix = Date.now();
-    const ownerRow = await pool.query<{ owner_id: string }>(
-      `SELECT owner_id FROM agent WHERE id = $1`,
-      [teamAgentId],
-    );
-    const personId_ = ownerRow.rows[0]!.owner_id;
-    const daemonId = `dmn_pin_${suffix}`;
-    const rt = `rt_pin_${suffix}`;
-    await pool.query(
-      `INSERT INTO daemon (id, owner_person_id, external_id, device_name, token_hash)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [daemonId, personId_, `ext_${suffix}`, `dev_${suffix}`, `hash_${suffix}`],
-    );
-    await pool.query(
-      `INSERT INTO runtime (id, daemon_id, cli, capabilities)
-       VALUES ($1, $2, 'claude', '{}'::jsonb)`,
-      [rt, daemonId],
-    );
+    const { runtimeId } = await seedPinnedRuntime(pool, { personId: ownerPersonId });
     const pinnedWaiter = await sessions.create({
       id: sessionId(),
       agent_id: teamAgentId,
       type: "chat",
       status: "succeeded",
       intent: "pinned",
-      runtime_id: rt,
+      runtime_id: runtimeId,
     });
     const a = await createTask("Backend");
     // Reparent the task's IC session under the pinned waiter (the auth
@@ -249,7 +240,7 @@ describe("trg_task_watch_check — integration", () => {
     const wake = await sessions.findById(
       (await watches.findById(w.id))!.fired_session_id!,
     );
-    expect(wake?.runtime_id).toBe(rt);
+    expect(wake?.runtime_id).toBe(runtimeId);
   });
 
   it("mode='any' with one task: no 'others still running' block", async () => {

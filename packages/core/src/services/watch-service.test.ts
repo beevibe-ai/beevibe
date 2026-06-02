@@ -1,12 +1,16 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../domain/agent.js";
 import {
+  SYSTEM_WAKE_INTENT_CLOSE,
+  SYSTEM_WAKE_INTENT_OPEN,
+} from "../domain/task-watch.js";
+import {
   agentId,
   personId,
   sessionId,
   taskId,
 } from "../domain/ids.js";
-import { createTestPool, truncateAll } from "../test-helpers.js";
+import { createTestPool, seedPinnedRuntime, truncateAll } from "../test-helpers.js";
 import type { Pool } from "../adapters/postgres/client.js";
 import { PostgresAgentRepository } from "../adapters/postgres/agent-repo.js";
 import { PostgresPersonRepository } from "../adapters/postgres/person-repo.js";
@@ -32,6 +36,7 @@ describe("WatchService — integration", () => {
   let teamAgentId: string;
   let icAgentId: string;
   let waiterSessionId: string;
+  let ownerPersonId: string;
 
   beforeAll(() => {
     pool = createTestPool();
@@ -76,6 +81,7 @@ describe("WatchService — integration", () => {
     teamAgentId = team.id;
     icAgentId = ic.id;
     waiterSessionId = waiter.id;
+    ownerPersonId = owner.id;
   });
 
   afterAll(async () => {
@@ -249,8 +255,8 @@ describe("WatchService — integration", () => {
       expect(wake?.intent).toContain("A — done. Result: shipped a");
       expect(wake?.intent).toContain("B — failed: tests broke");
       // Wrapped so chainToMessages can detect and skip the user-bubble.
-      expect(wake?.intent.startsWith("<system-wake>")).toBe(true);
-      expect(wake?.intent.endsWith("</system-wake>")).toBe(true);
+      expect(wake?.intent.startsWith(SYSTEM_WAKE_INTENT_OPEN)).toBe(true);
+      expect(wake?.intent.endsWith(SYSTEM_WAKE_INTENT_CLOSE)).toBe(true);
     });
 
     it("inherits the waiter's runtime_id on the already-terminal fire path", async () => {
@@ -258,31 +264,14 @@ describe("WatchService — integration", () => {
       // the SQL trigger. Both paths must pin the wake to the same
       // runtime so a chat conversation's daemon claims the wake instead
       // of the server-fallback worker.
-      const suffix = Date.now();
-      const ownerRow = await pool.query<{ owner_id: string }>(
-        `SELECT owner_id FROM agent WHERE id = $1`,
-        [teamAgentId],
-      );
-      const personId_ = ownerRow.rows[0]!.owner_id;
-      const daemonIdValue = `dmn_pin_${suffix}`;
-      const rt = `rt_pin_${suffix}`;
-      await pool.query(
-        `INSERT INTO daemon (id, owner_person_id, external_id, device_name, token_hash)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [daemonIdValue, personId_, `ext_${suffix}`, `dev_${suffix}`, `hash_${suffix}`],
-      );
-      await pool.query(
-        `INSERT INTO runtime (id, daemon_id, cli, capabilities)
-         VALUES ($1, $2, 'claude', '{}'::jsonb)`,
-        [rt, daemonIdValue],
-      );
+      const { runtimeId } = await seedPinnedRuntime(pool, { personId: ownerPersonId });
       const pinnedWaiter = await sessions.create({
         id: sessionId(),
         agent_id: teamAgentId,
         type: "chat",
         status: "succeeded",
         intent: "pinned",
-        runtime_id: rt,
+        runtime_id: runtimeId,
       });
       const a = await dispatchTask("A", pinnedWaiter.id, { status: "done" });
       await tasks.update(a, { result_summary: "shipped" });
@@ -297,7 +286,7 @@ describe("WatchService — integration", () => {
       expect(result.firedImmediately).toBe(true);
       const watch = await watches.findById(result.watchId);
       const wake = await sessions.findById(watch!.fired_session_id!);
-      expect(wake?.runtime_id).toBe(rt);
+      expect(wake?.runtime_id).toBe(runtimeId);
     });
 
     it("does not fire when mode='all' and only some tasks are terminal", async () => {
