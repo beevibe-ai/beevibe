@@ -23,6 +23,20 @@ export const TASK_STATUSES: readonly TaskStatus[] = [
   "cancelled",
 ] as const;
 
+/**
+ * Task statuses that signal "this task has run its course" — done /
+ * failed / cancelled. Distinct from the narrower TERMINAL set used by
+ * task-service for status-patch guards (which excludes 'failed' so
+ * retries can move out of it). Watch_tasks fires on transitions into
+ * this set; downstream services that need the same "no further work
+ * expected" semantics should import from here rather than redeclaring.
+ */
+export const TERMINAL_TASK_STATUSES: readonly TaskStatus[] = [
+  "done",
+  "failed",
+  "cancelled",
+] as const;
+
 export type TaskPriority = "low" | "medium" | "high" | "critical";
 
 export const TASK_PRIORITIES: readonly TaskPriority[] = ["low", "medium", "high", "critical"] as const;

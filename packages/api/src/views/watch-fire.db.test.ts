@@ -1,8 +1,8 @@
 /**
- * Real-Postgres tests for the M2 `trg_task_watch_check` trigger.
- * Drives task.status transitions and asserts that matching task_watch
- * rows fire (insert a new wake session + flip to status='fired') under
- * the mode='all' / mode='any' contract.
+ * Real-Postgres tests for the `trg_task_watch_check` trigger. Drives
+ * task.status transitions and asserts that matching task_watch rows
+ * fire (insert a new wake session + flip to status='fired') under the
+ * mode='all' / mode='any' contract.
  */
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
@@ -171,6 +171,24 @@ describe("trg_task_watch_check — integration", () => {
     expect(wake?.intent).toContain("Task Backend — done. Result: shipped a");
     expect(wake?.intent).toContain("Other watched tasks still running:");
     expect(wake?.intent).toContain("Frontend — in_progress");
+  });
+
+  it("watch.reason is surfaced as a 'Wake reason:' prefix in the intent", async () => {
+    const a = await createTask("Backend");
+    const w = await watches.create({
+      id: taskWatchId(),
+      waiter_session_id: waiterSessionId,
+      agent_id: teamAgentId,
+      mode: "all",
+      task_ids: [a],
+      reason: "checking deploy progress",
+    });
+
+    await tasks.updateProgress(a, "done", "shipped");
+    const fired = await watches.findById(w.id);
+    const wake = await sessions.findById(fired!.fired_session_id!);
+    expect(wake?.intent).toMatch(/^Wake reason: checking deploy progress\n\n/);
+    expect(wake?.intent).toContain("Backend — done. Result: shipped");
   });
 
   it("mode='any' with one task: no 'others still running' block", async () => {

@@ -1,11 +1,10 @@
--- M2 of the watch_tasks feature: trigger that fans terminal task
--- transitions into wake sessions. The waiting `task_watch` row is the
--- agent's explicit "wake me when these finish" subscription; this
--- trigger fires on the matching task UPDATE, builds an intent message
--- describing what completed, inserts a new pending session that
--- continues the waiter's chain via prior_session_id, and stamps the
--- watch row 'fired' with the new session id — all in the same
--- transaction as the task status change.
+-- Trigger that fans terminal task transitions into wake sessions.
+-- A waiting `task_watch` row is an agent's explicit "wake me when these
+-- finish" subscription; this trigger fires on the matching task UPDATE,
+-- builds an intent message describing what completed, inserts a new
+-- pending session that continues the waiter's chain via prior_session_id,
+-- and stamps the watch row 'fired' with the new session id — all in the
+-- same transaction as the task status change.
 --
 -- Why a trigger and not the api layer:
 --   - Wakes survive api restarts (mesh's in-memory resolvers don't).
@@ -21,8 +20,26 @@
 --   mode='any' fires on the first terminal task; intent leads with
 --     the firing task and lists the others as still-running context.
 --
--- bv_build_watch_intent is split out so the M3 service-layer
--- already-terminal race can call it for symmetry. Same text either way.
+-- `bv_build_watch_intent` is split out so the service-layer
+-- already-terminal path can call it for symmetry. Same text either way.
+
+-- Per-task one-line suffix shared by both modes — keeps the result/error
+-- formatting in one place.
+CREATE OR REPLACE FUNCTION bv_task_result_suffix(
+  p_status   TEXT,
+  p_summary  TEXT
+) RETURNS TEXT AS $$
+BEGIN
+  IF p_status = 'done' AND COALESCE(p_summary, '') <> '' THEN
+    RETURN '. Result: ' || p_summary;
+  ELSIF p_status = 'failed' AND COALESCE(p_summary, '') <> '' THEN
+    RETURN ': ' || p_summary;
+  ELSE
+    RETURN '';
+  END IF;
+END;
+$$ LANGUAGE plpgsql IMMUTABLE;
+
 
 -- Build the wake-session intent for a watch + the task that just fired
 -- it. Caller is expected to be inside a fire-eligible state machine
@@ -38,9 +55,14 @@ DECLARE
   task_list       TEXT;
   others_list     TEXT;
   others_count    INT;
-  firing_suffix   TEXT;
+  reason_prefix   TEXT;
 BEGIN
   SELECT * INTO w FROM task_watch WHERE id = p_watch_id;
+
+  reason_prefix := CASE
+    WHEN COALESCE(w.reason, '') <> '' THEN 'Wake reason: ' || w.reason || E'\n\n'
+    ELSE ''
+  END;
 
   IF w.mode = 'all' THEN
     SELECT string_agg(
@@ -48,13 +70,7 @@ BEGIN
         '  - %s — %s%s',
         COALESCE(t.title, '(untitled)'),
         t.status,
-        CASE
-          WHEN t.status = 'done' AND COALESCE(t.result_summary, '') <> '' THEN
-            '. Result: ' || t.result_summary
-          WHEN t.status = 'failed' AND COALESCE(t.result_summary, '') <> '' THEN
-            ': ' || t.result_summary
-          ELSE ''
-        END
+        bv_task_result_suffix(t.status, t.result_summary)
       ),
       E'\n'
       ORDER BY t.created_at
@@ -63,20 +79,13 @@ BEGIN
     FROM task t
     WHERE t.id = ANY(w.task_ids);
 
-    intent := cardinality(w.task_ids)::text || ' tasks completed:' || E'\n'
+    intent := reason_prefix
+              || cardinality(w.task_ids)::text || ' tasks completed:' || E'\n'
               || COALESCE(task_list, '') || E'\n'
               || 'Decide next steps.';
   ELSE
     -- mode='any'
     SELECT * INTO firing_task FROM task WHERE id = p_firing_task_id;
-
-    firing_suffix := CASE
-      WHEN firing_task.status = 'done' AND COALESCE(firing_task.result_summary, '') <> '' THEN
-        '. Result: ' || firing_task.result_summary
-      WHEN firing_task.status = 'failed' AND COALESCE(firing_task.result_summary, '') <> '' THEN
-        ': ' || firing_task.result_summary
-      ELSE ''
-    END;
 
     SELECT string_agg(
       format('  - %s — %s', COALESCE(t.title, '(untitled)'), t.status),
@@ -88,10 +97,11 @@ BEGIN
     WHERE t.id = ANY(w.task_ids)
       AND t.id <> p_firing_task_id;
 
-    intent := 'Task '
+    intent := reason_prefix
+              || 'Task '
               || COALESCE(firing_task.title, '(untitled)')
               || ' — ' || firing_task.status
-              || firing_suffix
+              || bv_task_result_suffix(firing_task.status, firing_task.result_summary)
               || E'\n';
 
     IF others_count > 0 THEN
@@ -116,14 +126,15 @@ DECLARE
   new_session_id TEXT;
   wake_intent    TEXT;
 BEGIN
-  -- Iterate every WAITING watch that references this task.
-  -- `FOR UPDATE` so two concurrent task UPDATEs touching the same
-  -- watch can't both fire it (the loser sees status='fired' or waits
-  -- for the winner to commit).
+  -- Iterate every WAITING watch that references this task. The
+  -- `task_ids @> ARRAY[NEW.id]` form (vs `NEW.id = ANY(task_ids)`) is
+  -- what Postgres plans against the partial GIN on `task_ids` defined
+  -- in the earlier migration. `FOR UPDATE` so two concurrent task
+  -- UPDATEs touching the same watch can't both fire it.
   FOR watch_rec IN
     SELECT * FROM task_watch
      WHERE status = 'waiting'
-       AND NEW.id = ANY(task_ids)
+       AND task_ids @> ARRAY[NEW.id]
      FOR UPDATE
   LOOP
     -- mode='all': fire only when every watched task is terminal.

@@ -2,7 +2,7 @@
  * Task-watch domain. A team agent registers a `task_watch` row before
  * ending its session to declare "wake me when these dispatched tasks
  * finish." When a watched task transitions to a terminal status (done,
- * failed, cancelled), the M2 DB trigger inserts a new session in the
+ * failed, cancelled), a DB trigger inserts a new session in the
  * waiter's `prior_session_id` chain so the agent resumes with full
  * context via `claude --resume`.
  *
@@ -14,6 +14,8 @@
 
 export type TaskWatchMode = "all" | "any";
 export type TaskWatchStatus = "waiting" | "fired" | "aborted";
+
+export const TASK_WATCH_MODES: readonly TaskWatchMode[] = ["all", "any"] as const;
 
 export interface TaskWatch {
   id: string;

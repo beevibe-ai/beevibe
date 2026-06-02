@@ -5,13 +5,12 @@
  * the already-terminal-race fire, and the unwatch state machine.
  *
  * The MCP tool descriptions are the agent-facing source of truth for
- * the contract (modes, ordering, what "fires" means). The system
- * prompt addition in spawn-prep (M4) just nudges agents to call
- * watch_tasks; the *how* lives here so the agent sees it at the
- * decide-to-call moment.
+ * the contract (modes, ordering, what "fires" means). The system-
+ * prompt nudge in spawn-prep tells agents to call watch_tasks; the
+ * *how* lives here so the agent sees it at the decide-to-call moment.
  */
 
-import type { TaskWatchMode } from "@beevibe/core";
+import { TASK_WATCH_MODES, type TaskWatchMode } from "@beevibe/core";
 import {
   WatchAuthError,
   WatchNotFoundError,
@@ -31,10 +30,11 @@ export interface WatchToolServices {
   watchService: WatchService;
 }
 
-const VALID_MODES: readonly TaskWatchMode[] = ["all", "any"];
-
 function isMode(value: unknown): value is TaskWatchMode {
-  return typeof value === "string" && (VALID_MODES as readonly string[]).includes(value);
+  return (
+    typeof value === "string" &&
+    (TASK_WATCH_MODES as readonly string[]).includes(value)
+  );
 }
 
 function errResult(error: string, message: string): AgentToolResult {
@@ -87,7 +87,7 @@ function buildWatchTasksTool(
         },
         mode: {
           type: "string",
-          enum: ["all", "any"],
+          enum: [...TASK_WATCH_MODES],
           description: "Fire condition; defaults to 'all'.",
         },
         reason: {

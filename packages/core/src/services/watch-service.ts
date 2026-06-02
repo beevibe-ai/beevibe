@@ -1,7 +1,7 @@
 /**
  * WatchService — backs the `watch_tasks` + `unwatch` MCP tools. Inserts
  * a `task_watch` row representing the agent's "wake me when these
- * finish" subscription; the M2 trigger handles the fire when watched
+ * finish" subscription; a DB trigger handles the fire when watched
  * tasks transition terminal afterwards. The already-terminal path —
  * agent calls watch_tasks but the tasks are *already* done/failed/
  * cancelled — is handled here in TS, calling the same SQL intent
@@ -10,6 +10,7 @@
  */
 
 import {
+  TERMINAL_TASK_STATUSES,
   sessionId as newSessionId,
   taskWatchId,
   type Session,
@@ -46,7 +47,7 @@ export interface UnwatchInput {
   watchId: string;
 }
 
-const TERMINAL_TASK_STATUSES = new Set(["done", "failed", "cancelled"]);
+const TERMINAL_SET = new Set<string>(TERMINAL_TASK_STATUSES);
 
 export class WatchAuthError extends Error {
   constructor(message: string) {
@@ -106,11 +107,11 @@ export class WatchService {
       reason: input.reason,
     });
 
-    const tasks = await Promise.all(
-      input.taskIds.map((id) => this.deps.taskRepo.findById(id)),
-    );
+    const fetched = await this.deps.taskRepo.findByIds(input.taskIds);
+    const byId = new Map(fetched.map((t) => [t.id, t]));
+    const tasks = input.taskIds.map((id) => byId.get(id));
     const terminalTasks = tasks.filter(
-      (t): t is Task => !!t && TERMINAL_TASK_STATUSES.has(t.status),
+      (t): t is Task => !!t && TERMINAL_SET.has(t.status),
     );
     const shouldFire =
       input.mode === "any"

@@ -25,6 +25,15 @@ export class PostgresTaskRepository implements TaskRepository {
     return rows[0] ? rowToTask(rows[0]) : undefined;
   }
 
+  async findByIds(ids: string[]): Promise<Task[]> {
+    if (ids.length === 0) return [];
+    const { rows } = await this.pool.query<TaskRow>(
+      `SELECT * FROM task WHERE id = ANY($1::text[])`,
+      [ids],
+    );
+    return rows.map(rowToTask);
+  }
+
   async list(filter?: TaskListFilter): Promise<Task[]> {
     const clauses: string[] = [];
     const values: unknown[] = [];

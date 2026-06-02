@@ -1,6 +1,6 @@
 -- task_watch — team agent declares "wake me when these dispatched tasks
--- finish" before ending its session. The next migration (M2) attaches
--- the AFTER-UPDATE trigger on `task` that fans matching watches into
+-- finish" before ending its session. A separate trigger migration
+-- attaches the AFTER-UPDATE on `task` that fans matching watches into
 -- new sessions; this migration only lands the table + indexes so the
 -- repo + adapter are testable on their own.
 --
@@ -12,7 +12,8 @@
 -- mode               — 'all' (every task terminal) | 'any' (first one).
 -- task_ids           — non-empty array of task ids the agent is waiting
 --                      on. GIN-indexed (partial on waiting rows) so the
---                      M2 trigger can locate candidates quickly.
+--                      trigger's `task_ids @> ARRAY[NEW.id]` lookup is
+--                      index-served, not seq-scanned.
 -- status             — 'waiting' until the trigger fires or the agent
 --                      calls unwatch. Terminal states: 'fired' (wake
 --                      session inserted) | 'aborted' (agent cancelled).

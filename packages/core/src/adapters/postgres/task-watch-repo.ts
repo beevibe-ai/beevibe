@@ -32,10 +32,12 @@ export class PostgresTaskWatchRepository implements TaskWatchRepository {
   }
 
   async listWaitingForTask(taskId: string): Promise<TaskWatch[]> {
+    // `task_ids @> ARRAY[$1]` (not `$1 = ANY(task_ids)`) is the form Postgres
+    // plans against the partial GIN on `task_ids WHERE status='waiting'`.
     const { rows } = await this.pool.query<TaskWatchRow>(
       `SELECT * FROM task_watch
         WHERE status = 'waiting'
-          AND $1 = ANY(task_ids)
+          AND task_ids @> ARRAY[$1]
         ORDER BY created_at ASC`,
       [taskId],
     );
