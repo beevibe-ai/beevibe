@@ -187,8 +187,69 @@ describe("trg_task_watch_check — integration", () => {
     await tasks.updateProgress(a, "done", "shipped");
     const fired = await watches.findById(w.id);
     const wake = await sessions.findById(fired!.fired_session_id!);
-    expect(wake?.intent).toMatch(/^Wake reason: checking deploy progress\n\n/);
+    expect(wake?.intent).toContain("Wake reason: checking deploy progress");
     expect(wake?.intent).toContain("Backend — done. Result: shipped");
+  });
+
+  it("wraps the wake intent in <system-wake> so chainToMessages can skip the user bubble", async () => {
+    const a = await createTask("Backend");
+    const w = await createWatch([a], "all");
+    await tasks.updateProgress(a, "done", "shipped");
+    const wake = await findWakeSession(w);
+    expect(wake?.intent.startsWith("<system-wake>")).toBe(true);
+    expect(wake?.intent.endsWith("</system-wake>")).toBe(true);
+  });
+
+  it("inherits waiter.runtime_id on the wake session (runtime-pinning)", async () => {
+    // Seed a daemon + runtime + a chat waiter pinned to that runtime;
+    // the wake session must inherit the same runtime_id so the user's
+    // daemon claims it instead of the server-fallback worker.
+    const suffix = Date.now();
+    const ownerRow = await pool.query<{ owner_id: string }>(
+      `SELECT owner_id FROM agent WHERE id = $1`,
+      [teamAgentId],
+    );
+    const personId_ = ownerRow.rows[0]!.owner_id;
+    const daemonId = `dmn_pin_${suffix}`;
+    const rt = `rt_pin_${suffix}`;
+    await pool.query(
+      `INSERT INTO daemon (id, owner_person_id, external_id, device_name, token_hash)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [daemonId, personId_, `ext_${suffix}`, `dev_${suffix}`, `hash_${suffix}`],
+    );
+    await pool.query(
+      `INSERT INTO runtime (id, daemon_id, cli, capabilities)
+       VALUES ($1, $2, 'claude', '{}'::jsonb)`,
+      [rt, daemonId],
+    );
+    const pinnedWaiter = await sessions.create({
+      id: sessionId(),
+      agent_id: teamAgentId,
+      type: "chat",
+      status: "succeeded",
+      intent: "pinned",
+      runtime_id: rt,
+    });
+    const a = await createTask("Backend");
+    // Reparent the task's IC session under the pinned waiter (the auth
+    // check on the watch is satisfied by parent_session_id ∈ chain).
+    await pool.query(
+      `UPDATE session SET parent_session_id = $1 WHERE task_id = $2 AND parent_session_id IS NOT NULL`,
+      [pinnedWaiter.id, a],
+    );
+    const w = await watches.create({
+      id: taskWatchId(),
+      waiter_session_id: pinnedWaiter.id,
+      agent_id: teamAgentId,
+      mode: "all",
+      task_ids: [a],
+    });
+
+    await tasks.updateProgress(a, "done", "shipped");
+    const wake = await sessions.findById(
+      (await watches.findById(w.id))!.fired_session_id!,
+    );
+    expect(wake?.runtime_id).toBe(rt);
   });
 
   it("mode='any' with one task: no 'others still running' block", async () => {

@@ -238,10 +238,16 @@ export function failureMessageFor(s: {
   return DAEMON_LOG_POINTER;
 }
 
-function chainToMessages(chain: ConversationChain): HistoryMessage[] {
+export function chainToMessages(chain: ConversationChain): HistoryMessage[] {
   const messages: HistoryMessage[] = [];
   for (const s of chain.sessions) {
-    messages.push({ id: `u_${s.id}`, role: "user", content: s.intent });
+    // Skip the user-bubble push for system-generated wake turns
+    // (watch_tasks fires). The agent still reads the wake intent via
+    // claude --resume; the chat history just shouldn't render a
+    // fake "user message" the user never typed.
+    if (!s.intent.startsWith("<system-wake>")) {
+      messages.push({ id: `u_${s.id}`, role: "user", content: s.intent });
+    }
     if (s.status === "failed") {
       messages.push({
         id: `a_${s.id}`,

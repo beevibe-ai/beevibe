@@ -248,6 +248,56 @@ describe("WatchService — integration", () => {
       expect(wake?.intent).toContain("2 tasks completed:");
       expect(wake?.intent).toContain("A — done. Result: shipped a");
       expect(wake?.intent).toContain("B — failed: tests broke");
+      // Wrapped so chainToMessages can detect and skip the user-bubble.
+      expect(wake?.intent.startsWith("<system-wake>")).toBe(true);
+      expect(wake?.intent.endsWith("</system-wake>")).toBe(true);
+    });
+
+    it("inherits the waiter's runtime_id on the already-terminal fire path", async () => {
+      // Already-terminal race goes through WatchService.fireWatch, NOT
+      // the SQL trigger. Both paths must pin the wake to the same
+      // runtime so a chat conversation's daemon claims the wake instead
+      // of the server-fallback worker.
+      const suffix = Date.now();
+      const ownerRow = await pool.query<{ owner_id: string }>(
+        `SELECT owner_id FROM agent WHERE id = $1`,
+        [teamAgentId],
+      );
+      const personId_ = ownerRow.rows[0]!.owner_id;
+      const daemonIdValue = `dmn_pin_${suffix}`;
+      const rt = `rt_pin_${suffix}`;
+      await pool.query(
+        `INSERT INTO daemon (id, owner_person_id, external_id, device_name, token_hash)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [daemonIdValue, personId_, `ext_${suffix}`, `dev_${suffix}`, `hash_${suffix}`],
+      );
+      await pool.query(
+        `INSERT INTO runtime (id, daemon_id, cli, capabilities)
+         VALUES ($1, $2, 'claude', '{}'::jsonb)`,
+        [rt, daemonIdValue],
+      );
+      const pinnedWaiter = await sessions.create({
+        id: sessionId(),
+        agent_id: teamAgentId,
+        type: "chat",
+        status: "succeeded",
+        intent: "pinned",
+        runtime_id: rt,
+      });
+      const a = await dispatchTask("A", pinnedWaiter.id, { status: "done" });
+      await tasks.update(a, { result_summary: "shipped" });
+
+      const result = await svc.watchTasks({
+        callerAgentId: teamAgentId,
+        callerSessionId: pinnedWaiter.id,
+        taskIds: [a],
+        mode: "all",
+      });
+
+      expect(result.firedImmediately).toBe(true);
+      const watch = await watches.findById(result.watchId);
+      const wake = await sessions.findById(watch!.fired_session_id!);
+      expect(wake?.runtime_id).toBe(rt);
     });
 
     it("does not fire when mode='all' and only some tasks are terminal", async () => {

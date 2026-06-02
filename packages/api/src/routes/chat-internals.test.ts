@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { failureMessageFor, groupIntoConversations, type ChatSession } from "./chat.js";
+import {
+  chainToMessages,
+  failureMessageFor,
+  groupIntoConversations,
+  type ChatSession,
+} from "./chat.js";
 
 function makeSession(overrides: Partial<ChatSession> & Pick<ChatSession, "id">): ChatSession {
   return {
@@ -146,5 +151,55 @@ describe("failureMessageFor", () => {
   it("returns the daemon-log pointer when both fields are empty", () => {
     const out = failureMessageFor({});
     expect(out).toContain("beevibe-daemon start");
+  });
+});
+
+describe("chainToMessages", () => {
+  it("pushes a normal turn as user + agent bubbles", () => {
+    const s = makeSession({
+      id: "sess_u1",
+      intent: "ship it",
+      status: "succeeded",
+      result_summary: "shipped",
+    });
+    const out = chainToMessages({ head_id: s.id, sessions: [s] });
+    expect(out.map((m) => m.role)).toEqual(["user", "agent"]);
+    expect(out[0]?.content).toBe("ship it");
+    expect(out[1]?.content).toBe("shipped");
+  });
+
+  it("skips the user bubble for a <system-wake>-wrapped intent", () => {
+    // Trigger-inserted wake turn: the intent was system-generated, not
+    // typed by the user. Only the agent's reply should show in chat.
+    const s = makeSession({
+      id: "sess_wake",
+      intent:
+        "<system-wake>\n1 tasks completed:\n  - X — done. Result: ok\nDecide next steps.\n</system-wake>",
+      status: "succeeded",
+      result_summary: "Acknowledged.",
+    });
+    const out = chainToMessages({ head_id: s.id, sessions: [s] });
+    expect(out.map((m) => m.role)).toEqual(["agent"]);
+    expect(out[0]?.content).toBe("Acknowledged.");
+  });
+
+  it("mixed chain: skips wake bubbles, keeps user-typed bubbles", () => {
+    const turn1 = makeSession({
+      id: "sess_1",
+      intent: "ship it",
+      result_summary: "Dispatched A, B.",
+      status: "succeeded",
+    });
+    const wake = makeSession({
+      id: "sess_wake",
+      intent: "<system-wake>\n2 tasks completed:\n  - A — done\n  - B — done\nDecide next steps.\n</system-wake>",
+      result_summary: "Both done; running tests.",
+      status: "succeeded",
+    });
+    const out = chainToMessages({ head_id: turn1.id, sessions: [turn1, wake] });
+    expect(out.map((m) => m.role)).toEqual(["user", "agent", "agent"]);
+    expect(out[0]?.content).toBe("ship it");
+    expect(out[1]?.content).toBe("Dispatched A, B.");
+    expect(out[2]?.content).toBe("Both done; running tests.");
   });
 });

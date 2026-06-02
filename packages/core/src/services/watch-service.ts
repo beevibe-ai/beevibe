@@ -187,10 +187,14 @@ export class WatchService {
       agent_id: waiter.agent_id,
       task_id: waiter.task_id,
       prior_session_id: waiter.id,
+      // Chat / task chains are runtime-pinned so claude --resume hits the
+      // same daemon (and the same on-disk CLI session file) every turn.
+      // The trigger does the same; this is the service-side mirror for the
+      // already-terminal race.
+      runtime_id: waiter.runtime_id,
       type: waiter.type,
       intent,
       status: "pending",
-      // Other Session fields are optional and default to undefined / null.
     });
   }
 
