@@ -12,3 +12,4 @@ export * from "./daemon.js";
 export * from "./runtime.js";
 export * from "./room.js";
 export * from "./repo-run.js";
+export * from "./task-watch.js";

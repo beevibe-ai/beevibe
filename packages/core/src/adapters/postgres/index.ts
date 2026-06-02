@@ -11,6 +11,7 @@ export type {
   NegotiationRow,
   NegotiationRoundRow,
   EscalationRow,
+  TaskWatchRow,
 } from "./row-types.js";
 export { PostgresPersonRepository } from "./person-repo.js";
 export { PostgresAgentRepository } from "./agent-repo.js";
@@ -36,3 +37,4 @@ export {
   PostgresSkillOutcomeRepository,
   newSkillOutcomeId,
 } from "./repo-run-repo.js";
+export { PostgresTaskWatchRepository } from "./task-watch-repo.js";

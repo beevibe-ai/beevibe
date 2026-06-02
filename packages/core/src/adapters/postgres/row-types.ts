@@ -196,3 +196,16 @@ export interface EscalationRow {
   created_at: Date;
   updated_at: Date;
 }
+
+export interface TaskWatchRow {
+  id: string;
+  waiter_session_id: string;
+  agent_id: string;
+  mode: string;
+  task_ids: string[];
+  reason: string | null;
+  status: string;
+  created_at: Date;
+  fired_at: Date | null;
+  fired_session_id: string | null;
+}
