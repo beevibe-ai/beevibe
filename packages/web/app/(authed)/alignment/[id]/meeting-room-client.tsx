@@ -61,7 +61,12 @@ export function MeetingRoomClient({ meetingId }: { meetingId: string }) {
       .history({ conversationId: chatSid })
       .then((h) => {
         setMessages(
-          h.messages.map((m) => ({ id: m.id, role: m.role, content: m.content })),
+          h.messages.map((m) => ({
+            id: m.id,
+            // History may carry a "system" role; render it on the agent side.
+            role: m.role === "user" ? "user" : "agent",
+            content: m.content,
+          })),
         );
         lastSessionId.current = h.prior_session_id ?? chatSid;
       })
