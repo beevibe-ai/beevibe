@@ -443,11 +443,11 @@ function HeroSection({ title, children }: { title: string; children: React.React
 }
 
 /**
- * System-trigger annotation rendered as a compact pill between bubbles.
- * Currently sourced from `<system-wake>` intents produced by the
- * watch_tasks DB trigger ("Watch fired — 2 tasks completed: …"). Tells
- * the user *why* the agent is suddenly running, without competing with
- * a real agent reply for visual weight.
+ * System-trigger annotation. Visually matches the `ToolStepList` row
+ * shape (small icon-square + compact muted text) so the user reads it
+ * as a system event — like a tool call — rather than a chat
+ * participant. Currently sourced from `<system-wake>` intents produced
+ * by the watch_tasks DB trigger.
  */
 function SystemPill({ content }: { content: string }) {
   // The server-extracted wake summary may start with a "Wake reason: <text>"
@@ -461,21 +461,23 @@ function SystemPill({ content }: { content: string }) {
   return (
     <div className="flex w-full justify-start mt-4">
       <div className="w-7 mr-2 shrink-0" />
-      <div className="max-w-[78%] rounded-lg border border-border/40 bg-secondary/30 px-3 py-2 text-xs text-muted-foreground">
-        <div className="flex items-center gap-1.5 font-medium text-foreground/85">
-          <Bell className="h-3 w-3 shrink-0" />
-          <span>Watch fired</span>
+      <div className="flex-1 min-w-0 text-[11px] text-muted-foreground/80">
+        <div className="flex items-center gap-1.5 leading-4">
+          <span className="shrink-0 inline-flex items-center justify-center h-4 w-4 rounded bg-secondary/60 opacity-90">
+            <Bell className="h-2.5 w-2.5" />
+          </span>
+          <span className="text-foreground/70 shrink-0">Watch fired</span>
           {headline ? (
-            <span className="text-muted-foreground/70 font-normal">— {headline}</span>
+            <span className="text-muted-foreground/60 truncate min-w-0">— {headline}</span>
           ) : null}
         </div>
         {reason ? (
-          <div className="mt-0.5 text-[11px] italic text-muted-foreground/85">
+          <div className="mt-0.5 ml-[22px] italic text-muted-foreground/60">
             {reason}
           </div>
         ) : null}
         {body ? (
-          <div className="mt-1 whitespace-pre-wrap text-[11px] leading-5 text-muted-foreground/85">
+          <div className="mt-0.5 ml-[22px] whitespace-pre-wrap leading-4 text-muted-foreground/65">
             {body}
           </div>
         ) : null}
