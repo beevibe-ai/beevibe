@@ -69,6 +69,9 @@ function buildMinimalServices(): AssembleToolsServices {
       embedBatch: vi.fn(async (texts: string[]) => texts.map(() => [1, 0])),
     },
     watchService: {} as unknown as WatchService,
+    alignmentService: {
+      applyCorrectionForSession: vi.fn(),
+    } as unknown as import("@beevibe/core/services/alignment").AlignmentService,
   };
 }
 
@@ -97,9 +100,9 @@ function icCtx(
 }
 
 describe("assembleTools — daemon (full surface)", () => {
-  it("team caller gets the full team surface (28 tools, includes find_repo + use_repo + watch_tasks/unwatch)", () => {
+  it("team caller gets the full team surface (29 tools, includes find_repo + use_repo + watch_tasks/unwatch + correct_subordinate_memory)", () => {
     const tools = assembleTools(teamCtx(), buildMinimalServices());
-    expect(tools.length).toBe(28);
+    expect(tools.length).toBe(29);
     const names = new Set(tools.map((t) => t.name));
     expect(names.has("create_task")).toBe(true);
     expect(names.has("update_work_product")).toBe(true);
@@ -111,6 +114,7 @@ describe("assembleTools — daemon (full surface)", () => {
     expect(names.has("use_repo")).toBe(true);
     expect(names.has("watch_tasks")).toBe(true);
     expect(names.has("unwatch")).toBe(true);
+    expect(names.has("correct_subordinate_memory")).toBe(true);
   });
 
   it("ic caller gets the IC surface (15 tools, includes find_repo + use_repo; NO watch_tasks)", () => {
@@ -124,6 +128,8 @@ describe("assembleTools — daemon (full surface)", () => {
     expect(names.has("use_repo")).toBe(true);
     expect(names.has("watch_tasks")).toBe(false);
     expect(names.has("unwatch")).toBe(false);
+    // Cross-agent correction is team/org only.
+    expect(names.has("correct_subordinate_memory")).toBe(false);
   });
 
   it("owner with capability_network_enabled=false gets neither find_repo nor use_repo", () => {

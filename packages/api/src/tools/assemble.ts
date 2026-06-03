@@ -16,11 +16,13 @@ import type { TaskService } from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { WatchService } from "@beevibe/core/services/watch-service";
+import type { AlignmentService } from "@beevibe/core/services/alignment";
 import type { MeshServer } from "../mesh/server.js";
 import { buildIcMeshTools, buildTeamMeshTools } from "./mesh.js";
 import { buildHierarchyTools } from "./hierarchy.js";
 import { createSaveMemoryTool } from "./save-memory.js";
 import { createUpdateCoreMemoryTool } from "./update-core-memory.js";
+import { createCorrectSubordinateMemoryTool } from "./correct-subordinate-memory.js";
 import { createUseRepoTool } from "./use-repo.js";
 import { createFindRepoTool } from "./find-repo.js";
 import { buildWatchTools } from "./watch.js";
@@ -50,6 +52,8 @@ export interface AssembleToolsServices {
   embeddings: EmbeddingService;
   /** Team-tier `watch_tasks` / `unwatch` — wake-up on dispatched task completion. */
   watchService: WatchService;
+  /** Backs the team-only `correct_subordinate_memory` tool. */
+  alignmentService: AlignmentService;
 }
 
 /**
@@ -216,12 +220,31 @@ export function assembleTools(
           { watchService: services.watchService },
         );
 
+  // Team/org only: cross-agent memory correction for alignment meetings.
+  const alignmentTools: AgentTool[] =
+    ctx.caller.hierarchyLevel === "ic"
+      ? []
+      : [
+          createCorrectSubordinateMemoryTool(
+            {
+              agentId: ctx.caller.agentId,
+              hierarchyLevel: ctx.caller.hierarchyLevel,
+              sessionId: ctx.beevibeSid,
+            },
+            {
+              agentRepo: services.agentRepo,
+              alignmentService: services.alignmentService,
+            },
+          ),
+        ];
+
   const all = [
     ...memoryTools,
     ...hierarchyTools,
     ...meshTools,
     ...capabilityTools,
     ...watchTools,
+    ...alignmentTools,
   ];
   if (ctx.spawnMode === "server_fallback_mesh") {
     return filterForServerFallback(all);

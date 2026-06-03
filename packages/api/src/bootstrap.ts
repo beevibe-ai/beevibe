@@ -19,11 +19,15 @@ import {
   PostgresTaskRepository,
   PostgresTaskWatchRepository,
   PostgresWorkProductRepository,
+  PostgresAlignmentMeetingRepository,
+  PostgresAlignmentDigestRepository,
+  PostgresAlignmentActionItemRepository,
   createPool,
 } from "@beevibe/core/adapters/postgres";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import { OpenAIEmbeddingService } from "@beevibe/core/adapters/openai";
 import { AnthropicLlmProvider } from "@beevibe/core/adapters/anthropic";
+import { OllamaLlmProvider } from "@beevibe/core/adapters/ollama";
 import { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import { createDefaultRuntimeRegistry } from "@beevibe/core/adapters/runtime-registry";
 import {
@@ -38,6 +42,7 @@ import { EscalationService } from "@beevibe/core/services/escalation-service";
 import { NegotiationService } from "@beevibe/core/services/negotiation-service";
 import { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { WatchService } from "@beevibe/core/services/watch-service";
+import { AlignmentService } from "@beevibe/core/services/alignment";
 import { DaemonOrphanReaper } from "@beevibe/core/services/orphan-reaper";
 import { buildPostDispatchHook } from "@beevibe/core/services/post-dispatch";
 import type { Session } from "@beevibe/core";
@@ -60,6 +65,7 @@ import { createSignupRouter } from "./routes/signup.js";
 import { createSigninRouter } from "./routes/signin.js";
 import { createMeRouter } from "./routes/me.js";
 import { createRoomRouter } from "./routes/room.js";
+import { createAlignmentRouter } from "./routes/alignment.js";
 import { createStreamAuthMiddleware, streamTokenAdapter } from "./auth/middleware.js";
 import { ChatResolver } from "./runtime/chat-resolver.js";
 import { DaemonHub } from "./runtime/hub.js";
@@ -146,6 +152,9 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const learnedSkillRepo = new PostgresLearnedSkillRepository(pool);
   const skillOutcomeRepo = new PostgresSkillOutcomeRepository(pool);
   const taskWatchRepo = new PostgresTaskWatchRepository(pool);
+  const alignmentMeetingRepo = new PostgresAlignmentMeetingRepository(pool);
+  const alignmentDigestRepo = new PostgresAlignmentDigestRepository(pool);
+  const alignmentActionRepo = new PostgresAlignmentActionItemRepository(pool);
 
   const skillsDir =
     cfg.skillsSourceDir ?? path.resolve(process.cwd(), "skills");
@@ -158,6 +167,24 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const coreMemory = new CoreMemory({ repo: coreMemoryRepo });
   const factStore = new FactStore({ repo: memoryFactRepo, embed, llm });
   const promoter = new FactPromoter({ llm });
+
+  // Alignment meetings — a local model (Ollama/gemma) distills each
+  // specialist's memory into a plain-language digest; corrections write back
+  // through coreMemory / factStore. The digest model reads OLLAMA_BASE_URL /
+  // OLLAMA_MODEL from env (defaults to gemma3:4b at localhost:11434).
+  const digestLlm = new OllamaLlmProvider();
+  const alignmentService = new AlignmentService({
+    agentRepo,
+    coreMemoryRepo,
+    memoryFactRepo,
+    embed,
+    coreMemory,
+    factStore,
+    meetingRepo: alignmentMeetingRepo,
+    digestRepo: alignmentDigestRepo,
+    actionRepo: alignmentActionRepo,
+    digestLlm,
+  });
 
   // M3+M6.4 task service (review_policy gate, work-product CRUD, parent
   // rollup, plus the M6.4 approve/reject/revise split — reviseTask needs
@@ -352,6 +379,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     embeddings: embed,
     personRepo,
     watchService,
+    alignmentService,
   });
   server.getApp().use("/mcp", mcpRouter);
 
@@ -574,6 +602,19 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     makeMemoryAgent,
   });
   server.getApp().use("/room", roomRouter);
+
+  // Alignment meetings (bv_u_) — prep digests via the local model, manage
+  // action items + notes. The conversation itself runs over /chat; the team
+  // agent's correct_subordinate_memory tool applies fixes back to specialists.
+  const alignmentRouter = createAlignmentRouter({
+    authMiddleware: server.getAuthMiddleware(),
+    alignmentService,
+    meetingRepo: alignmentMeetingRepo,
+    digestRepo: alignmentDigestRepo,
+    actionRepo: alignmentActionRepo,
+    agentRepo,
+  });
+  server.getApp().use("/alignment", alignmentRouter);
 
   // Phase 5 daemon-orphan reaper. Marks daemon-bound running sessions
   // failed when both the session's last_event_at AND the runtime's

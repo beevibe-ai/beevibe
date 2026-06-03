@@ -38,3 +38,8 @@ export {
   newSkillOutcomeId,
 } from "./repo-run-repo.js";
 export { PostgresTaskWatchRepository } from "./task-watch-repo.js";
+export {
+  PostgresAlignmentMeetingRepository,
+  PostgresAlignmentDigestRepository,
+  PostgresAlignmentActionItemRepository,
+} from "./alignment-repo.js";

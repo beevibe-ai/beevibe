@@ -50,6 +50,10 @@
       "types": "./dist/adapters/anthropic/index.d.ts",
       "default": "./dist/adapters/anthropic/index.js"
     },
+    "./adapters/ollama": {
+      "types": "./dist/adapters/ollama/index.d.ts",
+      "default": "./dist/adapters/ollama/index.js"
+    },
     "./adapters/runtime-registry": {
       "types": "./dist/adapters/runtime-registry.d.ts",
       "default": "./dist/adapters/runtime-registry.js"
@@ -97,6 +101,10 @@
     "./services/referenced-repos": {
       "types": "./dist/services/referenced-repos.d.ts",
       "default": "./dist/services/referenced-repos.js"
+    },
+    "./services/alignment": {
+      "types": "./dist/services/alignment/index.d.ts",
+      "default": "./dist/services/alignment/index.js"
     },
     "./auth": {
       "types": "./dist/auth/index.d.ts",

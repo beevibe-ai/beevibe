@@ -28,3 +28,6 @@ export const repoRunId = (): string => generateId("repo");
 export const learnedSkillId = (): string => generateId("skill");
 export const skillOutcomeId = (): string => generateId("sout");
 export const taskWatchId = (): string => generateId("watch");
+export const alignmentMeetingId = (): string => generateId("amtg");
+export const alignmentDigestId = (): string => generateId("adig");
+export const alignmentActionItemId = (): string => generateId("aitem");
