@@ -26,6 +26,11 @@ export const queryKeys = {
     all: ["promotions"] as const,
     list: () => ["promotions", "list"] as const,
   },
+  alignment: {
+    all: ["alignment"] as const,
+    list: () => ["alignment", "list"] as const,
+    detail: (id: string) => ["alignment", "detail", id] as const,
+  },
   mesh: {
     all: ["mesh"] as const,
     overview: (filter: { window?: MeshWindow }) => ["mesh", "overview", filter] as const,

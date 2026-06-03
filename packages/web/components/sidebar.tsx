@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import {
   Bot,
+  Handshake,
   ListChecks,
   type LucideIcon,
   MessageSquare,
@@ -48,6 +49,7 @@ const PRIMARY_MODES: NavItem[] = [
   { href: "/", label: "Chat", icon: MessageSquare, isActive: matchesChat },
   { href: "/rooms", label: "Rooms", icon: Users, isActive: (p) => p.startsWith("/rooms") },
   { href: "/tasks", label: "Tasks", icon: ListChecks, isActive: (p) => p.startsWith("/tasks") },
+  { href: "/alignment", label: "Alignment", icon: Handshake, isActive: (p) => p.startsWith("/alignment") },
   { href: "/capabilities", label: "Capabilities", icon: Package, isActive: (p) => p.startsWith("/capabilities") },
 ];
 

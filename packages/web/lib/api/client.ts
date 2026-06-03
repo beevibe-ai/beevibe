@@ -386,6 +386,81 @@ export type EscalationResolveInput =
       resolution_notes?: string;
     };
 
+// ── Alignment meetings ──────────────────────────────────────────────
+// Dates arrive over the wire as ISO strings.
+
+export type AlignmentMeetingStatus = "prepping" | "active" | "wrapped";
+
+export interface AlignmentMeeting {
+  id: string;
+  team_agent_id: string;
+  owner_person_id: string;
+  status: AlignmentMeetingStatus;
+  chat_session_id: string | null;
+  notes: string;
+  created_at: string;
+  updated_at: string;
+  wrapped_at: string | null;
+}
+
+export interface AlignmentDigestSummary {
+  believes: string[];
+  knows: string[];
+  working_on: string[];
+  rules: string[];
+}
+
+export interface AlignmentDigest {
+  id: string;
+  meeting_id: string;
+  agent_id: string;
+  summary: AlignmentDigestSummary;
+  source_block_ids: string[];
+  source_fact_ids: string[];
+  model: string;
+  created_at: string;
+}
+
+export type AlignmentActionKind = "correct_memory" | "note" | "followup";
+export type AlignmentActionStatus = "open" | "applied" | "dismissed";
+
+export interface AlignmentTargetRef {
+  type: "core_block" | "fact";
+  block_name?: string;
+  operation?: "append" | "replace";
+  content?: string;
+  old_content?: string;
+  fact_id?: string;
+  fact_type?: string;
+}
+
+export interface AlignmentActionItem {
+  id: string;
+  meeting_id: string;
+  agent_id: string;
+  kind: AlignmentActionKind;
+  title: string;
+  rationale: string;
+  target_ref: AlignmentTargetRef | null;
+  status: AlignmentActionStatus;
+  applied_session_id: string | null;
+  applied_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AlignmentAgentInfo {
+  name: string;
+  hierarchy_level: string;
+}
+
+export interface AlignmentMeetingDetail {
+  meeting: AlignmentMeeting;
+  digests: AlignmentDigest[];
+  action_items: AlignmentActionItem[];
+  agents: Record<string, AlignmentAgentInfo>;
+}
+
 export const api = {
   tasks: {
     list: (filter: TaskListFilter = {}, opts: ReadOptions = {}) =>
@@ -635,6 +710,69 @@ export const api = {
         /** Why those agents were chosen — explicit mention, name match, "team" default, or none. */
         invoked_reason: "mention" | "name" | "team-default" | "none";
       }>(`/room/${encodeURIComponent(id)}/message`, { method: "POST", body: input }),
+  },
+  alignment: {
+    /** List the owner's meetings, newest first. */
+    list: (opts: ReadOptions = {}) =>
+      fetchJson<{ meetings: AlignmentMeeting[] }>("/alignment/meetings", {
+        signal: opts.signal,
+      }),
+    /** Full meeting: digests + action items + agent name map. */
+    get: (id: string, opts: ReadOptions = {}) =>
+      fetchJson<AlignmentMeetingDetail>(
+        `/alignment/meetings/${encodeURIComponent(id)}`,
+        { signal: opts.signal },
+      ),
+    /**
+     * Start a meeting. The server reads each specialist's memory and runs the
+     * local model (gemma) to distill a digest per teammate — expect a wait
+     * proportional to the team size.
+     */
+    start: (teamAgentId?: string) =>
+      fetchJson<AlignmentMeetingDetail>("/alignment/meetings", {
+        method: "POST",
+        body: teamAgentId ? { team_agent_id: teamAgentId } : {},
+      }),
+    /** Pin the chat session that drives this meeting's conversation. */
+    linkSession: (id: string, chatSessionId: string) =>
+      fetchJson<{ meeting: AlignmentMeeting }>(
+        `/alignment/meetings/${encodeURIComponent(id)}/link-session`,
+        { method: "POST", body: { chat_session_id: chatSessionId } },
+      ),
+    saveNotes: (id: string, notes: string) =>
+      fetchJson<{ meeting: AlignmentMeeting }>(
+        `/alignment/meetings/${encodeURIComponent(id)}/notes`,
+        { method: "PATCH", body: { notes } },
+      ),
+    wrap: (id: string) =>
+      fetchJson<{ meeting: AlignmentMeeting }>(
+        `/alignment/meetings/${encodeURIComponent(id)}/wrap`,
+        { method: "POST" },
+      ),
+    createActionItem: (
+      id: string,
+      body: {
+        agent_id: string;
+        kind: AlignmentActionKind;
+        title: string;
+        rationale?: string;
+        target_ref?: AlignmentTargetRef | null;
+      },
+    ) =>
+      fetchJson<{ action_item: AlignmentActionItem }>(
+        `/alignment/meetings/${encodeURIComponent(id)}/action-items`,
+        { method: "POST", body },
+      ),
+    applyActionItem: (id: string) =>
+      fetchJson<{ action_item: AlignmentActionItem }>(
+        `/alignment/action-items/${encodeURIComponent(id)}/apply`,
+        { method: "POST" },
+      ),
+    dismissActionItem: (id: string) =>
+      fetchJson<{ action_item: AlignmentActionItem }>(
+        `/alignment/action-items/${encodeURIComponent(id)}/dismiss`,
+        { method: "POST" },
+      ),
   },
   signup: {
     /**
