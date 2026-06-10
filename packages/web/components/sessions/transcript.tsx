@@ -13,6 +13,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RichTextRender } from "@/components/rich-text";
+import {
+  SessionRecallBlock,
+  parseRecallContent,
+} from "@/components/recall/session-recall-block";
 import type { AskThread, TranscriptEntry } from "@/lib/types/sessions";
 
 const KIND_CONFIG = {
@@ -46,6 +50,14 @@ export function Transcript({
           const config = KIND_CONFIG[entry.kind];
           const Icon = config.Icon;
           const trailingAsks = asksByIndex.get(i) ?? [];
+          // Promote session_search tool_results into a rich recall card —
+          // analogous to MeshAskBlock for ask/respond_ask pairs. The raw
+          // JSON shown as a paragraph buries the content; the card
+          // surfaces the matched session, snippet, and bookends.
+          const recallResult =
+            entry.kind === "tool_result" && entry.tool_name === "session_search"
+              ? parseRecallContent(entry.content)
+              : null;
           return (
             <div key={i} className="space-y-3">
               <div
@@ -66,7 +78,13 @@ export function Transcript({
                       </span>
                     ) : null}
                   </div>
-                  <p className="text-sm leading-relaxed break-words [overflow-wrap:anywhere]">{entry.content}</p>
+                  {recallResult && recallResult.hits.length > 0 ? (
+                    <div className="mt-1">
+                      <SessionRecallBlock result={recallResult} maxHits={5} />
+                    </div>
+                  ) : (
+                    <p className="text-sm leading-relaxed break-words [overflow-wrap:anywhere]">{entry.content}</p>
+                  )}
                 </div>
               </div>
               {trailingAsks.map((ath) => (

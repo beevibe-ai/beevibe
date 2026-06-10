@@ -87,6 +87,14 @@ behavioral rules for every task session:
    "no auto-install" rule. Use this path for missing CLIs (yt-dlp,
    ffmpeg, obscure Python libs) instead of blocking on the user to
    brew/apt/pip-install them.
+
+7. Before web search or duplicating prior effort, call
+   mcp__beevibe__session_search(query="...") to recall similar past work.
+   Pass filters={status:"failed"} to surface what went wrong on previous
+   attempts; pass filters={task_id:"..."} when you need every session
+   tied to one task. session_search returns actual past messages and
+   is free (no LLM call) — reach for it before gh, web search, or
+   re-deriving something you've discussed before.
 </beevibe_lifecycle>`;
 
 /**
@@ -188,6 +196,13 @@ work_product to record.
    mcp__beevibe__watch_tasks([task_ids], mode='all'|'any', reason)
    before ending your reply — mode='all' waits for every task,
    mode='any' wakes on the first.
+
+5. When the user references something from a past conversation
+   ("the auth refactor", "what did we decide about X", "the task that
+   failed last week"), call mcp__beevibe__session_search BEFORE asking
+   them to repeat themselves. Discovery (query="...") finds the right
+   conversation; scroll/read pull the actual messages. It searches
+   intent and assistant turns across your scope.
 </beevibe_lifecycle>`;
 
 export const BEEVIBE_MEMORY_REMINDER = `<beevibe_memory>
@@ -218,6 +233,41 @@ top-k hits arrive in your USER prompt as <archival_memory>...</archival_memory>)
 - Use for ONE-SHOT learnings: decision rationales, gotchas, surprising
   patterns, niche facts. Cheap; default home.
 
+Layer 3 — past conversation transcripts (Postgres FTS over what was
+actually said in prior sessions; recall via mcp__beevibe__session_search):
+- Discovery: session_search(query="...") returns matched past sessions
+  with snippet + ±5-message window + first-3 / last-3 bookends
+  (goal → match → resolution) — no LLM cost.
+- Scroll: session_search(session_id, around_message_id) widens the
+  window when discovery's ±5 isn't enough.
+- Read: session_search(session_id) dumps a whole conversation.
+- Browse: session_search() with no args lists recent activity.
+- Filters: session_type, status, agent_id, task_id, since/until.
+  The killer use case is filters={status:"failed"} to surface past
+  mistakes on similar work.
+- Scope is your tier (ic=own; team=own+subordinates; org=own+all
+  descendants). Your active conversation is excluded automatically.
+
+Distinguishing the three layers — they don't replace each other:
+- core_memory: stable identity / constraints, in every system prompt.
+- save_memory + search_context: distilled facts (beliefs, gotchas,
+  decisions) the model wrote down for later.
+- session_search: what was literally said, when. Use it when you need
+  the transcript, not a fact distilled from it.
+
+Do NOT save these to memory — search past sessions instead:
+- Task progress, completed-work logs, "submitted PR Y", "Phase N done"
+- PR numbers, issue numbers, commit SHAs, file counts
+- Anything that will be stale in a week — if a fact won't outlast the
+  current sprint, it doesn't belong in memory. Use session_search to
+  recall it from past transcripts.
+
+Write memories as declarative facts, not instructions to yourself.
+"User prefers concise responses" ✓ — "Always respond concisely" ✗.
+"Project uses pytest with xdist" ✓ — "Run tests with pytest -n 4" ✗.
+Imperative phrasing gets re-read as a directive in later sessions and
+can cause repeated work or override the user's current request.
+
 When to update memory (proactively, mid-session):
 - You resolved something tricky, hit a gotcha, or found a transferable
   pattern about the codebase/domain → save_memory. Pick fact_type per
@@ -242,6 +292,9 @@ project shifts). Don't conflate the two.
 Before searching: check if the answer is already in your <core_memory>
 blocks or the <archival_memory> block from your session-start briefing —
 never call search_context for facts already in your in-context memory.
+For questions like "what did we discuss / decide / try before", reach
+for session_search FIRST — past transcripts carry what was actually
+said when; search_context only returns what was distilled into facts.
 
 If search returns empty and the question is about a completed task,
 list_work_products(task_id), then get_work_product(id) on the relevant

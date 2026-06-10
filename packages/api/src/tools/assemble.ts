@@ -12,6 +12,7 @@ import type {
 } from "@beevibe/core";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { CoreMemory, FactStore, MemoryAgent } from "@beevibe/core/services/memory";
+import type { SessionSearchService } from "@beevibe/core/services/session-search";
 import type { TaskService } from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
@@ -20,6 +21,7 @@ import type { MeshServer } from "../mesh/server.js";
 import { buildIcMeshTools, buildTeamMeshTools } from "./mesh.js";
 import { buildHierarchyTools } from "./hierarchy.js";
 import { createSaveMemoryTool } from "./save-memory.js";
+import { createSessionSearchTool } from "./session-search.js";
 import { createUpdateCoreMemoryTool } from "./update-core-memory.js";
 import { createUseRepoTool } from "./use-repo.js";
 import { createFindRepoTool } from "./find-repo.js";
@@ -50,6 +52,8 @@ export interface AssembleToolsServices {
   embeddings: EmbeddingService;
   /** Team-tier `watch_tasks` / `unwatch` — wake-up on dispatched task completion. */
   watchService: WatchService;
+  /** Layer-3 memory: FTS over past conversation transcripts. */
+  sessionSearch: SessionSearchService;
 }
 
 /**
@@ -145,6 +149,14 @@ export function assembleTools(
         hierarchyLevel: ctx.caller.hierarchyLevel,
       },
       { coreMemory: services.coreMemory },
+    ),
+    createSessionSearchTool(
+      {
+        agentId: ctx.caller.agentId,
+        hierarchyLevel: ctx.caller.hierarchyLevel,
+        sessionId: ctx.beevibeSid,
+      },
+      { sessionSearch: services.sessionSearch },
     ),
   ];
 
@@ -255,7 +267,12 @@ function filterForServerFallback(tools: AgentTool[]): AgentTool[] {
     "escalate_to_humans",
   ]);
   return tools.filter((t) => {
-    if (t.name === "save_memory" || t.name === "update_core_memory") return true;
+    if (
+      t.name === "save_memory" ||
+      t.name === "update_core_memory" ||
+      t.name === "session_search"
+    )
+      return true;
     if (FALLBACK_ALLOWED_HIERARCHY.has(t.name)) return true;
     if (allowedMesh.has(t.name)) return true;
     return false;

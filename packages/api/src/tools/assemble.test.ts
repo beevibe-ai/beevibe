@@ -27,6 +27,7 @@ import type { TaskService } from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { WatchService } from "@beevibe/core/services/watch-service";
+import type { SessionSearchService } from "@beevibe/core/services/session-search";
 import type { MeshServer } from "../mesh/server.js";
 import {
   assembleTools,
@@ -69,6 +70,9 @@ function buildMinimalServices(): AssembleToolsServices {
       embedBatch: vi.fn(async (texts: string[]) => texts.map(() => [1, 0])),
     },
     watchService: {} as unknown as WatchService,
+    sessionSearch: {
+      search: vi.fn(async () => ({ kind: "browse", sessions: [] })),
+    } as unknown as SessionSearchService,
   };
 }
 
@@ -97,9 +101,9 @@ function icCtx(
 }
 
 describe("assembleTools — daemon (full surface)", () => {
-  it("team caller gets the full team surface (28 tools, includes find_repo + use_repo + watch_tasks/unwatch)", () => {
+  it("team caller gets the full team surface (29 tools, includes find_repo + use_repo + watch_tasks/unwatch + session_search)", () => {
     const tools = assembleTools(teamCtx(), buildMinimalServices());
-    expect(tools.length).toBe(28);
+    expect(tools.length).toBe(29);
     const names = new Set(tools.map((t) => t.name));
     expect(names.has("create_task")).toBe(true);
     expect(names.has("update_work_product")).toBe(true);
@@ -111,17 +115,19 @@ describe("assembleTools — daemon (full surface)", () => {
     expect(names.has("use_repo")).toBe(true);
     expect(names.has("watch_tasks")).toBe(true);
     expect(names.has("unwatch")).toBe(true);
+    expect(names.has("session_search")).toBe(true);
   });
 
-  it("ic caller gets the IC surface (15 tools, includes find_repo + use_repo; NO watch_tasks)", () => {
+  it("ic caller gets the IC surface (16 tools, includes find_repo + use_repo + session_search; NO watch_tasks)", () => {
     const tools = assembleTools(icCtx(), buildMinimalServices());
-    expect(tools.length).toBe(15);
+    expect(tools.length).toBe(16);
     const names = new Set(tools.map((t) => t.name));
     expect(names.has("create_task")).toBe(false);
     expect(names.has("respond_ask")).toBe(true);
     expect(names.has("report_blocker")).toBe(true);
     expect(names.has("find_repo")).toBe(true);
     expect(names.has("use_repo")).toBe(true);
+    expect(names.has("session_search")).toBe(true);
     expect(names.has("watch_tasks")).toBe(false);
     expect(names.has("unwatch")).toBe(false);
   });

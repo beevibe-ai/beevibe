@@ -6,6 +6,10 @@ import type { ChatStreamStep, ChatStreamTree } from "@/lib/chat-stream";
 import { categoryAccent, formatTool } from "@/lib/tool-format";
 import { cn } from "@/lib/utils";
 import { InlineICTranscript } from "./inline-ic-transcript";
+import {
+  SessionRecallBlock,
+  parseRecallContent,
+} from "@/components/recall/session-recall-block";
 
 /**
  * Compact list of streamed tool calls + results for a single agent
@@ -59,6 +63,20 @@ export function ToolStepList({
       {steps.flatMap((step, idx) => {
         const isLatest = idx === steps.length - 1;
         if (step.kind === "tool_result") {
+          // session_search discover results get the rich recall block in
+          // place of the lean one-line result row. Falls back to the lean
+          // row when the 512-char SSE truncation cut the JSON before any
+          // complete hit (parseRecallContent returns null).
+          if (step.tool_name === "session_search") {
+            const recall = parseRecallContent(step.content);
+            if (recall && recall.hits.length > 0) {
+              return [
+                <li key={step.event_id} className="pl-3 pt-1">
+                  <SessionRecallBlock result={recall} maxHits={1} dense />
+                </li>,
+              ];
+            }
+          }
           return [<ResultRow key={step.event_id} step={step} isLatest={isLatest} />];
         }
         const isCreateTask =
