@@ -129,7 +129,7 @@ export function SessionRecallBlock({ result, maxHits = 5, dense = false }: Props
         <History className="h-3.5 w-3.5 text-status-running" />
         <span className="font-medium">Past conversation</span>
         <span className="text-muted-foreground">·</span>
-        <span className="text-muted-foreground truncate">"{result.query}"</span>
+        <span className="text-muted-foreground truncate">&ldquo;{result.query}&rdquo;</span>
         <span className="ml-auto text-[10px] text-muted-foreground font-mono">
           {result.hits.length} match{result.hits.length === 1 ? "" : "es"}
         </span>
