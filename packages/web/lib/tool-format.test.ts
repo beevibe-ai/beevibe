@@ -58,4 +58,51 @@ describe("formatTool — session_search shape detection", () => {
     );
     expect(display.label).toBe("Recalled past conversation");
   });
+
+  // tool_call rows from Claude Code's stream-json arrive as a stringified
+  // function-call signature, NOT JSON. The discover/scroll/read inference
+  // has to work against both.
+  it("discover from function-call signature (Claude Code stream format)", () => {
+    const display = formatTool(
+      "mcp__beevibe__session_search",
+      'mcp__beevibe__session_search(query="daemon timestamp", limit=5)',
+    );
+    expect(display.label).toBe("Recalled past conversation");
+    expect(display.detail).toBe('"daemon timestamp"');
+  });
+
+  it("scroll from function-call signature", () => {
+    const display = formatTool(
+      "session_search",
+      'session_search(session_id="sess_abc123def", around_message_id="evt_xyz", window=10)',
+    );
+    expect(display.label).toBe("Scrolled back");
+    expect(display.detail).toBe("#abc123");
+  });
+
+  it("read from function-call signature", () => {
+    const display = formatTool(
+      "session_search",
+      'session_search(session_id="sess_abc123def456")',
+    );
+    expect(display.label).toBe("Re-read a past session");
+    expect(display.detail).toBe("#abc123");
+  });
+
+  it("browse when no recognised args appear in the call signature", () => {
+    const display = formatTool(
+      "session_search",
+      "mcp__beevibe__session_search()",
+    );
+    expect(display.label).toBe("Browsed recent sessions");
+  });
+
+  it("handles single-quoted values in the call signature", () => {
+    const display = formatTool(
+      "session_search",
+      "session_search(query='auth refactor', limit=3)",
+    );
+    expect(display.label).toBe("Recalled past conversation");
+    expect(display.detail).toBe('"auth refactor"');
+  });
 });
