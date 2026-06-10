@@ -16,6 +16,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
+import { shortId } from "./format";
 
 export type ToolCategory =
   | "mesh"
@@ -84,7 +85,7 @@ function formatSessionSearch(content: string): ToolDisplay {
   if (sessionId && anchorId) {
     return {
       label: "Scrolled back",
-      detail: sessionIdPreview(sessionId),
+      detail: shortId(sessionId),
       category: "memory",
       icon: History,
     };
@@ -92,7 +93,7 @@ function formatSessionSearch(content: string): ToolDisplay {
   if (sessionId) {
     return {
       label: "Re-read a past session",
-      detail: sessionIdPreview(sessionId),
+      detail: shortId(sessionId),
       category: "memory",
       icon: History,
     };
@@ -123,12 +124,6 @@ function safeParseJson(s: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
-}
-
-function sessionIdPreview(id: string): string {
-  // Drop the type prefix (sess_…) and show ~6 chars so the row stays
-  // scannable. Mirrors deriveShortId() on the server.
-  return id.replace(/^[a-z]+_/, "").slice(0, 6);
 }
 
 /**

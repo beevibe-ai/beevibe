@@ -190,6 +190,8 @@ describe("assembleTools — server_fallback_mesh (restricted surface)", () => {
     // Memory writes are part of the conversation's record
     expect(names.has("save_memory")).toBe(true);
     expect(names.has("update_core_memory")).toBe(true);
+    // Layer-3 recall is read-only and scope-respected — safe under fallback
+    expect(names.has("session_search")).toBe(true);
   });
 
   it("ic caller in server_fallback_mesh has no mutating tools either", () => {

@@ -206,7 +206,7 @@ work_product to record.
 </beevibe_lifecycle>`;
 
 export const BEEVIBE_MEMORY_REMINDER = `<beevibe_memory>
-You have two persistent memory layers — actively manage both THROUGHOUT
+You have three persistent memory layers — actively manage them THROUGHOUT
 the session, not just at the end. Mid-session memory updates compound
 across tasks; deferring them loses information when your conversation
 history is gone.

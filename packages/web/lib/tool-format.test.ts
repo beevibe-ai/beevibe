@@ -19,7 +19,7 @@ describe("formatTool — session_search shape detection", () => {
       JSON.stringify({ session_id: "sess_abc123def", around_message_id: "evt_xyz" }),
     );
     expect(display.label).toBe("Scrolled back");
-    expect(display.detail).toBe("abc123");
+    expect(display.detail).toBe("#abc123");
     expect(display.category).toBe("memory");
   });
 
@@ -29,7 +29,7 @@ describe("formatTool — session_search shape detection", () => {
       JSON.stringify({ session_id: "sess_abc123def456" }),
     );
     expect(display.label).toBe("Re-read a past session");
-    expect(display.detail).toBe("abc123");
+    expect(display.detail).toBe("#abc123");
   });
 
   it("browse: empty args → 'Browsed recent sessions'", () => {

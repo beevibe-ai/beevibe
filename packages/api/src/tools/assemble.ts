@@ -106,10 +106,10 @@ const FALLBACK_ALLOWED_HIERARCHY = new Set([
  * fresh closure over `(ctx, services)` so handlers see the right caller +
  * sid without async-storage threading.
  *
- * Tier breakdown (M9.1 final):
+ * Tier breakdown:
  *
- *   IC (15 tools):
- *     2 memory: save_memory, update_core_memory
+ *   IC (16 tools):
+ *     3 memory: save_memory, update_core_memory, session_search
  *     9 hierarchy (shared): search_context, update_progress, find_up,
  *       get_agent_profile, get_task, create_work_product,
  *       list_work_products, get_work_product, update_work_product
@@ -117,11 +117,12 @@ const FALLBACK_ALLOWED_HIERARCHY = new Set([
  *             report_blocker (escalate up to direct parent)
  *     2 capability network: find_repo, use_repo
  *
- *   Team / org (26 tools):
- *     2 memory + 15 hierarchy (9 shared + 6 team-only) +
+ *   Team / org (29 tools):
+ *     3 memory + 15 hierarchy (9 shared + 6 team-only) +
  *     6 mesh (ask, respond_ask, negotiate, respond_negotiate,
  *             report_blocker, escalate_to_humans) +
- *     2 capability network: find_repo, use_repo.
+ *     2 capability network: find_repo, use_repo +
+ *     2 watch (watch_tasks, unwatch).
  *
  * Team-only hierarchy adds: find_subordinates, find_peers, create_task,
  *   check_work_status, revise_task, add_to_escalation.

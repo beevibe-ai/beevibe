@@ -96,12 +96,32 @@ describe("SessionRecallBlock", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders the query and a single hit with snippet HTML highlighted", () => {
+  it("renders the query and a single hit with matched terms bold", () => {
     const { container } = render(<SessionRecallBlock result={makeResult([makeHit()])} />);
     expect(container.textContent).toContain("auth middleware");
     expect(container.textContent).toContain("1 match");
-    // ts_headline <b> markers preserved
-    expect(container.innerHTML).toContain("<b>auth</b>");
+    // <b>…</b> markers from ts_headline rendered as <strong>; the snippet
+    // text is rendered as React children, NEVER as innerHTML, so any raw
+    // HTML in user-controlled content is inert.
+    const strongs = Array.from(container.querySelectorAll("strong"));
+    const strongTexts = strongs.map((el) => el.textContent);
+    expect(strongTexts).toContain("auth");
+    expect(strongTexts).toContain("middleware");
+    // Defense-in-depth: a snippet carrying a raw <script> tag never lands
+    // in the DOM as an executable element.
+    expect(container.querySelectorAll("script").length).toBe(0);
+  });
+
+  it("treats raw HTML in snippet content as inert text (XSS guard)", () => {
+    const hit = makeHit();
+    hit.snippet = "this is <b>malicious</b> <script>alert(1)</script> stuff";
+    const { container } = render(<SessionRecallBlock result={makeResult([hit])} />);
+    // <b>…</b> still becomes <strong>
+    const strongs = Array.from(container.querySelectorAll("strong"));
+    expect(strongs.map((el) => el.textContent)).toContain("malicious");
+    // Raw script tag is rendered as literal text, NOT injected into DOM.
+    expect(container.querySelectorAll("script").length).toBe(0);
+    expect(container.textContent).toContain("<script>alert(1)</script>");
   });
 
   it("caps at maxHits and shows a 'more' count", () => {

@@ -8,9 +8,9 @@
  *      "Refactor the authentication middleware to use the new JWT library"
  *      → trigger by asking "what happened with the auth refactor?"
  *
- *   2. A SUCCEEDED task session on a new IC subordinate of Backend
- *      Platform team ("backend-eng" agent — created if missing):
- *      "Migrate the billing calculator to handle tiered pricing"
+ *   2. A SUCCEEDED task session on an IC subordinate provisioned by
+ *      `pnpm tsx scripts/provision-demo.ts` (ic-alice, falling back to
+ *      ic-bob): "Migrate the billing calculator to handle tiered pricing"
  *      → trigger by asking "show me the billing migration"
  *      → trigger team scope by asking from the team agent ("did anyone
  *        on my team do work on billing?")
@@ -33,38 +33,28 @@ const here = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(here, "../.env") });
 
 import {
-  PostgresAgentRepository,
   PostgresSessionEventRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
   createPool,
 } from "../packages/core/src/adapters/postgres/index.js";
-import { DEFAULT_RUNTIME_CONFIG } from "../packages/core/src/domain/agent.js";
 import {
-  agentId as makeAgentId,
   sessionEventId as makeEventId,
   sessionId as makeSessionId,
   taskId as makeTaskId,
 } from "../packages/core/src/domain/ids.js";
 
-// ── Fixed targets (provisioned by `pnpm tsx scripts/provision-demo.ts`) ─
-// "captain" is the team-tier agent the demo bv_u_ token resolves to.
-// Owner is the demo person. Update both if you re-provision the demo
-// (provision-demo prints new ids on every run).
-const OWNER_ID = "person_bsxQ0jTvBhtR";
-const TEAM_AGENT_ID = "agent_CaHbPWBoB9FQ"; // "captain" (team)
-/**
- * IC subordinate of captain — ic-alice. Already created by
- * provision-demo, so we don't recreate it (we still need its id for the
- * billing-migration session). ic-bob exists too but we only need one IC
- * for the team-scope discovery demo.
- */
-const IC_AGENT_ID_FALLBACK = "agent_glrqdzhOhlWD"; // ic-alice
+// ── Targets resolved from provision-demo's stable agent NAMES ──────
+// provision-demo prints new randomly-generated ids on every run, but the
+// agent NAMES ("captain", "ic-alice", "ic-bob") are stable. We resolve
+// the team agent + an IC subordinate by name so this script keeps working
+// across re-provisions without manual id editing.
+const DEMO_TEAM_NAME = "captain";
+const DEMO_IC_NAMES = ["ic-alice", "ic-bob"] as const;
 
 // ── Synthetic ids carry SEED_TAG so cleanup is straightforward ──────
 const SEED_TAG = "seed_demo";
 const ID = {
-  ic:   `agent_${SEED_TAG}_backend_eng`,
   // Tasks
   authTask:    `task_${SEED_TAG}_auth_refactor`,
   billingTask: `task_${SEED_TAG}_billing_migration`,
@@ -99,30 +89,51 @@ async function cleanup(pool: ReturnType<typeof createPool>) {
   log("✓ removed prior seed_demo_ rows");
 }
 
-async function ensureIcAgent(agents: PostgresAgentRepository): Promise<string> {
-  // Prefer an IC provisioned by provision-demo (ic-alice / ic-bob).
-  // Falls back to creating a dedicated seed-demo IC if that's missing
-  // (e.g. demo was --clean'd between runs).
-  const fallback = await agents.findById(IC_AGENT_ID_FALLBACK);
-  if (fallback && fallback.parent_agent_id === TEAM_AGENT_ID) {
-    log(`✓ using existing IC subordinate "${fallback.name}" (${fallback.id})`);
-    return fallback.id;
+/**
+ * Resolve the demo team agent by name. Looks up "captain" via a small
+ * direct query — we don't have a `findByName` repo method and adding one
+ * just for a seed script would be overkill.
+ */
+async function resolveTeamAgent(
+  pool: ReturnType<typeof createPool>,
+): Promise<{ id: string; owner_id: string }> {
+  const { rows } = await pool.query<{ id: string; owner_id: string }>(
+    `SELECT id, owner_id FROM agent
+      WHERE name = $1 AND hierarchy_level = 'team'
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [DEMO_TEAM_NAME],
+  );
+  if (!rows[0]) {
+    throw new Error(
+      `No team agent named "${DEMO_TEAM_NAME}" found — run \`pnpm tsx scripts/provision-demo.ts\` first.`,
+    );
   }
-  const existing = await agents.findById(ID.ic);
-  if (existing) {
-    log(`✓ seed-demo IC subordinate already exists: ${ID.ic}`);
-    return ID.ic;
+  return rows[0];
+}
+
+/**
+ * Resolve an IC subordinate of the team by name. Prefers ic-alice; falls
+ * back to ic-bob if alice was deleted. Throws if neither exists.
+ */
+async function resolveIcSubordinate(
+  pool: ReturnType<typeof createPool>,
+  teamAgentId: string,
+): Promise<{ id: string; name: string }> {
+  const { rows } = await pool.query<{ id: string; name: string }>(
+    `SELECT id, name FROM agent
+      WHERE parent_agent_id = $1
+        AND name = ANY($2::text[])
+      ORDER BY array_position($2::text[], name)
+      LIMIT 1`,
+    [teamAgentId, DEMO_IC_NAMES as unknown as string[]],
+  );
+  if (!rows[0]) {
+    throw new Error(
+      `No IC subordinate (${DEMO_IC_NAMES.join(" or ")}) under team agent ${teamAgentId} — re-run \`pnpm tsx scripts/provision-demo.ts\` to recreate the topology.`,
+    );
   }
-  const a = await agents.create({
-    id: ID.ic,
-    name: "backend-eng",
-    owner_id: OWNER_ID,
-    hierarchy_level: "ic",
-    parent_agent_id: TEAM_AGENT_ID,
-    runtime_config: DEFAULT_RUNTIME_CONFIG,
-  });
-  log(`✓ created IC subordinate "${a.name}" (${a.id})`);
-  return a.id;
+  return rows[0];
 }
 
 async function main() {
@@ -141,22 +152,18 @@ async function main() {
     }
   }
 
-  const agents = new PostgresAgentRepository(pool);
   const tasks = new PostgresTaskRepository(pool);
   const sessions = new PostgresSessionRepository(pool);
   const events = new PostgresSessionEventRepository(pool);
 
-  header("Verifying target");
-  const team = await agents.findById(TEAM_AGENT_ID);
-  if (!team) {
-    throw new Error(
-      `Team agent ${TEAM_AGENT_ID} not found — run \`pnpm provision-demo\` first or update OWNER_ID/TEAM_AGENT_ID at the top of this file.`,
-    );
-  }
-  log(`✓ team agent "${team.name}" (${team.id})`);
-
-  header("Ensuring IC subordinate");
-  const icId = await ensureIcAgent(agents);
+  header("Resolving demo topology");
+  const team = await resolveTeamAgent(pool);
+  log(`✓ team agent "${DEMO_TEAM_NAME}" → ${team.id}`);
+  const OWNER_ID = team.owner_id;
+  const TEAM_AGENT_ID = team.id;
+  const ic = await resolveIcSubordinate(pool, TEAM_AGENT_ID);
+  const icId = ic.id;
+  log(`✓ IC subordinate "${ic.name}" → ${icId}`);
 
   // ── 1) FAILED auth refactor task (on the team agent itself) ───────
   header("Seeding past task: failed auth middleware refactor");

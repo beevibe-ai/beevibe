@@ -1,5 +1,6 @@
 "use client";
 
+import type { ReactNode } from "react";
 import Link from "next/link";
 import {
   ArrowDownRight,
@@ -10,7 +11,7 @@ import {
   History,
   XCircle,
 } from "lucide-react";
-import { formatRelativeTime, sessionHref } from "@/lib/format";
+import { formatRelativeTime, sessionHref, truncate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
 /**
@@ -188,14 +189,9 @@ function RecallHitRow({ hit, dense }: { hit: RecallHit; dense: boolean }) {
         </Link>
       </div>
 
-      <p
-        className="text-sm leading-relaxed text-foreground/85 mb-2"
-        // Snippet is generated server-side via ts_headline with the default
-        // <b>…</b> highlight markers. The HTML is from a trusted boundary
-        // (our own SQL) so direct rendering is safe; the alternative — a
-        // custom parser — would add code without changing the threat model.
-        dangerouslySetInnerHTML={{ __html: hit.snippet }}
-      />
+      <p className="text-sm leading-relaxed text-foreground/85 mb-2">
+        {renderHighlightedSnippet(hit.snippet)}
+      </p>
 
       {!dense && (goal || resolution) && (
         <div className="space-y-1.5 mt-2 pt-2 border-t border-border/45 text-[12px]">
@@ -256,6 +252,31 @@ function pickResolution(bookendEnd: RecallMsg[], bookendStart: RecallMsg[]): str
 }
 
 function trimBookend(text: string): string {
-  const cleaned = text.replace(/\s+/g, " ").trim();
-  return cleaned.length > 140 ? cleaned.slice(0, 137) + "…" : cleaned;
+  return truncate(text.replace(/\s+/g, " ").trim(), 140);
+}
+
+/**
+ * Parse a `ts_headline`-generated snippet into React elements, treating
+ * matched terms (wrapped in `<b>…</b>` by Postgres) as bold spans and
+ * everything else as plain text. NEVER renders the source as HTML —
+ * session intent and event content are user-controlled, so any raw
+ * `<script>` / `<img onerror>` etc. that survived FTS indexing would
+ * execute under dangerouslySetInnerHTML.
+ *
+ * Only the `<b>…</b>` markers are interpreted. Any other angle-bracket
+ * content in the snippet renders verbatim as text.
+ */
+function renderHighlightedSnippet(snippet: string): ReactNode {
+  if (!snippet) return null;
+  const parts = snippet.split(/(<b>.*?<\/b>)/g);
+  return parts.map((part, idx) => {
+    if (part.startsWith("<b>") && part.endsWith("</b>")) {
+      return (
+        <strong key={idx} className="font-semibold text-foreground">
+          {part.slice(3, -4)}
+        </strong>
+      );
+    }
+    return <span key={idx}>{part}</span>;
+  });
 }
