@@ -34,6 +34,16 @@ export interface AgentRepository {
   /** All agents at a given hierarchy level (e.g., all team agents under an org). */
   findByLevel(level: HierarchyLevel): Promise<Agent[]>;
 
+  /**
+   * All agent ids reachable by walking `parent_agent_id` downward from
+   * `rootAgentId` (exclusive). For an org agent this returns every team
+   * + IC under it; for a team agent it returns its IC subordinates.
+   * Bounded by a depth guard to defend against cyclic data.
+   *
+   * Used by session_search to resolve org-tier scope (own + all descendants).
+   */
+  findDescendantIds(rootAgentId: string): Promise<string[]>;
+
   create(input: NewAgent): Promise<Agent>;
 
   update(id: string, patch: AgentPatch): Promise<Agent>;

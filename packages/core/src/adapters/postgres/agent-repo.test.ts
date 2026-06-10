@@ -94,6 +94,25 @@ describe("PostgresAgentRepository", () => {
     expect(subs.map((a) => a.id)).toEqual([child2.id, child1.id]);
   });
 
+  it("findDescendantIds returns all transitive children, not just direct", async () => {
+    const org = await agents.create(newAgent({ hierarchy_level: "org", name: "org" }));
+    const team = await agents.create(
+      newAgent({ parent_agent_id: org.id, hierarchy_level: "team", name: "team" }),
+    );
+    const ic1 = await agents.create(
+      newAgent({ parent_agent_id: team.id, name: "ic1" }),
+    );
+    const ic2 = await agents.create(
+      newAgent({ parent_agent_id: team.id, name: "ic2" }),
+    );
+    const stranger = await agents.create(newAgent({ name: "stranger" }));
+
+    const descendants = await agents.findDescendantIds(org.id);
+    expect(descendants.sort()).toEqual([team.id, ic1.id, ic2.id].sort());
+    expect(descendants).not.toContain(org.id);
+    expect(descendants).not.toContain(stranger.id);
+  });
+
   it("findPeers returns same-level + same-parent, excluding self", async () => {
     const parent = await agents.create(newAgent({ hierarchy_level: "team", name: "parent" }));
     const peerA = await agents.create(newAgent({ parent_agent_id: parent.id, name: "peer-a" }));

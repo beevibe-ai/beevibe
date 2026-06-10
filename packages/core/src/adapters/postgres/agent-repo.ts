@@ -52,6 +52,26 @@ export class PostgresAgentRepository implements AgentRepository {
     return rows.map(rowToAgent);
   }
 
+  async findDescendantIds(rootAgentId: string): Promise<string[]> {
+    // Recursive CTE walks parent_agent_id chains down from the root. Depth
+    // cap (1000) defends against corrupted data with cyclic parent links —
+    // the same defensive pattern used by the conversation_id backfill in
+    // migration 1781200000000.
+    const { rows } = await this.pool.query<{ id: string }>(
+      `WITH RECURSIVE descendants(id, depth) AS (
+         SELECT id, 0 FROM agent WHERE parent_agent_id = $1
+         UNION ALL
+         SELECT child.id, d.depth + 1
+           FROM agent child
+           JOIN descendants d ON child.parent_agent_id = d.id
+          WHERE d.depth < 1000
+       )
+       SELECT id FROM descendants`,
+      [rootAgentId],
+    );
+    return rows.map((r) => r.id);
+  }
+
   async findPeers(agentId: string): Promise<Agent[]> {
     const { rows } = await this.pool.query<AgentRow>(
       `SELECT peer.* FROM agent peer

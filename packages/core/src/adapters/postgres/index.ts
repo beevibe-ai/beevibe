@@ -38,3 +38,4 @@ export {
   newSkillOutcomeId,
 } from "./repo-run-repo.js";
 export { PostgresTaskWatchRepository } from "./task-watch-repo.js";
+export { PostgresSessionSearchRepository } from "./session-search-repo.js";

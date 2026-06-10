@@ -4,6 +4,7 @@ import {
   Brain,
   FileSearch,
   HandHelping,
+  History,
   ListTree,
   Network,
   PenLine,
@@ -15,6 +16,7 @@ import {
   Wrench,
   type LucideIcon,
 } from "lucide-react";
+import { shortId } from "./format";
 
 export type ToolCategory =
   | "mesh"
@@ -62,6 +64,66 @@ function fallbackLabel(toolName: string): string {
     .replace(/_/g, " ")
     .replace(/([a-z])([A-Z])/g, "$1 $2")
     .trim() || "step";
+}
+
+/**
+ * Detect which of the four session_search shapes a tool_call landed on
+ * (discover / scroll / read / browse) and render a tailored verb-label.
+ *
+ * `content` is the args blob — JSON or a pre-stringified key=value
+ * preview, depending on which side of the runtime trimmed it. The four
+ * shapes are inferred from key presence the same way the service does
+ * it server-side (see packages/api/src/tools/session-search.ts).
+ */
+function formatSessionSearch(content: string): ToolDisplay {
+  const args = safeParseJson(content) ?? {};
+  const query = typeof args.query === "string" ? args.query.trim() : "";
+  const sessionId = typeof args.session_id === "string" ? args.session_id : "";
+  const anchorId =
+    typeof args.around_message_id === "string" ? args.around_message_id : "";
+
+  if (sessionId && anchorId) {
+    return {
+      label: "Scrolled back",
+      detail: shortId(sessionId),
+      category: "memory",
+      icon: History,
+    };
+  }
+  if (sessionId) {
+    return {
+      label: "Re-read a past session",
+      detail: shortId(sessionId),
+      category: "memory",
+      icon: History,
+    };
+  }
+  if (query) {
+    return {
+      label: "Recalled past conversation",
+      detail: `"${query}"`,
+      category: "memory",
+      icon: History,
+    };
+  }
+  return {
+    label: "Browsed recent sessions",
+    detail: "",
+    category: "memory",
+    icon: History,
+  };
+}
+
+function safeParseJson(s: string): Record<string, unknown> | null {
+  if (!s) return null;
+  const trimmed = s.trim();
+  if (!trimmed.startsWith("{")) return null;
+  try {
+    const v = JSON.parse(trimmed);
+    return typeof v === "object" && v !== null ? (v as Record<string, unknown>) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
@@ -138,6 +200,9 @@ export function formatTool(toolName: string | undefined, content: string): ToolD
   }
   if (name === "update_core_memory") {
     return { label: "Updated core memory", detail, category: "memory", icon: Brain };
+  }
+  if (name === "session_search") {
+    return formatSessionSearch(content);
   }
 
   // ── Native Claude Code tools ──────────────────────────────────────────

@@ -29,6 +29,7 @@ import type { TaskService } from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { WatchService } from "@beevibe/core/services/watch-service";
+import type { SessionSearchService } from "@beevibe/core/services/session-search";
 import type { MeshServer } from "../mesh/server.js";
 import { assembleTools } from "../tools/assemble.js";
 import { buildInstructions } from "../tools/instructions.js";
@@ -64,6 +65,8 @@ export interface McpRouterDeps {
   personRepo: PersonRepository;
   /** Backs team-tier `watch_tasks` / `unwatch`. */
   watchService: WatchService;
+  /** Backs the `session_search` MCP tool (Layer-3 memory). */
+  sessionSearch: SessionSearchService;
 }
 
 /** Tracked per-MCP-session state. mcpSid ↔ transport + server. */
@@ -286,6 +289,7 @@ async function handleMcpRequest(
       learnedSkillRepo: deps.learnedSkillRepo,
       embeddings: deps.embeddings,
       watchService: deps.watchService,
+      sessionSearch: deps.sessionSearch,
     },
   );
 

@@ -15,6 +15,7 @@ import {
   PostgresRuntimeRepository,
   PostgresSessionEventRepository,
   PostgresSessionRepository,
+  PostgresSessionSearchRepository,
   PostgresSkillOutcomeRepository,
   PostgresTaskRepository,
   PostgresTaskWatchRepository,
@@ -38,6 +39,7 @@ import { EscalationService } from "@beevibe/core/services/escalation-service";
 import { NegotiationService } from "@beevibe/core/services/negotiation-service";
 import { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { WatchService } from "@beevibe/core/services/watch-service";
+import { SessionSearchService } from "@beevibe/core/services/session-search";
 import { DaemonOrphanReaper } from "@beevibe/core/services/orphan-reaper";
 import { buildPostDispatchHook } from "@beevibe/core/services/post-dispatch";
 import type { Session } from "@beevibe/core";
@@ -179,6 +181,15 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     taskRepo,
     watchRepo: taskWatchRepo,
   });
+
+  // Layer-3 memory: FTS over past conversation transcripts. Scope-resolved
+  // from the caller's hierarchy_level by the service layer.
+  const sessionSearchRepo = new PostgresSessionSearchRepository(pool);
+  const sessionSearch = new SessionSearchService(
+    sessionSearchRepo,
+    agentRepo,
+    sessionRepo,
+  );
 
   // Phase 4 — daemon-facing surface. Hub tracks live WS clients indexed
   // by runtime_id. Built early so dispatchService can wire its
@@ -352,6 +363,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     embeddings: embed,
     personRepo,
     watchService,
+    sessionSearch,
   });
   server.getApp().use("/mcp", mcpRouter);
 
