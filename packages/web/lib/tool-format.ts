@@ -70,17 +70,46 @@ function fallbackLabel(toolName: string): string {
  * Detect which of the four session_search shapes a tool_call landed on
  * (discover / scroll / read / browse) and render a tailored verb-label.
  *
- * `content` is the args blob — JSON or a pre-stringified key=value
- * preview, depending on which side of the runtime trimmed it. The four
- * shapes are inferred from key presence the same way the service does
- * it server-side (see packages/api/src/tools/session-search.ts).
+ * `content` is the args blob produced by the streaming runtime. Three
+ * shapes show up in practice:
+ *
+ *   1. Bare string — what `describeToolInput`
+ *      (packages/core/src/adapters/claude-code/stream-json.ts) emits for
+ *      tool_call rows when one of `PREFERRED_INPUT_FIELDS` matches. For
+ *      `session_search(query="X")` that's just `"X"`. For
+ *      `session_search(session_id="sess_…")` (single-key) it's the bare
+ *      id. This is the format that hits the chat panel in production.
+ *   2. JSON: `{"query":"...","limit":5}` — what tool_result rows carry,
+ *      and what describeToolInput falls back to for multi-key inputs
+ *      without a PREFERRED match (e.g. scroll's
+ *      `{session_id, around_message_id, window}`).
+ *   3. Function-call signature: `mcp__beevibe__session_search(query="X")`
+ *      — defensive support for any flow that emits the raw call form.
+ *
+ * Shape inference mirrors what the service does server-side
+ * (packages/api/src/tools/session-search.ts).
  */
 function formatSessionSearch(content: string): ToolDisplay {
-  const args = safeParseJson(content) ?? {};
-  const query = typeof args.query === "string" ? args.query.trim() : "";
-  const sessionId = typeof args.session_id === "string" ? args.session_id : "";
-  const anchorId =
-    typeof args.around_message_id === "string" ? args.around_message_id : "";
+  const args = parseSessionSearchArgs(content);
+  let query = args.query ? args.query.trim() : "";
+  let sessionId = args.session_id ?? "";
+  const anchorId = args.around_message_id ?? "";
+
+  // Bare-string fallback (the most common production shape).
+  // describeToolInput emits a bare value when a PREFERRED_INPUT_FIELDS
+  // key matches OR when input has a single string-valued key. For
+  // session_search that's `query="…"` (discover) or `session_id="…"`
+  // (read). Discriminate by id prefix: session ids match `<prefix>_…`.
+  if (!query && !sessionId && !anchorId) {
+    const bare = content.trim();
+    if (bare && !bare.startsWith("{") && !bare.startsWith("[")) {
+      if (/^[a-z]+_[A-Za-z0-9_-]+$/.test(bare)) {
+        sessionId = bare;
+      } else {
+        query = bare;
+      }
+    }
+  }
 
   if (sessionId && anchorId) {
     return {
@@ -124,6 +153,53 @@ function safeParseJson(s: string): Record<string, unknown> | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Pull only the args we actually care about (query, session_id,
+ * around_message_id) out of whatever shape the runtime gave us. Accepts:
+ *
+ *   - JSON object: `{"query":"x","limit":3}`
+ *   - Function-call signature: `mcp__beevibe__session_search(query="x", limit=3)`
+ *
+ * For the function-call form, we use a permissive regex over named args
+ * with double-, single-, or backtick-quoted string values. Unrecognised
+ * args (e.g. `limit=3`) are ignored because we don't need them.
+ */
+function parseSessionSearchArgs(content: string): {
+  query?: string;
+  session_id?: string;
+  around_message_id?: string;
+} {
+  // JSON path (tool_result rows go through here).
+  const json = safeParseJson(content);
+  if (json) {
+    return {
+      query: typeof json.query === "string" ? json.query : undefined,
+      session_id: typeof json.session_id === "string" ? json.session_id : undefined,
+      around_message_id:
+        typeof json.around_message_id === "string" ? json.around_message_id : undefined,
+    };
+  }
+  // Function-call signature path — defensive support for flows that
+  // pass the raw call form (`name(query="…")`). The runtime adapter
+  // doesn't emit this shape today; matching it keeps debug/log readers
+  // and any future emitter honest.
+  //
+  // Quoted values support double, single, and backtick quotes, plus an
+  // escape sequence inside the value (`\\.`) so payloads like
+  // `query="he said \"hi\""` survive intact. Captured values are
+  // unescaped before being returned to the caller.
+  const out: { query?: string; session_id?: string; around_message_id?: string } = {};
+  const re =
+    /(query|session_id|around_message_id)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(content)) !== null) {
+    const key = m[1] as keyof typeof out;
+    const raw = m[2] ?? m[3] ?? m[4] ?? "";
+    out[key] = raw.replace(/\\(.)/g, "$1");
+  }
+  return out;
 }
 
 /**
