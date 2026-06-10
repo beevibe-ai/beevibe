@@ -38,8 +38,9 @@ describe("formatTool — session_search shape detection", () => {
     expect(display.detail).toBe("");
   });
 
-  it("browse: completely unparseable content still falls back to browse label", () => {
-    const display = formatTool("session_search", "not json at all");
+  it("browse: actual runtime empty-input shape ('{}') falls back to browse label", () => {
+    // describeToolInput emits "{}" for session_search() with no args.
+    const display = formatTool("session_search", "{}");
     expect(display.label).toBe("Browsed recent sessions");
   });
 
@@ -89,14 +90,6 @@ describe("formatTool — session_search shape detection", () => {
     expect(display.detail).toBe("#abc123");
   });
 
-  it("browse when no recognised args appear in the call signature", () => {
-    const display = formatTool(
-      "session_search",
-      "mcp__beevibe__session_search()",
-    );
-    expect(display.label).toBe("Browsed recent sessions");
-  });
-
   it("handles single-quoted values in the call signature", () => {
     const display = formatTool(
       "session_search",
@@ -104,5 +97,44 @@ describe("formatTool — session_search shape detection", () => {
     );
     expect(display.label).toBe("Recalled past conversation");
     expect(display.detail).toBe('"auth refactor"');
+  });
+
+  it("escaped quotes inside call-signature values survive intact", () => {
+    const display = formatTool(
+      "session_search",
+      'session_search(query="he said \\"hi\\"")',
+    );
+    expect(display.label).toBe("Recalled past conversation");
+    expect(display.detail).toBe('"he said "hi""');
+  });
+
+  // The runtime adapter's describeToolInput
+  // (packages/core/src/adapters/claude-code/stream-json.ts) emits a
+  // BARE value when a PREFERRED_INPUT_FIELDS key matches, or when
+  // the input has a single string-valued key. These are the actual
+  // shapes that arrive in production for tool_call rows — the JSON /
+  // call-signature paths above are defensive coverage for tool_result
+  // rows and any future emitter.
+  it("discover from bare query string (the production runtime shape)", () => {
+    const display = formatTool("session_search", "daemon timestamp");
+    expect(display.label).toBe("Recalled past conversation");
+    expect(display.detail).toBe('"daemon timestamp"');
+  });
+
+  it("read from a bare session id (single-key input emit)", () => {
+    const display = formatTool("session_search", "sess_abc123def");
+    expect(display.label).toBe("Re-read a past session");
+    expect(display.detail).toBe("#abc123");
+  });
+
+  it("bare empty / whitespace content falls through to browse", () => {
+    expect(formatTool("session_search", "").label).toBe("Browsed recent sessions");
+    expect(formatTool("session_search", "   ").label).toBe("Browsed recent sessions");
+  });
+
+  it("bare JSON-shaped content stays in browse (no accidental discover)", () => {
+    // '{}' is the explicit empty-input emit; '[]' is just defensive.
+    expect(formatTool("session_search", "{}").label).toBe("Browsed recent sessions");
+    expect(formatTool("session_search", "[]").label).toBe("Browsed recent sessions");
   });
 });

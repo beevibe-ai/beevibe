@@ -70,22 +70,46 @@ function fallbackLabel(toolName: string): string {
  * Detect which of the four session_search shapes a tool_call landed on
  * (discover / scroll / read / browse) and render a tailored verb-label.
  *
- * `content` is the args blob produced by the streaming runtime. Two
+ * `content` is the args blob produced by the streaming runtime. Three
  * shapes show up in practice:
  *
- *   1. JSON: `{"query":"...","limit":5}` — what `tool_result` rows carry.
- *   2. Function-call signature: `mcp__beevibe__session_search(query="...",
- *      limit=5)` — what `tool_call` rows usually carry from Claude Code's
- *      stream-json (`describeToolInput` in the runtime adapter).
+ *   1. Bare string — what `describeToolInput`
+ *      (packages/core/src/adapters/claude-code/stream-json.ts) emits for
+ *      tool_call rows when one of `PREFERRED_INPUT_FIELDS` matches. For
+ *      `session_search(query="X")` that's just `"X"`. For
+ *      `session_search(session_id="sess_…")` (single-key) it's the bare
+ *      id. This is the format that hits the chat panel in production.
+ *   2. JSON: `{"query":"...","limit":5}` — what tool_result rows carry,
+ *      and what describeToolInput falls back to for multi-key inputs
+ *      without a PREFERRED match (e.g. scroll's
+ *      `{session_id, around_message_id, window}`).
+ *   3. Function-call signature: `mcp__beevibe__session_search(query="X")`
+ *      — defensive support for any flow that emits the raw call form.
  *
- * The four shapes are inferred from key presence the same way the
- * service does it server-side (packages/api/src/tools/session-search.ts).
+ * Shape inference mirrors what the service does server-side
+ * (packages/api/src/tools/session-search.ts).
  */
 function formatSessionSearch(content: string): ToolDisplay {
   const args = parseSessionSearchArgs(content);
-  const query = args.query ? args.query.trim() : "";
-  const sessionId = args.session_id ?? "";
+  let query = args.query ? args.query.trim() : "";
+  let sessionId = args.session_id ?? "";
   const anchorId = args.around_message_id ?? "";
+
+  // Bare-string fallback (the most common production shape).
+  // describeToolInput emits a bare value when a PREFERRED_INPUT_FIELDS
+  // key matches OR when input has a single string-valued key. For
+  // session_search that's `query="…"` (discover) or `session_id="…"`
+  // (read). Discriminate by id prefix: session ids match `<prefix>_…`.
+  if (!query && !sessionId && !anchorId) {
+    const bare = content.trim();
+    if (bare && !bare.startsWith("{") && !bare.startsWith("[")) {
+      if (/^[a-z]+_[A-Za-z0-9_-]+$/.test(bare)) {
+        sessionId = bare;
+      } else {
+        query = bare;
+      }
+    }
+  }
 
   if (sessionId && anchorId) {
     return {
@@ -157,14 +181,23 @@ function parseSessionSearchArgs(content: string): {
         typeof json.around_message_id === "string" ? json.around_message_id : undefined,
     };
   }
-  // Function-call signature path (tool_call rows go through here).
-  // Matches `name="value"`, `name='value'`, `name=\`value\``.
+  // Function-call signature path — defensive support for flows that
+  // pass the raw call form (`name(query="…")`). The runtime adapter
+  // doesn't emit this shape today; matching it keeps debug/log readers
+  // and any future emitter honest.
+  //
+  // Quoted values support double, single, and backtick quotes, plus an
+  // escape sequence inside the value (`\\.`) so payloads like
+  // `query="he said \"hi\""` survive intact. Captured values are
+  // unescaped before being returned to the caller.
   const out: { query?: string; session_id?: string; around_message_id?: string } = {};
-  const re = /(query|session_id|around_message_id)\s*=\s*(?:"([^"]*)"|'([^']*)'|`([^`]*)`)/g;
+  const re =
+    /(query|session_id|around_message_id)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|'((?:[^'\\]|\\.)*)'|`((?:[^`\\]|\\.)*)`)/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(content)) !== null) {
     const key = m[1] as keyof typeof out;
-    out[key] = m[2] ?? m[3] ?? m[4] ?? "";
+    const raw = m[2] ?? m[3] ?? m[4] ?? "";
+    out[key] = raw.replace(/\\(.)/g, "$1");
   }
   return out;
 }
