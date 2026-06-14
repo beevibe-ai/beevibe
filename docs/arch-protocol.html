@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Architecture Protocol — living, versioned, drift-aware</title>
+<style>
+  :root{
+    --honey:#f6a609; --honey-deep:#d98404; --amber-100:#fff4d6; --amber-200:#ffe6a8;
+    --ink:#1c1814; --ink-soft:#5b5246; --paper:#fbf7ef; --paper-2:#f3ecdd;
+    --line:#e6dcc6; --card:#fff;
+    --ok:#1c8a5c; --ok-bg:#e7f6ee; --drift:#d23f3f; --drift-bg:#fbe9e7; --warn:#c98208; --warn-bg:#fdf2dc;
+    --shadow:0 1px 2px rgba(28,24,20,.06),0 8px 24px rgba(28,24,20,.07);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:var(--sans);color:var(--ink);background:var(--paper);line-height:1.55}
+  .wrap{max-width:1160px;margin:0 auto;padding:0 24px}
+
+  header.top{padding:30px 0 16px}
+  .kicker{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--honey-deep);margin:0 0 6px}
+  header.top h1{font-size:clamp(26px,4vw,38px);margin:0 0 6px;letter-spacing:-.02em;font-weight:800}
+  header.top p{margin:0;color:var(--ink-soft);font-size:15.5px;max-width:760px}
+
+  /* timeline */
+  .timeline{display:flex;align-items:center;gap:0;margin:26px 0 6px;padding:14px 18px;background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);overflow-x:auto}
+  .tl-step{display:flex;align-items:center;flex:1;min-width:150px}
+  .tl-dot{display:flex;flex-direction:column;align-items:center;gap:7px;cursor:pointer;padding:4px 10px;border-radius:10px;transition:background .12s;user-select:none}
+  .tl-dot:hover{background:var(--amber-100)}
+  .tl-dot .bead{width:18px;height:18px;border-radius:50%;border:3px solid var(--line);background:#fff;transition:all .15s}
+  .tl-dot .lab{font-size:12.5px;font-weight:700;white-space:nowrap}
+  .tl-dot .st{font-size:10.5px;color:var(--ink-soft);white-space:nowrap}
+  .tl-dot.active .bead{border-color:var(--honey);background:var(--honey);box-shadow:0 0 0 4px var(--amber-200)}
+  .tl-dot.proposed .bead{border-style:dashed;border-color:var(--warn)}
+  .tl-dot.active.proposed .bead{background:var(--warn);border-color:var(--warn);box-shadow:0 0 0 4px var(--warn-bg)}
+  .tl-line{flex:1;height:3px;background:var(--line);border-radius:2px;min-width:24px}
+  .tl-line.dashed{background:repeating-linear-gradient(90deg,var(--warn) 0 6px,transparent 6px 12px)}
+
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin:14px 0 4px}
+  .note{flex:1;min-width:260px;font-size:13.5px;color:var(--ink-soft);background:#fffaf0;border-left:4px solid var(--honey);padding:10px 14px;border-radius:0 10px 10px 0}
+  .toggle{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;cursor:pointer;user-select:none;padding:8px 13px;border:1px solid var(--line);border-radius:10px;background:var(--card);box-shadow:var(--shadow)}
+  .toggle input{accent-color:var(--drift)}
+
+  /* main split */
+  .main{display:grid;grid-template-columns:1fr 300px;gap:18px;margin:18px 0}
+  @media(max-width:880px){.main{grid-template-columns:1fr}}
+
+  .canvas-card{background:var(--card);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow);padding:8px}
+  #canvas{position:relative;display:grid;grid-template-columns:repeat(3,1fr);grid-auto-rows:84px;gap:22px 26px;padding:26px 24px}
+  svg.edges{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-events:none;overflow:visible}
+  .node{position:relative;z-index:2;border-radius:12px;border:1.5px solid var(--line);background:var(--card);
+        padding:10px 12px;display:flex;flex-direction:column;justify-content:center;text-align:center;box-shadow:var(--shadow);transition:all .18s}
+  .node .nm{font-weight:700;font-size:14px}
+  .node .ro{font-size:11px;color:var(--ink-soft);margin-top:2px}
+  .node .pin{position:absolute;top:-9px;right:-9px;font-size:10px;font-weight:800;padding:2px 7px;border-radius:999px;color:#fff}
+  .node.added{border-color:var(--ok);background:var(--ok-bg);box-shadow:0 0 0 3px rgba(28,138,92,.16)}
+  .node.added .pin{background:var(--ok)}
+  .node.drift{border-style:dashed;border-color:var(--drift);background:var(--drift-bg)}
+  .node.drift .pin{background:var(--drift)}
+  .node.removed{opacity:.4;border-style:dashed}
+  .node.driftlit{box-shadow:0 0 0 3px rgba(210,63,63,.22)}
+
+  /* side panel */
+  .side{display:flex;flex-direction:column;gap:14px}
+  .panel{background:var(--card);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);padding:16px}
+  .panel h3{margin:0 0 10px;font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft)}
+  .vmeta .vname{font-size:20px;font-weight:800}
+  .vmeta .vstatus{font-size:12.5px;font-weight:700;margin-top:2px}
+  .vstatus.ratified{color:var(--ok)} .vstatus.proposed{color:var(--warn)}
+  .conf{display:flex;gap:8px;margin-top:4px}
+  .conf .cbox{flex:1;text-align:center;border-radius:10px;padding:10px 6px}
+  .conf .cbox.ok{background:var(--ok-bg)} .conf .cbox.bad{background:var(--drift-bg)}
+  .conf .cn{font-size:24px;font-weight:800;line-height:1}
+  .conf .cl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.04em;margin-top:3px}
+  .conf .cbox.ok .cn,.conf .cbox.ok .cl{color:var(--ok)}
+  .conf .cbox.bad .cn,.conf .cbox.bad .cl{color:var(--drift)}
+
+  .legend{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;color:var(--ink-soft);padding:0 6px 6px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .sw{width:22px;height:12px;border-radius:4px;display:inline-block;border:1.5px solid var(--line)}
+  .sw.add{border-color:var(--ok);background:var(--ok-bg)} .sw.dr{border-style:dashed;border-color:var(--drift);background:var(--drift-bg)}
+
+  /* lower grid */
+  .lower{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:8px 0 50px}
+  @media(max-width:880px){.lower{grid-template-columns:1fr}}
+  .inv{display:flex;gap:11px;padding:11px 0;border-bottom:1px solid var(--line)}
+  .inv:last-child{border-bottom:none}
+  .inv .badge{flex:none;font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;padding:3px 8px;border-radius:999px;height:fit-content;margin-top:1px}
+  .badge.pass{background:var(--ok-bg);color:var(--ok)} .badge.drift{background:var(--drift-bg);color:var(--drift)} .badge.weakened{background:var(--warn-bg);color:var(--warn)}
+  .inv .it{font-size:13.5px}
+  .inv .it .iid{font-family:var(--mono);font-size:11.5px;color:var(--honey-deep);font-weight:700}
+  .inv .it .ir{color:var(--ink-soft);margin-top:1px}
+
+  .amend{background:linear-gradient(180deg,#fffdf6,#fff);border:1.5px solid var(--warn);border-radius:14px;box-shadow:var(--shadow);padding:16px}
+  .amend.hidden{display:none}
+  .amend .ah{display:flex;align-items:center;gap:9px;font-weight:800;font-size:15px}
+  .amend .ah .tag{font-size:10.5px;font-weight:800;text-transform:uppercase;background:var(--warn);color:#fff;padding:2px 8px;border-radius:999px}
+  .amend .meta{font-size:12.5px;color:var(--ink-soft);margin:8px 0 10px}
+  .amend ul{margin:0 0 12px;padding-left:18px;font-size:13px}
+  .amend ul li{margin:4px 0}
+  .amend ul li .op{font-family:var(--mono);font-size:11px;font-weight:700;padding:1px 6px;border-radius:5px;margin-right:6px}
+  .op.add{background:var(--ok-bg);color:var(--ok)} .op.weaken{background:var(--warn-bg);color:var(--warn)}
+  .amend .btns{display:flex;gap:9px}
+  .btn{font-size:13px;font-weight:700;padding:8px 15px;border-radius:9px;border:1px solid var(--line);cursor:pointer;background:#fff}
+  .btn.ratify{background:var(--ok);color:#fff;border-color:var(--ok)}
+  .btn.reject{color:var(--drift);border-color:var(--drift-bg)}
+  .placeholder{color:var(--ink-soft);font-size:13.5px;font-style:italic}
+
+  footer{color:var(--ink-soft);font-size:12.5px;padding:0 0 50px}
+  code{font-family:var(--mono);font-size:.86em;background:var(--paper-2);border:1px solid var(--line);padding:1px 5px;border-radius:5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <p class="kicker">🐝 Architecture Protocol · prototype</p>
+    <h1>One diagram the team conforms to — versioned, with drift in the open</h1>
+    <p>The picture below is generated from a single <code>architecture.protocol.json</code>. Scrub the timeline to see the architecture evolve, review the pending amendment as a diff, and flip on conformance to see where the code has drifted from what was ratified.</p>
+  </header>
+
+  <!-- TIMELINE -->
+  <div class="timeline" id="timeline"></div>
+
+  <div class="controls">
+    <div class="note" id="versionNote"></div>
+    <label class="toggle"><input type="checkbox" id="driftToggle"> Show drift vs. code</label>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+    <div class="canvas-card">
+      <div id="canvas"><svg class="edges" id="edges"><defs>
+        <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L7,3 L0,6 Z" fill="#c4b48f"></path></marker>
+        <marker id="arrow-ok" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L7,3 L0,6 Z" fill="#1c8a5c"></path></marker>
+        <marker id="arrow-dr" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L7,3 L0,6 Z" fill="#d23f3f"></path></marker>
+      </defs></svg></div>
+      <div class="legend">
+        <span><i class="sw"></i> in protocol</span>
+        <span><i class="sw add"></i> added by amendment</span>
+        <span><i class="sw dr"></i> drift — in code, not in protocol</span>
+      </div>
+    </div>
+
+    <div class="side">
+      <div class="panel vmeta">
+        <h3>Active version</h3>
+        <div class="vname" id="vName"></div>
+        <div class="vstatus" id="vStatus"></div>
+      </div>
+      <div class="panel">
+        <h3>Conformance vs. code</h3>
+        <div class="conf">
+          <div class="cbox ok"><div class="cn" id="cPass">0</div><div class="cl">conform</div></div>
+          <div class="cbox bad"><div class="cn" id="cDrift">0</div><div class="cl">drift</div></div>
+        </div>
+        <p style="font-size:12px;color:var(--ink-soft);margin:10px 0 0">Computed by reading the repo (dep graph + agent activity) and diffing against this ratified version.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- LOWER -->
+  <div class="lower">
+    <div class="panel">
+      <h3>Invariants — the rules conformance checks</h3>
+      <div id="invList"></div>
+    </div>
+    <div id="amendSlot"></div>
+  </div>
+
+  <footer>
+    Driven entirely by data. Swap in any repo's <code>architecture.protocol.json</code> and this renders the same way — beevibe is just the reference implementation. The per-language conformance checker is the one pluggable piece.
+  </footer>
+</div>
+
+<script>
+/* ---------- the protocol, as data (this is what lives in the repo) ---------- */
+const COMPONENTS = {
+  web:      {name:"Web",            role:"Next.js client"},
+  api:      {name:"API + MCP",      role:"Express, stateless"},
+  core:     {name:"@beevibe/core",  role:"domain · ports · adapters"},
+  daemon:   {name:"Daemon",         role:"local runner"},
+  sched:    {name:"Scheduler",      role:"server executor"},
+  db:       {name:"Postgres",       role:"state + pgvector"},
+  community:{name:"Community",      role:"newsletter + patterns"},
+};
+// grid position [col(1-3), row]
+const POS = { web:[1,1], community:[3,1], api:[2,2], sched:[1,3], daemon:[3,3], core:[2,4], db:[2,5] };
+
+const INVARIANTS = {
+  "no-cross-agent-transcripts":{rule:"No agent receives another agent's transcript; handoffs cross as summaries, top-k facts, or lazy-loaded work products."},
+  "core-via-dist":{rule:"Consumers import @beevibe/core from dist/, never src/."},
+  "web-not-api-direct":{rule:"Web talks only to the API surface, never imports API internals."},
+};
+
+/* ---------- ratified history + the pending amendment ---------- */
+const VERSIONS = [
+  {
+    id:"v0", name:"arch/1 · Apr '26", status:"ratified",
+    nodes:["web","api","core","sched","db"],
+    edges:[["web","api"],["api","core"],["sched","core"],["core","db"],["api","db"]],
+    invariants:[["no-cross-agent-transcripts","pass"],["core-via-dist","pass"]],
+    conformance:{pass:2,drift:0},
+    note:"Baseline. Server-side execution only — no local daemon yet."
+  },
+  {
+    id:"v1", name:"arch/1 · Jun '26", status:"ratified (current)",
+    nodes:["web","api","core","daemon","sched","db"],
+    drift:["community"],
+    edges:[["web","api"],["api","core"],["sched","core"],["daemon","api"],["daemon","core"],["core","db"],["api","db"]],
+    driftEdges:[["community","api"]],
+    invariants:[["no-cross-agent-transcripts","pass"],["core-via-dist","pass"],["web-not-api-direct","pass"]],
+    conformance:{pass:3,drift:1},
+    note:"Daemon ratified (amendment #2). ⚠ Drift detected: a Community / newsletter surface exists in the code (route + table) but is not in the protocol. The AI CTO opened amendment #3 to resolve it."
+  },
+  {
+    id:"v2", name:"arch/1 · Jul '26", status:"proposed",
+    nodes:["web","api","core","daemon","sched","db","community"],
+    added:["community"],
+    edges:[["web","api"],["api","core"],["sched","core"],["daemon","api"],["daemon","core"],["core","db"],["api","db"],["community","api"]],
+    addedEdges:[["community","api"]],
+    invariants:[["no-cross-agent-transcripts","pass"],["core-via-dist","pass"],["web-not-api-direct","weakened"]],
+    conformance:{pass:4,drift:0},
+    note:"Amendment #3 (proposed by ai-cto). Ratify to adopt the Community surface and the weakened boundary below.",
+    amendment:{
+      number:3, author:"ai-cto", date:"2026-07-01",
+      rationale:"Legitimize the Community/newsletter surface already shipped in code, and allow Web→API direct SSE for live updates.",
+      changes:[
+        {op:"add", text:"component Community (newsletter + patterns) + contract Community → API"},
+        {op:"weaken", text:"invariant web-not-api-direct → allow direct SSE subscription from Web"},
+      ]
+    }
+  },
+];
+
+/* ---------- state ---------- */
+let active = 1;          // default to current
+let showDrift = false;
+
+/* ---------- timeline ---------- */
+function buildTimeline(){
+  const tl = document.getElementById("timeline");
+  tl.innerHTML = "";
+  VERSIONS.forEach((v,i)=>{
+    const step = document.createElement("div"); step.className = "tl-step";
+    const dot = document.createElement("div");
+    dot.className = "tl-dot" + (i===active?" active":"") + (v.status==="proposed"?" proposed":"");
+    dot.innerHTML = `<div class="bead"></div><div class="lab">${v.name.split("· ")[1]||v.name}</div><div class="st">${v.status}</div>`;
+    dot.onclick = ()=>{ active=i; render(); };
+    step.appendChild(dot);
+    if(i<VERSIONS.length-1){
+      const line = document.createElement("div");
+      line.className = "tl-line" + (VERSIONS[i+1].status==="proposed"?" dashed":"");
+      step.appendChild(line);
+    }
+    tl.appendChild(step);
+  });
+}
+
+/* ---------- diagram ---------- */
+function nodeState(v, id){
+  if(v.added && v.added.includes(id)) return "added";
+  if(v.drift && v.drift.includes(id)) return "drift";
+  return "";
+}
+function render(){
+  buildTimeline();
+  const v = VERSIONS[active];
+  const canvas = document.getElementById("canvas");
+  const svg = document.getElementById("edges");
+  // clear existing nodes (keep svg)
+  [...canvas.querySelectorAll(".node")].forEach(n=>n.remove());
+
+  // nodes (declared + drift ghosts)
+  const shown = [...v.nodes, ...((v.drift||[]).filter(d=>!v.nodes.includes(d)))];
+  shown.forEach(id=>{
+    const c = COMPONENTS[id]; const [col,row] = POS[id];
+    const st = nodeState(v,id);
+    const el = document.createElement("div");
+    el.className = "node" + (st?(" "+st):"") + (showDrift && st==="drift"?" driftlit":"");
+    el.id = "node-"+id;
+    el.style.gridColumn = col; el.style.gridRow = row;
+    let pin = "";
+    if(st==="added") pin = `<span class="pin">+ added</span>`;
+    if(st==="drift") pin = `<span class="pin">drift</span>`;
+    el.innerHTML = `${pin}<div class="nm">${c.name}</div><div class="ro">${c.role}</div>`;
+    canvas.appendChild(el);
+  });
+
+  // side panel
+  document.getElementById("vName").textContent = v.name;
+  const vs = document.getElementById("vStatus");
+  vs.textContent = v.status==="proposed" ? "⏳ proposed — awaiting ratification" : "✓ "+v.status;
+  vs.className = "vstatus " + (v.status==="proposed"?"proposed":"ratified");
+  document.getElementById("cPass").textContent = v.conformance.pass;
+  document.getElementById("cDrift").textContent = v.conformance.drift;
+  document.getElementById("versionNote").innerHTML = v.note;
+
+  // invariants
+  const il = document.getElementById("invList"); il.innerHTML="";
+  v.invariants.forEach(([id,status])=>{
+    const row = document.createElement("div"); row.className="inv";
+    const label = status==="pass"?"pass":status;
+    row.innerHTML = `<span class="badge ${status}">${label}</span>
+      <div class="it"><span class="iid">${id}</span><div class="ir">${INVARIANTS[id].rule}</div></div>`;
+    il.appendChild(row);
+  });
+
+  // amendment card
+  const slot = document.getElementById("amendSlot");
+  if(v.amendment){
+    const a = v.amendment;
+    slot.innerHTML = `<div class="amend">
+      <div class="ah"><span class="tag">amendment #${a.number}</span> proposed change</div>
+      <div class="meta">by <b>${a.author}</b> · ${a.date} — ${a.rationale}</div>
+      <ul>${a.changes.map(ch=>`<li><span class="op ${ch.op}">${ch.op}</span>${ch.text}</li>`).join("")}</ul>
+      <div class="btns"><button class="btn ratify" onclick="ratify()">Ratify</button><button class="btn reject" onclick="render()">Reject</button></div>
+    </div>`;
+  } else {
+    slot.innerHTML = `<div class="panel"><h3>Pending amendment</h3><p class="placeholder">No open proposal for this version. When code drifts, the AI CTO files one here.</p></div>`;
+  }
+
+  requestAnimationFrame(()=>drawEdges(v));
+}
+
+function ratify(){
+  alert("In the real thing: ratify writes amendment #3 into architecture.protocol.json as version Jul '26, the diagram becomes the new baseline, and the drift badge clears. (Prototype — wiring is illustrative.)");
+}
+
+/* ---------- edges ---------- */
+function centerOf(el, host){
+  const r = el.getBoundingClientRect(), h = host.getBoundingClientRect();
+  return { x:r.left-h.left+r.width/2, y:r.top-h.top+r.height/2, w:r.width, hh:r.height };
+}
+function line(x1,y1,x2,y2,cls){
+  const ln = document.createElementNS("http://www.w3.org/2000/svg","line");
+  ln.setAttribute("x1",x1);ln.setAttribute("y1",y1);ln.setAttribute("x2",x2);ln.setAttribute("y2",y2);
+  ln.setAttribute("class",cls);
+  if(cls==="e-add"){ln.setAttribute("stroke","#1c8a5c");ln.setAttribute("stroke-width","2.4");ln.setAttribute("marker-end","url(#arrow-ok)");}
+  else if(cls==="e-dr"){ln.setAttribute("stroke","#d23f3f");ln.setAttribute("stroke-width","2");ln.setAttribute("stroke-dasharray","6 5");ln.setAttribute("marker-end","url(#arrow-dr)");}
+  else {ln.setAttribute("stroke","#c4b48f");ln.setAttribute("stroke-width","1.8");ln.setAttribute("marker-end","url(#arrow)");}
+  return ln;
+}
+function trimToBox(from,to){
+  // shorten the line so the arrowhead lands at the box edge, not its center
+  const dx=to.x-from.x, dy=to.y-from.y, len=Math.hypot(dx,dy)||1;
+  const padF=from.hh/2+6, padT=to.hh/2+10;
+  return { x1:from.x+dx/len*padF, y1:from.y+dy/len*padF, x2:to.x-dx/len*padT, y2:to.y-dy/len*padT };
+}
+function drawEdges(v){
+  const svg=document.getElementById("edges"); const host=document.getElementById("canvas");
+  [...svg.querySelectorAll("line")].forEach(l=>l.remove());
+  const draw=(pairs,cls)=>{
+    (pairs||[]).forEach(([a,b])=>{
+      const ea=document.getElementById("node-"+a), eb=document.getElementById("node-"+b);
+      if(!ea||!eb) return;
+      const t=trimToBox(centerOf(ea,host),centerOf(eb,host));
+      svg.appendChild(line(t.x1,t.y1,t.x2,t.y2,cls));
+    });
+  };
+  // base edges minus the ones rendered as added/drift
+  const special = JSON.stringify([...(v.addedEdges||[]),...(v.driftEdges||[])]);
+  const base = (v.edges||[]).filter(e=>!special.includes(JSON.stringify(e)));
+  draw(base,"e-base");
+  draw(v.addedEdges,"e-add");
+  if(showDrift || true) draw(v.driftEdges,"e-dr"); // drift edges always dashed-red so the gap is visible
+}
+
+document.getElementById("driftToggle").addEventListener("change",e=>{showDrift=e.target.checked;render();});
+window.addEventListener("resize",()=>drawEdges(VERSIONS[active]));
+render();
+</script>
+</body>
+</html>

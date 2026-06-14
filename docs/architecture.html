@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Beevibe — Architecture</title>
+<style>
+  :root {
+    --honey:      #f6a609;
+    --honey-deep: #d98404;
+    --amber-100:  #fff4d6;
+    --amber-200:  #ffe6a8;
+    --ink:        #1c1814;
+    --ink-soft:   #4a4138;
+    --paper:      #fbf7ef;
+    --paper-2:    #f3ecdd;
+    --line:       #e6dcc6;
+    --card:       #ffffff;
+    --core:       #f6a609;
+    --api:        #e8633a;
+    --daemon:     #3f8f6b;
+    --sched:      #7a5cc4;
+    --web:        #2f7bd1;
+    --db:         #b0743b;
+    --shadow:     0 1px 2px rgba(28,24,20,.06), 0 8px 24px rgba(28,24,20,.06);
+    --shadow-lg:  0 2px 6px rgba(28,24,20,.08), 0 18px 48px rgba(28,24,20,.10);
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Roboto, Helvetica, Arial, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font-family: var(--sans);
+    color: var(--ink);
+    background: var(--paper);
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ---------- Honeycomb backdrop ---------- */
+  .hex-bg {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none;
+    background-color: var(--paper);
+    background-image:
+      radial-gradient(circle at 50% 0%, rgba(246,166,9,.10), transparent 45%),
+      url("data:image/svg+xml,%3Csvg width='56' height='100' viewBox='0 0 56 100' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M28 0l28 16v33L28 65 0 49V16z' fill='none' stroke='%23eaddc0' stroke-width='1.2'/%3E%3Cpath d='M28 67l28 16v33L28 132 0 116V83z' fill='none' stroke='%23eaddc0' stroke-width='1.2'/%3E%3C/svg%3E");
+    opacity: .8;
+  }
+
+  .wrap { position: relative; z-index: 1; max-width: 1120px; margin: 0 auto; padding: 0 28px; }
+
+  /* ---------- Hero ---------- */
+  header.hero {
+    position: relative; z-index: 1;
+    text-align: center;
+    padding: 92px 28px 60px;
+  }
+  .bee-mark {
+    width: 78px; height: 78px; margin: 0 auto 22px;
+    display: grid; place-items: center;
+    border-radius: 22px;
+    background: linear-gradient(150deg, var(--honey), var(--honey-deep));
+    box-shadow: 0 10px 30px rgba(217,132,4,.38);
+    font-size: 40px;
+  }
+  .hero h1 {
+    font-size: clamp(40px, 7vw, 76px);
+    line-height: .98; margin: 0 0 14px; letter-spacing: -.03em; font-weight: 800;
+  }
+  .hero h1 .dot { color: var(--honey); }
+  .hero .tag {
+    font-size: clamp(17px, 2.4vw, 21px); color: var(--ink-soft);
+    max-width: 660px; margin: 0 auto 26px;
+  }
+  .pills { display: flex; flex-wrap: wrap; gap: 9px; justify-content: center; }
+  .pill {
+    font-size: 13px; font-weight: 600; padding: 7px 14px; border-radius: 999px;
+    background: var(--card); border: 1px solid var(--line); box-shadow: var(--shadow);
+    color: var(--ink-soft);
+  }
+  .pill b { color: var(--ink); }
+
+  /* ---------- Sticky nav ---------- */
+  nav.toc {
+    position: sticky; top: 0; z-index: 20;
+    background: rgba(251,247,239,.82);
+    backdrop-filter: saturate(160%) blur(10px);
+    border-bottom: 1px solid var(--line);
+    margin-top: 30px;
+  }
+  nav.toc .row { display: flex; gap: 4px; overflow-x: auto; padding: 10px 0; max-width: 1120px; margin: 0 auto; padding-left: 28px; padding-right: 28px; }
+  nav.toc a {
+    white-space: nowrap; text-decoration: none; color: var(--ink-soft);
+    font-size: 13.5px; font-weight: 600; padding: 7px 13px; border-radius: 9px;
+  }
+  nav.toc a:hover { background: var(--amber-100); color: var(--ink); }
+
+  /* ---------- Sections ---------- */
+  section { padding: 64px 0 8px; }
+  .eyebrow {
+    font-size: 12.5px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase;
+    color: var(--honey-deep); margin: 0 0 10px;
+  }
+  section > .wrap > h2 {
+    font-size: clamp(28px, 4vw, 40px); margin: 0 0 14px; letter-spacing: -.02em; font-weight: 800;
+  }
+  section > .wrap > p.lead { font-size: 18px; color: var(--ink-soft); max-width: 760px; margin: 0 0 30px; }
+
+  h3 { font-size: 21px; margin: 38px 0 14px; letter-spacing: -.01em; }
+  p { margin: 0 0 16px; }
+  code {
+    font-family: var(--mono); font-size: .86em;
+    background: var(--paper-2); border: 1px solid var(--line);
+    padding: 1px 6px; border-radius: 6px; color: var(--ink);
+  }
+
+  /* ---------- Cards & grids ---------- */
+  .grid { display: grid; gap: 18px; }
+  .g2 { grid-template-columns: repeat(2, 1fr); }
+  .g3 { grid-template-columns: repeat(3, 1fr); }
+  @media (max-width: 820px) { .g2, .g3 { grid-template-columns: 1fr; } }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 16px;
+    padding: 22px; box-shadow: var(--shadow);
+  }
+  .card.tinted { background: linear-gradient(180deg, #fffaf0, #fff); }
+  .card h4 { margin: 0 0 8px; font-size: 17px; display: flex; align-items: center; gap: 9px; }
+  .card p { font-size: 14.5px; color: var(--ink-soft); margin: 0 0 10px; }
+  .card ul { margin: 0; padding-left: 18px; font-size: 14px; color: var(--ink-soft); }
+  .card ul li { margin: 4px 0; }
+  .chip {
+    display: inline-grid; place-items: center; width: 30px; height: 30px; border-radius: 9px;
+    font-size: 16px; flex: none; color: #fff;
+  }
+
+  .tag-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+  .tag {
+    font-family: var(--mono); font-size: 11.5px; padding: 3px 8px; border-radius: 6px;
+    background: var(--paper-2); border: 1px solid var(--line); color: var(--ink-soft);
+  }
+
+  /* ---------- Diagram primitives ---------- */
+  .diagram {
+    background:
+      linear-gradient(var(--card), var(--card)) padding-box,
+      repeating-linear-gradient(45deg, var(--amber-200) 0 2px, transparent 2px 9px) border-box;
+    border: 2px solid transparent; border-radius: 18px;
+    padding: 26px; box-shadow: var(--shadow-lg); margin: 24px 0;
+    overflow-x: auto;
+  }
+  .diagram .cap { font-size: 12.5px; color: var(--ink-soft); text-align: center; margin-top: 16px; font-style: italic; }
+
+  .node {
+    border-radius: 12px; padding: 12px 14px; text-align: center;
+    border: 1.5px solid var(--line); background: var(--card);
+    font-weight: 600; font-size: 14px; box-shadow: var(--shadow);
+  }
+  .node .sub { font-weight: 500; font-size: 11.5px; color: var(--ink-soft); margin-top: 3px; display:block; }
+  .node.core   { border-color: var(--core);   background: #fff8e9; }
+  .node.api    { border-color: var(--api);     background: #fdeee8; }
+  .node.daemon { border-color: var(--daemon);  background: #e9f5ef; }
+  .node.sched  { border-color: var(--sched);   background: #efeafa; }
+  .node.web    { border-color: var(--web);     background: #e8f1fc; }
+  .node.db     { border-color: var(--db);      background: #f6ede0; }
+  .node.cli    { border-color: var(--ink-soft);background: #f3ede4; }
+
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; justify-content: center; margin-top: 6px; font-size: 12.5px; color: var(--ink-soft); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .swatch { width: 13px; height: 13px; border-radius: 4px; display: inline-block; }
+
+  /* layered stack diagram */
+  .stack { display: flex; flex-direction: column; gap: 12px; }
+  .layer { display: grid; grid-template-columns: 150px 1fr; gap: 14px; align-items: center; }
+  .layer .lbl { font-weight: 700; font-size: 13px; text-align: right; color: var(--ink-soft); }
+  .layer .bar { border-radius: 11px; padding: 13px 16px; font-size: 13.5px; font-weight: 600; color: #fff; box-shadow: var(--shadow); }
+  @media (max-width: 640px){ .layer { grid-template-columns: 1fr; } .layer .lbl { text-align: left; } }
+
+  .flow-row { display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap; justify-content: center; }
+  .flow-row .node { flex: 1 1 0; min-width: 130px; display: grid; align-content: center; }
+  .arrow { display: grid; place-items: center; color: var(--honey-deep); font-size: 22px; font-weight: 700; flex: none; }
+  @media (max-width: 720px){ .arrow { transform: rotate(90deg); } }
+
+  /* numbered sequence */
+  ol.seq { counter-reset: step; list-style: none; padding: 0; margin: 22px 0; }
+  ol.seq li {
+    position: relative; padding: 14px 16px 14px 60px; margin: 0 0 10px;
+    background: var(--card); border: 1px solid var(--line); border-radius: 13px; box-shadow: var(--shadow);
+    font-size: 14.5px;
+  }
+  ol.seq li::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 14px; top: 50%; transform: translateY(-50%);
+    width: 32px; height: 32px; border-radius: 50%;
+    background: linear-gradient(150deg, var(--honey), var(--honey-deep)); color: #fff;
+    display: grid; place-items: center; font-weight: 800; font-size: 14px;
+    box-shadow: 0 4px 10px rgba(217,132,4,.35);
+  }
+  ol.seq li b { color: var(--ink); }
+  ol.seq li .who { font-family: var(--mono); font-size: 11.5px; color: var(--api); font-weight: 700; }
+
+  /* table */
+  .tbl-wrap { overflow-x: auto; margin: 18px 0; border: 1px solid var(--line); border-radius: 14px; box-shadow: var(--shadow); }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; background: var(--card); }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--paper-2); font-weight: 700; font-size: 12.5px; letter-spacing: .02em; }
+  tr:last-child td { border-bottom: none; }
+  td code { font-size: 12px; }
+
+  /* callout */
+  .note {
+    border-left: 4px solid var(--honey); background: #fffaf0;
+    padding: 14px 18px; border-radius: 0 12px 12px 0; margin: 22px 0; font-size: 14.5px;
+  }
+  .note b { color: var(--honey-deep); }
+
+  /* ---------- Click-to-expand code ---------- */
+  .codes { margin: 22px 0 8px; }
+  .codes .hd { font-size: 12.5px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-soft); margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
+  details.code {
+    margin: 0 0 10px; border: 1px solid var(--line); border-radius: 12px;
+    background: var(--card); box-shadow: var(--shadow); overflow: hidden;
+  }
+  details.code > summary {
+    cursor: pointer; list-style: none; padding: 12px 15px;
+    font-family: var(--mono); font-size: 13px; font-weight: 600; color: var(--ink);
+    display: flex; align-items: center; gap: 10px; user-select: none;
+    background: var(--paper-2); transition: background .12s;
+  }
+  details.code > summary::-webkit-details-marker { display: none; }
+  details.code > summary .tw { color: var(--honey-deep); font-weight: 800; transition: transform .15s; flex: none; }
+  details.code[open] > summary .tw { transform: rotate(90deg); }
+  details.code > summary .fp { margin-left: auto; font-size: 11px; color: var(--ink-soft); font-weight: 500; white-space: nowrap; }
+  details.code > summary:hover { background: var(--amber-100); }
+  details.code pre {
+    margin: 0; padding: 16px 18px; overflow-x: auto;
+    background: #1c1814; color: #f1e7cd;
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.6;
+    border-top: 1px solid #000;
+  }
+  @media (max-width: 560px){ details.code > summary .fp { display: none; } }
+
+  /* ER mini diagram */
+  .er { display: grid; gap: 10px; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .ent { border: 1.5px solid var(--db); border-radius: 11px; overflow: hidden; box-shadow: var(--shadow); background: #fff; }
+  .ent .h { background: #f6ede0; font-weight: 700; font-size: 13.5px; padding: 8px 11px; border-bottom: 1px solid var(--line); }
+  .ent ul { list-style: none; margin: 0; padding: 8px 11px; font-size: 12px; color: var(--ink-soft); font-family: var(--mono); }
+  .ent ul li { padding: 2px 0; }
+  .ent ul li .pk { color: var(--db); font-weight: 700; }
+  .ent ul li .fk { color: var(--api); }
+
+  footer {
+    position: relative; z-index: 1; text-align: center;
+    padding: 56px 28px 70px; color: var(--ink-soft); font-size: 13.5px;
+    border-top: 1px solid var(--line); margin-top: 60px;
+  }
+  footer b { color: var(--ink); }
+  .kbd { font-family: var(--mono); font-size: 12px; background: var(--ink); color: var(--amber-100); padding: 2px 7px; border-radius: 6px; }
+</style>
+</head>
+<body>
+<div class="hex-bg"></div>
+
+<header class="hero">
+  <div class="bee-mark">🐝</div>
+  <h1>Beevibe<span class="dot">.</span> Architecture</h1>
+  <p class="tag">A human control plane for AI agents — where one person directs a hive of specialist agents that run locally or in the cloud, each keep their own memory, and route work to each other.</p>
+  <div class="pills">
+    <span class="pill">🍯 <b>5</b> packages</span>
+    <span class="pill">⬡ Hexagonal core</span>
+    <span class="pill">🔌 MCP tool plane</span>
+    <span class="pill">🧠 Vector memory</span>
+    <span class="pill">🤝 Agent mesh</span>
+    <span class="pill">🐘 Postgres + pgvector</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <div class="row">
+    <a href="#overview">Overview</a>
+    <a href="#core">Core</a>
+    <a href="#api">API + MCP</a>
+    <a href="#daemon">Daemon</a>
+    <a href="#scheduler">Scheduler</a>
+    <a href="#web">Web</a>
+    <a href="#data">Data model</a>
+    <a href="#hierarchy">Agent hierarchy</a>
+    <a href="#mcp">MCP plane</a>
+    <a href="#prompts">Prompt stack</a>
+    <a href="#flows">Lifecycles</a>
+  </div>
+</nav>
+
+<!-- ============ OVERVIEW ============ -->
+<section id="overview">
+  <div class="wrap">
+    <p class="eyebrow">The system at a glance</p>
+    <h2>One hive, five moving parts</h2>
+    <p class="lead">Beevibe turns a single Claude Code CLI into a coordinated team. A thin web client talks to a stateless API; the API persists everything to Postgres and hands runnable work to executors — a local <b>daemon</b> on your machine or a server-side <b>scheduler</b> — which spawn real <code>claude</code> processes that call back through MCP for memory and coordination.</p>
+
+    <div class="diagram">
+      <div class="flow-row">
+        <div class="node web">🖥️ Web<span class="sub">Next.js client</span></div>
+        <div class="arrow">⇄</div>
+        <div class="node api">🛰️ API + MCP<span class="sub">Express, stateless</span></div>
+        <div class="arrow">⇄</div>
+        <div class="node db">🐘 Postgres<span class="sub">shared state + pgvector</span></div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="flow-row">
+        <div class="node sched">⏱️ Scheduler<span class="sub">server-side executor</span></div>
+        <div class="arrow">＋</div>
+        <div class="node daemon">🛰️ Daemon<span class="sub">runs on your laptop</span></div>
+        <div class="arrow">→</div>
+        <div class="node cli">🤖 claude CLI<span class="sub">spawned per session</span></div>
+        <div class="arrow">↺</div>
+        <div class="node api">🔌 /mcp tools<span class="sub">memory · hierarchy · mesh</span></div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="flow-row">
+        <div class="node core" style="max-width:520px;margin:0 auto;">⬡ @beevibe/core — shared domain, ports &amp; adapters compiled to <code>dist/</code>, imported by every package above<span class="sub">agents · sessions · tasks · memory · runtimes · workspaces</span></div>
+      </div>
+      <div class="legend">
+        <span><i class="swatch" style="background:var(--web)"></i>Web</span>
+        <span><i class="swatch" style="background:var(--api)"></i>API / MCP</span>
+        <span><i class="swatch" style="background:var(--daemon)"></i>Daemon</span>
+        <span><i class="swatch" style="background:var(--sched)"></i>Scheduler</span>
+        <span><i class="swatch" style="background:var(--core)"></i>Core</span>
+        <span><i class="swatch" style="background:var(--db)"></i>Postgres</span>
+      </div>
+      <div class="cap">Runtime topology — the web client never talks to executors directly; Postgres is the single source of truth and the coordination bus.</div>
+    </div>
+
+    <div class="grid g3">
+      <div class="card tinted">
+        <h4><span class="chip" style="background:var(--web)">🖥️</span> Thin client</h4>
+        <p>The web app holds no business logic — it queries the API, subscribes to a single SSE stream, and renders live transcripts as agents work.</p>
+      </div>
+      <div class="card tinted">
+        <h4><span class="chip" style="background:var(--api)">🛰️</span> Stateless brain</h4>
+        <p>The API composes prompts, assembles MCP tools per session, and writes to Postgres. The only in-memory state is the daemon WebSocket registry.</p>
+      </div>
+      <div class="card tinted">
+        <h4><span class="chip" style="background:var(--daemon)">🤖</span> Distributed muscle</h4>
+        <p>Daemon and scheduler are interchangeable executors. Both provision the same workspace and spawn the same CLI, so results are identical wherever they run.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ CORE ============ -->
+<section id="core">
+  <div class="wrap">
+    <p class="eyebrow" style="color:var(--core)">packages/core</p>
+    <h2>⬡ Core — the hexagon</h2>
+    <p class="lead">Everything domain-shaped lives here, organized as <b>ports &amp; adapters</b>. Pure types and business rules sit in the middle; all I/O (Postgres, OpenAI, Anthropic, the CLI, the filesystem) is pushed to the edge behind interfaces. Core compiles to <code>dist/</code> and is imported by API, daemon and scheduler.</p>
+
+    <div class="diagram">
+      <div style="max-width:640px;margin:0 auto;">
+        <div class="node core" style="margin-bottom:14px;">🎯 domain — pure types, no I/O<span class="sub">Agent · Session · Task · WorkProduct · MemoryFact · CoreMemoryBlock · Escalation · Room</span></div>
+        <div class="arrow" style="margin:2px 0">↓</div>
+        <div class="node core" style="margin-bottom:14px; background:#fffdf6">⚙️ services — orchestrate domain + ports<span class="sub">AgentSession · TaskService · DispatchService · MemoryAgent · OrphanReaper</span></div>
+        <div class="arrow" style="margin:2px 0">↓</div>
+        <div class="node" style="border-style:dashed; margin-bottom:14px;">🔌 ports — interfaces (contracts)<span class="sub">AgentRuntime · WorkspaceManager · LlmProvider · EmbeddingService · ~20 repositories</span></div>
+        <div class="arrow" style="margin:2px 0">↓</div>
+        <div class="flow-row">
+          <div class="node db">🐘 postgres<span class="sub">~30 repos</span></div>
+          <div class="node cli">🤖 claude-code<span class="sub">runtime</span></div>
+          <div class="node" style="border-color:var(--daemon);background:#e9f5ef">📁 local-workspace</div>
+          <div class="node" style="border-color:#10a37f;background:#e7f6f1">openai<span class="sub">embeddings</span></div>
+          <div class="node" style="border-color:var(--api);background:#fdeee8">anthropic<span class="sub">llm</span></div>
+        </div>
+        <div style="text-align:center;font-size:12px;color:var(--ink-soft);margin-top:6px;font-weight:600">adapters — concrete implementations of the ports above</div>
+      </div>
+      <div class="cap">Dependencies point inward. Swap Postgres for a mock, or add a Codex runtime, without touching a line of domain logic.</div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h4>🔌 Key ports</h4>
+        <ul>
+          <li><b>AgentRuntime</b> — universal <code>execute()</code> contract; Claude Code, Codex and OpenCode all implement it.</li>
+          <li><b>WorkspaceManager</b> — idempotent <code>ensureWorkspace()</code>; writes <code>mcp-config.json</code> and syncs skills.</li>
+          <li><b>LlmProvider / EmbeddingService</b> — server-side LLM calls for fact merging; OpenAI vectors for memory.</li>
+          <li><b>~20 repositories</b> — Agent, Session, Task, WorkProduct, MemoryFact, CoreMemoryBlock, Room, Escalation…</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>⚙️ Key services</h4>
+        <ul>
+          <li><b>AgentSession</b> — runs one CLI invocation end-to-end: load agent → create session → compose prompt → execute → persist → promote memory.</li>
+          <li><b>DispatchService</b> — the single place pending sessions are born; fires the daemon push hook.</li>
+          <li><b>TaskService</b> — task state machine + review-policy gating.</li>
+          <li><b>OrphanReaper</b> — fails sessions whose process &amp; heartbeat both went stale.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="note">
+      <b>Build gotcha.</b> <code>core/package.json</code> exports point at <code>./dist/</code>, not <code>./src/</code>. Source changes are invisible to consumers until <code>tsc</code> recompiles — <span class="kbd">pnpm dev</span> runs <code>tsc --watch</code> for you; standalone runs need <code>pnpm --filter @beevibe/core build</code> first.
+    </div>
+
+    <div class="codes">
+      <p class="hd">‹/› Important code</p>
+      <details class="code">
+        <summary><span class="tw">▸</span> AgentSession.run() — one CLI invocation, end to end <span class="fp">core/src/services/agent-session.ts</span></summary>
+<pre>async run(input: AgentSessionRunInput): Promise&lt;Session&gt; {
+  // 1. Load the agent
+  const agent = await this.deps.agentRepo.findById(input.agentId);
+
+  // 2. Reuse the pending row the dispatcher inserted, or mint a new one
+  const sid = input.sessionId ?? newSessionId();
+  // ...create/update the session row at status 'running'...
+
+  // 3. Build the per-session memory briefing + layered system prompt
+  const briefing = await this.deps.memoryAgent.prepareBriefing(input.intent);
+  const system_prompt_append = composeSystemPromptAppend(
+    agent.runtime_config.system_prompt_addition,
+    briefing.systemPromptAppend,
+    { /* sessionKind, onboarding flags */ },
+  );
+  const intent = composeIntent(input.intent, briefing.userMessagePrefix);
+
+  // 4. Execute the CLI — each RuntimeStep is teed into session_event
+  const result = await this.deps.runtime.execute({
+    intent, workspace: input.workspace, system_prompt_append,
+    model: agent.runtime_config.model,
+    max_turns: agent.runtime_config.max_turns,
+    onStep,
+  });
+
+  // 5. Persist terminal state (status, usage, cli_session_id)
+  const finalSession = await this.deps.sessionRepo.update(sid, { /* ... */ });
+
+  // 6. Fire-and-forget: promote memory, then run completion hooks
+  void this.deps.memoryAgent.onTaskComplete(sid);
+  void this.deps.onSessionComplete?.(finalSession);
+  return finalSession;
+}</pre>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ API ============ -->
+<section id="api">
+  <div class="wrap">
+    <p class="eyebrow" style="color:var(--api)">packages/api</p>
+    <h2>🛰️ API — Express + MCP server</h2>
+    <p class="lead">Two surfaces in one process. <b>REST routers</b> serve humans and daemons; the <b>MCP router</b> is the tool plane agents call back into. <code>bootstrap.ts</code> is the composition root — it wires every repo, service and router, then hands the assembled app to the HTTP + WebSocket server.</p>
+
+    <div class="diagram">
+      <div class="flow-row">
+        <div class="node web">🖥️ Web<br><span class="sub">bv_u_ user token</span></div>
+        <div class="node cli">🤖 claude CLI<br><span class="sub">bv_a_ agent key</span></div>
+        <div class="node daemon">🛰️ Daemon<br><span class="sub">bv_d_ daemon token</span></div>
+      </div>
+      <div class="arrow" style="margin:8px 0">↓ ↓ ↓</div>
+      <div class="node api" style="padding:18px;">🛰️ Express app — auth middleware resolves caller → Agent / Human / Daemon</div>
+      <div style="height:14px"></div>
+      <div class="grid g3" style="gap:12px">
+        <div class="node api" style="background:#fff">🔌 /mcp<span class="sub">tool plane — per-session tool closures</span></div>
+        <div class="node api" style="background:#fff">🌐 REST<span class="sub">/task /chat /room /agent /me /view</span></div>
+        <div class="node api" style="background:#fff">⚙️ /runtime<span class="sub">daemon claim · events · done · WS hub</span></div>
+      </div>
+      <div class="arrow" style="margin:8px 0">↓</div>
+      <div class="node core">⬡ @beevibe/core services &amp; repos → 🐘 Postgres</div>
+      <div class="cap">One Express process, three caller types, three router families — all converging on core.</div>
+    </div>
+
+    <h3>REST routers</h3>
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Router</th><th>Does</th><th>Caller</th></tr></thead>
+        <tbody>
+          <tr><td><code>/mcp</code></td><td>MCP protocol gateway — assembles &amp; dispatches agent tools per session</td><td>agent / human</td></tr>
+          <tr><td><code>/task</code></td><td>Create, approve, reject, revise, cancel tasks</td><td>human</td></tr>
+          <tr><td><code>/chat</code></td><td>Dispatch a chat session, await the agent's reply</td><td>human</td></tr>
+          <tr><td><code>/runtime</code></td><td>Daemon register · heartbeat · claim · events · done · skills</td><td>daemon</td></tr>
+          <tr><td><code>/room</code></td><td>Multi-tenant shared spaces where people + agents co-chat</td><td>human</td></tr>
+          <tr><td><code>/escalation</code></td><td>Resolve peer deadlocks, approve proposals</td><td>human</td></tr>
+          <tr><td><code>/view</code></td><td>Read-only UI composers (agent, sessions, task detail)</td><td>human</td></tr>
+          <tr><td><code>/stream</code></td><td>SSE gateway for live task / session / memory updates</td><td>human</td></tr>
+          <tr><td><code>/signup · /signin · /newsletter</code></td><td>Onboarding &amp; community capture</td><td>public</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h4>🔌 MCP router</h4>
+        <p>Keeps a per-session map of <code>{ transport, server, beevibeSid }</code>. On each call it <b>assembles the tool set fresh</b> over <code>(caller, sessionId)</code> — so handlers carry context with no async-local-storage threading. Tools write straight to the repos.</p>
+      </div>
+      <div class="card">
+        <h4>📡 DaemonHub</h4>
+        <p>The one piece of in-memory state: a registry of connected daemon WebSockets keyed by <code>runtime_id</code>. When a session is inserted, the hub pushes a <code>task_available</code> frame so the daemon wakes instantly instead of waiting for its 30s poll. Tracks <code>lastSeen</code> to decide online vs. server-fallback.</p>
+      </div>
+    </div>
+
+    <div class="codes">
+      <p class="hd">‹/› Important code</p>
+      <details class="code">
+        <summary><span class="tw">▸</span> DaemonHub.notify() — WebSocket push that beats the poll <span class="fp">api/src/runtime/hub.ts</span></summary>
+<pre>// Wake every daemon subscribed to runtimeId so it claims the pending
+// session now, instead of waiting for the 30s HTTP claim poll.
+notify(runtimeId: string, sessionId: string): void {
+  const bucket = this.byRuntimeId.get(runtimeId);
+  if (!bucket || bucket.size === 0) return;          // no daemon online
+  const payload = {
+    type: "task_available", runtime_id: runtimeId, session_id: sessionId,
+  };
+  for (const client of bucket) {
+    // dedup'd per client so a double-notify fires only one wakeup
+    this.deliver(client, `task_available:${sessionId}`, payload);
+  }
+}</pre>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DAEMON ============ -->
+<section id="daemon">
+  <div class="wrap">
+    <p class="eyebrow" style="color:var(--daemon)">packages/daemon</p>
+    <h2>🛰️ Daemon — the local runner</h2>
+    <p class="lead">A lightweight process on your own machine. It detects installed CLIs, registers them with the API, then claims pending sessions and spawns <code>claude</code> locally — streaming every tool call back as it happens. This is how an agent can act on <i>your</i> filesystem with <i>your</i> Claude subscription.</p>
+
+    <div class="diagram">
+      <div class="flow-row">
+        <div class="node daemon">📋 Claimer<span class="sub">WS push + 30s poll</span></div>
+        <div class="arrow">→</div>
+        <div class="node daemon">🎚️ Supervisor<span class="sub">concurrency cap + AbortController</span></div>
+        <div class="arrow">→</div>
+        <div class="node daemon">🚀 Spawner<span class="sub">provision · execute · stream</span></div>
+        <div class="arrow">→</div>
+        <div class="node cli">🤖 claude<span class="sub">subprocess</span></div>
+      </div>
+      <div style="height:12px"></div>
+      <div class="flow-row">
+        <div class="node" style="border-color:var(--daemon);background:#fff;flex:1">↑ heartbeat 15s &nbsp;·&nbsp; claim &nbsp;·&nbsp; POST /runtime/events (steps) &nbsp;·&nbsp; POST /runtime/done (terminal) &nbsp;→&nbsp; API</div>
+      </div>
+      <div class="cap">Three internal stages — claim, supervise, spawn — plus a steady HTTP/WS conversation with the API.</div>
+    </div>
+
+    <div class="grid g3">
+      <div class="card">
+        <h4>📁 Workspace</h4>
+        <p>Each agent owns <code>~/.beevibe/workspaces/&lt;agent_id&gt;/</code> — persistent repo clones, a generated <code>mcp-config.json</code>, and tier-filtered <code>.claude/skills/</code>. Survives across sessions so context compounds.</p>
+      </div>
+      <div class="card">
+        <h4>🔑 Identity</h4>
+        <p>The daemon authenticates with its own <code>bv_d_</code> token (argon2-hashed server-side), minted at setup and stored in <code>~/.beevibe/config.json</code> alongside its registered runtimes.</p>
+      </div>
+      <div class="card">
+        <h4>🤖 Spawn shape</h4>
+        <p>CLI runs with <code>--dangerously-skip-permissions --strict-mcp-config</code>, cwd = workspace, output parsed as <code>stream-json</code>. Env strips nesting guards &amp; <code>ANTHROPIC_API_KEY</code> so it bills the subscription.</p>
+      </div>
+    </div>
+
+    <div class="codes">
+      <p class="hd">‹/› Important code</p>
+      <details class="code">
+        <summary><span class="tw">▸</span> Claimer.pollRuntime() — claim, then spawn under the supervisor <span class="fp">daemon/src/claimer.ts</span></summary>
+<pre>private async pollRuntime(runtimeId: string): Promise&lt;void&gt; {
+  while (this.running &amp;&amp; this.cfg.supervisor.hasCapacity()) {
+    const payload = await this.cfg.api.claim&lt;DispatchPayload&gt;(runtimeId);
+    if (!payload) return;                      // queue empty for this runtime
+    const ctrl = this.cfg.supervisor.start(payload.session_id);
+    void runDispatch(
+      { api, workspaceManager, runtimeRegistry },
+      payload,
+      ctrl.signal,                             // abort → SIGTERM the CLI subprocess
+    );
+  }
+}</pre>
+      </details>
+      <details class="code">
+        <summary><span class="tw">▸</span> ClaudeCodeRuntime.execute() — CLI args &amp; the env strip that picks billing <span class="fp">core/src/adapters/claude-code/runtime.ts</span></summary>
+<pre>const args = [
+  "--print", "-",
+  "--output-format", "stream-json", "--verbose",
+  "--dangerously-skip-permissions",
+  "--strict-mcp-config",
+  "--mcp-config", mcpConfigPath,
+];
+if (model) args.push("--model", model);
+if (maxTurns) args.push("--max-turns", String(maxTurns));
+if (context.resume_session_id) args.push("--resume", context.resume_session_id);
+if (context.system_prompt_append.length &gt; 0)
+  args.push("--append-system-prompt", context.system_prompt_append);
+
+const env: Record&lt;string, string | undefined&gt; = { ...process.env };
+// Strip nesting guards so the CLI starts even when the executor is itself
+// running inside Claude Code. Strip ANTHROPIC_API_KEY so the subprocess
+// bills the user's subscription (~/.claude) instead of the server's key.
+for (const key of NESTING_GUARD_VARS) delete env[key];
+for (const key of ANTHROPIC_AUTH_VARS) delete env[key];</pre>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ SCHEDULER ============ -->
+<section id="scheduler">
+  <div class="wrap">
+    <p class="eyebrow" style="color:var(--sched)">packages/scheduler</p>
+    <h2>⏱️ Scheduler — server-side executor &amp; safety net</h2>
+    <p class="lead">For agents with no daemon bound, the scheduler is the fallback executor. It's a poll loop, not a cron table: every ~30s it reaps dead processes, claims ready sessions, and after each run decides what happens next — including nudging an agent that forgot to close its task.</p>
+
+    <div class="diagram">
+      <div class="flow-row">
+        <div class="node sched">🪦 Reap<span class="sub">stale running + dead PID → fail &amp; requeue</span></div>
+        <div class="arrow">→</div>
+        <div class="node sched">🎯 Claim<span class="sub">atomic claimNextForServerFallback()</span></div>
+        <div class="arrow">→</div>
+        <div class="node sched">🚀 Dispatch<span class="sub">provision + AgentSession.run</span></div>
+        <div class="arrow">→</div>
+        <div class="node sched">🔁 Post-dispatch<span class="sub">rollup · retry · nudge</span></div>
+      </div>
+      <div style="height:12px"></div>
+      <div class="flow-row">
+        <div class="node" style="border-color:var(--sched);background:#fff;flex:1">📣 CancelListener — dedicated pg client on <code>LISTEN cancel_task</code> → aborts the in-flight subprocess</div>
+      </div>
+      <div class="cap">Polling executor with crash recovery and a post-dispatch decision tree.</div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h4>🔁 Post-dispatch decision tree</h4>
+        <ul>
+          <li>Agent set a <b>terminal status</b> → roll the parent task up.</li>
+          <li>Non-terminal children still running → wait.</li>
+          <li>All children settled → run parent rollup.</li>
+          <li>Leaf finished but <b>forgot <code>update_progress</code></b> → dispatch a retry session with a nudge.</li>
+          <li>Retry still silent after a grace window → fail the task.</li>
+        </ul>
+      </div>
+      <div class="card">
+        <h4>📣 Cross-process cancel</h4>
+        <p>The API's <code>POST /task/:id/cancel</code> fires <code>pg_notify('cancel_task', id)</code>. The scheduler's listener — a dedicated pg client, not from the pool — receives it and aborts the matching <code>AbortController</code>, killing the CLI subprocess wherever the loop is.</p>
+      </div>
+    </div>
+
+    <div class="codes">
+      <p class="hd">‹/› Important code</p>
+      <details class="code">
+        <summary><span class="tw">▸</span> The poll loop — reap, then claim-while-capacity <span class="fp">scheduler/src/worker.ts</span></summary>
+<pre>async poll(): Promise&lt;void&gt; {
+  if (!this.running) return;
+  await this.reapOrphanedSessions();   // dead PID + stale 'running' → fail &amp; requeue
+  await this.dispatchReady();
+}
+
+private async dispatchReady(): Promise&lt;void&gt; {
+  while (this.running) {
+    const session = await this.config.sessionRepo.claimNextForServerFallback();
+    if (!session) break;                                  // nothing pending
+    const agent = await this.config.agentRepo.findById(session.agent_id);
+    if (!(await this.hasTaskCapacityForClaim(agent, session))) {
+      await this.config.sessionRepo.update(session.id, { status: "pending" });
+      break;                                              // over cap → release it back
+    }
+    const workspace = await this.config.workspaceManager.ensureWorkspace({ agent });
+    void this.config.dispatchTask(session, agent, workspace, ac.signal);
+  }
+}</pre>
+      </details>
+      <details class="code">
+        <summary><span class="tw">▸</span> Post-dispatch nudge — agent forgot to close its task <span class="fp">scheduler/src/post-dispatch.ts</span></summary>
+<pre>// Leaf task finished but the agent never set a terminal status —
+// re-dispatch with a nudge instead of deadlocking the task.
+const retryIntent =
+  `&lt;task id="${taskId}"/&gt;\n` +
+  `${NUDGE_COMPLETION_MARKER}Your previous session exited without ` +
+  `setting a terminal task status. Please call update_progress with ` +
+  `done/failed/blocked.&lt;/context&gt;`;
+
+await deps.dispatchService.dispatchTask({
+  task, agentId, intent: retryIntent,
+  reason: { kind: "crash_recovery", prior_session_id: sessionResult.id },
+  type: "task",
+});</pre>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ WEB ============ -->
+<section id="web">
+  <div class="wrap">
+    <p class="eyebrow" style="color:var(--web)">packages/web</p>
+    <h2>🖥️ Web — the Next.js control plane</h2>
+    <p class="lead">A thin App Router client. Every screen is a view onto API data plus one shared SSE stream that invalidates React Query caches in real time. The flagship surface is chat; around it sit task, agent, memory, room and runtime management.</p>
+
+    <div class="diagram">
+      <div class="grid g3" style="gap:12px">
+        <div class="node web">💬 Chat<span class="sub">live transcript + suggested actions</span></div>
+        <div class="node web">📋 Tasks<span class="sub">board → detail → approve/revise</span></div>
+        <div class="node web">🤖 Agents<span class="sub">runtime · model · review policy</span></div>
+        <div class="node web">🧠 Memory<span class="sub">facts by scope</span></div>
+        <div class="node web">👥 Rooms<span class="sub">people + agents co-chat</span></div>
+        <div class="node web">⚙️ Runtimes<span class="sub">daemon online status</span></div>
+      </div>
+      <div class="arrow" style="margin:10px 0">↓ &nbsp; lib/api/client.ts (namespaced) &nbsp; + &nbsp; lib/sse.ts (one EventSource)</div>
+      <div class="node api">🛰️ API</div>
+      <div class="cap">A single SSE connection fans <code>task.updated</code>, <code>session.step</code>, <code>memory.fact.created</code> events into cache invalidations.</div>
+    </div>
+
+    <div class="grid g3">
+      <div class="card">
+        <h4>💬 Streaming chat</h4>
+        <p>The client can pre-mint a <code>session_id</code> and subscribe to its step events <i>before</i> the server starts running — so no early tool calls are missed. Replies render token-by-step with clickable follow-up chips.</p>
+      </div>
+      <div class="card">
+        <h4>🤖 Agent control</h4>
+        <p>Bind an agent to a specific daemon, override its model, edit core-memory blocks, and switch review policy between <code>auto_done</code> and <code>require_human</code>.</p>
+      </div>
+      <div class="card">
+        <h4>👥 Community <span class="tag" style="margin-left:4px">in progress</span></h4>
+        <p>An unauthenticated pattern library + ADR visual report, with newsletter capture wired to the new <code>newsletter_subscriber</code> table. Hand-curated today, no backend fetch yet.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ DATA MODEL ============ -->
+<section id="data">
+  <div class="wrap">
+    <p class="eyebrow" style="color:var(--db)">migrations/ · pgvector</p>
+    <h2>🐘 Data model</h2>
+    <p class="lead">Postgres is the single source of truth and the coordination bus. Around 14 core tables span people, the agent hierarchy, the daemon/runtime fleet, sessions, tasks, two-layer memory, and collaboration. Memory facts carry 1536-dim embeddings indexed with an HNSW vector index.</p>
+
+    <div class="diagram">
+      <div class="er">
+        <div class="ent">
+          <div class="h">person</div>
+          <ul>
+            <li><span class="pk">id</span> pk</li>
+            <li>email · password</li>
+            <li>api_key</li>
+            <li>onboarding_at</li>
+          </ul>
+        </div>
+        <div class="ent">
+          <div class="h">agent</div>
+          <ul>
+            <li><span class="pk">id</span> pk</li>
+            <li><span class="fk">owner_id</span> → person</li>
+            <li><span class="fk">parent_agent_id</span> → agent</li>
+            <li>hierarchy_level</li>
+            <li>runtime_config jsonb</li>
+            <li><span class="fk">preferred_runtime_id</span></li>
+          </ul>
+        </div>
+        <div class="ent">
+          <div class="h">daemon → runtime</div>
+          <ul>
+            <li><span class="pk">id</span> pk</li>
+            <li><span class="fk">owner_person_id</span></li>
+            <li>cli · cli_version</li>
+            <li>last_heartbeat</li>
+          </ul>
+        </div>
+        <div class="ent">
+          <div class="h">session</div>
+          <ul>
+            <li><span class="pk">id</span> pk</li>
+            <li><span class="fk">agent_id</span> → agent</li>
+            <li><span class="fk">task_id</span> → task</li>
+            <li>type · status</li>
+            <li><span class="fk">runtime_id</span> · spawn_mode</li>
+            <li>cli_session_id · usage</li>
+          </ul>
+        </div>
+        <div class="ent">
+          <div class="h">task</div>
+          <ul>
+            <li><span class="pk">id</span> pk</li>
+            <li><span class="fk">assignee_id</span> → agent</li>
+            <li><span class="fk">parent_task_id</span></li>
+            <li>status · priority</li>
+            <li>review rollup</li>
+          </ul>
+        </div>
+        <div class="ent">
+          <div class="h">work_product</div>
+          <ul>
+            <li><span class="pk">id</span> pk</li>
+            <li><span class="fk">task_id</span> → task</li>
+            <li>type · url</li>
+            <li>body</li>
+          </ul>
+        </div>
+        <div class="ent">
+          <div class="h">memory_fact</div>
+          <ul>
+            <li><span class="pk">id</span> pk</li>
+            <li><span class="fk">agent_id</span></li>
+            <li>scope · fact_type</li>
+            <li>embedding vec(1536)</li>
+            <li>hnsw cosine idx</li>
+          </ul>
+        </div>
+        <div class="ent">
+          <div class="h">core_memory_block</div>
+          <ul>
+            <li><span class="pk">id</span> pk</li>
+            <li><span class="fk">agent_id</span></li>
+            <li>persona · domain</li>
+            <li>constraints</li>
+          </ul>
+        </div>
+        <div class="ent">
+          <div class="h">room → message</div>
+          <ul>
+            <li><span class="pk">id</span> pk</li>
+            <li>member: person|agent</li>
+            <li><span class="fk">session_id</span></li>
+            <li>pg_notify trigger</li>
+          </ul>
+        </div>
+        <div class="ent">
+          <div class="h">escalation</div>
+          <ul>
+            <li><span class="pk">id</span> pk</li>
+            <li>initiator / counterparty</li>
+            <li>slots + submitted_at</li>
+          </ul>
+        </div>
+        <div class="ent">
+          <div class="h">session_event</div>
+          <ul>
+            <li><span class="pk">id</span> pk</li>
+            <li><span class="fk">session_id</span></li>
+            <li>kind · content</li>
+            <li>append-only</li>
+          </ul>
+        </div>
+        <div class="ent">
+          <div class="h">newsletter_subscriber</div>
+          <ul>
+            <li><span class="pk">id</span> pk</li>
+            <li>email uniq</li>
+            <li>source</li>
+          </ul>
+        </div>
+      </div>
+      <div class="cap">Mini-ER overview. <span style="color:var(--db);font-weight:700">brown</span> = primary keys, <span style="color:var(--api);font-weight:700">orange</span> = foreign keys.</div>
+    </div>
+
+    <div class="note">
+      <b>Two memory layers, per agent.</b> <code>core_memory_block</code> is small, always in-context, and expensive per byte — persona, domain, constraints. <code>memory_fact</code> is unbounded, vector-indexed archival — beliefs, patterns, gotchas, decisions — retrieved top-k per session. Both are keyed by <code>agent_id</code>: every read filters <code>WHERE agent_id = $self</code>, so <b>an agent only ever sees its own memory</b>. The <code>scope</code> column (ic / team / org) and promotion only relabel an agent's own rows — they don't copy facts between agents.
+    </div>
+
+    <div class="codes">
+      <p class="hd">‹/› Important code</p>
+      <details class="code">
+        <summary><span class="tw">▸</span> searchByVector() — memory reads are scoped to one agent <span class="fp">core/src/adapters/postgres/memory-fact-repo.ts</span></summary>
+<pre>async searchByVector(params: VectorSearchParams): Promise&lt;MemoryFact[]&gt; {
+  const { rows } = await this.pool.query&lt;MemoryFactRow&gt;(
+    `SELECT ${FACT_COLUMNS},
+            1 - (embedding &lt;=&gt; $1::vector) AS similarity
+       FROM memory_fact
+      WHERE agent_id = $2                      -- ← every read is scoped to ONE agent
+        AND scope = ANY($3::text[])
+        AND ($4::text[] IS NULL OR fact_type = ANY($4::text[]))
+        AND (1 - (embedding &lt;=&gt; $1::vector)) &gt;= $5
+      ORDER BY embedding &lt;=&gt; $1::vector ASC     -- cosine distance over the HNSW index
+      LIMIT $6`,
+    [vecLit, params.agent_id, scopes, factTypes, minSim, limit],
+  );
+  return rows.map(rowToFact);
+}</pre>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HIERARCHY ============ -->
+<section id="hierarchy">
+  <div class="wrap">
+    <p class="eyebrow">tools/hierarchy.ts · spawn-prep.ts</p>
+    <h2>🐝 Agent hierarchy &amp; routing</h2>
+    <p class="lead">Agents form a three-tier tree. ICs are leaf specialists; team and org agents coordinate, delegate, and can spawn new specialists. A <b>three-lane routing directive</b> is injected into every team-agent session to decide who does the work.</p>
+
+    <div class="diagram">
+      <div style="max-width:560px;margin:0 auto;">
+        <div class="node" style="border-color:var(--sched);background:#efeafa;margin-bottom:8px">🏛️ Org agent<span class="sub">enterprise coordinator · governance (future)</span></div>
+        <div class="arrow" style="margin:2px">↓</div>
+        <div class="node api" style="margin-bottom:8px">👔 Team agent<span class="sub">decomposes, delegates, spawns specialists</span></div>
+        <div class="arrow" style="margin:2px">↓</div>
+        <div class="flow-row">
+          <div class="node core">🔧 IC<span class="sub">backend</span></div>
+          <div class="node core">🎨 IC<span class="sub">frontend</span></div>
+          <div class="node core">🔐 IC<span class="sub">auth</span></div>
+        </div>
+      </div>
+      <div class="cap">Self-referential <code>parent_agent_id</code> builds the tree; IC agents execute, team/org agents route.</div>
+    </div>
+
+    <div class="grid g3">
+      <div class="card tinted">
+        <h4>🛣️ Lane A — do it yourself</h4>
+        <p>Ambiguous scope, small fixes, cross-cutting coordination the team agent is best placed to handle directly.</p>
+      </div>
+      <div class="card tinted">
+        <h4>📨 Lane B — delegate</h4>
+        <p>Substantive single-domain work that matches an existing specialist. Routed via <code>create_task</code> to a subordinate.</p>
+      </div>
+      <div class="card tinted">
+        <h4>✨ Lane C — spawn</h4>
+        <p>A gap in the team. Propose a new IC via <code>create_subordinate_agent</code> — capped at 8 spawns / 24h, every one audited.</p>
+      </div>
+    </div>
+
+    <div class="tbl-wrap">
+      <table>
+        <thead><tr><th>Level</th><th>Can do</th><th>Tool surface</th></tr></thead>
+        <tbody>
+          <tr><td><b>IC</b></td><td>Execute assigned tasks, search memory, record work products, escalate blockers</td><td>~13 tools (memory + shared hierarchy + <code>respond_ask</code>, <code>report_blocker</code>)</td></tr>
+          <tr><td><b>Team</b></td><td>All of IC + decompose, delegate, revise, escalate, spawn specialists</td><td>~24 tools (+ <code>create_task</code>, <code>find_subordinates</code>, <code>ask</code>, <code>negotiate</code>, <code>escalate_to_humans</code>…)</td></tr>
+          <tr><td><b>Org</b></td><td>Same surface as Team, scaled to multi-team orchestration</td><td>Team set + future governance</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note">
+      <b>The mesh.</b> Peers coordinate horizontally with <code>ask</code> (spawn a peer, await answer) and <code>negotiate</code> (bidirectional proposals). A deadlock becomes an <code>escalation</code> — both parties submit slots, a human resolves. When a target daemon is offline, dispatch downgrades to <code>server_fallback_mesh</code> with a read-only tool surface.
+    </div>
+  </div>
+</section>
+
+<!-- ============ MCP ============ -->
+<section id="mcp">
+  <div class="wrap">
+    <p class="eyebrow">tools/assemble.ts · local-workspace/manager.ts</p>
+    <h2>🔌 The MCP tool plane</h2>
+    <p class="lead">MCP is the two-way channel between the API and a running CLI. The API <b>exposes</b> a tool server at <code>/mcp</code>; each agent <b>consumes</b> a generated <code>mcp-config.json</code> that points its CLI back at that server with the right credentials.</p>
+
+    <div class="diagram">
+      <div class="flow-row">
+        <div class="node cli" style="flex:1">🤖 claude CLI<span class="sub">reads workspace mcp-config.json</span></div>
+        <div class="arrow">⇄</div>
+        <div class="node api" style="flex:1">🔌 /mcp server<span class="sub">assembles tools per session</span></div>
+        <div class="arrow">→</div>
+        <div class="node core" style="flex:1">⬡ repos &amp; services<span class="sub">memory · hierarchy · mesh</span></div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="card" style="background:#1c1814;color:var(--amber-100);font-family:var(--mono);font-size:12.5px;box-shadow:var(--shadow-lg)">
+<pre style="margin:0;white-space:pre-wrap">// ~/.beevibe/workspaces/&lt;agent_id&gt;/mcp-config.json
+{
+  "mcpServers": {
+    "beevibe": {
+      "type": "http",
+      "url": "${BEEVIBE_MCP_SERVER_URL}",
+      "headers": {
+        "Authorization": "Bearer ${agent.api_key}",   // bv_a_…
+        "X-Beevibe-Session": "${BEEVIBE_SESSION_ID}"   // ties calls to a session
+      }
+    }
+  }
+}</pre>
+      </div>
+      <div class="cap">The config is rewritten on drift (key rotation, URL change) — no stale credentials ever persist.</div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h4>🧰 Tools assembled per session</h4>
+        <p>On each request the router resolves the caller, loads the agent's hierarchy level, and builds the exact tool set it's allowed — IC vs. team — closed over <code>(agentId, sessionId)</code>. Three families: <b>memory</b>, <b>hierarchy</b>, <b>mesh</b>.</p>
+      </div>
+      <div class="card">
+        <h4>🔗 Session correlation</h4>
+        <p>Every tool call appends a <code>session_event</code> row (fire-and-forget). The <code>X-Beevibe-Session</code> header threads each HTTP call back to its session, so the transcript and SSE stream stay perfectly aligned.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ PROMPT STACK ============ -->
+<section id="prompts">
+  <div class="wrap">
+    <p class="eyebrow">services/spawn-prep.ts</p>
+    <h2>🧩 The prompt stack</h2>
+    <p class="lead">Every session's system prompt is layered most-stable to least-stable, so the prefix cache stays warm. Static reminders sit at the front; the per-session memory briefing rides on the user message instead, keeping it out of the cached system prompt.</p>
+
+    <div class="diagram">
+      <div class="stack">
+        <div class="layer"><div class="lbl">100% stable</div><div class="bar" style="background:linear-gradient(90deg,#1c8a5c,#34a873)">1 · Lifecycle reminder — task vs chat rules (close your task, record work products)</div></div>
+        <div class="layer"><div class="lbl">100% stable</div><div class="bar" style="background:linear-gradient(90deg,#2f7bd1,#5197e0)">2 · Memory reminder — two-layer model + promotion ladder</div></div>
+        <div class="layer"><div class="lbl">chat only</div><div class="bar" style="background:linear-gradient(90deg,#7a5cc4,#9678d6)">3 · Display directives — id hydration, open_view, suggest_action chips</div></div>
+        <div class="layer"><div class="lbl">per roster</div><div class="bar" style="background:linear-gradient(90deg,#e8633a,#ef8462)">4 · Team routing — three-lane rubric + current specialist list</div></div>
+        <div class="layer"><div class="lbl">per agent</div><div class="bar" style="background:linear-gradient(90deg,#d98404,#f6a609)">5 · Per-agent baseline — “You are X”</div></div>
+        <div class="layer"><div class="lbl">per session</div><div class="bar" style="background:linear-gradient(90deg,#b0743b,#c98f53)">6 · Briefing — top-k archival facts + core blocks</div></div>
+        <div class="layer"><div class="lbl">one-shot</div><div class="bar" style="background:linear-gradient(90deg,#8a7250,#a68a63)">7 · Onboarding — first chat only, then stamped done</div></div>
+      </div>
+      <div class="cap">Cache-optimized ordering. Layers 1–4 are identical across all team agents on a surface; only 6–7 vary per session.</div>
+    </div>
+
+    <div class="grid g2">
+      <div class="card">
+        <h4>📥 Where memory rides</h4>
+        <p>Archival facts are injected into the <b>user message</b> inside an <code>&lt;archival_memory&gt;</code> block, not the system prompt — so per-session variation never breaks the system-prompt prefix cache. Facts keep a <code>saved=</code> date for staleness detection.</p>
+      </div>
+      <div class="card">
+        <h4>🎬 Session variants</h4>
+        <ul>
+          <li><b>task</b> — full lifecycle + memory + routing + briefing</li>
+          <li><b>chat</b> — chat lifecycle + display directives + onboarding</li>
+          <li><b>human_mcp</b> — like chat, no display chips (local CLI)</li>
+          <li><b>mesh_ask / blocker</b> — task lifecycle, the responder is inside a task</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="codes">
+      <p class="hd">‹/› Important code</p>
+      <details class="code">
+        <summary><span class="tw">▸</span> composeSystemPromptAppend() — the 7 layers, most-stable first <span class="fp">core/src/services/spawn-prep.ts</span></summary>
+<pre>const lifecycleReminder = usesChatLifecycle
+  ? BEEVIBE_LIFECYCLE_REMINDER_CHAT
+  : BEEVIBE_LIFECYCLE_REMINDER_TASK;
+const isChatSurface = options.sessionKind === "chat";
+
+return [
+  lifecycleReminder,                                 // 1 · lifecycle (task vs chat)
+  BEEVIBE_MEMORY_REMINDER,                           // 2 · memory model
+  isChatSurface ? CHAT_DIRECTIVES : "",              // 3 · display grammar (chat only)
+  options.extra ?? "",                               // 4 · routing / room directives
+  agentSystemPromptAddition ?? "",                   // 5 · per-agent baseline
+  briefingSystemPromptAppend,                        // 6 · per-session briefing
+  options.appendOnboardingDirectives ? ONBOARDING_DIRECTIVES : "",  // 7 · one-shot
+]
+  .filter((s) =&gt; s.length &gt; 0)
+  .join("\n\n");</pre>
+      </details>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FLOWS ============ -->
+<section id="flows">
+  <div class="wrap">
+    <p class="eyebrow">putting it together</p>
+    <h2>🔄 Lifecycles end to end</h2>
+    <p class="lead">Three canonical paths show how the pieces interlock. Notice the shape repeats: dispatch a pending session → an executor claims it → the CLI runs and calls MCP → results persist → hooks fire → the UI updates over SSE.</p>
+
+    <h3>① A chat message</h3>
+    <ol class="seq">
+      <li><span class="who">web</span> User sends a message; the client pre-mints a <code>session_id</code> and subscribes to its SSE step stream.</li>
+      <li><span class="who">api</span> <code>/chat</code> creates a running session, composes the chat prompt stack, and runs the agent's CLI.</li>
+      <li><span class="who">cli → mcp</span> The agent reads context, calls memory/hierarchy tools; each call streams back as a <code>session.step</code> event.</li>
+      <li><span class="who">api → web</span> On completion the reply returns with view refs; the live transcript has already rendered each step.</li>
+    </ol>
+
+    <h3>② A task on a daemon-bound agent</h3>
+    <ol class="seq">
+      <li><span class="who">web</span> User creates a task assigned to an agent with a <code>preferred_runtime_id</code>.</li>
+      <li><span class="who">api</span> <code>DispatchService</code> inserts a <b>pending</b> session and <code>DaemonHub</code> pushes <code>task_available</code> over WebSocket.</li>
+      <li><span class="who">daemon</span> The Claimer wakes, calls <code>/runtime/claim</code>, gets the briefing, provisions the workspace, spawns <code>claude</code>.</li>
+      <li><span class="who">daemon → api</span> Steps stream to <code>/runtime/events</code> (buffered ~250ms); fanned out as SSE to the web UI.</li>
+      <li><span class="who">daemon → api</span> CLI exits → <code>POST /runtime/done</code> writes status, usage, <code>cli_session_id</code>.</li>
+      <li><span class="who">api</span> <code>onSessionComplete</code> fires: memory promotion, mesh resolver, task rollup; SSE tells the UI it's done.</li>
+    </ol>
+
+    <h3>③ The same task with no daemon (server fallback)</h3>
+    <ol class="seq">
+      <li><span class="who">api</span> Session is inserted pending; no daemon is online for the runtime.</li>
+      <li><span class="who">scheduler</span> The poll loop reaps orphans, then atomically claims the pending session.</li>
+      <li><span class="who">scheduler</span> It provisions the identical workspace and runs <code>AgentSession.run()</code> in-process.</li>
+      <li><span class="who">scheduler</span> Post-dispatch decides next: roll up the parent, retry with a nudge, or fail after the grace window.</li>
+    </ol>
+
+    <div class="note">
+      <b>Why two executors?</b> The daemon lets an agent act on your machine with your subscription; the scheduler guarantees work still runs when no daemon is connected. Both call the <i>same</i> core service against the <i>same</i> workspace shape — so a task's outcome doesn't depend on where it ran.
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="bee-mark" style="width:48px;height:48px;font-size:24px;border-radius:14px;margin-bottom:14px">🐝</div>
+  <p><b>Beevibe</b> — a human control plane for AI agents.<br>
+  Hexagonal core · stateless API · distributed executors · vector memory · agent mesh.</p>
+  <p style="margin-top:14px;font-size:12.5px;opacity:.8">Generated architecture overview · open <span class="kbd">docs/architecture.html</span> in a browser</p>
+</footer>
+
+</body>
+</html>
