@@ -95,10 +95,28 @@ export function createUpdateCoreMemoryTool(
   return {
     name: "update_core_memory",
     description:
-      "Edit one of your core-memory blocks. These blocks ride in every " +
-      "future session's system prompt — treat as expensive real estate. " +
-      "The block's current contents are already visible in your " +
-      "<core_memory> render; read them there before composing the edit. " +
+      "Update your core-memory blocks when the stable state you want loaded " +
+      "into every future session changes.\n\n" +
+      "## WHEN TO UPDATE\n\n" +
+      "- Persona shift: your role, expertise, or specialization meaningfully " +
+      "changed (rare — verify it's not just one session's framing).\n" +
+      "- Durable constraint added or removed: a hard rule that should apply " +
+      "to ALL your future work, not just this project.\n" +
+      "- Stable scope shift: you're operating across new domains long-term, " +
+      "or sunsetting an old area of focus.\n" +
+      "- Accumulating-list update: a new teammate, a new team under your org.\n\n" +
+      "For generalized facts you'd want briefing-ready, use `save_memory` " +
+      "(archival). For session-specific details or events, leave them for " +
+      "`session_search` — they're already in the transcript.\n\n" +
+      "## BLOCK ROUTING\n\n" +
+      "Each block has a narrow purpose — content for one block doesn't belong " +
+      "in another. Read each block's `description` attribute in your " +
+      "<core_memory> render before writing; the `block_name` enum below lists " +
+      "what's available at your tier.\n\n" +
+      "## COST\n\n" +
+      "These blocks ride in every future session's system prompt — treat as " +
+      "expensive real estate. The block's current contents are already visible " +
+      "in your <core_memory> render; read them there before composing the edit. " +
       "This tool does not return current contents.\n\n" +
       "## Choosing between `append` and `replace`\n\n" +
       "Use `append` ONLY when the block is an accumulating list — every " +
@@ -126,9 +144,11 @@ export function createUpdateCoreMemoryTool(
       "block. The block is current state, not a log. Dated facts belong " +
       "in archival memory via `save_memory`, which auto-stamps the date.\n\n" +
       "If unsure between core and archival, prefer `save_memory` " +
-      "(archival is cheap and forgiving). Promote to core only when a " +
-      "fact has already surfaced across multiple sessions AND belongs " +
-      "in every future briefing.\n\n" +
+      "(archival is cheap and forgiving). If the info is tied to a specific " +
+      "past session, leave it for `session_search` — the transcript already " +
+      "has it. Promote to core only when a fact has already surfaced across " +
+      "multiple sessions AND belongs in every future briefing.\n\n" +
+      "The most valuable memory makes the next session start already knowing.\n\n" +
       "## Examples\n\n" +
       "GOOD — surgical fix (one substring → another):\n" +
       "  update_core_memory(\n" +
