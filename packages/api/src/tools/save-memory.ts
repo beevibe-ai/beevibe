@@ -69,14 +69,29 @@ export function createSaveMemoryTool(
   return {
     name: "save_memory",
     description:
-      "Save a fact, learning, or insight to long-term archival memory for " +
-      "retrieval across all future sessions. Store self-contained facts that " +
-      "stand alone when retrieved later (no \"we\", \"the user\", \"recently\" " +
-      "— name specific entities and use definite language). One sentence per " +
-      "call; for multiple facts, call the tool multiple times. The save date " +
-      "is auto-stamped — future retrievals show saved=YYYY-MM-DD so old facts " +
-      "can be judged for staleness. Persists across sessions; retrievable via " +
-      "the briefing's vector recall and via search_context.",
+      "Save a curated, generalized fact for retrieval in every future briefing.\n\n" +
+      "WHEN TO SAVE (proactively, mid-session — don't wait for the turn to end):\n" +
+      "- You learned a durable fact, convention, or quirk about your domain\n" +
+      "- You hit a gotcha or surprising pattern that generalizes beyond this session\n" +
+      "- You discovered a stable team preference, workflow rule, or constraint\n\n" +
+      "DO NOT SAVE — use session_search to recall these later:\n" +
+      "- Session-specific identifiers (PR/issue/ticket numbers, document IDs, file paths)\n" +
+      "- Task progress and completed-work logs (\"Phase X done\", \"shipped Y\")\n" +
+      "- One-shot session details (today's errors, a single meeting note, a specific lookup)\n" +
+      "- Anything tied to a specific past conversation\n" +
+      "Saving these bloats archival and pollutes the briefing's top-k.\n\n" +
+      "DECLARATIVE-NOT-IMPERATIVE — write facts, not instructions to yourself:\n" +
+      "  ✓ \"User prefers concise replies\"        ✗ \"Always respond concisely\"\n" +
+      "  ✓ \"Project uses Linear, not Jira\"        ✗ \"Always create issues in Linear\"\n" +
+      "Imperative phrasing gets re-read as a directive in later sessions and can " +
+      "override the user's current request.\n\n" +
+      "FORMAT: one self-contained sentence. No \"we\" / \"the user\" / \"recently\" " +
+      "— name specific entities, use definite language. For multiple facts, call " +
+      "the tool multiple times.\n\n" +
+      "The save date is auto-stamped — future retrievals show saved=YYYY-MM-DD so " +
+      "old facts can be judged for staleness. Persists across sessions; retrievable " +
+      "via the briefing's vector recall and via search_context.\n\n" +
+      "The most valuable memory makes the next session start already knowing.",
     schema: SAVE_MEMORY_SCHEMA as Record<string, unknown>,
     handler: async (input) => {
       const content = input.content;
