@@ -5,7 +5,7 @@
  * collide on the same machine.
  */
 
-export const KNOWN_CLIS = ["claude", "codex", "opencode"] as const;
+export const KNOWN_CLIS = ["claude", "codex", "opencode", "hermes"] as const;
 
 export type KnownCli = (typeof KNOWN_CLIS)[number];
 

@@ -1,6 +1,7 @@
 import type { RuntimeRegistry } from "../ports/runtime.js";
 import { ClaudeCodeRuntime } from "./claude-code/runtime.js";
 import { CodexRuntime } from "./codex/runtime.js";
+import { HermesRuntime } from "./hermes/runtime.js";
 import { OpenCodeRuntime } from "./opencode/runtime.js";
 
 /**
@@ -22,6 +23,7 @@ export function createDefaultRuntimeRegistry(): RuntimeRegistry {
     claude: new ClaudeCodeRuntime({}),
     codex: new CodexRuntime({}),
     opencode: new OpenCodeRuntime({}),
+    hermes: new HermesRuntime({}),
   };
 }
 

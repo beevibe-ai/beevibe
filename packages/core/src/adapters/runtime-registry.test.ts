@@ -24,6 +24,12 @@ describe("createDefaultRuntimeRegistry", () => {
     expect(registry["codex"]!.type).toBe("codex");
   });
 
+  it("registers hermes", () => {
+    const registry = createDefaultRuntimeRegistry();
+    expect(registry["hermes"]).toBeDefined();
+    expect(registry["hermes"]!.type).toBe("hermes");
+  });
+
   it("every registry value's .type matches its registry key (sanity check against typos)", () => {
     const registry = createDefaultRuntimeRegistry();
     for (const [key, runtime] of Object.entries(registry)) {
@@ -45,7 +51,7 @@ describe("runtimeMissingError / parseRuntimeMissingError", () => {
     // payload for a CLI it doesn't have registered; the api's chat route
     // parses it to swap for a user-actionable message. The two must stay
     // byte-for-byte in sync — this test is the enforcement.
-    for (const cli of ["claude", "codex", "opencode", "future-cli"]) {
+    for (const cli of ["claude", "codex", "opencode", "hermes", "future-cli"]) {
       const produced = runtimeMissingError(cli);
       expect(parseRuntimeMissingError(produced)).toBe(cli);
     }
