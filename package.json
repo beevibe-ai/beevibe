@@ -26,6 +26,8 @@
     "migrate:test": "node-pg-migrate --envPath .env -d DATABASE_URL_TEST",
     "db:reset": "docker compose down -v && docker compose up -d --wait postgres && pnpm migrate up",
     "install-skills": "tsx scripts/install-skills.ts",
+    "adr:visual": "tsx scripts/adr-visual-report.ts",
+    "adr:slides": "tsx scripts/adr-slide-deck.ts",
     "bootstrap": "tsx scripts/init.ts",
     "provision-user": "tsx scripts/provision-user.ts",
     "sync-core-memory": "tsx scripts/sync-core-memory-descriptions.ts",

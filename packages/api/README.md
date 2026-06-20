@@ -147,6 +147,7 @@ When a mesh `ask` / `negotiate` target's daemon is offline at dispatch, the api 
 | `GET` | `/health/runtime` | Caller's daemon liveness summary, for the welcome wizard's "verify daemon" step. |
 | `POST` | `/signup` | Email + password. (Public; gated by `BEEVIBE_SIGNUP_ENABLED`.) |
 | `POST` | `/signin` | Email + password. (Public.) |
+| `POST` | `/newsletter/subscribe` | Email capture for the public community newsletter. (Public.) |
 
 ### Read-only views
 

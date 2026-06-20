@@ -32,6 +32,7 @@ Public pages (no auth):
 - `/sign-in` — email + password
 - `/sign-up` — email + password (gated server-side by `BEEVIBE_SIGNUP_ENABLED`)
 - `/welcome` — post-signup wizard: install daemon, verify runtimes, meet your team agent
+- `/community` — public pattern index and newsletter signup
 
 The `bv_u_` token is sourced from `NEXT_PUBLIC_BV_USER_KEY` for now (single-tenant local dev) — sign-in / sign-up live API endpoints exist on the api side and the wizard reads from them, but the production token-storage flow is still in progress.
 
@@ -55,6 +56,11 @@ The `bv_u_` token is sourced from `NEXT_PUBLIC_BV_USER_KEY` for now (single-tena
 | `/rooms` | Shared rooms list. |
 | `/rooms/:id` | Room detail — team-orbit visualization (`components/team-orbit.tsx`), message stream, mention picker. |
 | `/runtimes` | Worker daemon panel — list of registered daemons + their CLIs, online/offline badges (live via `runtime.updated` SSE), revoke action, install instructions for fresh machines. |
+| `/community` | Public community surface for pattern curation and newsletter capture. |
+
+`/community` is shaped around the ADR visual-report contract
+(`lib/community/adr-visual-report.ts`). Fresh ADR runs can be converted into
+the same visual primitives with `pnpm adr:visual <.adr-runs/run-name>`.
 
 ## Data flow
 

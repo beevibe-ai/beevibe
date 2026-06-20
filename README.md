@@ -165,6 +165,22 @@ beevibe-daemon start
 The `bv_u_` token is created by `pnpm provision-user` (see
 [CONTRIBUTING.md](./CONTRIBUTING.md#minting-a-bv_u_-token-for-the-daemon)).
 
+### ADR visual reports
+
+ADR run directories under `.adr-runs/` can be distilled into visual report
+artifacts for community briefs, newsletters, or product-review pages:
+
+```bash
+pnpm adr:visual .adr-runs/<run-name>
+pnpm adr:slides .adr-runs/<run-name>
+```
+
+This writes `visual-report.json` and `visual-report.md` next to the ADR output.
+The JSON is the stable contract for visual surfaces; the Markdown includes
+Mermaid diagrams for the decision funnel and evidence mix. `adr:slides`
+renders the same visual report into a fixed-stage HTML deck that follows the
+frontend-slides 1920x1080 presentation model.
+
 ## Contributing
 
 Issues and PRs are welcome. For larger changes, open an issue first so the

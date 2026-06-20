@@ -306,6 +306,17 @@ export interface SignupResponse {
   existed: boolean;
 }
 
+export interface NewsletterSubscribeInput {
+  email: string;
+  source?: string;
+  website?: string;
+}
+
+export interface NewsletterSubscribeResponse {
+  ok: true;
+  subscriber?: { email: string; source: string };
+}
+
 export interface ChatHistoryMessage {
   id: string;
   /**
@@ -660,6 +671,13 @@ export const api = {
         api_key: string;
         person: { id: string; name: string; email: string | null };
       }>("/signin", { method: "POST", body: input }),
+  },
+  newsletter: {
+    subscribe: (input: NewsletterSubscribeInput) =>
+      fetchJson<NewsletterSubscribeResponse>("/newsletter/subscribe", {
+        method: "POST",
+        body: input,
+      }),
   },
   me: {
     /** Identity + onboarding state for the welcome flow. */
