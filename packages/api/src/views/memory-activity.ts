@@ -156,14 +156,18 @@ interface AgentRow {
 
 async function queryTopAgents(pool: Pool): Promise<AgentActivityRow[]> {
   const { rows } = await pool.query<AgentRow>(
-    `SELECT a.id, a.name, a.hierarchy_level                  AS tier,
-            COUNT(mf.id)                                     AS writes_30d,
-            COUNT(DISTINCT mf.fact_type)                     AS type_variety,
-            MAX(mf.created_at)::date                         AS last_write
+    // `AT TIME ZONE 'UTC'` keeps last_write's day match the weekly bucket's
+    // day for facts written near a TZ boundary. archived_at filter mirrors
+    // views/agents.ts so archived agents don't surface as "top writers".
+    `SELECT a.id, a.name, a.hierarchy_level                          AS tier,
+            COUNT(mf.id)                                             AS writes_30d,
+            COUNT(DISTINCT mf.fact_type)                             AS type_variety,
+            (MAX(mf.created_at) AT TIME ZONE 'UTC')::date            AS last_write
        FROM agent a
        JOIN memory_fact mf
               ON mf.agent_id = a.id
              AND mf.created_at >= NOW() - INTERVAL '30 days'
+      WHERE a.archived_at IS NULL
    GROUP BY a.id, a.name, a.hierarchy_level
    ORDER BY writes_30d DESC
       LIMIT 20`,
@@ -188,12 +192,13 @@ interface DormantRow {
 
 async function queryDormantAgents(pool: Pool): Promise<DormantAgentRow[]> {
   const { rows } = await pool.query<DormantRow>(
-    `SELECT a.id, a.name, a.hierarchy_level                  AS tier,
-            (SELECT MAX(created_at)::date FROM memory_fact
-              WHERE agent_id = a.id)                         AS last_write_ever,
-            a.created_at::date                               AS agent_created
+    `SELECT a.id, a.name, a.hierarchy_level                          AS tier,
+            (SELECT (MAX(created_at) AT TIME ZONE 'UTC')::date
+               FROM memory_fact WHERE agent_id = a.id)               AS last_write_ever,
+            (a.created_at AT TIME ZONE 'UTC')::date                  AS agent_created
        FROM agent a
-      WHERE NOT EXISTS (
+      WHERE a.archived_at IS NULL
+        AND NOT EXISTS (
               SELECT 1 FROM memory_fact mf
                WHERE mf.agent_id = a.id
                  AND mf.created_at > NOW() - INTERVAL '30 days')
@@ -231,6 +236,7 @@ async function queryCoreSnapshot(pool: Pool): Promise<CoreSnapshotRow[]> {
             ROUND(AVG(LENGTH(cmb.content)))                           AS avg_chars
        FROM core_memory_block cmb
        JOIN agent a ON a.id = cmb.agent_id
+      WHERE a.archived_at IS NULL
    GROUP BY a.hierarchy_level, cmb.block_name
    ORDER BY a.hierarchy_level, cmb.block_name`,
   );
@@ -269,7 +275,8 @@ async function queryArchivalToCoreRatio(pool: Pool): Promise<AgentRatioRow[]> {
             AND updated_at > NOW() - INTERVAL '30 days'
             AND updated_at > created_at
        ) core ON TRUE
-      WHERE arch.cnt > 0 OR core.cnt > 0
+      WHERE a.archived_at IS NULL
+        AND (arch.cnt > 0 OR core.cnt > 0)
    ORDER BY arch.cnt DESC
       LIMIT 25`,
   );

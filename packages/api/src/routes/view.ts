@@ -513,10 +513,13 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     // a 500 from the eventual Postgres parse error.
     let since: string | undefined;
     if (typeof sinceRaw === "string" && sinceRaw.trim()) {
-      if (Number.isNaN(Date.parse(sinceRaw))) {
+      // Match the UI's <input type="date"> format exactly. Date.parse is
+      // too permissive ("2026" and "0" both pass) and would leak garbage
+      // into the Postgres timestamptz cast.
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(sinceRaw) || Number.isNaN(Date.parse(sinceRaw))) {
         res.status(400).json({
           error: "invalid_since",
-          message: "since must be an ISO date (e.g. 2026-06-14)",
+          message: "since must be a YYYY-MM-DD date (e.g. 2026-06-14)",
         });
         return;
       }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, ArrowLeft, BarChart3 } from "lucide-react";
 import { useMemoryActivity } from "@/lib/hooks/use-memory-activity";
@@ -22,32 +22,24 @@ import type {
 const FACT_TYPES = ["belief", "pattern", "gotcha", "preference", "decision"] as const;
 type FactType = (typeof FACT_TYPES)[number];
 
-// Stable colour assignment per fact_type. Tailwind palette stand-ins so the
-// chart doesn't need a runtime colour generator.
-const TYPE_FILL: Record<FactType, string> = {
-  belief: "fill-sky-500/70",
-  pattern: "fill-violet-500/70",
-  gotcha: "fill-amber-500/80",
-  preference: "fill-emerald-500/70",
-  decision: "fill-rose-500/70",
-};
-
-const TYPE_DOT: Record<FactType, string> = {
-  belief: "bg-sky-500/70",
-  pattern: "bg-violet-500/70",
-  gotcha: "bg-amber-500/80",
-  preference: "bg-emerald-500/70",
-  decision: "bg-rose-500/70",
+// Use the same design tokens that drive FactTypeTag on /memory so the
+// chart's colour assignment matches what users see on individual facts.
+// Tailwind extends fill-* with the color palette, so `fill-type-{ft}-fg`
+// resolves to the same HSL var as `bg-type-{ft}-fg`.
+const TYPE_COLOR: Record<FactType, { fill: string; dot: string }> = {
+  belief: { fill: "fill-type-belief-fg", dot: "bg-type-belief-fg" },
+  pattern: { fill: "fill-type-pattern-fg", dot: "bg-type-pattern-fg" },
+  gotcha: { fill: "fill-type-gotcha-fg", dot: "bg-type-gotcha-fg" },
+  preference: { fill: "fill-type-preference-fg", dot: "bg-type-preference-fg" },
+  decision: { fill: "fill-type-decision-fg", dot: "bg-type-decision-fg" },
 };
 
 export function MemoryEvalClient() {
   const [weeks, setWeeks] = useState(12);
   const [since, setSince] = useState<string>("");
 
-  const params = useMemo(
-    () => ({ weeks, since: since || undefined }),
-    [weeks, since],
-  );
+  // queryKey uses structural equality, so no useMemo wrap needed.
+  const params = { weeks, since: since || undefined };
 
   const { data, isLoading, isError } = useMemoryActivity(params);
 
@@ -304,7 +296,7 @@ function WeeklyChart({ rows }: { rows: WeeklyArchivalRow[] }) {
                       y={y}
                       width={barW}
                       height={hh}
-                      className={TYPE_FILL[ft]}
+                      className={TYPE_COLOR[ft].fill}
                     >
                       <title>{`${r.week} · ${ft}: ${v}`}</title>
                     </rect>
@@ -333,7 +325,7 @@ function Legend() {
     <div className="flex flex-wrap gap-3 text-[10px] text-muted-foreground mt-2">
       {FACT_TYPES.map((ft) => (
         <span key={ft} className="inline-flex items-center gap-1.5">
-          <span className={`h-2 w-2 rounded-sm ${TYPE_DOT[ft]}`} />
+          <span className={`h-2 w-2 rounded-sm ${TYPE_COLOR[ft].dot}`} />
           {ft}
         </span>
       ))}
