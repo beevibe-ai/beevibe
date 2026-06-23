@@ -16,6 +16,7 @@ import { CliMcpInstructions } from "@/components/cli-mcp-instructions";
 import { HierChip } from "@/components/hier-chip";
 import { CoreBlockCard } from "@/components/agents/core-block-card";
 import { RecentSessionRow } from "@/components/agents/recent-session-row";
+import { RecentChatThreadRow } from "@/components/agents/recent-chat-thread-row";
 import { RuntimePicker } from "@/components/agents/pickers/runtime-picker";
 import { ModelPicker } from "@/components/agents/pickers/model-picker";
 import { ReviewPolicyPicker } from "@/components/agents/pickers/review-policy-picker";
@@ -224,6 +225,28 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
                   <RecentSessionRow
                     key={s.short_id ?? i}
                     session={s}
+                    variant="comfortable"
+                  />
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section>
+            <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-3 font-medium">
+              Recent chats{" "}
+              <span className="text-muted-foreground/70 tabular-nums">
+                {agent.recent_chat_threads.length}
+              </span>
+            </h2>
+            {agent.recent_chat_threads.length === 0 ? (
+              <p className="text-sm text-muted-foreground italic">No recent chats.</p>
+            ) : (
+              <ul className="space-y-2">
+                {agent.recent_chat_threads.map((t) => (
+                  <RecentChatThreadRow
+                    key={t.conversation_id}
+                    thread={t}
                     variant="comfortable"
                   />
                 ))}

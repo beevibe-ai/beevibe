@@ -137,6 +137,13 @@ export interface RecentSession {
 export interface RecentChatThread {
   /** Head session id of the thread; stable across all turns. */
   conversation_id: string;
+  /**
+   * 6-char short_id of the head turn (`deriveShortId(conversation_id)`) —
+   * the URL key the web uses to link to the conversation detail page at
+   * `/sessions/<short_id>`. Precomputed here so the web doesn't re-derive
+   * it (and can't drift from the server's `short_id` convention).
+   */
+  short_id: string;
   /** First message of the thread, truncated to 80 chars. */
   title: string;
   /** How many chat sessions are in the thread. */
@@ -289,6 +296,48 @@ export interface SessionDisplay {
    * before M9.8 stamped usage onto every completion). See
    * {@link SessionUsageDisplay} for field semantics + cache-hit ratio
    * formula.
+   */
+  usage?: SessionUsageDisplay;
+}
+
+/**
+ * A whole chat conversation — every chat-turn session sharing one
+ * `conversation_id`, rendered as a single continuous thread on the
+ * session detail page. Returned by `GET /session/:shortId/conversation`.
+ *
+ * Each chat turn is its own `session` row (chained by `prior_session_id`,
+ * resuming the same CLI session). This collapses N of them into one view:
+ * the `turns` array is chronological (oldest first), each turn a full
+ * `SessionDisplay` with its own transcript + usage.
+ *
+ * Non-chat sessions (`conversation_id` is NULL — task / mesh / blocker /
+ * negotiate) resolve to a single-turn conversation containing just that
+ * session, so the detail page renders them unchanged.
+ */
+export interface ConversationDisplay {
+  /** Grouping key: head turn's id for chat; the session's own id otherwise. */
+  conversation_id: string;
+  /** 6-char short_id of the head turn — the URL key for this conversation. */
+  short_id: string;
+  agent_id: string;
+  agent_label: string;
+  agent_hierarchy: HierarchyLevel;
+  /**
+   * Type of the addressed session. Lets the detail page keep the
+   * task-session redirect (`type === 'task'` → task-scoped page).
+   */
+  type: SessionType;
+  /** Set when `type === 'task'`; drives the task-scoped redirect. */
+  task_id?: string;
+  /** Status of the latest turn — drives the in-flight pip on the header. */
+  status: SessionStatus;
+  /** Turns in chronological order (oldest first), each with its transcript. */
+  turns: SessionDisplay[];
+  /**
+   * Cost + tokens summed across every turn, so the detail page renders one
+   * conversation-level usage panel. Absent when no turn carried usage.
+   * Aggregated server-side (same cache-hit formula as per-session usage)
+   * rather than recomputed in the browser.
    */
   usage?: SessionUsageDisplay;
 }

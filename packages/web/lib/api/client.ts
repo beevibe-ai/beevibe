@@ -23,7 +23,11 @@ import type { MeshWindow } from "@/lib/types/mesh";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { AgentDisplay } from "@/lib/types/agents";
 import type { AgentNetwork } from "@/lib/types/agent-network";
-import type { SessionDisplay, SessionTreeResponse } from "@/lib/types/sessions";
+import type {
+  ConversationDisplay,
+  SessionDisplay,
+  SessionTreeResponse,
+} from "@/lib/types/sessions";
 import type { FactCounts, MemoryFactDisplay } from "@/lib/types/memory-facts";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
 import type { InboxItem } from "@/lib/types/inbox";
@@ -500,6 +504,17 @@ export const api = {
       fetchJson<SessionDisplay>(`/session/${encodeURIComponent(shortId)}`, {
         signal: opts.signal,
       }),
+    /**
+     * Whole chat conversation for the session detail page. Path param is
+     * the 6-char short_id of any turn (in practice the head turn's, the
+     * key the agent detail page links to). Returns every chained turn
+     * sharing the `conversation_id`; non-chat sessions return a single turn.
+     */
+    conversation: (shortId: string, opts: ReadOptions = {}) =>
+      fetchJson<ConversationDisplay>(
+        `/session/${encodeURIComponent(shortId)}/conversation`,
+        { signal: opts.signal },
+      ),
     /**
      * Hydration fallback for useChatStreamTree. Path param is the FULL
      * session id (e.g. `sess_abc123def...`), not the short_id — the SSE
