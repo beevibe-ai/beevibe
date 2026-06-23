@@ -231,6 +231,56 @@ describe("getConversationByShortId", () => {
     expect(conv?.task_id).toBe("task_001");
     expect(conv?.turns).toHaveLength(1);
   });
+
+  it("aggregates per-turn usage into one conversation-level total", async () => {
+    const head = "sess_usagehead1";
+    const turns = [
+      {
+        ...sampleRow(head),
+        type: "chat",
+        usage: {
+          cost_usd: 0.01,
+          input_tokens: 100,
+          output_tokens: 50,
+          cache_creation_input_tokens: 200,
+          cache_read_input_tokens: 0,
+          model: "claude-opus-4-8",
+        },
+      },
+      {
+        ...sampleRow("sess_usageturn2"),
+        type: "chat",
+        usage: {
+          cost_usd: 0.02,
+          input_tokens: 0,
+          output_tokens: 70,
+          cache_creation_input_tokens: 0,
+          cache_read_input_tokens: 300,
+          model: "claude-opus-4-8",
+        },
+      },
+    ];
+    const pool = makeMockPool([[resolveRow(head, head, "chat")], turns]);
+    const conv = await getConversationByShortId(pool, "usageh");
+    expect(conv?.usage?.cost_usd).toBeCloseTo(0.03, 5);
+    expect(conv?.usage?.input_tokens).toBe(100);
+    expect(conv?.usage?.output_tokens).toBe(120);
+    expect(conv?.usage?.cache_creation_tokens).toBe(200);
+    expect(conv?.usage?.cache_read_tokens).toBe(300);
+    expect(conv?.usage?.total_input_tokens).toBe(600); // 100 + 200 + 300
+    expect(conv?.usage?.cache_hit_ratio).toBeCloseTo(300 / 600, 5);
+    expect(conv?.usage?.model).toBe("claude-opus-4-8");
+  });
+
+  it("omits conversation usage when no turn carried any", async () => {
+    const head = "sess_nousagehd";
+    const pool = makeMockPool([
+      [resolveRow(head, head, "chat")],
+      [{ ...sampleRow(head), type: "chat", usage: null }],
+    ]);
+    const conv = await getConversationByShortId(pool, "nousag");
+    expect(conv?.usage).toBeUndefined();
+  });
 });
 
 function resolveRow(

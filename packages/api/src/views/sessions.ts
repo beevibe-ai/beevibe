@@ -204,6 +204,7 @@ export async function getConversationByShortId(
   // non-empty in practice; guard so `turns[len-1]` is safe regardless.
   if (turns.length === 0) return undefined;
   const lastTurn = turns[turns.length - 1]!;
+  const usage = toSessionUsageDisplay(sumTurnUsage(rows));
 
   return {
     conversation_id: convKey,
@@ -215,6 +216,28 @@ export async function getConversationByShortId(
     ...(target.task_id ? { task_id: target.task_id } : {}),
     status: lastTurn.status,
     turns,
+    ...(usage ? { usage } : {}),
+  };
+}
+
+/**
+ * Sum the raw per-turn `SessionUsage` into one conversation-level total.
+ * Returns null when no turn carried usage. The summed shape is fed back
+ * through `toSessionUsageDisplay` so the cache-hit ratio + display mapping
+ * use the exact same formula as a single session — no second source of truth.
+ */
+function sumTurnUsage(rows: SessionDetailRow[]): SessionUsage | null {
+  const used = rows.map((r) => r.usage).filter((u): u is SessionUsage => Boolean(u));
+  if (used.length === 0) return null;
+  const sum = (pick: (u: SessionUsage) => number | undefined) =>
+    used.reduce((acc, u) => acc + (pick(u) ?? 0), 0);
+  return {
+    cost_usd: sum((u) => u.cost_usd),
+    input_tokens: sum((u) => u.input_tokens),
+    output_tokens: sum((u) => u.output_tokens),
+    cache_creation_input_tokens: sum((u) => u.cache_creation_input_tokens),
+    cache_read_input_tokens: sum((u) => u.cache_read_input_tokens),
+    model: used[used.length - 1]!.model,
   };
 }
 

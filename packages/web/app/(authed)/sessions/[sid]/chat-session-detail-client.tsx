@@ -17,7 +17,6 @@ import { UsagePanel } from "@/components/sessions/usage-panel";
 import type {
   ConversationDisplay,
   SessionDisplay,
-  SessionUsageDisplay,
   TranscriptEntry,
 } from "@/lib/types/sessions";
 import { cn } from "@/lib/utils";
@@ -112,9 +111,8 @@ function BackToChat() {
 }
 
 function ConversationBody({ conversation }: { conversation: ConversationDisplay }) {
-  const { turns } = conversation;
+  const { turns, usage } = conversation;
   const multiTurn = turns.length > 1;
-  const usage = aggregateUsage(turns);
   const lastTurn = turns[turns.length - 1];
 
   return (
@@ -263,36 +261,4 @@ function ToolTranscript({ entries }: { entries: TranscriptEntry[] }) {
       ))}
     </ol>
   );
-}
-
-/**
- * Sum per-turn usage into one conversation-level total so the page shows a
- * single cost/token panel. Cache-hit ratio is recomputed from the summed
- * slices (same formula as the server's `computeCacheHitRatio`). Returns
- * undefined when no turn carried usage (older sessions pre-usage-capture).
- */
-function aggregateUsage(turns: SessionDisplay[]): SessionUsageDisplay | undefined {
-  const used = turns
-    .map((t) => t.usage)
-    .filter((u): u is SessionUsageDisplay => Boolean(u));
-  if (used.length === 0) return undefined;
-
-  const sum = (pick: (u: SessionUsageDisplay) => number) =>
-    used.reduce((acc, u) => acc + pick(u), 0);
-  const input_tokens = sum((u) => u.input_tokens);
-  const output_tokens = sum((u) => u.output_tokens);
-  const cache_creation_tokens = sum((u) => u.cache_creation_tokens);
-  const cache_read_tokens = sum((u) => u.cache_read_tokens);
-  const total_input_tokens = input_tokens + cache_creation_tokens + cache_read_tokens;
-
-  return {
-    cost_usd: sum((u) => u.cost_usd),
-    cache_hit_ratio: total_input_tokens > 0 ? cache_read_tokens / total_input_tokens : 0,
-    input_tokens,
-    output_tokens,
-    cache_creation_tokens,
-    cache_read_tokens,
-    total_input_tokens,
-    model: used[used.length - 1]!.model,
-  };
 }

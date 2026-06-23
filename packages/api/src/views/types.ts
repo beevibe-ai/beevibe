@@ -333,6 +333,13 @@ export interface ConversationDisplay {
   status: SessionStatus;
   /** Turns in chronological order (oldest first), each with its transcript. */
   turns: SessionDisplay[];
+  /**
+   * Cost + tokens summed across every turn, so the detail page renders one
+   * conversation-level usage panel. Absent when no turn carried usage.
+   * Aggregated server-side (same cache-hit formula as per-session usage)
+   * rather than recomputed in the browser.
+   */
+  usage?: SessionUsageDisplay;
 }
 
 /**

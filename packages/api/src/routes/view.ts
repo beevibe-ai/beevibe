@@ -432,64 +432,52 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     }
   });
 
-  router.get("/session/:shortId", async (req, res) => {
-    if (!requireHuman(req, res)) return;
-    const shortId = req.params.shortId;
-    if (!shortId) {
-      res.status(400).json({ error: "missing_short_id" });
-      return;
-    }
-    try {
-      const session = await getSessionByShortId(deps.pool, shortId);
-      if (!session) {
-        res.status(404).json({ error: "session_not_found" });
+  // Both short_id session routes share the same shape: require human →
+  // validate short_id → fetch → 404 on miss, 409 on ambiguous prefix.
+  // Factored so the single-session and whole-conversation lookups stay in
+  // lockstep (e.g. if the error contract or auth check changes).
+  const shortIdRoute =
+    <T>(
+      fetch: (pool: Pool, shortId: string) => Promise<T | undefined>,
+      errorLabel: string,
+    ): RequestHandler =>
+    async (req, res) => {
+      if (!requireHuman(req, res)) return;
+      // Express 5 types a bare params value as `string | string[]`; a single
+      // `:shortId` segment is always a string at runtime, but narrow it so
+      // the type matches `fetch`'s `string` param.
+      const shortId = req.params.shortId;
+      if (typeof shortId !== "string" || !shortId) {
+        res.status(400).json({ error: "missing_short_id" });
         return;
       }
-      res.json(session);
-    } catch (err) {
-      if (err instanceof AmbiguousShortIdError) {
-        res.status(409).json({
-          error: "ambiguous_short_id",
-          message: err.message,
-        });
-        return;
+      try {
+        const result = await fetch(deps.pool, shortId);
+        if (!result) {
+          res.status(404).json({ error: "session_not_found" });
+          return;
+        }
+        res.json(result);
+      } catch (err) {
+        if (err instanceof AmbiguousShortIdError) {
+          res.status(409).json({ error: "ambiguous_short_id", message: err.message });
+          return;
+        }
+        handleError(err, res, errorLabel);
       }
-      handleError(err, res, "session detail");
-    }
-  });
+    };
 
-  /**
-   * Whole-conversation detail: given the short_id of any chat turn (in
-   * practice the head turn's, the URL key the agent detail page links to),
-   * returns every chained turn sharing the `conversation_id` as one thread.
-   * Non-chat sessions resolve to a single-turn conversation, so the detail
-   * page renders them unchanged.
-   */
-  router.get("/session/:shortId/conversation", async (req, res) => {
-    if (!requireHuman(req, res)) return;
-    const shortId = req.params.shortId;
-    if (!shortId) {
-      res.status(400).json({ error: "missing_short_id" });
-      return;
-    }
-    try {
-      const conversation = await getConversationByShortId(deps.pool, shortId);
-      if (!conversation) {
-        res.status(404).json({ error: "session_not_found" });
-        return;
-      }
-      res.json(conversation);
-    } catch (err) {
-      if (err instanceof AmbiguousShortIdError) {
-        res.status(409).json({
-          error: "ambiguous_short_id",
-          message: err.message,
-        });
-        return;
-      }
-      handleError(err, res, "conversation detail");
-    }
-  });
+  router.get("/session/:shortId", shortIdRoute(getSessionByShortId, "session detail"));
+
+  // Whole-conversation detail: given the short_id of any chat turn (in
+  // practice the head turn's, the URL key the agent detail page links to),
+  // returns every chained turn sharing the `conversation_id` as one thread.
+  // Non-chat sessions resolve to a single-turn conversation, so the detail
+  // page renders them unchanged.
+  router.get(
+    "/session/:shortId/conversation",
+    shortIdRoute(getConversationByShortId, "conversation detail"),
+  );
 
   /**
    * Hydration fallback for the chat tree UI. Given a full session id
