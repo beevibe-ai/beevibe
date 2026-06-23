@@ -1,10 +1,12 @@
 "use client";
 
 import { useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowUpDown,
+  BarChart3,
   BookText,
   Bot,
   ChevronDown,
@@ -53,6 +55,16 @@ export function MemoryClient() {
 
   return (
     <>
+      <div className="flex items-center justify-end mb-3">
+        <Link
+          href="/memory/eval"
+          className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors rounded-md border border-border px-2.5 py-1.5"
+        >
+          <BarChart3 className="h-3.5 w-3.5" />
+          Eval
+        </Link>
+      </div>
+
       <ScopeTabs current={scope} counts={counts} onChange={setScope} />
 
       <div className="flex items-center gap-2 mb-3">

@@ -22,6 +22,8 @@ export const queryKeys = {
     all: ["memory"] as const,
     facts: (filter: { scope?: MemoryScope }) => ["memory", "facts", filter] as const,
     counts: () => ["memory", "counts"] as const,
+    activity: (params: { weeks?: number; since?: string }) =>
+      ["memory", "activity", params] as const,
   },
   promotions: {
     all: ["promotions"] as const,

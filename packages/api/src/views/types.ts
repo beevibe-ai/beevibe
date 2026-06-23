@@ -539,6 +539,113 @@ export interface DashboardSummary {
   usage_summary: UsageSummaryData;
 }
 
+// ── Memory activity (Layer A eval) ──────────────────────────────────────────
+//
+// Powers the /memory/eval dashboard. Activity-level signal — what got
+// written, by whom, when, of what type — plus an optional ±14d before/after
+// split for evaluating prompt-change rollouts. Pure data composer; web
+// formats display fields.
+
+export interface MemoryActivityKpis {
+  archival_writes_30d: number;
+  /** Distinct core blocks with updated_at within 30d. Snapshot proxy. */
+  core_touched_30d: number;
+  active_agents_30d: number;
+  /** archival_writes_30d / core_touched_30d, rounded to 1 decimal. null if denominator is 0. */
+  archival_to_core_ratio: number | null;
+}
+
+export interface WeeklyArchivalRow {
+  /** Week-start (Monday) in YYYY-MM-DD. */
+  week: string;
+  total: number;
+  belief: number;
+  pattern: number;
+  gotcha: number;
+  preference: number;
+  decision: number;
+  active_agents: number;
+}
+
+export interface ScopeTypeRow {
+  scope: "ic" | "team" | "org";
+  fact_type: string;
+  writes: number;
+}
+
+export interface AgentActivityRow {
+  agent_id: string;
+  name: string;
+  tier: string;
+  writes_30d: number;
+  type_variety: number;
+  /** YYYY-MM-DD. */
+  last_write: string;
+}
+
+export interface DormantAgentRow {
+  agent_id: string;
+  name: string;
+  tier: string;
+  /** YYYY-MM-DD, or null if agent has never written archival. */
+  last_write_ever: string | null;
+  agent_created: string;
+}
+
+export interface CoreSnapshotRow {
+  tier: string;
+  block_name: string;
+  blocks: number;
+  non_empty: number;
+  ever_updated: number;
+  updated_30d: number;
+  avg_chars: number;
+}
+
+export interface AgentRatioRow {
+  agent_id: string;
+  name: string;
+  tier: string;
+  archival_30d: number;
+  core_touched_30d: number;
+  /** null when core_touched_30d == 0 (caller renders as "—" rather than ∞). */
+  ratio: number | null;
+}
+
+export interface BeforeAfterData {
+  /** The boundary date, as passed in by the caller. */
+  since: string;
+  by_type: Array<{
+    fact_type: string;
+    pre: number;
+    post: number;
+    pre_pct: number | null;
+    post_pct: number | null;
+  }>;
+  agg: {
+    agents_pre: number;
+    agents_post: number;
+    writes_pre: number;
+    writes_post: number;
+  };
+}
+
+export interface MemoryActivitySummary {
+  /** Echoed back so the web doesn't need to track local state. */
+  weeks: number;
+  /** Echoed back; null when ?since= wasn't provided. */
+  since: string | null;
+  kpis: MemoryActivityKpis;
+  weekly_archival: WeeklyArchivalRow[];
+  by_scope_and_type: ScopeTypeRow[];
+  top_agents: AgentActivityRow[];
+  dormant_agents: DormantAgentRow[];
+  core_snapshot: CoreSnapshotRow[];
+  archival_to_core_per_agent: AgentRatioRow[];
+  /** Present only when ?since= was provided. */
+  before_after?: BeforeAfterData;
+}
+
 // ── Mesh ────────────────────────────────────────────────────────────────────
 //
 // Mesh data DTO. Like the dashboard, the web composes display fields
