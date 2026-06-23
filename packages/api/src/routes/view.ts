@@ -45,7 +45,12 @@ import {
   type Lifecycle,
 } from "../views/tasks-grouping.js";
 import { listAgents, getAgent } from "../views/agents.js";
-import { getSessionByShortId, getSessionTree, AmbiguousShortIdError } from "../views/sessions.js";
+import {
+  getSessionByShortId,
+  getConversationByShortId,
+  getSessionTree,
+  AmbiguousShortIdError,
+} from "../views/sessions.js";
 import { listMemoryFactCounts, listMemoryFacts } from "../views/memory.js";
 import { getDashboardSummary } from "../views/dashboard.js";
 import { DEFAULT_MESH_WINDOW, getMeshOverview, isMeshWindow } from "../views/mesh.js";
@@ -450,6 +455,39 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
         return;
       }
       handleError(err, res, "session detail");
+    }
+  });
+
+  /**
+   * Whole-conversation detail: given the short_id of any chat turn (in
+   * practice the head turn's, the URL key the agent detail page links to),
+   * returns every chained turn sharing the `conversation_id` as one thread.
+   * Non-chat sessions resolve to a single-turn conversation, so the detail
+   * page renders them unchanged.
+   */
+  router.get("/session/:shortId/conversation", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const shortId = req.params.shortId;
+    if (!shortId) {
+      res.status(400).json({ error: "missing_short_id" });
+      return;
+    }
+    try {
+      const conversation = await getConversationByShortId(deps.pool, shortId);
+      if (!conversation) {
+        res.status(404).json({ error: "session_not_found" });
+        return;
+      }
+      res.json(conversation);
+    } catch (err) {
+      if (err instanceof AmbiguousShortIdError) {
+        res.status(409).json({
+          error: "ambiguous_short_id",
+          message: err.message,
+        });
+        return;
+      }
+      handleError(err, res, "conversation detail");
     }
   });
 

@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, Terminal, Wrench } from "lucide-react";
-import { useSession } from "@/lib/hooks/use-sessions";
+import { AlertTriangle, ArrowLeft, ChevronRight, Terminal, Wrench } from "lucide-react";
+import { useConversation } from "@/lib/hooks/use-sessions";
 import { isApiConfigured } from "@/lib/api/config";
 import { DetailShell } from "@/components/detail/detail-shell";
 import { EmptyState } from "@/components/empty-state";
@@ -14,20 +14,27 @@ import { ChatMarkdown } from "@/components/chat/markdown";
 import { HierChip } from "@/components/hier-chip";
 import { Avatar } from "@/components/avatar";
 import { UsagePanel } from "@/components/sessions/usage-panel";
-import type { SessionDisplay, TranscriptEntry } from "@/lib/types/sessions";
+import type {
+  ConversationDisplay,
+  SessionDisplay,
+  SessionUsageDisplay,
+  TranscriptEntry,
+} from "@/lib/types/sessions";
 import { cn } from "@/lib/utils";
 
 /**
- * Per-session detail for chat (and any non-task session). Shows the
- * single turn as a chat-shaped layout — user intent + agent reply with
- * markdown — plus the tool transcript collapsed below for debugging.
+ * Detail view for a chat conversation (and any non-task session). A chat is
+ * a chain of per-turn sessions sharing one `conversation_id`; this page
+ * collapses them into one continuous thread — each turn rendered as the
+ * user's message, the agent's tool steps, then the agent's reply, in
+ * chronological order. Non-chat sessions (mesh_ask, blocker, negotiate)
+ * resolve to a single turn and render unchanged.
  *
  * Task-spawned sessions have their own task-scoped detail page at
- * `/tasks/[id]/sessions/[sid]`. This route handles everything else:
- * chat, mesh_ask, blocker, negotiate.
+ * `/tasks/[id]/sessions/[sid]`, so we redirect those out.
  */
 export function ChatSessionDetailClient({ sessionShortId }: { sessionShortId: string }) {
-  const { data, isLoading, isError } = useSession(sessionShortId);
+  const { data, isLoading, isError } = useConversation(sessionShortId);
 
   const nav = <BackToChat />;
 
@@ -85,7 +92,7 @@ export function ChatSessionDetailClient({ sessionShortId }: { sessionShortId: st
 
   return (
     <DetailShell nav={nav}>
-      <ChatSessionBody session={data} />
+      <ConversationBody conversation={data} />
     </DetailShell>
   );
 }
@@ -104,99 +111,129 @@ function BackToChat() {
   );
 }
 
-function ChatSessionBody({ session }: { session: SessionDisplay }) {
-  // Pull the agent's final visible response out of the transcript: prefer
-  // the `summary` event (the persisted final after directive-stripping),
-  // fall back to the last `agent` text block.
-  const summary = [...session.transcript].reverse().find((e) => e.kind === "summary");
-  const lastAgent = [...session.transcript].reverse().find((e) => e.kind === "agent");
-  const finalResponse = summary?.content ?? lastAgent?.content ?? "";
-
-  // Tool steps for the collapsible transcript section below the bubbles.
-  const toolSteps = session.transcript.filter(
-    (e) => e.kind === "tool_call" || e.kind === "tool_result",
-  );
+function ConversationBody({ conversation }: { conversation: ConversationDisplay }) {
+  const { turns } = conversation;
+  const multiTurn = turns.length > 1;
+  const usage = aggregateUsage(turns);
+  const lastTurn = turns[turns.length - 1];
 
   return (
     <>
       <header className="mb-6">
         <div className="flex items-start gap-3">
           <Avatar
-            initial={session.agent_label.charAt(0).toUpperCase()}
-            kind={session.agent_hierarchy}
-            label={session.agent_label}
+            initial={conversation.agent_label.charAt(0).toUpperCase()}
+            kind={conversation.agent_hierarchy}
+            label={conversation.agent_label}
             size={40}
-            presence={session.status === "running" ? "running" : "idle"}
+            presence={conversation.status === "running" ? "running" : "idle"}
           />
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-base font-semibold tracking-tight leading-tight">One turn</h1>
-              <SessionStatusPill status={session.status} />
+              <h1 className="text-base font-semibold tracking-tight leading-tight">
+                {multiTurn ? "Conversation" : "One turn"}
+              </h1>
+              <SessionStatusPill status={conversation.status} />
             </div>
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="text-foreground/85">{session.agent_label}</span>
-              <HierChip hier={session.agent_hierarchy} />
+              <span className="text-foreground/85">{conversation.agent_label}</span>
+              <HierChip hier={conversation.agent_hierarchy} />
+              {multiTurn ? (
+                <>
+                  <span className="text-muted-foreground/50">·</span>
+                  <span className="tabular-nums">{turns.length} turns</span>
+                </>
+              ) : null}
               <span className="text-muted-foreground/50">·</span>
-              <span className="tabular-nums">{session.duration_label}</span>
-              <span className="text-muted-foreground/50">·</span>
-              <span className="text-foreground/70">{session.type}</span>
+              <span className="text-foreground/70">{conversation.type}</span>
             </div>
           </div>
         </div>
       </header>
 
+      <div className="space-y-6">
+        {turns.map((turn) => (
+          <ChatTurn key={turn.id} turn={turn} />
+        ))}
+      </div>
+
+      {usage ? <UsagePanel usage={usage} /> : null}
+
+      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+        <FooterField label="Conversation ID">
+          <ClickToCopyId id={conversation.conversation_id} />
+        </FooterField>
+        {lastTurn?.cli_session ? (
+          <FooterField label="CLI session" truncate>
+            <span className="font-mono">{lastTurn.cli_session}</span>
+          </FooterField>
+        ) : null}
+        {lastTurn?.worktree ? (
+          <FooterField label="Worktree" truncate>
+            <span className="font-mono">{lastTurn.worktree}</span>
+          </FooterField>
+        ) : null}
+        <FooterField label="Type">{conversation.type}</FooterField>
+      </footer>
+    </>
+  );
+}
+
+/**
+ * One turn of the conversation, in chronological order:
+ *   1. the user's message (intent),
+ *   2. the agent's tool steps — collapsed by default, placed ABOVE the
+ *      reply because the tools ran before the agent produced its answer,
+ *   3. the agent's final visible reply.
+ */
+function ChatTurn({ turn }: { turn: SessionDisplay }) {
+  // Pull the agent's final visible response: prefer the `summary` event (the
+  // persisted final after directive-stripping), fall back to the last
+  // `agent` text block.
+  const summary = [...turn.transcript].reverse().find((e) => e.kind === "summary");
+  const lastAgent = [...turn.transcript].reverse().find((e) => e.kind === "agent");
+  const finalResponse = summary?.content ?? lastAgent?.content ?? "";
+
+  const toolSteps = turn.transcript.filter(
+    (e) => e.kind === "tool_call" || e.kind === "tool_result",
+  );
+
+  return (
+    <div>
       {/* User intent — the message that started this turn */}
-      <div className="mb-3 flex justify-end">
+      <div className="mb-2 flex justify-end">
         <div className="max-w-[80%] rounded-lg px-3 py-2 text-sm whitespace-pre-wrap bg-primary text-primary-foreground">
-          {session.intent}
+          {turn.intent}
         </div>
       </div>
 
+      {/* Tool steps — collapsed, above the reply to reflect the time order */}
+      {toolSteps.length > 0 ? (
+        <details className="group mb-2">
+          <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none text-xs font-medium text-muted-foreground uppercase tracking-wide hover:text-foreground [&::-webkit-details-marker]:hidden">
+            <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+            <Wrench className="h-3 w-3" />
+            {toolSteps.length} tool {toolSteps.length === 1 ? "step" : "steps"}
+          </summary>
+          <div className="mt-2">
+            <ToolTranscript entries={toolSteps} />
+          </div>
+        </details>
+      ) : null}
+
       {/* Agent's final visible response */}
       {finalResponse ? (
-        <div className="mb-6 flex flex-col items-start">
+        <div className="flex flex-col items-start">
           <div className="max-w-[80%] rounded-lg px-3 py-2 bg-secondary text-foreground border border-border">
             <ChatMarkdown content={finalResponse} />
           </div>
         </div>
       ) : (
-        <div className="mb-6 text-xs text-muted-foreground italic">
-          (no response — session {session.status})
+        <div className="text-xs text-muted-foreground italic">
+          (no response — turn {turn.status})
         </div>
       )}
-
-      {toolSteps.length > 0 ? (
-        <section className="mt-8">
-          <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1.5">
-            <Wrench className="h-3 w-3" />
-            Tool transcript
-            <span className="ml-1 tabular-nums text-muted-foreground/60">
-              {toolSteps.length}
-            </span>
-          </h2>
-          <ToolTranscript entries={toolSteps} />
-        </section>
-      ) : null}
-
-      {session.usage ? <UsagePanel usage={session.usage} /> : null}
-
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
-        <FooterField label="Session ID">
-          <ClickToCopyId id={session.id} />
-        </FooterField>
-        {session.cli_session ? (
-          <FooterField label="CLI session" truncate>
-            <span className="font-mono">{session.cli_session}</span>
-          </FooterField>
-        ) : null}
-        {session.worktree ? (
-          <FooterField label="Worktree" truncate>
-            <span className="font-mono">{session.worktree}</span>
-          </FooterField>
-        ) : null}
-        <FooterField label="Type">{session.type}</FooterField>
-      </footer>
-    </>
+    </div>
   );
 }
 
@@ -226,4 +263,36 @@ function ToolTranscript({ entries }: { entries: TranscriptEntry[] }) {
       ))}
     </ol>
   );
+}
+
+/**
+ * Sum per-turn usage into one conversation-level total so the page shows a
+ * single cost/token panel. Cache-hit ratio is recomputed from the summed
+ * slices (same formula as the server's `computeCacheHitRatio`). Returns
+ * undefined when no turn carried usage (older sessions pre-usage-capture).
+ */
+function aggregateUsage(turns: SessionDisplay[]): SessionUsageDisplay | undefined {
+  const used = turns
+    .map((t) => t.usage)
+    .filter((u): u is SessionUsageDisplay => Boolean(u));
+  if (used.length === 0) return undefined;
+
+  const sum = (pick: (u: SessionUsageDisplay) => number) =>
+    used.reduce((acc, u) => acc + pick(u), 0);
+  const input_tokens = sum((u) => u.input_tokens);
+  const output_tokens = sum((u) => u.output_tokens);
+  const cache_creation_tokens = sum((u) => u.cache_creation_tokens);
+  const cache_read_tokens = sum((u) => u.cache_read_tokens);
+  const total_input_tokens = input_tokens + cache_creation_tokens + cache_read_tokens;
+
+  return {
+    cost_usd: sum((u) => u.cost_usd),
+    cache_hit_ratio: total_input_tokens > 0 ? cache_read_tokens / total_input_tokens : 0,
+    input_tokens,
+    output_tokens,
+    cache_creation_tokens,
+    cache_read_tokens,
+    total_input_tokens,
+    model: used[used.length - 1]!.model,
+  };
 }

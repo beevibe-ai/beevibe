@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   AmbiguousShortIdError,
+  getConversationByShortId,
   getSessionByShortId,
   toSessionUsageDisplay,
 } from "./sessions.js";
@@ -158,6 +159,88 @@ describe("getSessionByShortId — usage plumbing", () => {
     expect(session?.usage).toBeUndefined();
   });
 });
+
+describe("getConversationByShortId", () => {
+  it("returns undefined when no matching session", async () => {
+    const pool = makeMockPool([[], []]);
+    expect(await getConversationByShortId(pool, "abc123")).toBeUndefined();
+  });
+
+  it("rejects malformed short_ids without hitting the DB", async () => {
+    const pool = makeMockPool([[], []]);
+    expect(await getConversationByShortId(pool, "abc/../etc")).toBeUndefined();
+    expect(pool._spy.mock.calls).toHaveLength(0);
+  });
+
+  it("throws AmbiguousShortIdError when the resolve query matches 2+ rows", async () => {
+    const pool = makeMockPool([
+      [
+        resolveRow("sess_abc1230001", "sess_abc1230001"),
+        resolveRow("sess_abc1230002", "sess_abc1230002"),
+      ],
+    ]);
+    await expect(getConversationByShortId(pool, "abc123")).rejects.toBeInstanceOf(
+      AmbiguousShortIdError,
+    );
+  });
+
+  it("collapses all chat turns sharing a conversation_id into one chronological thread", async () => {
+    const head = "sess_head00aaaa";
+    const turns = [
+      { ...sampleRow(head), type: "chat", status: "succeeded", intent: "first question" },
+      {
+        ...sampleRow("sess_turn02bbbb"),
+        type: "chat",
+        status: "succeeded",
+        intent: "second question",
+      },
+      {
+        ...sampleRow("sess_turn03cccc"),
+        type: "chat",
+        status: "running",
+        intent: "third question",
+      },
+    ];
+    const pool = makeMockPool([[resolveRow(head, head, "chat")], turns]);
+    const conv = await getConversationByShortId(pool, "head00");
+    expect(conv?.conversation_id).toBe(head);
+    expect(conv?.short_id).toBe("head00");
+    expect(conv?.type).toBe("chat");
+    expect(conv?.task_id).toBeUndefined();
+    expect(conv?.agent_label).toBe("Beta");
+    expect(conv?.turns).toHaveLength(3);
+    expect(conv?.turns.map((t) => t.intent)).toEqual([
+      "first question",
+      "second question",
+      "third question",
+    ]);
+    // status reflects the LATEST turn (chronological tail), not the head.
+    expect(conv?.status).toBe("running");
+  });
+
+  it("resolves a non-chat session (null conversation_id) to a single-turn conversation on its own id", async () => {
+    const id = "sess_task00aaaa";
+    const pool = makeMockPool([
+      [resolveRow(id, null, "task", "task_001")],
+      [{ ...sampleRow(id), type: "task", status: "running" }],
+    ]);
+    const conv = await getConversationByShortId(pool, "task00");
+    expect(conv?.conversation_id).toBe(id);
+    expect(conv?.short_id).toBe("task00");
+    expect(conv?.type).toBe("task");
+    expect(conv?.task_id).toBe("task_001");
+    expect(conv?.turns).toHaveLength(1);
+  });
+});
+
+function resolveRow(
+  id: string,
+  conversation_id: string | null,
+  type = "chat",
+  task_id: string | null = null,
+) {
+  return { id, conversation_id, type, task_id, agent_id: "agt_team" };
+}
 
 function sampleRow(id: string) {
   return {

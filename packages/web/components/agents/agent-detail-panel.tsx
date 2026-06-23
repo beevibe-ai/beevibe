@@ -7,6 +7,7 @@ import { Avatar } from "@/components/avatar";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { CoreBlockCard } from "@/components/agents/core-block-card";
 import { RecentSessionRow } from "@/components/agents/recent-session-row";
+import { RecentChatThreadRow } from "@/components/agents/recent-chat-thread-row";
 import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
@@ -211,6 +212,20 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
           <ul className="space-y-1.5">
             {agent.recent_sessions.map((s, i) => (
               <RecentSessionRow key={s.short_id ?? i} session={s} variant="compact" />
+            ))}
+          </ul>
+        ) : null}
+      </Section>
+
+      <Section
+        title="Recent chats"
+        count={agent.recent_chat_threads.length}
+        empty="No recent chats."
+      >
+        {agent.recent_chat_threads.length > 0 ? (
+          <ul className="space-y-1.5">
+            {agent.recent_chat_threads.map((t) => (
+              <RecentChatThreadRow key={t.conversation_id} thread={t} variant="compact" />
             ))}
           </ul>
         ) : null}

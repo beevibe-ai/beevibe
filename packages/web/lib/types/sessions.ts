@@ -1,4 +1,5 @@
 export type {
+  ConversationDisplay,
   SessionDisplay,
   SessionBriefing,
   SessionUsageDisplay,

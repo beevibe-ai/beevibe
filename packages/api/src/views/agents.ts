@@ -314,6 +314,7 @@ export async function getAgent(
 
   const recent_chat_threads: RecentChatThread[] = chatThreadResult.rows.map((t) => ({
     conversation_id: t.conversation_id,
+    short_id: deriveShortId(t.conversation_id),
     title:
       t.intent_first.length <= 80
         ? t.intent_first

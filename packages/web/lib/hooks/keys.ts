@@ -16,6 +16,7 @@ export const queryKeys = {
   sessions: {
     all: ["sessions"] as const,
     detail: (shortId: string) => ["sessions", "detail", shortId] as const,
+    conversation: (shortId: string) => ["sessions", "conversation", shortId] as const,
   },
   memory: {
     all: ["memory"] as const,

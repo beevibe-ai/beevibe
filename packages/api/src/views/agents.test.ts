@@ -139,6 +139,7 @@ describe("getAgent", () => {
     expect(detail?.recent_sessions[0]?.title).toBe("Bill rewrite");
     expect(detail?.recent_chat_threads).toHaveLength(1);
     expect(detail?.recent_chat_threads[0]?.conversation_id).toBe("sess_chat0001");
+    expect(detail?.recent_chat_threads[0]?.short_id).toBe("chat00");
     expect(detail?.recent_chat_threads[0]?.turn_count).toBe(4);
     expect(detail?.recent_chat_threads[0]?.title).toBe(
       "hey what's the status of the migration?",

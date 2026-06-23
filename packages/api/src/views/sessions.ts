@@ -30,6 +30,7 @@ import {
   formatDurationLabel,
 } from "./format.js";
 import type {
+  ConversationDisplay,
   SessionDisplay,
   SessionBriefing,
   SessionTreeNode,
@@ -70,7 +71,11 @@ interface TranscriptEventRow {
   tool_name: string | null;
 }
 
-const SESSION_BY_ID_PREFIX_SQL = /* sql */ `
+// Shared SELECT + joins + transcript aggregation for the session-detail
+// row shape (`SessionDetailRow`). Callers append their own WHERE / ORDER /
+// LIMIT. Reused by the single-session lookup and the conversation lookup
+// so the json_agg subquery (and its 500-event cap) lives in one place.
+const SESSION_DETAIL_SELECT = /* sql */ `
 SELECT
   s.id, s.agent_id, s.task_id, s.type, s.status, s.intent,
   s.workspace_path, s.cli_session_id, s.started_at, s.completed_at,
@@ -105,6 +110,10 @@ JOIN agent a ON a.id = s.agent_id
 LEFT JOIN task t ON t.id = s.task_id
 LEFT JOIN runtime r ON r.id = s.runtime_id
 LEFT JOIN daemon d ON d.id = r.daemon_id
+`;
+
+const SESSION_BY_ID_PREFIX_SQL = /* sql */ `
+${SESSION_DETAIL_SELECT}
 WHERE s.id LIKE $1 || '%'
 LIMIT 2
 `;
@@ -134,6 +143,79 @@ export async function getSessionByShortId(
   if (rows.length === 0) return undefined;
   if (rows.length > 1) throw new AmbiguousShortIdError(shortId);
   return rowToSessionDisplay(rows[0]!);
+}
+
+// Resolve a short_id to the conversation grouping key. Chat turns carry a
+// `conversation_id` (head turn's id); non-chat sessions have NULL, so we
+// fall back to the row's own id — a single-turn "conversation".
+const CONVERSATION_RESOLVE_SQL = /* sql */ `
+SELECT id, conversation_id, type, task_id, agent_id
+FROM session
+WHERE id LIKE $1 || '%'
+LIMIT 2
+`;
+
+// All turns in a conversation, chronological. `COALESCE(conversation_id, id)`
+// matches chat turns (shared conversation_id) and lone non-chat sessions
+// (matched on their own id) alike.
+const CONVERSATION_TURNS_SQL = /* sql */ `
+${SESSION_DETAIL_SELECT}
+WHERE COALESCE(s.conversation_id, s.id) = $1
+ORDER BY s.created_at ASC, s.id ASC
+`;
+
+interface ConversationResolveRow {
+  id: string;
+  conversation_id: string | null;
+  type: SessionType;
+  task_id: string | null;
+  agent_id: string;
+}
+
+/**
+ * Look up a whole chat conversation by the 6-char short_id of ANY turn in
+ * it (in practice the head turn's short_id, the URL key we link to). Returns
+ * every turn sharing the `conversation_id`, chronological, each with its own
+ * transcript. Non-chat sessions resolve to a single-turn conversation.
+ *
+ * Returns `undefined` for no match; throws `AmbiguousShortIdError` when 2+
+ * session rows share the prefix (mirrors `getSessionByShortId`).
+ */
+export async function getConversationByShortId(
+  pool: Pool,
+  shortId: string,
+): Promise<ConversationDisplay | undefined> {
+  if (!/^[a-z0-9]+$/i.test(shortId)) return undefined;
+  const prefix = `sess_${shortId}`;
+  const resolved = await pool.query<ConversationResolveRow>(
+    CONVERSATION_RESOLVE_SQL,
+    [prefix],
+  );
+  if (resolved.rows.length === 0) return undefined;
+  if (resolved.rows.length > 1) throw new AmbiguousShortIdError(shortId);
+  const target = resolved.rows[0]!;
+  const convKey = target.conversation_id ?? target.id;
+
+  const { rows } = await pool.query<SessionDetailRow>(CONVERSATION_TURNS_SQL, [
+    convKey,
+  ]);
+  const turns = rows.map(rowToSessionDisplay);
+  // The resolve query already proved the row exists, so `turns` is
+  // non-empty in practice; guard so `turns[len-1]` is safe regardless.
+  if (turns.length === 0) return undefined;
+  const lastTurn = turns[turns.length - 1]!;
+
+  return {
+    conversation_id: convKey,
+    short_id: deriveShortId(convKey),
+    agent_id: target.agent_id,
+    agent_label: turns[0]!.agent_label,
+    agent_hierarchy: turns[0]!.agent_hierarchy,
+    type: target.type,
+    ...(target.task_id ? { task_id: target.task_id } : {}),
+    status: lastTurn.status,
+    turns,
+  };
 }
 
 interface SessionTreeRow {
