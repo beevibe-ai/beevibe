@@ -17,6 +17,7 @@ import type {
   TaskDetail,
   AgentDetail,
   DashboardSummary,
+  MemoryActivitySummary,
   MeshOverview,
 } from "./types";
 import type { MeshWindow } from "@/lib/types/mesh";
@@ -536,6 +537,22 @@ export const api = {
         `/memory/fact/${encodeURIComponent(factId)}`,
         { method: "DELETE" },
       ),
+    /**
+     * Layer A activity telemetry — powers /memory/eval. `weeks` controls
+     * the weekly trend + scope×type breakdown window. `since` (ISO date)
+     * is optional; when present, the response includes a ±14d before/
+     * after split for evaluating prompt-change rollouts.
+     */
+    activity: (
+      opts: ReadOptions & { weeks?: number; since?: string } = {},
+    ) =>
+      fetchJson<MemoryActivitySummary>("/memory/activity", {
+        query: {
+          ...(opts.weeks ? { weeks: String(opts.weeks) } : {}),
+          ...(opts.since ? { since: opts.since } : {}),
+        },
+        signal: opts.signal,
+      }),
   },
   // Surfaces below depend on backend slices that haven't shipped yet
   // (dashboard/mesh need a data/display split; threads/promotions lack a

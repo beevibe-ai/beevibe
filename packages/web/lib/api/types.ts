@@ -12,4 +12,13 @@ export type {
   AgentDisplay,
   DashboardSummary,
   MeshOverview,
+  MemoryActivitySummary,
+  MemoryActivityKpis,
+  WeeklyArchivalRow,
+  ScopeTypeRow,
+  AgentActivityRow,
+  DormantAgentRow,
+  CoreSnapshotRow,
+  AgentRatioRow,
+  BeforeAfterData,
 } from "@beevibe/api/views/types";

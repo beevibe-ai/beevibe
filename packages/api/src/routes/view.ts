@@ -48,6 +48,7 @@ import { listAgents, getAgent } from "../views/agents.js";
 import { getSessionByShortId, getSessionTree, AmbiguousShortIdError } from "../views/sessions.js";
 import { listMemoryFactCounts, listMemoryFacts } from "../views/memory.js";
 import { getDashboardSummary } from "../views/dashboard.js";
+import { getMemoryActivity } from "../views/memory-activity.js";
 import { DEFAULT_MESH_WINDOW, getMeshOverview, isMeshWindow } from "../views/mesh.js";
 import { listPromotions } from "../views/promotions.js";
 import { listActivity } from "../views/activity.js";
@@ -497,6 +498,35 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       res.json(summary);
     } catch (err) {
       handleError(err, res, "dashboard summary");
+    }
+  });
+
+  router.get("/memory/activity", async (req, res) => {
+    if (!requireHuman(req, res)) return;
+    const weeksRaw = req.query.weeks;
+    const sinceRaw = req.query.since;
+    const weeks =
+      typeof weeksRaw === "string" && weeksRaw.trim()
+        ? Number(weeksRaw)
+        : 12;
+    // Validate `since` up front so a malformed date returns 400 rather than
+    // a 500 from the eventual Postgres parse error.
+    let since: string | undefined;
+    if (typeof sinceRaw === "string" && sinceRaw.trim()) {
+      if (Number.isNaN(Date.parse(sinceRaw))) {
+        res.status(400).json({
+          error: "invalid_since",
+          message: "since must be an ISO date (e.g. 2026-06-14)",
+        });
+        return;
+      }
+      since = sinceRaw;
+    }
+    try {
+      const summary = await getMemoryActivity(deps.pool, { weeks, since });
+      res.json(summary);
+    } catch (err) {
+      handleError(err, res, "memory activity");
     }
   });
 
