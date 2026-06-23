@@ -34,7 +34,7 @@ import { fileURLToPath } from "node:url";
 const here = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(here, "../.env") });
 
-import { Pool } from "pg";
+import { createPool } from "../packages/core/src/adapters/postgres/index.js";
 
 // ─────────────────────────────────────────────────────────────────────────
 // CLI args
@@ -44,18 +44,43 @@ const args = process.argv.slice(2);
 
 function arg(name: string): string | undefined {
   const idx = args.indexOf(`--${name}`);
-  return idx >= 0 ? args[idx + 1] : undefined;
+  if (idx < 0) return undefined;
+  const next = args[idx + 1];
+  // Guard against the user omitting the value: `--since --weeks 4` would
+  // otherwise capture "--weeks" as the date.
+  return next && !next.startsWith("--") ? next : undefined;
 }
 
-const WEEKS = Math.max(1, parseInt(arg("weeks") ?? "12", 10));
-const SINCE = arg("since"); // ISO date for before/after split
-
-if (!process.env.DATABASE_URL) {
-  console.error("Set DATABASE_URL (see .env or export it).");
+function die(message: string): never {
+  console.error(message);
   process.exit(1);
 }
 
-const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const WEEKS = (() => {
+  const raw = arg("weeks") ?? "12";
+  const n = Number.parseInt(raw, 10);
+  if (!Number.isFinite(n) || n < 1) {
+    die(`--weeks must be a positive integer (got: ${raw}).`);
+  }
+  return n;
+})();
+
+const SINCE = (() => {
+  const raw = arg("since");
+  if (!raw) return undefined;
+  // Validate up front so we fail with a clear CLI-level message rather
+  // than seven reports in with an opaque Postgres timestamp parse error.
+  if (Number.isNaN(Date.parse(raw))) {
+    die(`--since must be an ISO date (got: ${raw}). Example: 2026-06-14`);
+  }
+  return raw;
+})();
+
+if (!process.env.DATABASE_URL) {
+  die("Set DATABASE_URL (see .env or export it).");
+}
+
+const pool = createPool({ connectionString: process.env.DATABASE_URL });
 
 // ─────────────────────────────────────────────────────────────────────────
 // Tiny print helpers (no table library — keep it scriptable)
@@ -87,7 +112,16 @@ function printRows(rows: Record<string, unknown>[]): void {
 
 function render(v: unknown): string {
   if (v === null || v === undefined) return "—";
-  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  if (v instanceof Date) {
+    // node-postgres parses `::date` columns as JS Date at LOCAL midnight,
+    // so `.toISOString()` (which is UTC) shifts the day back by the
+    // local UTC offset for anyone east of UTC. Read the local components
+    // directly to keep the displayed date == the row's stored date.
+    const y = v.getFullYear();
+    const m = String(v.getMonth() + 1).padStart(2, "0");
+    const d = String(v.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  }
   return String(v);
 }
 
