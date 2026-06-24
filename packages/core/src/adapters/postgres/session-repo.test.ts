@@ -599,6 +599,74 @@ describe("PostgresSessionRepository", () => {
     });
   });
 
+  describe("listPendingForRuntimeIds", () => {
+    let daemons: PostgresDaemonRepository;
+    let runtimes: PostgresRuntimeRepository;
+    let runtimeA: string;
+    let runtimeB: string;
+
+    beforeEach(async () => {
+      daemons = new PostgresDaemonRepository(pool);
+      runtimes = new PostgresRuntimeRepository(pool);
+      const dId = daemonId();
+      await daemons.create({
+        id: dId,
+        owner_person_id: person,
+        external_id: "host-a",
+        device_name: "Host A",
+        token_hash: "h1",
+      });
+      runtimeA = runtimeId();
+      runtimeB = runtimeId();
+      await runtimes.create({ id: runtimeA, daemon_id: dId, cli: "claude" });
+      await runtimes.create({ id: runtimeB, daemon_id: dId, cli: "codex" });
+    });
+
+    it("returns oldest-first across runtimes, only pending, only matching runtimes", async () => {
+      // Seed: one pending on runtimeA, one running on runtimeA (excluded),
+      // one pending on runtimeB, one pending on a third runtime (excluded
+      // because not in the input set).
+      const [oldA, newA] = await seedPendingTaskSessions(2, {
+        runtimeId: runtimeA,
+      });
+      await sessions.create(
+        newSession({
+          id: sessionId(),
+          task_id: task,
+          runtime_id: runtimeA,
+          status: "running",
+        }),
+      );
+      await new Promise((r) => setTimeout(r, 10));
+      const [pendingB] = await seedPendingTaskSessions(1, {
+        runtimeId: runtimeB,
+      });
+
+      const result = await sessions.listPendingForRuntimeIds(
+        [runtimeA, runtimeB],
+        100,
+      );
+      expect(result.map((r) => r.id)).toEqual([oldA, newA, pendingB]);
+      expect(result.map((r) => r.runtime_id)).toEqual([
+        runtimeA,
+        runtimeA,
+        runtimeB,
+      ]);
+    });
+
+    it("respects the limit", async () => {
+      await seedPendingTaskSessions(5, { runtimeId: runtimeA });
+      const result = await sessions.listPendingForRuntimeIds([runtimeA], 2);
+      expect(result).toHaveLength(2);
+    });
+
+    it("returns [] for empty input or limit ≤ 0", async () => {
+      await seedPendingTaskSessions(1, { runtimeId: runtimeA });
+      expect(await sessions.listPendingForRuntimeIds([], 100)).toEqual([]);
+      expect(await sessions.listPendingForRuntimeIds([runtimeA], 0)).toEqual([]);
+    });
+  });
+
   describe("claimNextForServerFallback — per-agent task cap", () => {
     // Mirrors the runtime-claim cap behavior. Server fallback is the
     // path the scheduler takes when an agent has no preferred runtime;

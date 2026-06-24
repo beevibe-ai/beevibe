@@ -16,7 +16,7 @@ import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
 import type { LookupApiKeyDeps } from "@beevibe/core/auth";
 import { lookupApiKey } from "@beevibe/core/auth";
-import type { RuntimeRepository } from "@beevibe/core";
+import type { RuntimeRepository, SessionRepository } from "@beevibe/core";
 import type { DaemonClient, DaemonHub, DaemonPushPayload } from "./hub.js";
 
 export const RUNTIME_WS_PATH = "/runtime/ws";
@@ -25,6 +25,15 @@ export interface RuntimeWsServerOptions {
   hub: DaemonHub;
   authDeps: LookupApiKeyDeps;
   runtimeRepo: RuntimeRepository;
+  /**
+   * Used for replay-on-connect: after a daemon's WS upgrade succeeds we
+   * fire a one-shot query for `status='pending'` sessions on the
+   * subscribed runtimes and push a wakeup for each. Closes the silent-
+   * loss window when the previous socket was half-open and missed pushes
+   * fired between dispatch and the server's ping-watchdog terminating
+   * the zombie.
+   */
+  sessionRepo: Pick<SessionRepository, "listPendingForRuntimeIds">;
   /** Default 30_000 ms. */
   pingIntervalMs?: number;
 }
@@ -36,6 +45,12 @@ interface DaemonWsClient extends DaemonClient {
 
 const BEARER_PATTERN = /^Bearer\s+(.+)$/;
 const DEFAULT_PING_INTERVAL_MS = 30_000;
+// Cap on pending sessions replayed per WS upgrade. A misconfigured
+// runtime with a queue of thousands of stuck rows shouldn't fan out a
+// huge per-client send burst on every reconnect; the daemon polls every
+// 30s anyway so the tail catches up. We warn when the cap actually
+// bites so silent truncation is observable.
+const REPLAY_PENDING_MAX = 500;
 
 export class RuntimeWsServer {
   private readonly wss: WebSocketServer;
@@ -124,6 +139,11 @@ export class RuntimeWsServer {
     // the web's online dot flips immediately, not after the next ~30s HTTP
     // heartbeat / React Query staleTime window.
     void this.touchHeartbeats(runtimeIds);
+    // Replay any sessions pushed (or that should have been) while the
+    // daemon's previous socket was half-open. Targets this client only —
+    // sibling subscribers stayed connected and already saw those pushes,
+    // so going through hub.notify would just burn their dedup slots.
+    void this.replayPending(client, runtimeIds);
     ws.on("pong", () => {
       client.alive = true;
     });
@@ -149,6 +169,35 @@ export class RuntimeWsServer {
     };
     ws.on("close", cleanup);
     ws.on("error", cleanup);
+  }
+
+  private async replayPending(
+    client: DaemonClient,
+    runtimeIds: readonly string[],
+  ): Promise<void> {
+    try {
+      const pending = await this.options.sessionRepo.listPendingForRuntimeIds(
+        [...runtimeIds],
+        REPLAY_PENDING_MAX,
+      );
+      if (pending.length >= REPLAY_PENDING_MAX) {
+        console.warn("[runtime/ws] replay-pending hit cap; tail relies on 30s daemon poll", {
+          cap: REPLAY_PENDING_MAX,
+          daemonId: client.daemonId,
+        });
+      }
+      for (const row of pending) {
+        client.send({
+          type: "task_available",
+          runtime_id: row.runtime_id,
+          session_id: row.id,
+        });
+      }
+    } catch (err) {
+      console.warn("[runtime/ws] replay-pending failed", {
+        err: err instanceof Error ? err.message : String(err),
+      });
+    }
   }
 
   private async touchHeartbeats(runtimeIds: readonly string[]): Promise<void> {

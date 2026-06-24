@@ -31,10 +31,18 @@ export interface ClaimerConfig {
   heartbeatIntervalMs?: number;
   /** Default 30_000ms — exponential backoff cap for WS reconnect. */
   wsReconnectMaxDelayMs?: number;
+  /**
+   * Default 25_000ms — interval between liveness pings on an open WS.
+   * Slightly shorter than the api's 30s server-side ping so the daemon
+   * detects half-open TCP first and reconnects without waiting on the
+   * server's terminate-then-RST round trip.
+   */
+  wsPingIntervalMs?: number;
 }
 
 const DEFAULT_POLL_MS = 30_000;
 const DEFAULT_WS_RECONNECT_MAX_MS = 30_000;
+const DEFAULT_WS_PING_INTERVAL_MS = 25_000;
 
 interface PushPayload {
   type: "task_available" | "cancel";
@@ -49,15 +57,18 @@ export class Claimer {
   private heartbeatTimer?: NodeJS.Timeout;
   private wsReconnectAttempts = 0;
   private wsReconnectTimer?: NodeJS.Timeout;
+  private wsPingTimer?: NodeJS.Timeout;
   private readonly pollIntervalMs: number;
   private readonly heartbeatIntervalMs: number;
   private readonly wsReconnectMaxDelayMs: number;
+  private readonly wsPingIntervalMs: number;
 
   constructor(private readonly cfg: ClaimerConfig) {
     this.pollIntervalMs = cfg.pollIntervalMs ?? DEFAULT_POLL_MS;
     this.heartbeatIntervalMs = cfg.heartbeatIntervalMs ?? RUNTIME_HEARTBEAT_INTERVAL_MS;
     this.wsReconnectMaxDelayMs =
       cfg.wsReconnectMaxDelayMs ?? DEFAULT_WS_RECONNECT_MAX_MS;
+    this.wsPingIntervalMs = cfg.wsPingIntervalMs ?? DEFAULT_WS_PING_INTERVAL_MS;
   }
 
   start(): void {
@@ -89,6 +100,10 @@ export class Claimer {
       clearTimeout(this.wsReconnectTimer);
       this.wsReconnectTimer = undefined;
     }
+    if (this.wsPingTimer) {
+      clearInterval(this.wsPingTimer);
+      this.wsPingTimer = undefined;
+    }
     if (this.ws) {
       this.ws.removeAllListeners();
       this.ws.close();
@@ -107,6 +122,7 @@ export class Claimer {
       log(
         `[daemon] connected: ${this.cfg.runtimeIds.length} runtime(s) subscribed`,
       );
+      this.startWsPingWatchdog(ws);
     });
 
     ws.on("message", (raw) => {
@@ -126,6 +142,10 @@ export class Claimer {
     });
 
     ws.on("close", () => {
+      if (this.wsPingTimer) {
+        clearInterval(this.wsPingTimer);
+        this.wsPingTimer = undefined;
+      }
       if (!this.running) return;
       this.scheduleWsReconnect();
     });
@@ -134,6 +154,33 @@ export class Claimer {
       warn("[daemon] ws error:", err.message);
       // Triggers `close`; reconnect lives there.
     });
+  }
+
+  /**
+   * Mirror of the api's ping/pong (ws-server.ts onConnect). Without it,
+   * half-open TCP (sleep, NAT rebind, Wi-Fi handoff) never produces a
+   * `close` event and the daemon stays phantom-connected — pushes fall
+   * into a dead socket. Terminating on no-pong synthesizes the missing
+   * close and triggers the existing reconnect path.
+   */
+  private startWsPingWatchdog(ws: WebSocket): void {
+    let alive = true;
+    ws.on("pong", () => {
+      alive = true;
+    });
+    this.wsPingTimer = setInterval(() => {
+      if (!alive) {
+        warn("[daemon] ws stale (no pong); terminating to reconnect");
+        ws.terminate();
+        return;
+      }
+      alive = false;
+      try {
+        ws.ping();
+      } catch {
+        ws.terminate();
+      }
+    }, this.wsPingIntervalMs);
   }
 
   private scheduleWsReconnect(): void {

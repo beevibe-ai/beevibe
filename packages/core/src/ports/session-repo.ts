@@ -73,6 +73,16 @@ export interface SessionRepository {
   }): Promise<Session[]>;
 
   /**
+   * Pending sessions bound to any of `runtimeIds`, oldest-first, capped
+   * at `limit`. Narrow projection ({id, runtime_id}) — the WS replay-on-
+   * connect path is the only caller and just needs a wakeup tuple.
+   */
+  listPendingForRuntimeIds(
+    runtimeIds: string[],
+    limit: number,
+  ): Promise<Array<{ id: string; runtime_id: string }>>;
+
+  /**
    * Atomically claim the next pending session bound to `runtimeId` and
    * promote it to `running`. Returns undefined when nothing is pending.
    * Implemented with `SELECT … FOR UPDATE SKIP LOCKED` so concurrent claims
