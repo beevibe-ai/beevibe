@@ -86,11 +86,19 @@ const config: Config = {
           "0%": { backgroundColor: "hsl(48 96% 53% / 0.16)" },
           "100%": { backgroundColor: "transparent" },
         },
+        // Newest live working-box step entering: fade + slide-up with a slight
+        // overshoot, settling at the emphasized resting scale (scale-[1.03]).
+        "step-pop": {
+          "0%": { opacity: "0", transform: "translateY(6px) scale(0.98)" },
+          "60%": { transform: "translateY(0) scale(1.05)" },
+          "100%": { opacity: "1", transform: "scale(1.03)" },
+        },
       },
       animation: {
         "pulse-breathe": "pulse-breathe 2s ease-in-out infinite",
         "spin-slow": "spin-slow 2.5s linear infinite",
         "row-flash": "row-flash 1200ms ease-out",
+        "step-pop": "step-pop 260ms ease-out",
       },
     },
   },

@@ -898,6 +898,7 @@ function Thinking({
               totalSteps={toolSteps.length}
               tree={tree}
               parentSessionId={rootSessionId}
+              emphasizeLatest
             />
           </div>
         ) : null}
