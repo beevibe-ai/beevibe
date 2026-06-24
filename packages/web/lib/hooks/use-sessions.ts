@@ -24,5 +24,10 @@ export function useConversation(shortId: string | undefined) {
       : queryKeys.sessions.all,
     queryFn: ({ signal }) => api.sessions.conversation(shortId as string, { signal }),
     enabled: isApiConfigured && !!shortId,
+    // A completed turn's transcript is immutable, so this potentially-large
+    // fetch (every turn × up to 500 events) needn't refetch on focus/idle.
+    // In-flight turns surface live via SSE, not this query. Cold loads still
+    // refetch on mount.
+    staleTime: 60_000,
   });
 }

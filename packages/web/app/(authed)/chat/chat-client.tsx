@@ -33,7 +33,7 @@ import type { TranscriptEntry } from "@/lib/types/sessions";
 import { useMe } from "@/lib/hooks/use-me";
 import { useAgents } from "@/lib/hooks/use-agents";
 import { queryKeys } from "@/lib/hooks/keys";
-import { formatRelativeTime } from "@/lib/format";
+import { deriveShortId, formatRelativeTime } from "@/lib/format";
 import { defaultTryGoal, formatStars } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/avatar";
@@ -121,21 +121,17 @@ export function ChatClient() {
   const chatTreeEnabled = process.env.NEXT_PUBLIC_CHAT_TREE_UI === "1";
   const liveTree = useChatStreamTree(chatTreeEnabled ? pendingSessionId : undefined);
   const liveStreamFlat = useChatStream(chatTreeEnabled ? undefined : pendingSessionId);
-  const liveSteps: ChatStreamStep[] = chatTreeEnabled
-    ? pendingSessionId
-      ? liveTree.steps[pendingSessionId] ?? EMPTY_STEPS
-      : EMPTY_STEPS
-    : liveStreamFlat.steps;
-  // Per-session step map for rendering each completed turn's working trace
-  // as a collapsed disclosure. `liveMap` holds steps streamed this session;
-  // `persistedStepsBySession` (below) holds the persisted transcript so the
-  // trace survives reload / opening an older conversation.
+  // Per-session step map keyed by full session id. `liveMap` holds steps
+  // streamed this session — used both for the in-flight "Working" box and a
+  // just-finished turn's trace; `persistedStepsBySession` (below) holds the
+  // persisted transcript so the trace survives reload / opening an older chat.
   const liveMap = chatTreeEnabled ? liveTree.steps : liveStreamFlat.stepsBySession;
+  const liveSteps = pendingSessionId ? liveMap[pendingSessionId] ?? EMPTY_STEPS : EMPTY_STEPS;
 
   // Fetch the loaded chain's persisted per-turn transcripts so a finished
   // turn's working trace renders even when its live SSE steps aren't in
   // memory (cold load, prior history). Keyed by full turn/session id.
-  const headShortId = conversationId ? conversationId.slice(5, 11) : undefined;
+  const headShortId = conversationId ? deriveShortId(conversationId) : undefined;
   const conversation = useConversation(headShortId);
   const persistedStepsBySession = useMemo(() => {
     const map: Record<string, ChatStreamStep[]> = {};
@@ -668,7 +664,7 @@ function WorkedDisclosure({
     (s) => s.kind === "tool_call" || s.kind === "tool_result",
   );
   if (toolSteps.length === 0) return null;
-  const count = toolSteps.filter((s) => s.kind === "tool_call").length || toolSteps.length;
+  const count = toolSteps.filter((s) => s.kind === "tool_call").length;
   return (
     <details className="group w-full mb-1">
       <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none text-[10px] uppercase tracking-wide text-muted-foreground/45 hover:text-muted-foreground/70 [&::-webkit-details-marker]:hidden">
