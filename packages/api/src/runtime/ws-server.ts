@@ -36,13 +36,6 @@ export interface RuntimeWsServerOptions {
   sessionRepo: Pick<SessionRepository, "listPendingForRuntimeIds">;
   /** Default 30_000 ms. */
   pingIntervalMs?: number;
-  /**
-   * Default 500 — cap on pending sessions replayed per WS upgrade. A
-   * misconfigured runtime with a queue of thousands of stuck rows
-   * shouldn't fan out a huge push burst on every reconnect; the daemon
-   * polls every 30s anyway so the tail catches up.
-   */
-  replayPendingMax?: number;
 }
 
 interface DaemonWsClient extends DaemonClient {
@@ -52,12 +45,16 @@ interface DaemonWsClient extends DaemonClient {
 
 const BEARER_PATTERN = /^Bearer\s+(.+)$/;
 const DEFAULT_PING_INTERVAL_MS = 30_000;
-const DEFAULT_REPLAY_PENDING_MAX = 500;
+// Cap on pending sessions replayed per WS upgrade. A misconfigured
+// runtime with a queue of thousands of stuck rows shouldn't fan out a
+// huge per-client send burst on every reconnect; the daemon polls every
+// 30s anyway so the tail catches up. We warn when the cap actually
+// bites so silent truncation is observable.
+const REPLAY_PENDING_MAX = 500;
 
 export class RuntimeWsServer {
   private readonly wss: WebSocketServer;
   private readonly pingIntervalMs: number;
-  private readonly replayPendingMax: number;
   private readonly pingTimers = new Map<DaemonWsClient, ReturnType<typeof setInterval>>();
   private boundHandler?: (req: IncomingMessage, socket: Duplex, head: Buffer) => void;
   private boundServer?: Server;
@@ -65,8 +62,6 @@ export class RuntimeWsServer {
   constructor(private readonly options: RuntimeWsServerOptions) {
     this.wss = new WebSocketServer({ noServer: true });
     this.pingIntervalMs = options.pingIntervalMs ?? DEFAULT_PING_INTERVAL_MS;
-    this.replayPendingMax =
-      options.replayPendingMax ?? DEFAULT_REPLAY_PENDING_MAX;
   }
 
   attach(httpServer: Server): void {
@@ -144,12 +139,11 @@ export class RuntimeWsServer {
     // the web's online dot flips immediately, not after the next ~30s HTTP
     // heartbeat / React Query staleTime window.
     void this.touchHeartbeats(runtimeIds);
-    // Replay any sessions that were pushed (or should have been) while
-    // the daemon's previous socket was half-open. Hub dedup makes this
-    // safe against pushes still in flight; per-runtime cap bounds the
-    // fanout on a misconfigured queue. Fire-and-forget — replay failure
-    // mustn't take down the new connection.
-    void this.replayPending(runtimeIds);
+    // Replay any sessions pushed (or that should have been) while the
+    // daemon's previous socket was half-open. Targets this client only —
+    // sibling subscribers stayed connected and already saw those pushes,
+    // so going through hub.notify would just burn their dedup slots.
+    void this.replayPending(client, runtimeIds);
     ws.on("pong", () => {
       client.alive = true;
     });
@@ -177,14 +171,27 @@ export class RuntimeWsServer {
     ws.on("error", cleanup);
   }
 
-  private async replayPending(runtimeIds: readonly string[]): Promise<void> {
+  private async replayPending(
+    client: DaemonClient,
+    runtimeIds: readonly string[],
+  ): Promise<void> {
     try {
       const pending = await this.options.sessionRepo.listPendingForRuntimeIds(
         [...runtimeIds],
-        this.replayPendingMax,
+        REPLAY_PENDING_MAX,
       );
+      if (pending.length >= REPLAY_PENDING_MAX) {
+        console.warn("[runtime/ws] replay-pending hit cap; tail relies on 30s daemon poll", {
+          cap: REPLAY_PENDING_MAX,
+          daemonId: client.daemonId,
+        });
+      }
       for (const row of pending) {
-        this.options.hub.notify(row.runtime_id, row.id);
+        client.send({
+          type: "task_available",
+          runtime_id: row.runtime_id,
+          session_id: row.id,
+        });
       }
     } catch (err) {
       console.warn("[runtime/ws] replay-pending failed", {

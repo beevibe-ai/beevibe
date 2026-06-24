@@ -157,20 +157,13 @@ export class Claimer {
   }
 
   /**
-   * Liveness watchdog mirroring the server's ping/pong (see
-   * packages/api/src/runtime/ws-server.ts onConnect). Without this, a
-   * half-open TCP — laptop sleep, NAT rebind, Wi-Fi handoff, ISP idle
-   * timeout — leaves the daemon thinking it's connected forever: no
-   * `close` event ever arrives because the FIN is lost on the broken
-   * path. Server-side pushes fall into the dead socket while the daemon
-   * waits on the 30s poll for every new chat session.
-   *
-   * On each tick, if no pong arrived since the last ping, terminate the
-   * socket — that synthesizes the missing `close` event, which fires the
-   * reconnect path with exponential backoff.
+   * Mirror of the api's ping/pong (ws-server.ts onConnect). Without it,
+   * half-open TCP (sleep, NAT rebind, Wi-Fi handoff) never produces a
+   * `close` event and the daemon stays phantom-connected — pushes fall
+   * into a dead socket. Terminating on no-pong synthesizes the missing
+   * close and triggers the existing reconnect path.
    */
   private startWsPingWatchdog(ws: WebSocket): void {
-    if (this.wsPingTimer) clearInterval(this.wsPingTimer);
     let alive = true;
     ws.on("pong", () => {
       alive = true;
@@ -178,22 +171,14 @@ export class Claimer {
     this.wsPingTimer = setInterval(() => {
       if (!alive) {
         warn("[daemon] ws stale (no pong); terminating to reconnect");
-        try {
-          ws.terminate();
-        } catch {
-          // ignore — close path runs regardless
-        }
+        ws.terminate();
         return;
       }
       alive = false;
       try {
         ws.ping();
       } catch {
-        try {
-          ws.terminate();
-        } catch {
-          // ignore
-        }
+        ws.terminate();
       }
     }, this.wsPingIntervalMs);
   }

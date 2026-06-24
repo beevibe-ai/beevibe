@@ -73,12 +73,9 @@ export interface SessionRepository {
   }): Promise<Session[]>;
 
   /**
-   * Pending sessions bound to any of `runtimeIds`, ordered oldest-first,
-   * capped at `limit`. Used by the WS push channel's replay-on-connect
-   * path to wake a daemon for sessions it may have missed while its
-   * previous socket was half-open. The narrow return shape ({id,
-   * runtime_id}) is all the wakeup needs — `hub.notify` passes both, the
-   * daemon discards everything except runtime_id and re-polls.
+   * Pending sessions bound to any of `runtimeIds`, oldest-first, capped
+   * at `limit`. Narrow projection ({id, runtime_id}) — the WS replay-on-
+   * connect path is the only caller and just needs a wakeup tuple.
    */
   listPendingForRuntimeIds(
     runtimeIds: string[],

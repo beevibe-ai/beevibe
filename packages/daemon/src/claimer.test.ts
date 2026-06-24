@@ -51,33 +51,45 @@ function fakeWs(): WebSocket & FakeWs {
   return ws as unknown as WebSocket & FakeWs;
 }
 
+/**
+ * Wire a Claimer to a fake-ws factory that records every socket the
+ * production code constructs; tests then drive `open`/`pong` and inspect
+ * `ping`/`terminate`. Aggressive intervals + backoff cap let
+ * `vi.advanceTimersByTime` cover a full reconnect cycle in tens of ms.
+ */
+function startClaimerWithFakeWs(): {
+  claimer: Claimer;
+  sockets: Array<WebSocket & FakeWs>;
+} {
+  const sockets: Array<WebSocket & FakeWs> = [];
+  const api = makeApi({
+    openWebSocket: vi.fn(() => {
+      const ws = fakeWs();
+      sockets.push(ws);
+      return ws;
+    }) as unknown as ApiClient["openWebSocket"],
+  });
+  const claimer = new Claimer({
+    api,
+    supervisor: new Supervisor(2),
+    workspaceManager: {} as LocalWorkspaceManager,
+    runtimeRegistry: {},
+    runtimeIds: ["rt_1"],
+    pollIntervalMs: 600_000,
+    heartbeatIntervalMs: 600_000,
+    wsPingIntervalMs: 1_000,
+    wsReconnectMaxDelayMs: 10,
+  });
+  claimer.start();
+  return { claimer, sockets };
+}
+
 describe("Claimer ws ping watchdog", () => {
   it("pings on each tick and terminates+reconnects when no pong arrives", async () => {
     vi.useFakeTimers();
-    const sockets: Array<WebSocket & FakeWs> = [];
-    const api = makeApi({
-      openWebSocket: vi.fn(() => {
-        const ws = fakeWs();
-        sockets.push(ws);
-        return ws;
-      }) as unknown as ApiClient["openWebSocket"],
-    });
-    const claimer = new Claimer({
-      api,
-      supervisor: new Supervisor(2),
-      workspaceManager: {} as LocalWorkspaceManager,
-      runtimeRegistry: {},
-      runtimeIds: ["rt_1"],
-      pollIntervalMs: 600_000,
-      heartbeatIntervalMs: 600_000,
-      wsPingIntervalMs: 1_000,
-      // Cap backoff so the reconnect fires inside our advanceTimers window.
-      wsReconnectMaxDelayMs: 10,
-    });
-
+    const { claimer, sockets } = startClaimerWithFakeWs();
     try {
-      claimer.start();
-      // The first WS instance is created synchronously inside start().
+      // First WS is created synchronously inside start().
       expect(sockets).toHaveLength(1);
       sockets[0]!.fire("open");
 
@@ -86,8 +98,7 @@ describe("Claimer ws ping watchdog", () => {
       expect(sockets[0]!.ping).toHaveBeenCalledTimes(1);
       expect(sockets[0]!.terminate).not.toHaveBeenCalled();
 
-      // Tick 2: still no pong → terminate, which synthesizes `close`,
-      // which schedules reconnect.
+      // Tick 2: still no pong → terminate → synthetic close → reconnect.
       vi.advanceTimersByTime(1_000);
       expect(sockets[0]!.terminate).toHaveBeenCalledTimes(1);
 
@@ -102,41 +113,18 @@ describe("Claimer ws ping watchdog", () => {
 
   it("does not terminate when pong arrives between pings", async () => {
     vi.useFakeTimers();
-    const sockets: Array<WebSocket & FakeWs> = [];
-    const api = makeApi({
-      openWebSocket: vi.fn(() => {
-        const ws = fakeWs();
-        sockets.push(ws);
-        return ws;
-      }) as unknown as ApiClient["openWebSocket"],
-    });
-    const claimer = new Claimer({
-      api,
-      supervisor: new Supervisor(2),
-      workspaceManager: {} as LocalWorkspaceManager,
-      runtimeRegistry: {},
-      runtimeIds: ["rt_1"],
-      pollIntervalMs: 600_000,
-      heartbeatIntervalMs: 600_000,
-      wsPingIntervalMs: 1_000,
-      wsReconnectMaxDelayMs: 10,
-    });
-
+    const { claimer, sockets } = startClaimerWithFakeWs();
     try {
-      claimer.start();
       sockets[0]!.fire("open");
 
-      // Tick 1 → ping, then pong arrives before tick 2.
       vi.advanceTimersByTime(1_000);
       expect(sockets[0]!.ping).toHaveBeenCalledTimes(1);
       sockets[0]!.fire("pong");
 
-      // Tick 2: alive again → ping, not terminate.
       vi.advanceTimersByTime(1_000);
       expect(sockets[0]!.ping).toHaveBeenCalledTimes(2);
       expect(sockets[0]!.terminate).not.toHaveBeenCalled();
 
-      // And a third healthy cycle for good measure.
       sockets[0]!.fire("pong");
       vi.advanceTimersByTime(1_000);
       expect(sockets[0]!.ping).toHaveBeenCalledTimes(3);
