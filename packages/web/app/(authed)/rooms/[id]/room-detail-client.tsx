@@ -497,7 +497,7 @@ function TypingBubble({ typing: t }: { typing: NonNullable<RoomDetail["typing"]>
   //     buffer; empty when the SSE detector has fallen back to polling
   // Audience sees Read / Bash / ask / save_memory / search_memory
   // calls land live (or every 3s in polling-only mode).
-  const sseSteps = useChatStream(t.session_id);
+  const sseSteps = useChatStream(t.session_id).steps;
   const polled: ChatStreamStep[] = (t.recent_steps ?? []).map((s) => ({
     event_id: s.event_id,
     kind: s.kind,
