@@ -7,6 +7,7 @@ import { useMemoryActivity } from "@/lib/hooks/use-memory-activity";
 import { isApiConfigured } from "@/lib/api/config";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
+import { DatePicker, todayIso } from "@/components/date-picker";
 import type {
   AgentActivityRow,
   AgentRatioRow,
@@ -36,7 +37,9 @@ const TYPE_COLOR: Record<FactType, { fill: string; dot: string }> = {
 
 export function MemoryEvalClient() {
   const [weeks, setWeeks] = useState(12);
-  const [since, setSince] = useState<string>("");
+  // Default to today so the before/after panel is discoverable on first
+  // load. Users can clear or pick a different boundary from the calendar.
+  const [since, setSince] = useState<string>(() => todayIso());
 
   // queryKey uses structural equality, so no useMemo wrap needed.
   const params = { weeks, since: since || undefined };
@@ -126,24 +129,15 @@ function Header({
             ))}
           </select>
         </label>
-        <label className="flex items-center gap-2">
+        <div className="flex items-center gap-2">
           <span className="text-muted-foreground">Compare around</span>
-          <input
-            type="date"
+          <DatePicker
             value={since}
-            onChange={(e) => onSinceChange(e.target.value)}
-            className="bg-background border border-border rounded px-2 py-1"
+            onChange={onSinceChange}
+            onClear={() => onSinceChange("")}
+            ariaLabel="Compare around date"
           />
-          {since ? (
-            <button
-              type="button"
-              onClick={() => onSinceChange("")}
-              className="text-muted-foreground hover:text-foreground"
-            >
-              clear
-            </button>
-          ) : null}
-        </label>
+        </div>
       </div>
     </header>
   );
