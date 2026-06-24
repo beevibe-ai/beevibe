@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { ChipPopover } from "@/components/agents/pickers/chip-popover";
 import { cn } from "@/lib/utils";
@@ -34,6 +34,8 @@ export function DatePicker({
       <ChipPopover
         ariaLabel={ariaLabel}
         align={align}
+        // px-2 (vs ChipPopover's default px-2.5) keeps the chip flush with
+        // the weeks-selector beside it on the eval header.
         chipClassName="px-2 py-1 text-xs"
         chip={
           <span className="inline-flex items-center gap-1.5">
@@ -79,18 +81,19 @@ function CalendarGrid({
   value: string;
   onPick: (iso: string) => void;
 }) {
-  const selected = useMemo(() => parseIso(value), [value]);
-  const [view, setView] = useState<Date>(
-    () => new Date(selected.getFullYear(), selected.getMonth(), 1),
-  );
-  const todayIso = toIsoDate(new Date());
-
+  // Initial view = the month containing `value`. Subsequent prev/next
+  // navigation moves `view` independently; `value` only changes when the
+  // user picks a day.
+  const [view, setView] = useState<Date>(() => {
+    const d = parseIso(value);
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const today = toIsoDate(new Date());
   const monthLabel = view.toLocaleString(undefined, {
     month: "long",
     year: "numeric",
   });
-
-  const days = useMemo(() => monthGrid(view), [view]);
+  const days = monthGrid(view);
 
   return (
     <div className="px-3 pb-3 pt-2 w-64">
@@ -125,7 +128,7 @@ function CalendarGrid({
           const inMonth = d.getMonth() === view.getMonth();
           const iso = toIsoDate(d);
           const isSelected = iso === value;
-          const isToday = iso === todayIso;
+          const isToday = iso === today;
           return (
             <button
               key={i}
@@ -149,7 +152,7 @@ function CalendarGrid({
       <div className="mt-3 flex items-center justify-between">
         <button
           type="button"
-          onClick={() => onPick(todayIso)}
+          onClick={() => onPick(today)}
           className="text-[11px] text-muted-foreground hover:text-foreground transition-colors"
         >
           Today
@@ -175,9 +178,11 @@ function toIsoDate(d: Date): string {
 }
 
 function parseIso(s: string): Date {
-  // Local-midnight construction to match the rest of the system.
+  // Local-midnight construction to match the rest of the system. Callers
+  // are expected to pass a validated YYYY-MM-DD string (the picker funnels
+  // empty input through `value || todayIso()` before this runs).
   const [y, m, d] = s.split("-").map(Number);
-  return new Date(y ?? 1970, (m ?? 1) - 1, d ?? 1);
+  return new Date(y!, m! - 1, d!);
 }
 
 function addMonths(d: Date, n: number): Date {
