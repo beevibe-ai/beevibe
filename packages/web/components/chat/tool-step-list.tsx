@@ -152,6 +152,8 @@ function rowEmphasis(fromEnd: number): { className: string; style: CSSProperties
   return {
     className: cn(
       "transition-[opacity,transform] duration-300 origin-left",
+      // Resting scale must match the `step-pop` keyframe's 100% in
+      // tailwind.config.ts, or the row jumps when the pop-in animation ends.
       fromEnd === 0 && "font-medium scale-[1.03] animate-step-pop",
     ),
     style: { opacity: Math.max(0.4, 1 - fromEnd * 0.22) },
