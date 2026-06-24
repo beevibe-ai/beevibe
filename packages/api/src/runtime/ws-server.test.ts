@@ -12,6 +12,7 @@ import {
   PostgresDaemonRepository,
   PostgresPersonRepository,
   PostgresRuntimeRepository,
+  PostgresSessionRepository,
   type Pool,
 } from "@beevibe/core/adapters/postgres";
 import {
@@ -19,13 +20,21 @@ import {
   hashDaemonToken,
   provisionUser,
 } from "@beevibe/core/auth";
-import { daemonId, personId, runtimeId } from "@beevibe/core";
+import {
+  agentId,
+  daemonId,
+  personId,
+  runtimeId,
+  sessionId,
+} from "@beevibe/core";
+import { DEFAULT_RUNTIME_CONFIG } from "@beevibe/core";
 import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
 import { DaemonHub } from "./hub.js";
 import { RuntimeWsServer } from "./ws-server.js";
 
 interface Fixture {
   ownerId: string;
+  agentId: string;
   daemonId: string;
   daemonToken: string;
   runtimeId: string;
@@ -37,6 +46,7 @@ describe("RuntimeWsServer", () => {
   let personRepo: PostgresPersonRepository;
   let daemonRepo: PostgresDaemonRepository;
   let runtimeRepo: PostgresRuntimeRepository;
+  let sessionRepo: PostgresSessionRepository;
   let httpServer: Server;
   let wsServer: RuntimeWsServer;
   let hub: DaemonHub;
@@ -48,6 +58,7 @@ describe("RuntimeWsServer", () => {
     personRepo = new PostgresPersonRepository(pool);
     daemonRepo = new PostgresDaemonRepository(pool);
     runtimeRepo = new PostgresRuntimeRepository(pool);
+    sessionRepo = new PostgresSessionRepository(pool);
 
     httpServer = createServer((_req, res) => {
       res.writeHead(404);
@@ -58,6 +69,7 @@ describe("RuntimeWsServer", () => {
       hub,
       authDeps: { agentRepo, personRepo, daemonRepo },
       runtimeRepo,
+      sessionRepo,
       pingIntervalMs: 60_000,
     });
     wsServer.attach(httpServer);
@@ -94,7 +106,21 @@ describe("RuntimeWsServer", () => {
     });
     const rId = runtimeId();
     await runtimeRepo.create({ id: rId, daemon_id: dId, cli: "claude" });
-    return { ownerId: owner.person.id, daemonId: dId, daemonToken: token, runtimeId: rId };
+    const aId = agentId();
+    await agentRepo.create({
+      id: aId,
+      name: "Replay Test Agent",
+      owner_id: owner.person.id,
+      hierarchy_level: "ic",
+      runtime_config: DEFAULT_RUNTIME_CONFIG,
+    });
+    return {
+      ownerId: owner.person.id,
+      agentId: aId,
+      daemonId: dId,
+      daemonToken: token,
+      runtimeId: rId,
+    };
   }
 
   function connect(
@@ -110,6 +136,60 @@ describe("RuntimeWsServer", () => {
       ws.once("error", () => resolve({ statusCode: 0 }));
     });
   }
+
+  it("replays pending sessions on connect — pushes task_available per row", async () => {
+    const fx = await setupFixture();
+
+    // Seed two pending sessions on the subscribed runtime; the older one
+    // should land in the daemon's inbox first.
+    const s1 = sessionId();
+    await sessionRepo.create({
+      id: s1,
+      agent_id: fx.agentId,
+      type: "task",
+      intent: "first",
+      status: "pending",
+      runtime_id: fx.runtimeId,
+    });
+    // Force a created_at gap so the ORDER BY in listPendingForRuntimeIds
+    // resolves deterministically — same shape as the claim-order tests
+    // in PostgresSessionRepository.
+    await new Promise((r) => setTimeout(r, 15));
+    const s2 = sessionId();
+    await sessionRepo.create({
+      id: s2,
+      agent_id: fx.agentId,
+      type: "task",
+      intent: "second",
+      status: "pending",
+      runtime_id: fx.runtimeId,
+    });
+
+    // Custom open: attach the message listener BEFORE the server-side
+    // replayPending fan-out lands, otherwise the events are dropped (ws
+    // library doesn't buffer when no listener is present at emit time).
+    const ws = new WebSocket(`ws://localhost:${port}/runtime/ws?runtime_ids=${fx.runtimeId}`, {
+      headers: { Authorization: `Bearer ${fx.daemonToken}` },
+    });
+    const messages: Array<{ type: string; session_id?: string }> = [];
+    ws.on("message", (data) => {
+      messages.push(JSON.parse(data.toString()));
+    });
+    await new Promise<void>((resolve, reject) => {
+      ws.once("open", () => resolve());
+      ws.once("error", reject);
+    });
+
+    // Both pushes arrive asynchronously after onConnect's fire-and-forget
+    // replay completes; wait until we've seen both.
+    await waitFor(async () => (messages.length >= 2 ? true : undefined));
+
+    expect(messages.map((m) => m.session_id)).toEqual([s1, s2]);
+    expect(messages.every((m) => m.type === "task_available")).toBe(true);
+
+    ws.close();
+    await new Promise((r) => setTimeout(r, 30));
+  });
 
   it("upgrades a valid daemon caller and registers it on the hub", async () => {
     const fx = await setupFixture();

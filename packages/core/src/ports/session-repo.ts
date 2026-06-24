@@ -73,6 +73,19 @@ export interface SessionRepository {
   }): Promise<Session[]>;
 
   /**
+   * Pending sessions bound to any of `runtimeIds`, ordered oldest-first,
+   * capped at `limit`. Used by the WS push channel's replay-on-connect
+   * path to wake a daemon for sessions it may have missed while its
+   * previous socket was half-open. The narrow return shape ({id,
+   * runtime_id}) is all the wakeup needs — `hub.notify` passes both, the
+   * daemon discards everything except runtime_id and re-polls.
+   */
+  listPendingForRuntimeIds(
+    runtimeIds: string[],
+    limit: number,
+  ): Promise<Array<{ id: string; runtime_id: string }>>;
+
+  /**
    * Atomically claim the next pending session bound to `runtimeId` and
    * promote it to `running`. Returns undefined when nothing is pending.
    * Implemented with `SELECT … FOR UPDATE SKIP LOCKED` so concurrent claims

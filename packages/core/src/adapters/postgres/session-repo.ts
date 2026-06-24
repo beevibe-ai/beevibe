@@ -134,6 +134,22 @@ export class PostgresSessionRepository implements SessionRepository {
     return rows.map(rowToSession);
   }
 
+  async listPendingForRuntimeIds(
+    runtimeIds: string[],
+    limit: number,
+  ): Promise<Array<{ id: string; runtime_id: string }>> {
+    if (runtimeIds.length === 0 || limit <= 0) return [];
+    const { rows } = await this.pool.query<{ id: string; runtime_id: string }>(
+      `SELECT id, runtime_id FROM session
+        WHERE status = 'pending'
+          AND runtime_id = ANY($1::text[])
+        ORDER BY created_at ASC
+        LIMIT $2`,
+      [runtimeIds, limit],
+    );
+    return rows;
+  }
+
   async claimNextForRuntime(runtimeId: string): Promise<Session | undefined> {
     return this.claimNextWhere("s.runtime_id = $1", [runtimeId]);
   }

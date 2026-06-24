@@ -487,6 +487,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     hub: daemonHub,
     authDeps: { agentRepo, personRepo, daemonRepo },
     runtimeRepo,
+    sessionRepo,
   });
   runtimeWsServer.attach(server.getHttpServer());
 
