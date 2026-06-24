@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReactElement } from "react";
+import type { CSSProperties, ReactElement } from "react";
 import { AlertCircle, CornerDownRight } from "lucide-react";
 import type { ChatStreamStep, ChatStreamTree } from "@/lib/chat-stream";
 import { categoryAccent, formatTool } from "@/lib/tool-format";
@@ -42,6 +42,7 @@ export function ToolStepList({
   tree,
   parentSessionId,
   depth = 0,
+  emphasizeLatest = false,
 }: {
   steps: ChatStreamStep[];
   totalSteps: number;
@@ -49,6 +50,12 @@ export function ToolStepList({
   tree?: ChatStreamTree;
   parentSessionId?: string;
   depth?: number;
+  /**
+   * Live mode: spotlight the newest row (large + bright + a one-shot pop-in)
+   * and fade older rows progressively into the back, so attention tracks the
+   * step the agent is on right now. Off for static/completed lists.
+   */
+  emphasizeLatest?: boolean;
 }) {
   const childIds =
     tree && parentSessionId ? tree.children[parentSessionId] ?? [] : [];
@@ -61,7 +68,11 @@ export function ToolStepList({
       )}
     >
       {steps.flatMap((step, idx) => {
-        const isLatest = idx === steps.length - 1;
+        const fromEnd = steps.length - 1 - idx;
+        const isLatest = fromEnd === 0;
+        // Live spotlight: newest row pops + stays full opacity; older rows
+        // fade and recede. Off → no extra class/style (flat list).
+        const emph = emphasizeLatest ? rowEmphasis(fromEnd) : undefined;
         if (step.kind === "tool_result") {
           // session_search discover results get the rich recall block in
           // place of the lean one-line result row. Falls back to the lean
@@ -71,13 +82,25 @@ export function ToolStepList({
             const recall = parseRecallContent(step.content);
             if (recall && recall.hits.length > 0) {
               return [
-                <li key={step.event_id} className="pl-3 pt-1">
+                <li
+                  key={step.event_id}
+                  className={cn("pl-3 pt-1", emph?.className)}
+                  style={emph?.style}
+                >
                   <SessionRecallBlock result={recall} maxHits={1} dense />
                 </li>,
               ];
             }
           }
-          return [<ResultRow key={step.event_id} step={step} isLatest={isLatest} />];
+          return [
+            <ResultRow
+              key={step.event_id}
+              step={step}
+              isLatest={isLatest}
+              className={emph?.className}
+              style={emph?.style}
+            />,
+          ];
         }
         const isCreateTask =
           step.kind === "tool_call" && step.tool_name === "create_task";
@@ -86,7 +109,13 @@ export function ToolStepList({
             ? childIds[createTaskCallIndex++]
             : undefined;
         const rows: ReactElement[] = [
-          <CallRow key={step.event_id} step={step} isLatest={isLatest} />,
+          <CallRow
+            key={step.event_id}
+            step={step}
+            isLatest={isLatest}
+            className={emph?.className}
+            style={emph?.style}
+          />,
         ];
         if (inlineChildId) {
           // <li> wrapper keeps the <ul> children list valid; the
@@ -113,10 +142,36 @@ export function ToolStepList({
   );
 }
 
-function CallRow({ step, isLatest }: { step: ChatStreamStep; isLatest: boolean }) {
+/**
+ * Live-spotlight styling for a row by its distance from the newest step.
+ * Newest (`fromEnd === 0`) pops big + bright; older rows fade toward a 0.4
+ * floor and recede. `transition` makes a row demote smoothly when the next
+ * step arrives; `origin-left` keeps the scale anchored to the row start.
+ */
+function rowEmphasis(fromEnd: number): { className: string; style: CSSProperties } {
+  return {
+    className: cn(
+      "transition-[opacity,transform] duration-300 origin-left",
+      fromEnd === 0 && "font-medium scale-[1.03] animate-step-pop",
+    ),
+    style: { opacity: Math.max(0.4, 1 - fromEnd * 0.22) },
+  };
+}
+
+function CallRow({
+  step,
+  isLatest,
+  className,
+  style,
+}: {
+  step: ChatStreamStep;
+  isLatest: boolean;
+  className?: string;
+  style?: CSSProperties;
+}) {
   const display = formatTool(step.tool_name, step.content);
   return (
-    <li className="flex items-center gap-1.5 text-muted-foreground/80">
+    <li className={cn("flex items-center gap-1.5 text-muted-foreground/80", className)} style={style}>
       <span
         className={cn(
           "shrink-0 inline-flex items-center justify-center h-4 w-4 rounded opacity-70",
@@ -138,14 +193,24 @@ function CallRow({ step, isLatest }: { step: ChatStreamStep; isLatest: boolean }
   );
 }
 
-function ResultRow({ step, isLatest }: { step: ChatStreamStep; isLatest: boolean }) {
+function ResultRow({
+  step,
+  isLatest,
+  className,
+  style,
+}: {
+  step: ChatStreamStep;
+  isLatest: boolean;
+  className?: string;
+  style?: CSSProperties;
+}) {
   // `[error] ` prefix comes from the runtime adapter when the tool
   // reported `is_error: true`; strip it before display.
   const isError = step.content.startsWith("[error] ");
   const text = isError ? step.content.slice("[error] ".length) : step.content;
   const Icon = isError ? AlertCircle : CornerDownRight;
   return (
-    <li className="flex items-center gap-1.5 pl-3">
+    <li className={cn("flex items-center gap-1.5 pl-3", className)} style={style}>
       <span
         className={cn(
           "shrink-0 inline-flex items-center justify-center h-4 w-4",
