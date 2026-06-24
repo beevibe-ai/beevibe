@@ -335,6 +335,13 @@ export function useChat(opts: UseChatOptions = {}) {
     error: exposedError,
     /** Renamed from pendingSessionId — semantics unchanged at the call site. */
     pendingSessionId: inFlightSessionId,
+    /**
+     * Head id of the loaded chain (full `sess_xxx`), or undefined for a
+     * brand-new surface with no persisted history yet. The chat page derives
+     * its short_id to fetch the conversation's persisted per-turn transcripts
+     * (so a finished turn's working trace survives reload).
+     */
+    conversationId: history.data?.conversation_id ?? undefined,
     /** History query state, for showing a "loading prior conversation…" indicator. */
     isLoadingHistory: history.isLoading,
     /**

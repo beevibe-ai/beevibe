@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -9,6 +9,7 @@ import {
   ArrowRight,
   ArrowUp,
   Bell,
+  ChevronRight,
   MessageSquare,
   Star,
 } from "lucide-react";
@@ -27,10 +28,12 @@ import {
   type ChatStreamStep,
   type ChatStreamTree,
 } from "@/lib/chat-stream";
+import { useConversation } from "@/lib/hooks/use-sessions";
+import type { TranscriptEntry } from "@/lib/types/sessions";
 import { useMe } from "@/lib/hooks/use-me";
 import { useAgents } from "@/lib/hooks/use-agents";
 import { queryKeys } from "@/lib/hooks/keys";
-import { formatRelativeTime } from "@/lib/format";
+import { deriveShortId, formatRelativeTime } from "@/lib/format";
 import { defaultTryGoal, formatStars } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/avatar";
@@ -49,6 +52,22 @@ function useTeamAgent() {
 }
 
 const EMPTY_STEPS: ChatStreamStep[] = [];
+
+/**
+ * Map a persisted `TranscriptEntry` to the `ChatStreamStep` shape the live
+ * SSE stream produces, so completed turns render through the same
+ * `ToolStepList` as the live working box. `received_at: 0` matches the
+ * polled-step mapping in the room view — ordering comes from array index.
+ */
+const toStreamStep =
+  (turnId: string) =>
+  (entry: TranscriptEntry, i: number): ChatStreamStep => ({
+    event_id: `${turnId}-${i}`,
+    kind: entry.kind,
+    ...(entry.tool_name ? { tool_name: entry.tool_name } : {}),
+    content: entry.content,
+    received_at: 0,
+  });
 
 const PROMPT_SUGGESTIONS = [
   "What's on the team's plate today?",
@@ -81,11 +100,19 @@ export function ChatClient() {
   const conversationParam = searchParams?.get("c") ?? undefined;
   const isFresh = searchParams?.get("new") === "1";
 
-  const { messages, send, isPending, isSubmitting, error, pendingSessionId, runtimeMismatch } =
-    useChat({
-      conversationId: conversationParam,
-      fresh: isFresh,
-    });
+  const {
+    messages,
+    send,
+    isPending,
+    isSubmitting,
+    error,
+    pendingSessionId,
+    runtimeMismatch,
+    conversationId,
+  } = useChat({
+    conversationId: conversationParam,
+    fresh: isFresh,
+  });
 
   // Tree mode subscribes to both `session.step` and `session.spawned`
   // events for the team session AND every IC it spawns via create_task.
@@ -93,12 +120,33 @@ export function ChatClient() {
   // is a true escape hatch during rollout.
   const chatTreeEnabled = process.env.NEXT_PUBLIC_CHAT_TREE_UI === "1";
   const liveTree = useChatStreamTree(chatTreeEnabled ? pendingSessionId : undefined);
-  const liveStepsFlat = useChatStream(chatTreeEnabled ? undefined : pendingSessionId);
-  const liveSteps: ChatStreamStep[] = chatTreeEnabled
-    ? pendingSessionId
-      ? liveTree.steps[pendingSessionId] ?? EMPTY_STEPS
-      : EMPTY_STEPS
-    : liveStepsFlat;
+  const liveStreamFlat = useChatStream(chatTreeEnabled ? undefined : pendingSessionId);
+  // Per-session step map keyed by full session id. `liveMap` holds steps
+  // streamed this session — used both for the in-flight "Working" box and a
+  // just-finished turn's trace; `persistedStepsBySession` (below) holds the
+  // persisted transcript so the trace survives reload / opening an older chat.
+  const liveMap = chatTreeEnabled ? liveTree.steps : liveStreamFlat.stepsBySession;
+  const liveSteps = pendingSessionId ? liveMap[pendingSessionId] ?? EMPTY_STEPS : EMPTY_STEPS;
+
+  // Fetch the loaded chain's persisted per-turn transcripts so a finished
+  // turn's working trace renders even when its live SSE steps aren't in
+  // memory (cold load, prior history). Keyed by full turn/session id.
+  const headShortId = conversationId ? deriveShortId(conversationId) : undefined;
+  const conversation = useConversation(headShortId);
+  const persistedStepsBySession = useMemo(() => {
+    const map: Record<string, ChatStreamStep[]> = {};
+    for (const turn of conversation.data?.turns ?? []) {
+      map[turn.id] = turn.transcript.map(toStreamStep(turn.id));
+    }
+    return map;
+  }, [conversation.data]);
+
+  // Persisted wins when present (full untruncated content, richer recall
+  // blocks); live is the immediate fallback for a turn that just finished
+  // before the conversation query refetches — so no empty-dropdown flicker.
+  const stepsFor = (sessionId: string): ChatStreamStep[] | undefined =>
+    persistedStepsBySession[sessionId] ?? liveMap[sessionId];
+
   const transcriptRef = useRef<HTMLDivElement | null>(null);
   const teamAgent = useTeamAgent();
 
@@ -222,6 +270,12 @@ export function ChatClient() {
                       onSuggest={submit}
                       teamAgent={teamAgent}
                       isFirstInGroup={isFirstInGroup}
+                      steps={
+                        m.role === "agent" && m.session_id
+                          ? stepsFor(m.session_id)
+                          : undefined
+                      }
+                      tree={chatTreeEnabled ? liveTree : undefined}
                     />
                   );
                 })}
@@ -504,6 +558,8 @@ function Bubble({
   onSuggest,
   teamAgent,
   isFirstInGroup,
+  steps,
+  tree,
 }: {
   message: ChatMessage;
   showSuggestions?: boolean;
@@ -515,6 +571,10 @@ function Bubble({
     specialization?: string;
   };
   isFirstInGroup: boolean;
+  /** Completed turn's working trace, rendered as a collapsed disclosure above the reply. */
+  steps?: ChatStreamStep[];
+  /** Tree of spawned IC sessions, for inline transcripts in the disclosure (tree mode only). */
+  tree?: ChatStreamTree;
 }) {
   const isUser = message.role === "user";
   const refIds = !isUser ? message.view_refs ?? [] : [];
@@ -551,9 +611,21 @@ function Bubble({
             <div className="text-sm whitespace-pre-wrap">{message.content}</div>
           </div>
         ) : (
-          <div className="py-1 text-sm leading-6 text-foreground/90">
-            <ChatMarkdown content={message.content} inverted={false} />
-          </div>
+          <>
+            {/* Collapsed working trace, above the reply — the tool steps ran
+                before the agent produced its answer (chrono order), and
+                they no longer vanish when the turn completes. */}
+            {steps ? (
+              <WorkedDisclosure
+                steps={steps}
+                tree={tree}
+                parentSessionId={message.session_id}
+              />
+            ) : null}
+            <div className="py-1 text-sm leading-6 text-foreground/90">
+              <ChatMarkdown content={message.content} inverted={false} />
+            </div>
+          </>
         )}
         {!isUser ? (
           <>
@@ -569,6 +641,45 @@ function Bubble({
         ) : null}
       </div>
     </div>
+  );
+}
+
+/**
+ * A finished turn's working trace, collapsed into a drop-down above the
+ * reply. Expands to the same `ToolStepList` the live working box uses, so
+ * live and completed traces read identically (category icons, inline IC
+ * transcripts, session_search recall blocks). Renders nothing when the turn
+ * made no tool calls.
+ */
+function WorkedDisclosure({
+  steps,
+  tree,
+  parentSessionId,
+}: {
+  steps: ChatStreamStep[];
+  tree?: ChatStreamTree;
+  parentSessionId?: string;
+}) {
+  const toolSteps = steps.filter(
+    (s) => s.kind === "tool_call" || s.kind === "tool_result",
+  );
+  if (toolSteps.length === 0) return null;
+  const count = toolSteps.filter((s) => s.kind === "tool_call").length;
+  return (
+    <details className="group w-full mb-1">
+      <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none text-[10px] uppercase tracking-wide text-muted-foreground/45 hover:text-muted-foreground/70 [&::-webkit-details-marker]:hidden">
+        <ChevronRight className="h-3 w-3 transition-transform group-open:rotate-90" />
+        Worked · {count} step{count === 1 ? "" : "s"}
+      </summary>
+      <div className="mt-1.5">
+        <ToolStepList
+          steps={toolSteps}
+          totalSteps={toolSteps.length}
+          tree={tree}
+          parentSessionId={parentSessionId}
+        />
+      </div>
+    </details>
   );
 }
 
@@ -772,6 +883,24 @@ function Thinking({
         />
       </div>
       <div className="max-w-[78%] min-w-0 py-1">
+        {/* Working box on top — the tool steps stream in as the agent works,
+            and the reply text renders below them (chrono order, ChatGPT
+            shape). When the turn completes this whole block is replaced by
+            the agent Bubble, which re-renders the same steps as a collapsed
+            WorkedDisclosure above its reply. */}
+        {recentTools.length > 0 ? (
+          <div className="mb-3">
+            <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/45">
+              Working
+            </div>
+            <ToolStepList
+              steps={recentTools}
+              totalSteps={toolSteps.length}
+              tree={tree}
+              parentSessionId={rootSessionId}
+            />
+          </div>
+        ) : null}
         {hasWorkingText ? (
           <div className="text-sm leading-6 text-foreground/90">
             <ChatMarkdown content={streamingText} />
@@ -781,20 +910,6 @@ function Thinking({
             <ChatLoader compact />
           </div>
         )}
-        {recentTools.length > 0 ? (
-          <div className={cn(hasWorkingText ? "mt-3" : "mt-2")}>
-            <div className="mb-1 text-[10px] uppercase tracking-wide text-muted-foreground/45">
-              Working
-            </div>
-            <ToolStepList
-              steps={recentTools}
-              totalSteps={toolSteps.length}
-              withTopBorder={hasWorkingText}
-              tree={tree}
-              parentSessionId={rootSessionId}
-            />
-          </div>
-        ) : null}
       </div>
     </div>
   );

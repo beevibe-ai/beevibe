@@ -30,12 +30,26 @@ function parseStep(ev: BvEvent): ChatStreamStep | undefined {
   };
 }
 
+export interface ChatStream {
+  /** Steps for the subscribed `sessionId` (empty when none). */
+  steps: ChatStreamStep[];
+  /**
+   * Every session this hook instance has accumulated steps for, keyed by
+   * full session id. Persists across turns (each completed turn keeps its
+   * steps here), so a finished chat turn can still render its working
+   * trace as a collapsed disclosure looked up by the agent message's
+   * `session_id`.
+   */
+  stepsBySession: Record<string, ChatStreamStep[]>;
+}
+
 /**
  * Stream of `session.step` events scoped to one session id. Returns the
- * accumulated step list (new chat turn → fresh array, since the new
- * sessionId triggers a new state slot via React's per-render closure).
+ * accumulated step list for that session (new chat turn → fresh array,
+ * since the new sessionId triggers a new state slot via React's per-render
+ * closure) plus the full per-session map for looking up completed turns.
  */
-export function useChatStream(sessionId: string | undefined): ChatStreamStep[] {
+export function useChatStream(sessionId: string | undefined): ChatStream {
   // Keying state by sessionId means each turn gets its own fresh `steps`
   // array — no separate reset effect to race with the resubscription.
   const [stepsBySession, setStepsBySession] = useState<Record<string, ChatStreamStep[]>>({});
@@ -55,7 +69,10 @@ export function useChatStream(sessionId: string | undefined): ChatStreamStep[] {
   );
   useSseEvents(onEvent);
 
-  return sessionId ? stepsBySession[sessionId] ?? EMPTY : EMPTY;
+  return {
+    steps: sessionId ? stepsBySession[sessionId] ?? EMPTY : EMPTY,
+    stepsBySession,
+  };
 }
 
 const EMPTY: ChatStreamStep[] = [];

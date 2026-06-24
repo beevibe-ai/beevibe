@@ -138,3 +138,29 @@ describe("formatTool — session_search shape detection", () => {
     expect(formatTool("session_search", "[]").label).toBe("Browsed recent sessions");
   });
 });
+
+describe("formatTool — empty-args blobs render no stray detail", () => {
+  // find_subordinates() takes no args, so describeToolInput emits "{}".
+  // Without cleanup that rendered as "Surveyed the team {}" — the stray
+  // braces are noise, so the detail should be blank.
+  it("find_subordinates with empty '{}' args → 'Surveyed the team', no detail", () => {
+    const display = formatTool("mcp__beevibe__find_subordinates", "{}");
+    expect(display.label).toBe("Surveyed the team");
+    expect(display.detail).toBe("");
+    expect(display.category).toBe("team");
+  });
+
+  it("find_peers / find_up also drop the empty-object detail", () => {
+    expect(formatTool("find_peers", "{}").detail).toBe("");
+    expect(formatTool("find_up", "{ }").detail).toBe("");
+  });
+
+  it("empty object/array args carry no detail for any tool", () => {
+    expect(formatTool("get_agent_profile", "{}").detail).toBe("");
+    expect(formatTool("create_task", "[]").detail).toBe("");
+  });
+
+  it("non-empty args still render a detail", () => {
+    expect(formatTool("Bash", "ls -la").detail).toBe("ls -la");
+  });
+});

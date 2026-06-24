@@ -46,6 +46,11 @@ export function normalizeToolName(toolName: string | undefined): string {
 }
 
 function cleanToolDetail(content: string): string {
+  // Empty-args blobs (`{}`, `[]`) carry no information — describeToolInput
+  // emits "{}" for no-arg tools like find_subordinates. Render no detail
+  // rather than a stray "{}" next to the verb.
+  const raw = content.trim();
+  if (raw === "" || /^\{\s*\}$/.test(raw) || /^\[\s*\]$/.test(raw)) return "";
   const detail = content
     .trim()
     .replace(/mcp__[^_]+__/g, "")
