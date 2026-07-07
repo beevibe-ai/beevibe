@@ -67,6 +67,14 @@ export interface Agent {
   /** Preferred runtime binding; null when no daemon registered for the agent's CLI. */
   preferred_runtime_id?: string;
   /**
+   * Optional template name keyed into {@link import('../templates').getAgentTemplate}.
+   * When set, the spawn pipeline pulls the template's system prompt addition
+   * (via `composeSystemPromptAppend`) and merges the template's MCP servers
+   * into the workspace's mcp-config.json. Stable across operator edits — the
+   * template lives in code, the choice lives in the agent row.
+   */
+  agent_template?: string;
+  /**
    * Soft-archive marker (Phase 9). Agents stay in the DB for mesh
    * history + audit; the web list views and the agent picker hide
    * any agent with archived_at set.

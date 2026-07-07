@@ -5,6 +5,7 @@ import type { Agent } from "../../domain/agent.js";
 import type { RuntimeRegistry, Workspace } from "../../ports/runtime.js";
 import type { WorkspaceManager } from "../../ports/workspace.js";
 import { syncSkills, tierFilterFor } from "../../services/skills/index.js";
+import { getAgentTemplate } from "../../templates/registry.js";
 
 /**
  * Filesystem-backed WorkspaceManager.
@@ -85,7 +86,12 @@ export class LocalWorkspaceManager implements WorkspaceManager {
       );
     }
     const configPath = join(path, "mcp-config.json");
-    const expected = buildMcpConfig(agent.api_key, this.config.mcpServerUrl);
+    const template = getAgentTemplate(agent.agent_template);
+    const expected = buildMcpConfig(
+      agent.api_key,
+      this.config.mcpServerUrl,
+      template?.mcp_servers,
+    );
     // Auto-refresh on drift: previously this was guarded by a bare
     // `existsSync` and a stale URL or rotated bv_a_ would persist until
     // the operator manually rm'd the file (documented but undiscoverable).
@@ -167,8 +173,23 @@ export const MCP_TOOL_TIMEOUT_MS = 10 * 60_000;
  * `${BEEVIBE_SESSION_ID}` is a literal placeholder; the Claude CLI
  * interpolates from process env at config parse time, and the spawner
  * sets BEEVIBE_SESSION_ID on the subprocess env.
+ *
+ * `extraMcpServers` carries any agent-template-contributed servers
+ * (e.g. the `adr` server for the CTO Bee). Keys that collide with the
+ * universal `beevibe` slot are ignored — that slot is reserved.
  */
-export function buildMcpConfig(apiKey: string, mcpServerUrl: string): string {
+export function buildMcpConfig(
+  apiKey: string,
+  mcpServerUrl: string,
+  extraMcpServers?: Record<string, unknown>,
+): string {
+  const extras: Record<string, unknown> = {};
+  if (extraMcpServers) {
+    for (const [name, server] of Object.entries(extraMcpServers)) {
+      if (name === "beevibe") continue;
+      extras[name] = server;
+    }
+  }
   return (
     JSON.stringify(
       {
@@ -182,6 +203,7 @@ export function buildMcpConfig(apiKey: string, mcpServerUrl: string): string {
               "X-Beevibe-Session": "${BEEVIBE_SESSION_ID}",
             },
           },
+          ...extras,
         },
       },
       null,

@@ -112,8 +112,8 @@ export class PostgresAgentRepository implements AgentRepository {
          id, name, owner_id, parent_agent_id, hierarchy_level,
          api_key, review_policy, runtime_config,
          max_task_sessions, max_mesh_sessions, max_negotiation_rounds,
-         preferred_runtime_id
-       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+         preferred_runtime_id, agent_template
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
        RETURNING *`,
       [
         input.id,
@@ -128,6 +128,7 @@ export class PostgresAgentRepository implements AgentRepository {
         input.max_mesh_sessions ?? null,
         input.max_negotiation_rounds ?? null,
         input.preferred_runtime_id ?? null,
+        input.agent_template ?? null,
       ],
     );
     return rowToAgent(rows[0]!);
@@ -146,6 +147,7 @@ export class PostgresAgentRepository implements AgentRepository {
       max_mesh_sessions: "max_mesh_sessions",
       max_negotiation_rounds: "max_negotiation_rounds",
       preferred_runtime_id: "preferred_runtime_id",
+      agent_template: "agent_template",
       archived_at: "archived_at",
     });
 
@@ -184,6 +186,7 @@ function rowToAgent(row: AgentRow): Agent {
     max_mesh_sessions: row.max_mesh_sessions ?? undefined,
     max_negotiation_rounds: row.max_negotiation_rounds ?? undefined,
     preferred_runtime_id: row.preferred_runtime_id ?? undefined,
+    agent_template: row.agent_template ?? undefined,
     archived_at: row.archived_at ?? undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
