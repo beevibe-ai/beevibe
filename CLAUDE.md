@@ -102,6 +102,72 @@ docker exec beevibe-postgres psql -U beevibe -d beevibe -c "SELECT ..."
 DATABASE_URL=postgresql://beevibe:beevibe@localhost:5433/beevibe
 ```
 
+## Running tests
+
+`pnpm test` is **not** hermetic — integration tests need a real Postgres
+and the adapter tests make live provider calls. There is no
+`describe.skipIf`: missing prerequisites fail loudly by design.
+
+```bash
+docker compose up -d --wait postgres
+docker exec beevibe-postgres psql -U beevibe -d beevibe \
+  -c 'CREATE DATABASE beevibe_test;'
+# .env needs DATABASE_URL, DATABASE_URL_TEST, OPENAI_API_KEY, ANTHROPIC_API_KEY
+pnpm migrate up && pnpm migrate:test up
+pnpm test
+```
+
+`.github/workflows/ci.yml` is the source of truth; CONTRIBUTING.md has
+the long form. Narrower loop: `pnpm --filter @beevibe/core test`.
+
+### Recognizing environmental failures vs. real ones
+
+In a sandbox with no Docker and no provider keys, these failures are
+**pre-existing and unrelated to your change** — don't chase them:
+
+| Message | Cause |
+| --- | --- |
+| `DATABASE_URL_TEST env var is required…` | no Postgres |
+| `Cannot read properties of undefined (reading 'end')` in `afterAll` | knock-on from the above |
+| `OPENAI_API_KEY missing` / `ANTHROPIC_API_KEY missing` | no provider keys |
+
+Baseline in a bare sandbox (no Docker, no keys), for comparison rather
+than expecting green:
+
+| Package | Result |
+| --- | --- |
+| `@beevibe/api` | 27 files pass, 9 fail (308 tests pass) |
+| `@beevibe/core` | 9 tests fail, 415 pass |
+| `@beevibe/scheduler` | 2 files pass, 2 fail (10 tests pass) |
+| `@beevibe/sandbox` | exits 0 — its only suite is Docker-gated and skips |
+
+`typecheck`, `lint`, and `build` need none of this and should always be
+clean — use them as the real gate when the DB isn't available.
+
+### `pnpm build` fails on web behind a proxy
+
+Turbo 2.x runs tasks in **strict env mode** and `turbo.json` declares no
+`globalPassThroughEnv`, so `HTTPS_PROXY` / `NODE_EXTRA_CA_CERTS` are
+stripped before the task runs. `next/font` then can't verify the proxy's
+CA when fetching Google Fonts:
+
+```
+FetchError: request to https://fonts.googleapis.com/… failed,
+  reason: self-signed certificate in certificate chain
+```
+
+The network is fine — verify with
+`curl -sS -o /dev/null -w '%{http_code}\n' https://fonts.googleapis.com/css2?family=Inter`.
+Build the package directly to bypass Turbo:
+
+```bash
+pnpm --filter @beevibe/web exec next build
+```
+
+Diagnose Turbo's env filtering with
+`npx turbo run build --filter=@beevibe/web --dry-run=json` and check
+`envMode` / `passthrough`.
+
 ## Deploying
 
 ```bash

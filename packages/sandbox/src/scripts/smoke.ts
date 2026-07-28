@@ -8,8 +8,6 @@
  *
  * Run: pnpm --filter @beevibe/sandbox smoke
  */
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import {
   createSandbox,
   destroySandbox,

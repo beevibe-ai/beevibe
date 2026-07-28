@@ -72,12 +72,109 @@ pnpm tsx packages/daemon/src/main.ts start
 pnpm build              # build all packages (turbo)
 pnpm typecheck          # TypeScript across the workspace
 pnpm lint               # ESLint
-pnpm test               # unit + integration (CI runs this)
+pnpm test               # unit + integration (CI runs this — see below for setup)
 pnpm migrate up         # apply migrations to DATABASE_URL
 pnpm db:reset           # wipe + recreate the local DB
 pnpm install-skills     # sync /skills/* into ~/.claude/skills/
 pnpm sync-core-memory   # re-sync core memory block descriptions
 ```
+
+### Running the full test suite
+
+`pnpm test` is **not** hermetic. The integration tests talk to a real
+Postgres, and the embedding/LLM adapter tests make live provider calls —
+by design, there is no `describe.skipIf`, so missing prerequisites fail
+the suite loudly rather than silently skipping.
+
+Prerequisites:
+
+| Requirement | Why | Symptom when missing |
+| --- | --- | --- |
+| Postgres on `:5433` + a `beevibe_test` DB | `createTestPool()` in `packages/core/src/test-helpers.ts` | `DATABASE_URL_TEST env var is required…`, then `Cannot read properties of undefined (reading 'end')` in `afterAll` |
+| `OPENAI_API_KEY` | `OpenAIEmbeddingService` / `OpenAILlmProvider` tests | `OPENAI_API_KEY missing` |
+| `ANTHROPIC_API_KEY` | `AnthropicLlmProvider` tests | `ANTHROPIC_API_KEY missing` |
+
+Full setup from a clean checkout (this mirrors `.github/workflows/ci.yml`,
+which is the source of truth):
+
+```bash
+# 1. Postgres (pgvector/pgvector:pg16, same image CI uses)
+docker compose up -d --wait postgres
+
+# 2. Create the dedicated test database — separate from the dev DB,
+#    because the suite TRUNCATEs every table between cases.
+docker exec beevibe-postgres \
+  psql -U beevibe -d beevibe -c 'CREATE DATABASE beevibe_test;'
+
+# 3. .env must carry both URLs plus the provider keys.
+#    `pnpm bootstrap` writes this for you; otherwise copy .env.example.
+cat > .env <<'EOF'
+DATABASE_URL=postgresql://beevibe:beevibe@localhost:5433/beevibe
+DATABASE_URL_TEST=postgresql://beevibe:beevibe@localhost:5433/beevibe_test
+OPENAI_API_KEY=sk-…
+ANTHROPIC_API_KEY=sk-ant-…
+EOF
+
+# 4. Migrate both databases
+pnpm migrate up
+pnpm migrate:test up
+
+# 5. Run it
+pnpm test
+```
+
+Narrower loops while iterating:
+
+```bash
+pnpm --filter @beevibe/core test              # one package
+pnpm --filter @beevibe/api test -- routes/     # one path
+pnpm --filter @beevibe/core test -- --watch    # watch mode
+```
+
+Pure-unit packages need no setup at all — `@beevibe/sandbox` and the
+non-DB suites in `api`/`scheduler` pass against an empty environment, so
+a quick `pnpm --filter @beevibe/api test` still exercises ~300 cases
+without Postgres.
+
+Not run in CI: the live Claude CLI smoke test. Run it manually
+pre-release with a real `claude` binary on `PATH`:
+
+```bash
+RUN_CLAUDE_SMOKE=1 pnpm --filter @beevibe/core test smoke
+```
+
+### Building behind an HTTP proxy
+
+Turbo 2.x runs tasks in **strict env mode**, which passes only declared
+variables through to each task. `turbo.json` declares no
+`globalPassThroughEnv`, so `HTTPS_PROXY` and `NODE_EXTRA_CA_CERTS` are
+stripped before the task starts. Behind a TLS-terminating proxy (a
+corporate network, or a cloud dev sandbox) `next build` then fails while
+`next/font` fetches Google Fonts:
+
+```
+FetchError: request to https://fonts.googleapis.com/… failed,
+  reason: self-signed certificate in certificate chain
+```
+
+The network is fine — the task just can't see the CA bundle. Either
+build the package directly, bypassing Turbo:
+
+```bash
+pnpm --filter @beevibe/web exec next build
+```
+
+…or let Turbo forward the proxy variables by adding to `turbo.json`:
+
+```json
+"globalPassThroughEnv": [
+  "HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy",
+  "NO_PROXY", "no_proxy", "NODE_EXTRA_CA_CERTS"
+]
+```
+
+Passthrough variables don't contribute to Turbo's cache keys, so this
+won't invalidate caches when the proxy address changes.
 
 ### Monorepo layout
 

@@ -10,7 +10,6 @@
  *   GET  /repo-runs/:id/artifacts/:file serve artifact bytes from host fs
  */
 
-import { createReadStream, statSync } from "node:fs";
 import { basename } from "node:path";
 import { Router, type RequestHandler } from "express";
 import type {
