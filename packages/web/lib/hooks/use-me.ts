@@ -1,7 +1,7 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { api, type HealthResponse, type MeResponse } from "@/lib/api/client";
+import { useQuery } from "@tanstack/react-query";
+import { api, type MeResponse } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "./keys";
 
@@ -29,24 +29,4 @@ export function useIsOwner(ownerId: string | undefined): boolean | null {
   const me = useMe();
   if (!me.data) return null;
   return me.data.person.id === ownerId;
-}
-
-export function useLlmHealth(enabled = true) {
-  return useQuery<HealthResponse>({
-    queryKey: queryKeys.me.health(),
-    queryFn: ({ signal }) => api.me.health({ signal }),
-    enabled: isApiConfigured && enabled,
-    retry: false,
-    staleTime: 5_000,
-  });
-}
-
-export function useCompleteOnboarding() {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: () => api.me.completeOnboarding(),
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: queryKeys.me.all });
-    },
-  });
 }

@@ -5,7 +5,6 @@ import { useRef, useState } from "react";
 import { Bot } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { Skeleton } from "@/components/skeleton";
-import { useAgents } from "@/lib/hooks/use-agents";
 import type { AgentDisplay } from "@/lib/types/agents";
 
 /**
@@ -101,8 +100,6 @@ export type AgentSelectHandler = (agentId: string) => void;
  * Render a single team's knowledge graph. Pass an explicit `agents`
  * array (typed as one team + its IC subordinates); the component picks
  * the top-level agent as the center and arranges the ICs around it.
- * For a self-rendering convenience that fetches the caller's own
- * agents, use <SelfTeamOrbit /> below.
  */
 export function TeamOrbit({
   agents,
@@ -145,15 +142,6 @@ export function TeamOrbit({
       ) : null}
     </div>
   );
-}
-
-/**
- * Self-rendering convenience — fetches the caller's own agents and
- * passes them to TeamOrbit. Used on the dashboard's compact summary.
- */
-export function SelfTeamOrbit({ size = "large" }: { size?: TeamOrbitSize }) {
-  const { data, isLoading } = useAgents();
-  return <TeamOrbit agents={data} size={size} loading={isLoading} />;
 }
 
 function Graph({

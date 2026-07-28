@@ -92,11 +92,3 @@ export function EscalationStatusPill({ status, className }: { status: Escalation
 export function NegotiationStatusPill({ status, className }: { status: NegotiationStatus; className?: string }) {
   return <DotPill config={NEGOTIATION_PILL[status]} className={className} />;
 }
-
-export function PriorityPill({ priority }: { priority: string }) {
-  return (
-    <span className="inline-flex items-center h-6 px-2 rounded text-xs font-medium bg-secondary text-secondary-foreground">
-      {priority}
-    </span>
-  );
-}
