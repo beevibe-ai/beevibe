@@ -1,4 +1,3 @@
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   AgentRuntime,
@@ -7,6 +6,7 @@ import type {
   RuntimeResult,
   Workspace,
 } from "../../ports/runtime.js";
+import { cliVersionHealthCheck } from "../runtime-common.js";
 import { runCliProcess } from "./spawn.js";
 import {
   extractStepEvents,
@@ -172,23 +172,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
   }
 
   async healthCheck(): Promise<RuntimeHealth> {
-    try {
-      // graceMs: 0 so a broken binary fails fast rather than waiting the
-      // default 20s after SIGTERM.
-      const result = await runCliProcess({
-        command: this.config.command ?? "claude",
-        args: ["--version"],
-        cwd: tmpdir(),
-        timeoutMs: 5_000,
-        graceMs: 0,
-      });
-      return { healthy: result.exitCode === 0 };
-    } catch {
-      return {
-        healthy: false,
-        error: `Command not found: ${this.config.command ?? "claude"}`,
-      };
-    }
+    return cliVersionHealthCheck(this.config.command ?? "claude");
   }
 
   async shutdown(): Promise<void> {

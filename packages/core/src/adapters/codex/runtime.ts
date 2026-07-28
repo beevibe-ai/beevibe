@@ -1,5 +1,4 @@
 import { existsSync, readFileSync, unlinkSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   AgentRuntime,
@@ -11,6 +10,7 @@ import type {
 } from "../../ports/runtime.js";
 import { runCliProcess } from "../claude-code/spawn.js";
 import { MCP_TOOL_TIMEOUT_MS } from "../local-workspace/manager.js";
+import { cliVersionHealthCheck, composePrompt } from "../runtime-common.js";
 import {
   extractCodexStepEvents,
   parseCodexEventLine,
@@ -180,24 +180,9 @@ export class CodexRuntime implements AgentRuntime {
   }
 
   async healthCheck(): Promise<RuntimeHealth> {
-    try {
-      const result = await runCliProcess({
-        command: this.config.command ?? "codex",
-        args: ["--version"],
-        cwd: tmpdir(),
-        timeoutMs: 5_000,
-        graceMs: 0,
-      });
-      return {
-        healthy: result.exitCode === 0,
-        error: result.exitCode === 0 ? undefined : result.stderr.slice(-500),
-      };
-    } catch {
-      return {
-        healthy: false,
-        error: `Command not found: ${this.config.command ?? "codex"}`,
-      };
-    }
+    return cliVersionHealthCheck(this.config.command ?? "codex", {
+      includeStderrOnFailure: true,
+    });
   }
 
   async shutdown(): Promise<void> {
@@ -228,17 +213,6 @@ function buildGlobalArgs(context: RuntimeContext, config: CodexRuntimeConfig): s
   const model = context.model ?? config.model;
   if (model) args.push("--model", model);
   return args;
-}
-
-function composePrompt(context: RuntimeContext): string {
-  if (context.system_prompt_append.length === 0) return context.intent;
-  return [
-    "<beevibe_system_context>",
-    context.system_prompt_append,
-    "</beevibe_system_context>",
-    "",
-    context.intent,
-  ].join("\n");
 }
 
 function withBeevibeSession(mcpServerUrl: string, sid: string): string {

@@ -1,4 +1,5 @@
 import type { RuntimeResult, RuntimeStep } from "../../ports/runtime.js";
+import { parseNdjsonLine } from "../runtime-common.js";
 
 /**
  * Parser for Claude Code's `--output-format stream-json` output. Each line
@@ -59,13 +60,7 @@ export interface StreamJsonMessage {
 }
 
 export function parseStreamJsonLine(line: string): StreamJsonMessage | null {
-  const trimmed = line.trim();
-  if (!trimmed || !trimmed.startsWith("{")) return null;
-  try {
-    return JSON.parse(trimmed) as StreamJsonMessage;
-  } catch {
-    return null;
-  }
+  return parseNdjsonLine<StreamJsonMessage>(line);
 }
 
 /**

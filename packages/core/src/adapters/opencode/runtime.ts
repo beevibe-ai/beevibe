@@ -1,5 +1,4 @@
 import { existsSync, writeFileSync } from "node:fs";
-import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type {
   AgentRuntime,
@@ -10,6 +9,7 @@ import type {
   Workspace,
 } from "../../ports/runtime.js";
 import { runCliProcess } from "../claude-code/spawn.js";
+import { cliVersionHealthCheck, composePrompt } from "../runtime-common.js";
 import {
   extractOpenCodeStepEvents,
   parseOpenCodeEventLine,
@@ -133,21 +133,7 @@ export class OpenCodeRuntime implements AgentRuntime {
   }
 
   async healthCheck(): Promise<RuntimeHealth> {
-    try {
-      const result = await runCliProcess({
-        command: this.config.command ?? "opencode",
-        args: ["--version"],
-        cwd: tmpdir(),
-        timeoutMs: 5_000,
-        graceMs: 0,
-      });
-      return { healthy: result.exitCode === 0 };
-    } catch {
-      return {
-        healthy: false,
-        error: `Command not found: ${this.config.command ?? "opencode"}`,
-      };
-    }
+    return cliVersionHealthCheck(this.config.command ?? "opencode");
   }
 
   async shutdown(): Promise<void> {
@@ -165,17 +151,6 @@ export class OpenCodeRuntime implements AgentRuntime {
       mode: 0o600,
     });
   }
-}
-
-function composePrompt(context: RuntimeContext): string {
-  if (context.system_prompt_append.length === 0) return context.intent;
-  return [
-    "<beevibe_system_context>",
-    context.system_prompt_append,
-    "</beevibe_system_context>",
-    "",
-    context.intent,
-  ].join("\n");
 }
 
 export function buildOpenCodeConfig(apiKey: string, mcpServerUrl: string): string {
