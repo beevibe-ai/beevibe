@@ -23,7 +23,6 @@ import {
   PostgresPersonRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
-  PostgresWorkProductRepository,
   type Pool,
 } from "@beevibe/core/adapters/postgres";
 import { provisionAgent, provisionUser } from "@beevibe/core/auth";
@@ -49,7 +48,6 @@ describe("escalation routes — integration", () => {
   let coreMemoryRepo: PostgresCoreMemoryRepository;
   let sessionRepo: PostgresSessionRepository;
   let taskRepo: PostgresTaskRepository;
-  let workProductRepo: PostgresWorkProductRepository;
   let negotiationRepo: PostgresNegotiationRepository;
   let negotiationRoundRepo: PostgresNegotiationRoundRepository;
   let escalationRepo: PostgresEscalationRepository;
@@ -62,7 +60,6 @@ describe("escalation routes — integration", () => {
     coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
     sessionRepo = new PostgresSessionRepository(pool);
     taskRepo = new PostgresTaskRepository(pool);
-    workProductRepo = new PostgresWorkProductRepository(pool);
     negotiationRepo = new PostgresNegotiationRepository(pool);
     negotiationRoundRepo = new PostgresNegotiationRoundRepository(pool);
     escalationRepo = new PostgresEscalationRepository(pool);

@@ -149,9 +149,6 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const skillOutcomeRepo = new PostgresSkillOutcomeRepository(pool);
   const taskWatchRepo = new PostgresTaskWatchRepository(pool);
 
-  const skillsDir =
-    cfg.skillsSourceDir ?? path.resolve(process.cwd(), "skills");
-
   // External services (LLM + embeddings) for memory pipeline
   const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
   const llm = new AnthropicLlmProvider({ apiKey: cfg.anthropicApiKey });

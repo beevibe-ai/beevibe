@@ -9,8 +9,6 @@
 
 import { writeFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import { Router, type RequestHandler } from "express";
 import {
   learnedSkillId as newLearnedSkillId,
@@ -21,8 +19,6 @@ import {
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { readArtifactBody } from "../views/work-product.js";
-
-const execAsync = promisify(exec);
 
 export interface LearnedSkillsRouterDeps {
   authMiddleware: RequestHandler;
