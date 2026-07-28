@@ -15,7 +15,7 @@
  * route from the bootstrap mount) to disable this entirely.
  */
 
-import { Router, type Response } from "express";
+import { Router } from "express";
 import {
   agentId as makeAgentId,
   personId as makePersonId,
@@ -30,6 +30,7 @@ import {
   validatePasswordShape,
   verifyPassword,
 } from "@beevibe/core/auth";
+import { makeErrorHandler } from "./http-errors.js";
 
 export interface SignupRoutesDeps {
   agentRepo: AgentRepository;
@@ -42,13 +43,7 @@ export interface SignupRoutesDeps {
 const NAME_RE = /^[\p{L}\p{N} '\-_.]{1,80}$/u;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function handleError(err: unknown, res: Response): void {
-  console.error("[signup route]", err);
-  res.status(500).json({
-    error: "internal_error",
-    message: err instanceof Error ? err.message : String(err),
-  });
-}
+const handleError = makeErrorHandler("signup route");
 
 export function createSignupRouter(deps: SignupRoutesDeps): Router {
   const router = Router();

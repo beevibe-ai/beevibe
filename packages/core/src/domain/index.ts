@@ -14,3 +14,4 @@ export * from "./room.js";
 export * from "./repo-run.js";
 export * from "./task-watch.js";
 export * from "./session-search.js";
+export * from "./xml.js";

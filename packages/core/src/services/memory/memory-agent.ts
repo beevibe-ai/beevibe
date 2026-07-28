@@ -3,6 +3,7 @@ import type { MemoryFact, MemoryScope } from "../../domain/memory.js";
 import type { SessionBriefingSnapshot } from "../../domain/session.js";
 import type { EmbeddingService } from "../../ports/embedding-service.js";
 import { promotionEventId } from "../../domain/ids.js";
+import { escapeXmlAttr, escapeXmlText } from "../../domain/xml.js";
 import type { MemoryPromotionEventRepository } from "../../ports/promotion-event-repo.js";
 import type { CoreMemory } from "./core-memory.js";
 import type { FactPromoter, PromotionResult } from "./fact-promoter.js";
@@ -212,10 +213,10 @@ function composeBriefing(
     // so the agent sees scope right next to the data it's about to
     // (potentially) edit. See packages/core/src/domain/core-memory.ts.
     const descAttr = b.description
-      ? ` description="${escapeAttr(b.description)}"`
+      ? ` description="${escapeXmlAttr(b.description)}"`
       : "";
     blockLines.push(
-      `  <block name="${escapeAttr(b.block_name)}"${descAttr}>${escapeText(b.content)}</block>`,
+      `  <block name="${escapeXmlAttr(b.block_name)}"${descAttr}>${escapeXmlText(b.content)}</block>`,
     );
     blockSnapshots.push({
       name: b.block_name,
@@ -271,7 +272,7 @@ function composeBriefing(
  */
 function renderFact(f: MemoryFact): string {
   const saved = f.created_at.toISOString().slice(0, 10);
-  return `  <fact type="${escapeAttr(f.fact_type)}" scope="${f.scope}" saved="${saved}">${escapeText(f.content)}</fact>`;
+  return `  <fact type="${escapeXmlAttr(f.fact_type)}" scope="${f.scope}" saved="${saved}">${escapeXmlText(f.content)}</fact>`;
 }
 
 /**
@@ -285,16 +286,4 @@ function renderArchivalEnvelope(facts: readonly MemoryFact[]): string {
   for (const f of facts) lines.push(renderFact(f));
   lines.push("</archival_memory>");
   return lines.join("\n");
-}
-
-function escapeAttr(s: string): string {
-  return s
-    .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function escapeText(s: string): string {
-  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 }

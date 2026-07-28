@@ -40,6 +40,7 @@ import type {
   WorkspaceManager,
 } from "@beevibe/core";
 import {
+  escapeXmlAttr,
   negotiationId as makeNegId,
   negotiationRoundId as makeRoundId,
   sessionId as makeSessionId,
@@ -132,7 +133,7 @@ export class MeshServer {
     await this.checkMeshCapacity(toAgentId);
 
     const intent =
-      `<mesh-ask request_id="${escapeAttr(requestId)}" from="${escapeAttr(fromAgentId)}">\n` +
+      `<mesh-ask request_id="${escapeXmlAttr(requestId)}" from="${escapeXmlAttr(fromAgentId)}">\n` +
       `${question}\n` +
       `</mesh-ask>\n` +
       `<context type="ask_response">\n` +
@@ -243,7 +244,7 @@ export class MeshServer {
     await this.deps.negotiationRepo.update(neg.id, { rounds_completed: 1 });
 
     const intent =
-      `<mesh-negotiate negotiation_id="${escapeAttr(neg.id)}" from="${escapeAttr(fromAgentId)}" round="1">\n` +
+      `<mesh-negotiate negotiation_id="${escapeXmlAttr(neg.id)}" from="${escapeXmlAttr(fromAgentId)}" round="1">\n` +
       `${proposal}\n` +
       `</mesh-negotiate>\n` +
       `<context type="negotiation_round">\n` +
@@ -427,7 +428,7 @@ export class MeshServer {
     description: string,
   ): void {
     const intent =
-      `<mesh-blocker from="${escapeAttr(fromAgentId)}" task_id="${escapeAttr(taskId)}">\n` +
+      `<mesh-blocker from="${escapeXmlAttr(fromAgentId)}" task_id="${escapeXmlAttr(taskId)}">\n` +
       `${description}\n` +
       `</mesh-blocker>\n` +
       `<context type="blocker_report">\n` +
@@ -588,8 +589,4 @@ export class MeshServer {
   hasPendingCalleeSession(calleeSessionId: string): boolean {
     return this.pendingByCalleeSession.has(calleeSessionId);
   }
-}
-
-function escapeAttr(s: string): string {
-  return s.replace(/"/g, "&quot;").replace(/&/g, "&amp;");
 }
