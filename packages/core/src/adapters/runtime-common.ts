@@ -1,6 +1,6 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth } from "../ports/runtime.js";
-import { runCliProcess } from "./claude-code/spawn.js";
+import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
  * Shared helpers for the CLI-subprocess runtimes (claude-code, codex,
@@ -119,4 +119,92 @@ export async function cliVersionHealthCheck(
   } catch {
     return { healthy: false, error: `Command not found: ${command}` };
   }
+}
+
+/**
+ * Build the `onLog` handler that turns raw stdout chunks into whole lines.
+ *
+ * Every CLI runtime reads an NDJSON stream off stdout, but chunk boundaries
+ * are arbitrary — a chunk can split a JSON object mid-line, or carry several
+ * lines at once. This buffers the remainder between chunks and invokes
+ * `handleLine` once per complete line. stderr is ignored (it is captured
+ * wholesale by `runCliProcess` and only read on failure).
+ *
+ * The returned `flush` emits any trailing partial line, for streams that end
+ * without a final newline. Callers must invoke it after the process settles.
+ */
+export function createStdoutLineReader(handleLine: (line: string) => void): {
+  onLog: (stream: "stdout" | "stderr", chunk: string) => void;
+  flush: () => void;
+} {
+  let pending = "";
+  return {
+    onLog: (stream, chunk) => {
+      if (stream !== "stdout") return;
+      pending += chunk;
+      let nl: number;
+      while ((nl = pending.indexOf("\n")) !== -1) {
+        handleLine(pending.slice(0, nl));
+        pending = pending.slice(nl + 1);
+      }
+    },
+    flush: () => {
+      if (pending) {
+        const last = pending;
+        pending = "";
+        handleLine(last);
+      }
+    },
+  };
+}
+
+/**
+ * Warn when the CLI's stdout hit the capture cap. Past that point the event
+ * stream is missing lines, so a parsed result may be incomplete — worth a log
+ * line, but not fatal: a truncated transcript still beats no result at all.
+ */
+export function warnIfTruncated(runtimeTag: string, result: CliProcessResult): void {
+  if (!result.truncated) return;
+  console.warn(`[${runtimeTag}] stdout truncated at 4MB — result parsing may be incomplete`);
+}
+
+/**
+ * The `RuntimeResult` for a session the caller aborted via `abort_signal`.
+ * Deliberately distinct from a failure so the executor marks the session
+ * `cancelled` rather than surfacing it as an error to the user.
+ */
+export function cancelledResult(result: CliProcessResult): RuntimeResult {
+  return {
+    status: "cancelled",
+    output: "Session cancelled.",
+    process_pid: result.pid ?? undefined,
+    process_group_id: result.process_group_id ?? undefined,
+  };
+}
+
+/**
+ * Merge the process-level metadata into a parsed `RuntimeResult`.
+ *
+ * Surfaces the CLI's stderr tail on failure so operators / users get the
+ * actual diagnostic instead of just "CLI exited with code N". Capped at 4KB —
+ * the most useful info (final error + stacktrace) is at the end, so this
+ * tail-slices rather than head-slices.
+ */
+const STDERR_TAIL_BYTES = 4096;
+
+export function finalizeCliResult(
+  parsed: RuntimeResult,
+  result: CliProcessResult,
+): RuntimeResult {
+  const stderrTail =
+    parsed.status === "failed" && result.stderr
+      ? result.stderr.slice(-STDERR_TAIL_BYTES)
+      : undefined;
+  return {
+    ...parsed,
+    process_pid: result.pid ?? undefined,
+    process_group_id: result.process_group_id ?? undefined,
+    exit_code: result.exitCode,
+    ...(stderrTail ? { stderr: stderrTail } : {}),
+  };
 }

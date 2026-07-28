@@ -9,7 +9,14 @@ import type {
   Workspace,
 } from "../../ports/runtime.js";
 import { runCliProcess } from "../claude-code/spawn.js";
-import { cliVersionHealthCheck, composePrompt } from "../runtime-common.js";
+import {
+  cancelledResult,
+  cliVersionHealthCheck,
+  composePrompt,
+  createStdoutLineReader,
+  finalizeCliResult,
+  warnIfTruncated,
+} from "../runtime-common.js";
 import {
   extractOpenCodeStepEvents,
   parseOpenCodeEventLine,
@@ -70,7 +77,6 @@ export class OpenCodeRuntime implements AgentRuntime {
     if (context.env) Object.assign(env, context.env);
 
     const events: OpenCodeEvent[] = [];
-    let pending = "";
     const handleLine = (line: string): void => {
       const evt = parseOpenCodeEventLine(line);
       if (!evt) return;
@@ -80,6 +86,7 @@ export class OpenCodeRuntime implements AgentRuntime {
         context.onStep(step);
       }
     };
+    const stdout = createStdoutLineReader(handleLine);
 
     const result = await runCliProcess({
       command: this.config.command ?? "opencode",
@@ -90,46 +97,15 @@ export class OpenCodeRuntime implements AgentRuntime {
       onSpawn: ({ pid, process_group_id }) => {
         context.onSpawn?.({ process_pid: pid, process_group_id });
       },
-      onLog: (stream, chunk) => {
-        if (stream !== "stdout") return;
-        pending += chunk;
-        let nl: number;
-        while ((nl = pending.indexOf("\n")) !== -1) {
-          handleLine(pending.slice(0, nl));
-          pending = pending.slice(nl + 1);
-        }
-      },
+      onLog: stdout.onLog,
     });
-    if (pending) handleLine(pending);
+    stdout.flush();
 
-    if (result.truncated) {
-      console.warn(
-        "[OpenCodeRuntime] stdout truncated at 4MB — result parsing may be incomplete",
-      );
-    }
+    warnIfTruncated("OpenCodeRuntime", result);
 
-    if (result.aborted) {
-      return {
-        status: "cancelled",
-        output: "Session cancelled.",
-        process_pid: result.pid ?? undefined,
-        process_group_id: result.process_group_id ?? undefined,
-      };
-    }
+    if (result.aborted) return cancelledResult(result);
 
-    const parsed = parseOpenCodeEvents(events, result.exitCode);
-    const STDERR_TAIL_BYTES = 4096;
-    const stderrTail =
-      parsed.status === "failed" && result.stderr
-        ? result.stderr.slice(-STDERR_TAIL_BYTES)
-        : undefined;
-    return {
-      ...parsed,
-      process_pid: result.pid ?? undefined,
-      process_group_id: result.process_group_id ?? undefined,
-      exit_code: result.exitCode,
-      ...(stderrTail ? { stderr: stderrTail } : {}),
-    };
+    return finalizeCliResult(parseOpenCodeEvents(events, result.exitCode), result);
   }
 
   async healthCheck(): Promise<RuntimeHealth> {
