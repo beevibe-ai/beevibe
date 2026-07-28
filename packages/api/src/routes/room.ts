@@ -20,7 +20,7 @@
  * turn run sequentially.
  */
 
-import { Router, type RequestHandler, type Response } from "express";
+import { Router, type RequestHandler } from "express";
 import {
   AgentSession,
   type AgentSessionDeps,
@@ -42,6 +42,7 @@ import {
 } from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 import { requireHuman } from "../auth/middleware.js";
+import { makeErrorHandler } from "./http-errors.js";
 import {
   processResponse,
   type OpenView,
@@ -179,13 +180,7 @@ function toMessageReply(m: RoomMessage): MessageReply {
   };
 }
 
-function handleError(err: unknown, res: Response): void {
-  console.error("[room route]", err);
-  res.status(500).json({
-    error: "internal_error",
-    message: err instanceof Error ? err.message : String(err),
-  });
-}
+const handleError = makeErrorHandler("room route");
 
 export function createRoomRouter(deps: RoomRoutesDeps): Router {
   const router = Router();

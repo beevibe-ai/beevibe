@@ -406,7 +406,16 @@ function generateId(label: string): string {
   return `${safe}-${suffix}`;
 }
 
-function shellQuote(s: string): string {
+/**
+ * Single-quote a value for safe interpolation into a `sh -c` command line.
+ *
+ * Wraps in single quotes — inside which the shell expands nothing — and
+ * closes/re-opens around any embedded quote (`'` → `'\''`). Every path,
+ * filename and URL that reaches a container command must go through this;
+ * `orchestrator.ts` uses it for the same reason, so it lives here rather
+ * than being redefined there.
+ */
+export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
 }
 

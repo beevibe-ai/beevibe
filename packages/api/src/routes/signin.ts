@@ -26,9 +26,10 @@
  * the same config gates self-serve user surfaces.
  */
 
-import { Router, type Response } from "express";
+import { Router } from "express";
 import type { PersonRepository } from "@beevibe/core";
 import { SIGNIN_NO_PASSWORD_SET, verifyPassword } from "@beevibe/core/auth";
+import { makeErrorHandler } from "./http-errors.js";
 
 export interface SigninRoutesDeps {
   personRepo: PersonRepository;
@@ -38,13 +39,7 @@ export interface SigninRoutesDeps {
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-function handleError(err: unknown, res: Response): void {
-  console.error("[signin route]", err);
-  res.status(500).json({
-    error: "internal_error",
-    message: err instanceof Error ? err.message : String(err),
-  });
-}
+const handleError = makeErrorHandler("signin route");
 
 export function createSigninRouter(deps: SigninRoutesDeps): Router {
   const router = Router();

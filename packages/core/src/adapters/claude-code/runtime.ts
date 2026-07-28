@@ -6,7 +6,13 @@ import type {
   RuntimeResult,
   Workspace,
 } from "../../ports/runtime.js";
-import { cliVersionHealthCheck } from "../runtime-common.js";
+import {
+  cancelledResult,
+  cliVersionHealthCheck,
+  createStdoutLineReader,
+  finalizeCliResult,
+  warnIfTruncated,
+} from "../runtime-common.js";
 import { runCliProcess } from "./spawn.js";
 import {
   extractStepEvents,
@@ -101,7 +107,6 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     // the entire stdout after close. A line buffer handles chunk boundaries
     // (a single JSON message can arrive split across multiple chunks).
     const messages: StreamJsonMessage[] = [];
-    let pending = "";
     const handleLine = (line: string): void => {
       const msg = parseStreamJsonLine(line);
       if (!msg) return;
@@ -112,6 +117,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
         }
       }
     };
+    const stdout = createStdoutLineReader(handleLine);
 
     const result = await runCliProcess({
       command: this.config.command ?? "claude",
@@ -123,52 +129,17 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       onSpawn: ({ pid, process_group_id }) => {
         context.onSpawn?.({ process_pid: pid, process_group_id });
       },
-      onLog: (stream, chunk) => {
-        if (stream !== "stdout") return;
-        pending += chunk;
-        let nl: number;
-        while ((nl = pending.indexOf("\n")) !== -1) {
-          handleLine(pending.slice(0, nl));
-          pending = pending.slice(nl + 1);
-        }
-      },
+      onLog: stdout.onLog,
     });
 
     // Flush any final partial line (stream without trailing \n)
-    if (pending) handleLine(pending);
+    stdout.flush();
 
-    if (result.truncated) {
-      console.warn(
-        "[ClaudeCodeRuntime] stdout truncated at 4MB — result parsing may be incomplete",
-      );
-    }
+    warnIfTruncated("ClaudeCodeRuntime", result);
 
-    if (result.aborted) {
-      return {
-        status: "cancelled",
-        output: "Session cancelled.",
-        process_pid: result.pid ?? undefined,
-        process_group_id: result.process_group_id ?? undefined,
-      };
-    }
+    if (result.aborted) return cancelledResult(result);
 
-    const parsed = parseClaudeMessages(messages, result.exitCode);
-    // Surface the CLI's stderr tail on failure so operators / users get
-    // the actual diagnostic instead of just "CLI exited with code N".
-    // Capped at 4KB — most useful info is at the end (final error +
-    // stacktrace), so tail-slice rather than head.
-    const STDERR_TAIL_BYTES = 4096;
-    const stderrTail =
-      parsed.status === "failed" && result.stderr
-        ? result.stderr.slice(-STDERR_TAIL_BYTES)
-        : undefined;
-    return {
-      ...parsed,
-      process_pid: result.pid ?? undefined,
-      process_group_id: result.process_group_id ?? undefined,
-      exit_code: result.exitCode,
-      ...(stderrTail ? { stderr: stderrTail } : {}),
-    };
+    return finalizeCliResult(parseClaudeMessages(messages, result.exitCode), result);
   }
 
   async healthCheck(): Promise<RuntimeHealth> {

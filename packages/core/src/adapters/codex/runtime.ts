@@ -10,7 +10,14 @@ import type {
 } from "../../ports/runtime.js";
 import { runCliProcess } from "../claude-code/spawn.js";
 import { MCP_TOOL_TIMEOUT_MS } from "../local-workspace/manager.js";
-import { cliVersionHealthCheck, composePrompt } from "../runtime-common.js";
+import {
+  cancelledResult,
+  cliVersionHealthCheck,
+  composePrompt,
+  createStdoutLineReader,
+  finalizeCliResult,
+  warnIfTruncated,
+} from "../runtime-common.js";
 import {
   extractCodexStepEvents,
   parseCodexEventLine,
@@ -114,7 +121,6 @@ export class CodexRuntime implements AgentRuntime {
     if (prepared) env.BEEVIBE_AGENT_API_KEY = prepared.agentApiKey;
 
     const events: CodexEvent[] = [];
-    let pending = "";
     const handleLine = (line: string): void => {
       const evt = parseCodexEventLine(line);
       if (!evt) return;
@@ -124,6 +130,7 @@ export class CodexRuntime implements AgentRuntime {
         context.onStep(step);
       }
     };
+    const stdout = createStdoutLineReader(handleLine);
 
     const result = await runCliProcess({
       command: this.config.command ?? "codex",
@@ -134,49 +141,23 @@ export class CodexRuntime implements AgentRuntime {
       onSpawn: ({ pid, process_group_id }) => {
         context.onSpawn?.({ process_pid: pid, process_group_id });
       },
-      onLog: (stream, chunk) => {
-        if (stream !== "stdout") return;
-        pending += chunk;
-        let nl: number;
-        while ((nl = pending.indexOf("\n")) !== -1) {
-          handleLine(pending.slice(0, nl));
-          pending = pending.slice(nl + 1);
-        }
-      },
+      onLog: stdout.onLog,
     });
-    if (pending) handleLine(pending);
+    stdout.flush();
 
-    if (result.truncated) {
-      console.warn(
-        "[CodexRuntime] stdout truncated at 4MB — result parsing may be incomplete",
-      );
-    }
+    warnIfTruncated("CodexRuntime", result);
 
     if (result.aborted) {
       removeIfExists(lastMessagePath);
-      return {
-        status: "cancelled",
-        output: "Session cancelled.",
-        process_pid: result.pid ?? undefined,
-        process_group_id: result.process_group_id ?? undefined,
-      };
+      return cancelledResult(result);
     }
 
     const lastMessage = readIfExists(lastMessagePath);
     removeIfExists(lastMessagePath);
-    const parsed = parseCodexEvents(events, result.exitCode, lastMessage);
-    const STDERR_TAIL_BYTES = 4096;
-    const stderrTail =
-      parsed.status === "failed" && result.stderr
-        ? result.stderr.slice(-STDERR_TAIL_BYTES)
-        : undefined;
-    return {
-      ...parsed,
-      process_pid: result.pid ?? undefined,
-      process_group_id: result.process_group_id ?? undefined,
-      exit_code: result.exitCode,
-      ...(stderrTail ? { stderr: stderrTail } : {}),
-    };
+    return finalizeCliResult(
+      parseCodexEvents(events, result.exitCode, lastMessage),
+      result,
+    );
   }
 
   async healthCheck(): Promise<RuntimeHealth> {

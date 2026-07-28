@@ -60,6 +60,10 @@ import { listActivity } from "../views/activity.js";
 import { getWorkProduct } from "../views/work-product.js";
 import { listInbox } from "../views/inbox.js";
 import { getAgentNetwork } from "../views/agent-network.js";
+import { makeErrorHandler } from "./http-errors.js";
+
+/** Every handler below passes a per-call context, e.g. `[view route: task list]`. */
+const handleError = makeErrorHandler("view route");
 
 export interface ViewRoutesDeps {
   authMiddleware: RequestHandler;
@@ -693,12 +697,4 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
   });
 
   return router;
-}
-
-function handleError(err: unknown, res: import("express").Response, context: string): void {
-  console.error(`[view route: ${context}]`, err);
-  res.status(500).json({
-    error: "internal_error",
-    message: err instanceof Error ? err.message : String(err),
-  });
 }

@@ -28,6 +28,7 @@ import {
   destroySandbox,
   exec as sandboxExec,
   prepareBaseEnvironment,
+  shellQuote,
   type Sandbox,
 } from "./docker.js";
 
@@ -596,8 +597,4 @@ function defaultMcpServerCommand(): { command: string; args: string[] } {
   return isTsxRun
     ? { command: "npx", args: ["--no-install", "tsx", mcpServerPath] }
     : { command: "node", args: ["--enable-source-maps", mcpServerPath] };
-}
-
-function shellQuote(s: string): string {
-  return `'${s.replace(/'/g, `'\\''`)}'`;
 }
