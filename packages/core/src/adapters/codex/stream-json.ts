@@ -1,5 +1,6 @@
 import type { RuntimeResult, RuntimeStep } from "../../ports/runtime.js";
 import { bareCliExitMessage } from "../claude-code/stream-json.js";
+import { describeToolInput, parseNdjsonLine } from "../runtime-common.js";
 
 /**
  * Parser for `codex exec --json` output.
@@ -89,13 +90,7 @@ export interface CodexEvent {
 }
 
 export function parseCodexEventLine(line: string): CodexEvent | null {
-  const trimmed = line.trim();
-  if (!trimmed || !trimmed.startsWith("{")) return null;
-  try {
-    return JSON.parse(trimmed) as CodexEvent;
-  } catch {
-    return null;
-  }
+  return parseNdjsonLine<CodexEvent>(line);
 }
 
 /**
@@ -131,7 +126,7 @@ export function extractCodexStepEvents(evt: CodexEvent): RuntimeStep[] {
       {
         kind: isCompletion ? "tool_result" : "tool_call",
         tool: item.tool ?? "unknown",
-        description: describeCodexInput(item.arguments),
+        description: describeToolInput(item.arguments),
         timestamp: now,
       },
     ];
@@ -175,29 +170,6 @@ export function extractCodexStepEvents(evt: CodexEvent): RuntimeStep[] {
   }
 
   return [];
-}
-
-/** Field-priority probe shared with claude's `describeToolInput` philosophy. */
-const PREFERRED_CODEX_FIELDS = [
-  "file_path",
-  "path",
-  "command",
-  "cmd",
-  "query",
-  "pattern",
-  "url",
-  "intent",
-] as const;
-
-function describeCodexInput(input: unknown): string {
-  if (typeof input === "string") return input.slice(0, 200);
-  if (!input || typeof input !== "object" || Array.isArray(input)) return "";
-  const obj = input as Record<string, unknown>;
-  for (const key of PREFERRED_CODEX_FIELDS) {
-    const v = obj[key];
-    if (typeof v === "string" && v.length > 0) return v.slice(0, 200);
-  }
-  return JSON.stringify(input).slice(0, 200);
 }
 
 /**

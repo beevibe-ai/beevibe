@@ -1,6 +1,7 @@
 import type { SessionUsage } from "../../domain/session.js";
 import type { RuntimeResult, RuntimeStep } from "../../ports/runtime.js";
 import { bareCliExitMessage } from "../claude-code/stream-json.js";
+import { describeToolInput, parseNdjsonLine } from "../runtime-common.js";
 
 /**
  * Parser for `opencode run --format json` output.
@@ -79,13 +80,7 @@ export interface OpenCodeEvent {
 }
 
 export function parseOpenCodeEventLine(line: string): OpenCodeEvent | null {
-  const trimmed = line.trim();
-  if (!trimmed || !trimmed.startsWith("{")) return null;
-  try {
-    return JSON.parse(trimmed) as OpenCodeEvent;
-  } catch {
-    return null;
-  }
+  return parseNdjsonLine<OpenCodeEvent>(line);
 }
 
 /**
@@ -118,35 +113,13 @@ export function extractOpenCodeStepEvents(evt: OpenCodeEvent): RuntimeStep[] {
       {
         kind: isTerminal ? "tool_result" : "tool_call",
         tool: part.tool ?? "unknown",
-        description: describeOpenCodeInput(part.state?.input),
+        description: describeToolInput(part.state?.input),
         timestamp: now,
       },
     ];
   }
 
   return [];
-}
-
-const PREFERRED_OPENCODE_FIELDS = [
-  "file_path",
-  "path",
-  "command",
-  "cmd",
-  "query",
-  "pattern",
-  "url",
-  "intent",
-] as const;
-
-function describeOpenCodeInput(input: unknown): string {
-  if (typeof input === "string") return input.slice(0, 200);
-  if (!input || typeof input !== "object" || Array.isArray(input)) return "";
-  const obj = input as Record<string, unknown>;
-  for (const key of PREFERRED_OPENCODE_FIELDS) {
-    const v = obj[key];
-    if (typeof v === "string" && v.length > 0) return v.slice(0, 200);
-  }
-  return JSON.stringify(input).slice(0, 200);
 }
 
 /**
