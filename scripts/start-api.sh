@@ -10,6 +10,14 @@
 #
 # node-pg-migrate is now a direct dep of @beevibe/api, so its binary lives
 # at packages/api/node_modules/.bin/node-pg-migrate inside the image.
+#
+# DO NOT remove "node-pg-migrate" from packages/api/package.json. It is
+# never imported from api/src — it is invoked as a BINARY on the line
+# below, at container start. Import-based dead-code tools (knip, eslint,
+# depcheck) all report it as an unused dependency; it isn't. Dropping it
+# makes the api container exit here under `set -e`, before the process
+# ever launches, and the Railway healthcheck fails the deploy. Regressed
+# exactly this way in PR #256, reverted in #257.
 set -e
 
 cd /app
