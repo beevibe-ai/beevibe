@@ -90,19 +90,6 @@ export interface MeResponse {
   needs_onboarding: boolean;
 }
 
-export interface HealthResponse {
-  ok: boolean;
-  /** `claude` CLI presence — chat agents spawn as CLI subprocesses. */
-  claude_cli: { ok: boolean; message?: string };
-  /**
-   * OpenAI embeddings — used by memory briefing's vector recall.
-   * `skipped: true` means no `OPENAI_API_KEY` was configured at boot;
-   * memory writes will return a friendly disabled message and recall
-   * returns blocks-only briefings. Chat works either way.
-   */
-  openai: { ok: boolean; skipped?: boolean; message?: string };
-}
-
 export interface ChatSendInput {
   message: string;
   /** Previous turn's session id — enables `--resume` continuity. */
@@ -697,18 +684,11 @@ export const api = {
     /** Identity + onboarding state for the welcome flow. */
     self: (opts: ReadOptions = {}) =>
       fetchJson<MeResponse>("/me", { signal: opts.signal }),
-    completeOnboarding: () =>
-      fetchJson<{ ok: true; onboarding_completed_at: string | null }>(
-        "/me/onboarding/complete",
-        { method: "POST" },
-      ),
     updatePreferences: (input: Partial<UserPreferences>) =>
       fetchJson<{ ok: true; preferences: UserPreferences }>(
         "/me/preferences",
         { method: "PATCH", body: input },
       ),
-    health: (opts: ReadOptions = {}) =>
-      fetchJson<HealthResponse>("/health/runtime", { signal: opts.signal }),
   },
   negotiations: {
     get: (id: string, opts: ReadOptions = {}) =>
@@ -750,14 +730,6 @@ export const api = {
       fetchJson<{ skill: LearnedSkill }>("/learned-skills", { method: "POST", body: input }),
     delete: (id: string) =>
       fetchJson<void>(`/learned-skills/${encodeURIComponent(id)}`, { method: "DELETE" }),
-    publish: (id: string) =>
-      fetchJson<{
-        ok: boolean;
-        pr_url?: string;
-        reason?: string;
-        skill_md?: string;
-        instructions?: string;
-      }>(`/learned-skills/${encodeURIComponent(id)}/publish`, { method: "POST" }),
   },
   findRepo: {
     /** Ranked search across all 4 find_repo tiers. Empty `goal` is a 400. */

@@ -40,7 +40,6 @@ export const queryKeys = {
   me: {
     all: ["me"] as const,
     self: () => ["me", "self"] as const,
-    health: () => ["me", "health"] as const,
   },
   activity: {
     all: ["activity"] as const,
