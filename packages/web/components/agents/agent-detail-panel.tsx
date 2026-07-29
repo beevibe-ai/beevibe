@@ -1,10 +1,9 @@
 "use client";
 
-import Link from "next/link";
-import { useEffect, useRef } from "react";
-import { AlertTriangle, Bot, ExternalLink, X } from "lucide-react";
+import { AlertTriangle, Bot } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { PanelFooterField, PeekPanel } from "@/components/detail/peek-panel";
 import { CoreBlockCard } from "@/components/agents/core-block-card";
 import { RecentSessionRow } from "@/components/agents/recent-session-row";
 import { RecentChatThreadRow } from "@/components/agents/recent-chat-thread-row";
@@ -30,75 +29,15 @@ export function AgentDetailPanel({
   agentId: string;
   onClose: () => void;
 }) {
-  const panelRef = useRef<HTMLElement>(null);
-
-  // Esc closes the panel — same pattern as Notion peek and most
-  // dialog/drawer components. Bound at window level so focus inside
-  // the panel doesn't have to be on a focusable element.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  // Click-outside closes. Listener attaches on mount, so the click
-  // that *opened* the panel (which fired before the panel rendered)
-  // doesn't race-trigger close.
-  useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      const panel = panelRef.current;
-      if (!panel) return;
-      if (e.target instanceof Node && panel.contains(e.target)) return;
-      onClose();
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [onClose]);
-
   return (
-    <aside
-      ref={panelRef}
-      role="dialog"
-      aria-label="Agent details"
-      data-pan="ignore"
-      className="absolute right-0 top-0 bottom-0 w-[520px] max-w-full bg-card border-l border-border shadow-xl flex flex-col"
+    <PeekPanel
+      ariaLabel="Agent details"
+      fullPageHref={`/agents/${agentId}`}
+      onClose={onClose}
+      ignorePan
     >
-      <PanelHeader agentId={agentId} onClose={onClose} />
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <PanelBody agentId={agentId} />
-      </div>
-    </aside>
-  );
-}
-
-function PanelHeader({
-  agentId,
-  onClose,
-}: {
-  agentId: string;
-  onClose: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2 px-4 h-11 border-b border-border/60 shrink-0">
-      <Link
-        href={`/agents/${agentId}`}
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ExternalLink className="h-3 w-3" />
-        Open full page
-      </Link>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Close panel"
-        title="Close (Esc)"
-        className="h-7 w-7 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
-      >
-        <X className="h-4 w-4" />
-      </button>
-    </div>
+      <PanelBody agentId={agentId} />
+    </PeekPanel>
   );
 }
 
@@ -301,19 +240,3 @@ function PanelMetric({ label, value }: { label: string; value: number }) {
   );
 }
 
-function PanelFooterField({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0">
-      <div className="uppercase tracking-wider text-muted-foreground/70 mb-0.5 text-[10px]">
-        {label}
-      </div>
-      <div className="text-foreground/85 truncate">{children}</div>
-    </div>
-  );
-}

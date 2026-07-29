@@ -1,17 +1,13 @@
 "use client";
 
-import { useState } from "react";
 import { Check, Copy, Hash } from "lucide-react";
+import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
 
 export function ClickToCopyId({ id }: { id: string }) {
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
   return (
     <button
-      onClick={async () => {
-        await navigator.clipboard.writeText(id);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
-      }}
+      onClick={() => void copy(id)}
       className="inline-flex items-center gap-1.5 font-mono hover:text-foreground transition-colors cursor-pointer"
       title="Copy ID"
       aria-label={copied ? "ID copied" : `Copy ID ${id}`}

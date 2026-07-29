@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import { type ReactNode, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -13,6 +13,9 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { useMe } from "@/lib/hooks/use-me";
+import { useDismissOnOutside } from "@/lib/hooks/use-dismiss";
+import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
+import { ModalOverlay } from "@/components/modal-overlay";
 import { clearUserKey } from "@/lib/api/config";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/avatar";
@@ -27,21 +30,7 @@ export function UserWidget() {
   const router = useRouter();
   const ref = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    if (view === "closed") return;
-    const onDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setView("closed");
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setView("closed");
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [view]);
+  useDismissOnOutside(ref, () => setView("closed"), { enabled: view !== "closed" });
 
   const name = me?.person.name ?? "Signed in";
   const initial = name.charAt(0).toUpperCase() || "?";
@@ -159,7 +148,7 @@ function MenuItem({
 
 function InviteTeammateDialog({ onClose }: { onClose: () => void }) {
   const [email, setEmail] = useState("");
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
   const trimmed = email.trim().toLowerCase();
   const valid = EMAIL_RE.test(trimmed);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
@@ -167,27 +156,9 @@ function InviteTeammateDialog({ onClose }: { onClose: () => void }) {
     ? `${origin}/sign-up?email=${encodeURIComponent(trimmed)}`
     : "";
 
-  const copyLink = async () => {
-    if (!shareLink) return;
-    try {
-      await navigator.clipboard.writeText(shareLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // Clipboard API can fail in non-secure contexts; the input is
-      // still selectable for manual copy.
-    }
-  };
-
   return (
-    <div
-      className="fixed inset-0 z-50 bg-background/60 backdrop-blur-sm flex items-center justify-center"
-      onClick={onClose}
-    >
-      <div
-        onClick={(e) => e.stopPropagation()}
-        className="bg-card border border-border rounded-lg p-5 w-full max-w-md shadow-md"
-      >
+    <ModalOverlay onClose={onClose}>
+      <>
         <h3 className="text-sm font-semibold mb-1">Invite a teammate</h3>
         <p className="text-xs text-muted-foreground mb-3">
           Share a sign-up link. When they sign up, they get their own team
@@ -215,7 +186,7 @@ function InviteTeammateDialog({ onClose }: { onClose: () => void }) {
               />
               <button
                 type="button"
-                onClick={copyLink}
+                onClick={() => void copy(shareLink)}
                 className="h-7 px-2.5 rounded text-[11px] font-medium border border-border hover:bg-secondary transition-colors cursor-pointer shrink-0"
               >
                 {copied ? "Copied" : "Copy"}
@@ -232,7 +203,7 @@ function InviteTeammateDialog({ onClose }: { onClose: () => void }) {
             Done
           </button>
         </div>
-      </div>
-    </div>
+      </>
+    </ModalOverlay>
   );
 }

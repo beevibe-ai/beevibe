@@ -18,9 +18,8 @@
  */
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import type { RuntimeConfig } from "@beevibe/core";
-import { firstNonEmptyLine } from "./format.js";
-import type { AgentDisplay, AgentNetwork, AgentPeerOwner } from "./types.js";
+import { toAgentDisplay, type AgentDisplayRow } from "./agent-display.js";
+import type { AgentNetwork, AgentPeerOwner } from "./types.js";
 
 // Defensive cap on the peer fetch. The agent graph is one orbit per
 // owner (~5 agents each); 500 rows covers roughly 100 owners' trees.
@@ -79,51 +78,14 @@ ORDER BY a.owner_id,
 LIMIT ${PEERS_LIMIT}
 `;
 
-interface AgentRow {
-  id: string;
-  name: string;
-  owner_id: string;
-  parent_agent_id: string | null;
-  hierarchy_level: "ic" | "team" | "org";
-  review_policy: string | null;
-  runtime_config: RuntimeConfig;
-  preferred_runtime_id: string | null;
-  created_at: Date;
-  updated_at: Date;
-  sessions_count: string | number;
-  facts_learned: string | number;
-  tag_line: string | null;
-}
+// Same columns as the agent list/detail views, so the row shape and the
+// mapping both come from agent-display.ts. `owner_label` rides on the
+// peer rows for the orbit grouping below, not on the AgentDisplay
+// itself — the UI reads it off the owner, not off each agent.
+type AgentRow = AgentDisplayRow;
 
 interface PeerRow extends AgentRow {
   owner_label: string;
-}
-
-function rowToAgentDisplay(row: AgentRow): AgentDisplay {
-  // PR #96 split runtime (CLI tool) from model (LLM alias). Match `agents.ts`
-  // so the network UI shows "claude" not "claude-opus-4-7" under the Runtime
-  // label.
-  const runtime = row.runtime_config.type ?? "claude";
-  const model = row.runtime_config.model;
-  const specialization = firstNonEmptyLine(row.tag_line);
-  return {
-    id: row.id,
-    name: row.name,
-    owner_id: row.owner_id,
-    parent_agent_id: row.parent_agent_id ?? undefined,
-    hierarchy_level: row.hierarchy_level,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    display_name: row.name,
-    hierarchy: row.hierarchy_level,
-    sessions_count: Number(row.sessions_count),
-    facts_learned: Number(row.facts_learned),
-    runtime,
-    model,
-    specialization,
-    review_policy: (row.review_policy ?? undefined) as AgentDisplay["review_policy"],
-    preferred_runtime_id: row.preferred_runtime_id ?? undefined,
-  };
 }
 
 export async function getAgentNetwork(
@@ -137,7 +99,7 @@ export async function getAgentNetwork(
     pool.query<PeerRow>(PEERS_SQL, [personId]),
   ]);
 
-  const self = selfRes.rows.map(rowToAgentDisplay);
+  const self = selfRes.rows.map(toAgentDisplay);
 
   // Group peer rows by owner so the UI can render one orbit per peer.
   // Order preserved from the SQL (owner_id ASC, then hierarchy weight).
@@ -145,12 +107,12 @@ export async function getAgentNetwork(
   for (const row of peersRes.rows) {
     const existing = peersByOwner.get(row.owner_id);
     if (existing) {
-      existing.agents.push(rowToAgentDisplay(row));
+      existing.agents.push(toAgentDisplay(row));
     } else {
       peersByOwner.set(row.owner_id, {
         owner_id: row.owner_id,
         owner_label: row.owner_label,
-        agents: [rowToAgentDisplay(row)],
+        agents: [toAgentDisplay(row)],
       });
     }
   }

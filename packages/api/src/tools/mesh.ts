@@ -15,16 +15,14 @@ import type {
   CreateEscalationInput,
 } from "@beevibe/core/services/escalation-service";
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import type { AgentTool, AgentToolResult } from "./types.js";
+import { toolErrorFromThrown } from "./errors.js";
+import type { AgentTool } from "./types.js";
 import type { McpCaller } from "./assemble.js";
 import type { MeshServer } from "../mesh/server.js";
-import {
-  CannotNegotiateWithIcError,
-  MeshCapacityError,
-  MeshMaxRoundsError,
-  type AskResponse,
-  type EscalatedSentinel,
-  type NegotiateResponse,
+import type {
+  AskResponse,
+  EscalatedSentinel,
+  NegotiateResponse,
 } from "../mesh/types.js";
 
 const NEGOTIATE_DECISIONS = ["counter", "accept", "reject"] as const;
@@ -43,34 +41,6 @@ export interface MeshToolContext {
   caller: McpCaller;
   /** Caller's beevibe session id (for ask/negotiate originator metadata). */
   beevibeSid: string;
-}
-
-function asError(err: unknown, extra: Record<string, unknown> = {}): AgentToolResult {
-  if (err instanceof MeshCapacityError) {
-    return {
-      content: { error: err.code, ...err.meta, message: err.message },
-      isError: true,
-    };
-  }
-  if (err instanceof MeshMaxRoundsError) {
-    return {
-      content: { error: err.code, ...err.meta, message: err.message },
-      isError: true,
-    };
-  }
-  if (err instanceof CannotNegotiateWithIcError) {
-    return {
-      content: { error: err.code, ...err.meta, message: err.message },
-      isError: true,
-    };
-  }
-  return {
-    content: {
-      error: err instanceof Error ? err.message : String(err),
-      ...extra,
-    },
-    isError: true,
-  };
 }
 
 function projectAskResponse(r: AskResponse): Record<string, unknown> {
@@ -139,7 +109,7 @@ function askTool(ctx: MeshToolContext, services: MeshToolServices): AgentTool {
         );
         return { content: projectAskResponse(response) };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -175,7 +145,7 @@ function respondAskTool(ctx: MeshToolContext, services: MeshToolServices): Agent
         });
         return { content: { responded: true, request_id: requestId } };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -224,7 +194,7 @@ function negotiateTool(ctx: MeshToolContext, services: MeshToolServices): AgentT
         );
         return { content: projectNegotiateResponse(response) };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -300,7 +270,7 @@ function respondNegotiateTool(ctx: MeshToolContext, services: MeshToolServices):
         }
         return { content: projectNegotiateResponse(result) };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -365,7 +335,7 @@ function reportBlockerTool(ctx: MeshToolContext, services: MeshToolServices): Ag
           },
         };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -459,7 +429,7 @@ function escalateToHumansTool(
           },
         };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };

@@ -23,7 +23,8 @@ import type {
 } from "@beevibe/core";
 import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
-import { error, log, warn } from "./logger.js";
+import { createEventBatcher } from "./event-batcher.js";
+import { error, log } from "./logger.js";
 import { runRepoDispatch } from "./repo-runs.js";
 
 export interface DispatchPayload {
@@ -124,48 +125,21 @@ export async function runDispatch(
     throw new Error(runtimeMissingError(payload.runtime_type));
   }
 
-  // Buffer events so the daemon doesn't fire one POST per token. Flushed
-  // every BATCH_INTERVAL_MS or when the buffer hits BATCH_MAX. Final
+  // Buffer events so the daemon doesn't fire one POST per token. Final
   // flush happens before /runtime/done so the persisted transcript is
   // complete by the time chatResolver fires.
-  const buffer: Array<{
-    session_id: string;
-    kind: RuntimeStep["kind"];
-    content: string;
-    tool_name?: string;
-  }> = [];
-  let flushTimer: NodeJS.Timeout | undefined;
-
-  const flush = async (): Promise<void> => {
-    if (buffer.length === 0) return;
-    const events = buffer.splice(0);
-    try {
-      await deps.api.post("/runtime/events", { events });
-    } catch (err) {
-      warn(
-        "[daemon/spawner] /runtime/events POST failed; events dropped:",
-        err instanceof Error ? err.message : String(err),
-      );
-    }
-  };
-
-  const scheduleFlush = (): void => {
-    if (flushTimer) return;
-    flushTimer = setTimeout(() => {
-      flushTimer = undefined;
-      void flush();
-    }, 250);
-  };
+  const events = createEventBatcher({
+    api: deps.api,
+    sessionId: payload.session_id,
+    tag: "[daemon/spawner]",
+  });
 
   const onStep = (step: RuntimeStep): void => {
-    buffer.push({
-      session_id: payload.session_id,
+    events.push({
       kind: step.kind,
       content: step.description,
       tool_name: step.tool,
     });
-    if (buffer.length >= 16) void flush();
-    else scheduleFlush();
   };
 
   let result: RuntimeResult | undefined;
@@ -189,11 +163,7 @@ export async function runDispatch(
     runError = err instanceof Error ? err : new Error(String(err));
   }
 
-  if (flushTimer) {
-    clearTimeout(flushTimer);
-    flushTimer = undefined;
-  }
-  await flush();
+  await events.close();
 
   const status: TerminalSessionStatus = runError
     ? "failed"

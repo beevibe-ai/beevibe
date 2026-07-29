@@ -1,48 +1,28 @@
-export type DateLike = Date | string | number;
-
 /**
- * Coerce `Date | string | number | undefined` into a Date. JSON-bound
- * api responses arrive as strings even when their TypeScript types
- * claim `Date`; defensive callers pass them straight through helpers
- * like this one without manual `new Date(...)` wrapping. Returns
- * `undefined` for missing input (so callers can short-circuit) and
- * `undefined` for invalid input (so a bad value doesn't render as
- * "Invalid Date").
+ * Web-side display helpers.
+ *
+ * The ones the api also needs — `toDate`, `deriveShortId`, the
+ * relative-time ladder, `formatDurationLabel` — live in `@beevibe/core`
+ * and are re-exported here so existing `@/lib/format` imports keep
+ * working. They used to be a hand-kept parallel copy of
+ * `packages/api/src/views/format.ts`; `deriveShortId` in particular
+ * decides both the `short_id` the api serializes and the URL fragment
+ * the web navigates to, so the two drifting apart would produce dead
+ * links.
  */
-export function toDate(value: DateLike | null | undefined): Date | undefined {
-  if (value == null) return undefined;
-  const d = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(d.getTime()) ? undefined : d;
-}
 
-export function formatRelativeTime(
-  date: DateLike,
-  now: Date = new Date(),
-): string {
-  const d = toDate(date);
-  if (!d) return "—";
-  const diffMs = now.getTime() - d.getTime();
-  const diffSec = Math.floor(diffMs / 1000);
-  if (diffSec < 60) return "just now";
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHr = Math.floor(diffMin / 60);
-  if (diffHr < 24) return `${diffHr}h ago`;
-  const diffDay = Math.floor(diffHr / 24);
-  if (diffDay < 30) return `${diffDay}d ago`;
-  const diffMonth = Math.floor(diffDay / 30);
-  if (diffMonth < 12) return `${diffMonth}mo ago`;
-  return `${Math.floor(diffMonth / 12)}y ago`;
-}
+import { deriveShortId, formatRelative, type DateLike } from "@beevibe/core/domain/format";
 
-/**
- * The 6-char short id used in routes and lookups — strip the typed-id
- * prefix (`sess_`, `agent_`, …) and take the first 6 chars. Mirrors the
- * backend's `deriveShortId` (packages/api/src/views/format.ts) so the web
- * doesn't hard-code the prefix length in multiple places.
- */
-export function deriveShortId(id: string): string {
-  return id.replace(/^[a-z]+_/, "").slice(0, 6);
+export {
+  deriveShortId,
+  formatDurationLabel,
+  toDate,
+  type DateLike,
+} from "@beevibe/core/domain/format";
+
+/** Relative-time label in prose form: "just now" / "2m ago" / "3d ago". */
+export function formatRelativeTime(date: DateLike, now: Date = new Date()): string {
+  return formatRelative(date, { now, suffix: " ago" });
 }
 
 export function shortId(id: string): string {
@@ -89,30 +69,6 @@ export function sessionHref(sid: string, taskId?: string): string {
   const sessionShort = deriveShortId(sid);
   if (taskId) return `/tasks/${taskId}/sessions/${sessionShort}`;
   return `/sessions/${sessionShort}`;
-}
-
-/**
- * Duration between `startedAt` and `completedAt` (or `now` if running).
- * "30s" / "5m" / "1h 12m" / "2d 3h". Returns "—" if no start.
- */
-export function formatDurationLabel(
-  startedAt: DateLike | null | undefined,
-  completedAt: DateLike | null | undefined,
-  now: Date = new Date(),
-): string {
-  const start = toDate(startedAt);
-  if (!start) return "—";
-  const end = toDate(completedAt) ?? now;
-  const diffSec = Math.max(0, Math.floor((end.getTime() - start.getTime()) / 1000));
-  if (diffSec < 60) return `${diffSec}s`;
-  const min = Math.floor(diffSec / 60);
-  if (min < 60) return `${min}m`;
-  const hr = Math.floor(min / 60);
-  const mins = min % 60;
-  if (hr < 24) return mins ? `${hr}h ${mins}m` : `${hr}h`;
-  const days = Math.floor(hr / 24);
-  const hrs = hr % 24;
-  return hrs ? `${days}d ${hrs}h` : `${days}d`;
 }
 
 /**

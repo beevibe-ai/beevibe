@@ -1,17 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef, useState } from "react";
-import {
-  AlertTriangle,
-  ExternalLink,
-  FileText,
-  ListChecks,
-  Terminal,
-  X,
-} from "lucide-react";
+import { useState } from "react";
+import { AlertTriangle, FileText, ListChecks, Terminal } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { PanelFooterField, PeekPanel } from "@/components/detail/peek-panel";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
 import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
@@ -47,74 +41,15 @@ export function TaskDetailPanel({
   taskId: string;
   onClose: () => void;
 }) {
-  const panelRef = useRef<HTMLElement>(null);
-
-  // Esc closes — same pattern as the agent peek and the rest of the
-  // dialog/drawer surfaces.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [onClose]);
-
-  // Click-outside closes. Listener attaches on mount, so the click that
-  // *opened* the panel (which fired before the panel rendered) doesn't
-  // race-trigger close. Any subsequent mousedown outside the aside
-  // fires onClose.
-  useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      const panel = panelRef.current;
-      if (!panel) return;
-      if (e.target instanceof Node && panel.contains(e.target)) return;
-      onClose();
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    return () => document.removeEventListener("mousedown", onMouseDown);
-  }, [onClose]);
-
   return (
-    <aside
-      ref={panelRef}
-      role="dialog"
-      aria-label="Task details"
-      className="absolute right-0 top-0 bottom-0 w-[520px] max-w-full bg-card border-l border-border shadow-xl flex flex-col z-20"
+    <PeekPanel
+      ariaLabel="Task details"
+      fullPageHref={`/tasks/${taskId}`}
+      onClose={onClose}
+      className="z-20"
     >
-      <PanelHeader taskId={taskId} onClose={onClose} />
-      <div className="flex-1 min-h-0 overflow-y-auto">
-        <PanelBody taskId={taskId} />
-      </div>
-    </aside>
-  );
-}
-
-function PanelHeader({
-  taskId,
-  onClose,
-}: {
-  taskId: string;
-  onClose: () => void;
-}) {
-  return (
-    <div className="flex items-center justify-between gap-2 px-4 h-11 border-b border-border/60 shrink-0">
-      <Link
-        href={`/tasks/${taskId}`}
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-      >
-        <ExternalLink className="h-3 w-3" />
-        Open full page
-      </Link>
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Close panel"
-        title="Close (Esc)"
-        className="h-7 w-7 inline-flex items-center justify-center rounded text-muted-foreground hover:text-foreground hover:bg-secondary cursor-pointer transition-colors"
-      >
-        <X className="h-4 w-4" />
-      </button>
-    </div>
+      <PanelBody taskId={taskId} />
+    </PeekPanel>
   );
 }
 
@@ -372,22 +307,6 @@ function Section({
   );
 }
 
-function PanelFooterField({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div className="min-w-0">
-      <div className="uppercase tracking-wider text-muted-foreground/70 mb-0.5 text-[10px]">
-        {label}
-      </div>
-      <div className="text-foreground/85 truncate">{children}</div>
-    </div>
-  );
-}
 
 function WorkProductRow({ wp }: { wp: WorkProduct }) {
   return (

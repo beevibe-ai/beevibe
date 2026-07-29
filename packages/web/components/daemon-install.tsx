@@ -3,17 +3,12 @@
 import { useState, type ReactNode } from "react";
 import { apiBaseUrl, getUserKey } from "@/lib/api/config";
 import { CommandBlock } from "@/components/command-block";
+import { SegmentedTabs, type SegmentedTabOption } from "@/components/segmented-tabs";
 import { cn } from "@/lib/utils";
 
 export type InstallChannel = "brew" | "npx" | "direct";
 
-interface InstallOption {
-  id: InstallChannel;
-  label: string;
-  hint: string;
-}
-
-const INSTALL_OPTIONS: readonly InstallOption[] = [
+const INSTALL_OPTIONS: readonly SegmentedTabOption<InstallChannel>[] = [
   { id: "brew", label: "Homebrew", hint: "macOS" },
   { id: "npx", label: "npx", hint: "any platform with Node" },
   { id: "direct", label: "Direct download", hint: "advanced" },
@@ -102,24 +97,7 @@ export function DaemonInstallInstructions({ className }: { className?: string })
 
   return (
     <div className={cn("space-y-3", className)}>
-      <div className="flex gap-1 rounded-lg border border-border bg-card p-1">
-        {INSTALL_OPTIONS.map((opt) => (
-          <button
-            key={opt.id}
-            type="button"
-            onClick={() => setChannel(opt.id)}
-            className={cn(
-              "flex-1 rounded px-3 py-1.5 text-xs font-medium transition-colors cursor-pointer",
-              channel === opt.id
-                ? "bg-primary text-primary-foreground"
-                : "text-muted-foreground hover:text-foreground",
-            )}
-          >
-            <div>{opt.label}</div>
-            <div className="text-[10px] font-normal opacity-80 mt-0.5">{opt.hint}</div>
-          </button>
-        ))}
-      </div>
+      <SegmentedTabs options={INSTALL_OPTIONS} value={channel} onChange={setChannel} />
       <div className="space-y-2">
         {bundle.prelude}
         {bundle.steps.map((step, i) => (

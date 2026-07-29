@@ -17,6 +17,7 @@ import {
   WatchValidationError,
   type WatchService,
 } from "@beevibe/core/services/watch-service";
+import { toolError } from "./errors.js";
 import type { AgentTool, AgentToolResult } from "./types.js";
 
 export interface WatchToolContext {
@@ -37,20 +38,16 @@ function isMode(value: unknown): value is TaskWatchMode {
   );
 }
 
-function errResult(error: string, message: string): AgentToolResult {
-  return { content: { error, message }, isError: true };
-}
-
 function caughtError(err: unknown): AgentToolResult {
-  if (err instanceof WatchAuthError) return errResult("watch_auth", err.message);
+  if (err instanceof WatchAuthError) return toolError("watch_auth", err.message);
   if (err instanceof WatchValidationError) {
-    return errResult("watch_validation", err.message);
+    return toolError("watch_validation", err.message);
   }
   if (err instanceof WatchNotFoundError) {
-    return errResult("watch_not_found", err.message);
+    return toolError("watch_not_found", err.message);
   }
-  if (err instanceof Error) return errResult("watch_error", err.message);
-  return errResult("watch_error", String(err));
+  if (err instanceof Error) return toolError("watch_error", err.message);
+  return toolError("watch_error", String(err));
 }
 
 function buildWatchTasksTool(
@@ -104,7 +101,7 @@ function buildWatchTasksTool(
           ? input.task_ids.filter((x): x is string => typeof x === "string")
           : [];
         if (taskIds.length === 0) {
-          return errResult(
+          return toolError(
             "watch_validation",
             "task_ids must be a non-empty array of strings",
           );
@@ -115,7 +112,7 @@ function buildWatchTasksTool(
             ? input.reason.trim()
             : undefined;
         if (!ctx.sessionId) {
-          return errResult(
+          return toolError(
             "watch_validation",
             "watch_tasks must be called inside a session context",
           );
@@ -167,7 +164,7 @@ function buildUnwatchTool(
         const watchId =
           typeof input.watch_id === "string" ? input.watch_id : "";
         if (!watchId) {
-          return errResult(
+          return toolError(
             "watch_validation",
             "watch_id must be a non-empty string",
           );

@@ -16,7 +16,8 @@
 import type { SessionEventKind, TerminalSessionStatus } from "@beevibe/core";
 import { runRepoAgent, type TranscriptEvent } from "@beevibe/sandbox/orchestrator";
 import type { ApiClient } from "./api-client.js";
-import { error, log, warn } from "./logger.js";
+import { createEventBatcher } from "./event-batcher.js";
+import { error, log } from "./logger.js";
 import type { DispatchPayload, RunRepoArtifact } from "./spawner.js";
 
 export interface RunRepoDeps {
@@ -46,36 +47,13 @@ export async function runRepoDispatch(
     `[daemon/repo-run] sess=${payload.session_id} repo_run=${rr.repo_run_id} repo=${rr.repo_url}`,
   );
 
-  // Same batching shape as spawner.ts so the live transcript renders
-  // smoothly without one POST per event.
-  const buffer: Array<{
-    session_id: string;
-    kind: SessionEventKind;
-    content: string;
-    tool_name?: string;
-  }> = [];
-  let flushTimer: NodeJS.Timeout | undefined;
-
-  const flush = async (): Promise<void> => {
-    if (buffer.length === 0) return;
-    const events = buffer.splice(0);
-    try {
-      await deps.api.post("/runtime/events", { events });
-    } catch (err) {
-      warn(
-        "[daemon/repo-run] /runtime/events POST failed:",
-        err instanceof Error ? err.message : String(err),
-      );
-    }
-  };
-
-  const scheduleFlush = (): void => {
-    if (flushTimer) return;
-    flushTimer = setTimeout(() => {
-      flushTimer = undefined;
-      void flush();
-    }, 250);
-  };
+  // Same batching as spawner.ts so the live transcript renders smoothly
+  // without one POST per event.
+  const events = createEventBatcher({
+    api: deps.api,
+    sessionId: payload.session_id,
+    tag: "[daemon/repo-run]",
+  });
 
   // Track the most recent transcript index we've already pushed so we
   // don't re-send earlier events every time on_state fires (the
@@ -85,15 +63,9 @@ export async function runRepoDispatch(
     for (let i = pushedUpTo; i < transcript.length; i++) {
       const ev = transcript[i];
       if (!ev) continue;
-      buffer.push({
-        session_id: payload.session_id,
-        kind: mapKind(ev.kind),
-        content: ev.text,
-      });
+      events.push({ kind: mapKind(ev.kind), content: ev.text });
     }
     pushedUpTo = transcript.length;
-    if (buffer.length >= 16) void flush();
-    else scheduleFlush();
   };
 
   // Capture install commands and the last invocation so we can report
@@ -134,21 +106,13 @@ export async function runRepoDispatch(
         // The orchestrator doesn't accept an abort signal yet; this is a
         // best-effort note in the transcript. Hard cancellation lands
         // when the child claude exit propagates.
-        buffer.push({
-          session_id: payload.session_id,
-          kind: "summary",
-          content: "[run cancelled by user]",
-        });
-        void flush();
+        events.push({ kind: "summary", content: "[run cancelled by user]" });
+        void events.flush();
       }
     },
   });
 
-  if (flushTimer) {
-    clearTimeout(flushTimer);
-    flushTimer = undefined;
-  }
-  await flush();
+  await events.close();
 
   const status: TerminalSessionStatus =
     result.status === "succeeded"
