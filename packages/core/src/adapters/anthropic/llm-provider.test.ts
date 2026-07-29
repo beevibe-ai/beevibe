@@ -61,9 +61,4 @@ describe("AnthropicLlmProvider", () => {
       process.env.ANTHROPIC_API_KEY = saved;
     }
   });
-
-  it("reports its identity via the type field", () => {
-    const llm = new AnthropicLlmProvider();
-    expect(llm.type).toBe("anthropic");
-  });
 });

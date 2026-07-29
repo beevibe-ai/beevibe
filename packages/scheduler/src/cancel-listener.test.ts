@@ -74,26 +74,44 @@ describe("CancelListener", () => {
     expect(cancelCalls).toEqual([]);
   });
 
-  it("start() is idempotent", async () => {
-    const { worker } = fakeWorker();
+  it("start() is idempotent — a second call does not double-subscribe", async () => {
+    const { worker, cancelCalls } = fakeWorker();
     listener = new CancelListener({
       connectionString: process.env.DATABASE_URL_TEST!,
       worker,
     });
     await listener.start();
     await listener.start(); // no-op
-    // shouldn't throw
+
+    await new Promise((r) => setTimeout(r, 50));
+
+    await pool.query(`SELECT pg_notify('cancel_task', $1)`, ["task_once"]);
+
+    for (let i = 0; i < 20; i++) {
+      if (cancelCalls.length > 0) break;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    // A second LISTEN on a second connection would deliver the payload twice.
+    await new Promise((r) => setTimeout(r, 100));
+    expect(cancelCalls).toEqual(["task_once"]);
   });
 
-  it("stop() cleans up the connection", async () => {
-    const { worker } = fakeWorker();
+  it("stop() cleans up the connection — notifications stop being delivered", async () => {
+    const { worker, cancelCalls } = fakeWorker();
     listener = new CancelListener({
       connectionString: process.env.DATABASE_URL_TEST!,
       worker,
     });
     await listener.start();
+    await new Promise((r) => setTimeout(r, 50));
+
     await listener.stop();
     // stop is idempotent
     await listener.stop();
+
+    await pool.query(`SELECT pg_notify('cancel_task', $1)`, ["task_after_stop"]);
+    await new Promise((r) => setTimeout(r, 200));
+
+    expect(cancelCalls).toEqual([]);
   });
 });

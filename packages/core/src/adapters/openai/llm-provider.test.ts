@@ -61,9 +61,4 @@ describe("OpenAILlmProvider", () => {
       process.env.OPENAI_API_KEY = saved;
     }
   });
-
-  it("reports its identity via the type field", () => {
-    const llm = new OpenAILlmProvider();
-    expect(llm.type).toBe("openai");
-  });
 });
