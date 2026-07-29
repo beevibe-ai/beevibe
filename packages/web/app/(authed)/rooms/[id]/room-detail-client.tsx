@@ -17,6 +17,8 @@ import { isApiConfigured } from "@/lib/api/config";
 import { api, type RoomDetail, type RoomMemberDetail, type RoomMessage } from "@/lib/api/client";
 import { ApiError, describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
+import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
+import { ModalOverlay } from "@/components/modal-overlay";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ToolStepList } from "@/components/chat/tool-step-list";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
@@ -273,7 +275,7 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
   const [error, setError] = useState<string | null>(null);
   /** When the invitee doesn't have an account yet, surface a share link they can use to sign up + auto-join. */
   const [shareLink, setShareLink] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
+  const { copied, copy } = useCopyToClipboard();
 
   const invite = useMutation({
     mutationFn: () => api.rooms.invite(roomId, { email: email.trim() }),
@@ -297,34 +299,19 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
     },
   });
 
-  const copyLink = async () => {
-    if (!shareLink) return;
-    try {
-      await navigator.clipboard.writeText(shareLink);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    } catch {
-      // clipboard API can fail in non-secure contexts; user can still
-      // long-press the input and copy manually.
-    }
-  };
-
   return (
-    <div
-      className="fixed inset-0 z-30 bg-background/60 backdrop-blur-sm flex items-center justify-center"
-      onClick={onClose}
+    <ModalOverlay
+      overlayClassName="z-30"
+      onClose={onClose}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (!email.trim()) return;
+        setError(null);
+        setShareLink(null);
+        invite.mutate();
+      }}
     >
-      <form
-        onClick={(e) => e.stopPropagation()}
-        onSubmit={(e) => {
-          e.preventDefault();
-          if (!email.trim()) return;
-          setError(null);
-          setShareLink(null);
-          invite.mutate();
-        }}
-        className="bg-card border border-border rounded-lg p-5 w-full max-w-md shadow-md"
-      >
+      <>
         <h3 className="text-sm font-semibold mb-1">Invite to room</h3>
         <p className="text-xs text-muted-foreground mb-3">
           Enter the invitee&apos;s email. If they already have a beevibe account they&apos;re
@@ -360,7 +347,7 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
               />
               <button
                 type="button"
-                onClick={copyLink}
+                onClick={() => void copy(shareLink ?? "")}
                 className="h-7 px-2.5 rounded text-[11px] font-medium border border-border hover:bg-secondary transition-colors cursor-pointer shrink-0"
               >
                 {copied ? "Copied" : "Copy"}
@@ -386,8 +373,8 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
             </button>
           )}
         </div>
-      </form>
-    </div>
+      </>
+    </ModalOverlay>
   );
 }
 

@@ -1,13 +1,7 @@
 "use client";
 
-import {
-  type ReactNode,
-  useCallback,
-  useEffect,
-  useId,
-  useRef,
-  useState,
-} from "react";
+import { type ReactNode, useCallback, useId, useRef, useState } from "react";
+import { useDismissOnOutside } from "@/lib/hooks/use-dismiss";
 import { cn } from "@/lib/utils";
 
 /**
@@ -16,9 +10,8 @@ import { cn } from "@/lib/utils";
  *
  * Trigger is a `<button>` styled as a status chip; popover content is
  * authored by the caller. Manages open state, click-outside, and
- * Escape. The same click-outside pattern lives in `user-widget.tsx`;
- * this just packages it for reuse so three pickers don't each
- * re-derive it.
+ * Escape — all three via the shared `useDismissOnOutside` hook, which
+ * the peek panels and the user-widget menu use too.
  */
 export function ChipPopover({
   ariaLabel,
@@ -44,26 +37,15 @@ export function ChipPopover({
   const menuId = useId();
   const close = useCallback(() => setOpen(false), []);
 
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        setOpen(false);
-        triggerRef.current?.focus();
-      }
-    };
-    document.addEventListener("mousedown", onDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [open]);
+  // Escape also returns focus to the trigger, so the keyboard user
+  // isn't dropped at the top of the document when the popover closes.
+  useDismissOnOutside(rootRef, close, {
+    enabled: open,
+    onEscape: () => {
+      close();
+      triggerRef.current?.focus();
+    },
+  });
 
   return (
     <div ref={rootRef} className="relative inline-flex">
