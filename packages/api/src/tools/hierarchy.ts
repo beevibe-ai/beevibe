@@ -52,7 +52,8 @@ import {
   buildIntent,
   type ResumeReason,
 } from "@beevibe/core/services/agent-session";
-import type { AgentTool, AgentToolResult } from "./types.js";
+import { toolErrorFromThrown } from "./errors.js";
+import type { AgentTool } from "./types.js";
 
 // ── Agent-callable status subsets ─────────────────────────────────────────
 //
@@ -157,15 +158,6 @@ function projectTask(task: Task | undefined): Record<string, unknown> | null {
   };
 }
 
-function asError(err: unknown): AgentToolResult {
-  return {
-    content: {
-      error: err instanceof Error ? err.message : String(err),
-    },
-    isError: true,
-  };
-}
-
 // ── Shared (IC + team) tools ─────────────────────────────────────────────
 
 function searchContextTool(
@@ -202,7 +194,7 @@ function searchContextTool(
         const archival = await services.memoryAgent.searchArchival(query);
         return { content: { archival } };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -264,7 +256,7 @@ function updateProgressTool(
           },
         };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -286,7 +278,7 @@ function findUpTool(
         const parent = await services.agentRepo.findParent(ctx.agentId);
         return { content: { parent: projectAgent(parent) } };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -316,7 +308,7 @@ function getAgentProfileTool(
         const agent = await services.agentRepo.findById(id);
         return { content: { agent: projectAgent(agent) } };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -346,7 +338,7 @@ function getTaskTool(
         const task = await services.taskRepo.findById(id);
         return { content: { task: projectTask(task) } };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -428,7 +420,7 @@ function createWorkProductTool(
           },
         };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -473,7 +465,7 @@ function listWorkProductsTool(
           },
         };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -525,7 +517,7 @@ function getWorkProductTool(
           },
         };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -583,7 +575,7 @@ function updateWorkProductTool(
           },
         };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -606,7 +598,7 @@ function findSubordinatesTool(
         const subs = await services.agentRepo.findSubordinates(ctx.agentId);
         return { content: { agents: subs.map(projectAgent) } };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -627,7 +619,7 @@ function findPeersTool(
         const peers = await services.agentRepo.findPeers(ctx.agentId);
         return { content: { agents: peers.map(projectAgent) } };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -761,7 +753,7 @@ function createTaskTool(
           },
         };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -824,7 +816,7 @@ function checkWorkStatusTool(
           },
         };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -931,7 +923,7 @@ function reviseTaskTool(
         if (err instanceof InvalidTaskTransitionError) {
           return { content: { error: "invalid_transition", message: err.message }, isError: true };
         }
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -1016,7 +1008,7 @@ function addToEscalationTool(
           },
         };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };
@@ -1307,7 +1299,7 @@ function createSubordinateAgentTool(
           },
         };
       } catch (err) {
-        return asError(err);
+        return toolErrorFromThrown(err);
       }
     },
   };

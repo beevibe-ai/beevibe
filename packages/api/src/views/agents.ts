@@ -7,7 +7,8 @@
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { HierarchyLevel, SessionStatus } from "@beevibe/core";
-import { deriveShortId, firstNonEmptyLine, formatRelativeShort } from "./format.js";
+import { toAgentDisplay } from "./agent-display.js";
+import { deriveShortId, formatRelativeShort } from "./format.js";
 import type {
   AgentDisplay,
   AgentDetail,
@@ -65,34 +66,11 @@ ORDER BY
   a.name ASC
 `;
 
+/** Shared mapping plus the two columns only this view selects. */
 function rowToAgentDisplay(row: AgentRow): AgentDisplay {
-  // `runtime` is the CLI tool name; `model` is the LLM alias passed to it.
-  // PR #96 split them. `specialization` is the first non-empty line of the
-  // `tag_line` core memory block (≤100 chars by template). No fallback to
-  // `domain` — that block is for the agent's enduring expertise prose, not
-  // a UI headline; mixing the two confused agents with set tag_lines whose
-  // cards still showed the domain text.
-  const runtime = (row.runtime_config?.type as string | undefined) ?? "claude";
-  const model = row.runtime_config?.model as string | undefined;
-  const specialization = firstNonEmptyLine(row.tag_line);
   return {
-    id: row.id,
-    name: row.name,
-    owner_id: row.owner_id,
+    ...toAgentDisplay(row),
     owner_label: row.owner_label ?? undefined,
-    parent_agent_id: row.parent_agent_id ?? undefined,
-    hierarchy_level: row.hierarchy_level,
-    created_at: row.created_at,
-    updated_at: row.updated_at,
-    display_name: row.name,
-    hierarchy: row.hierarchy_level,
-    sessions_count: Number(row.sessions_count),
-    facts_learned: Number(row.facts_learned),
-    runtime,
-    model,
-    specialization,
-    review_policy: row.review_policy ?? undefined,
-    preferred_runtime_id: row.preferred_runtime_id ?? undefined,
     archived_at: row.archived_at ? row.archived_at.toISOString() : undefined,
   };
 }

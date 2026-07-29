@@ -41,7 +41,23 @@ export interface EscalatedSentinel {
   negotiation_id: string;
 }
 
-export class MeshCapacityError extends Error {
+/**
+ * Base for mesh failures that carry a machine-readable `code` and
+ * structured `meta` alongside the human message.
+ *
+ * The mesh tool wrapper (`tools/mesh.ts`) projects every one of these
+ * into the same `{ error: code, ...meta, message }` envelope. Before
+ * this base existed that projection was written out once per subclass
+ * — three byte-identical `instanceof` branches — so adding a fourth
+ * coded error meant remembering to add a fourth branch or silently
+ * getting the generic `{ error: <message> }` envelope instead.
+ */
+export abstract class CodedMeshError extends Error {
+  abstract readonly code: string;
+  abstract readonly meta: Record<string, unknown>;
+}
+
+export class MeshCapacityError extends CodedMeshError {
   readonly code = "MESH_CAPACITY_EXCEEDED";
   constructor(
     message: string,
@@ -52,7 +68,7 @@ export class MeshCapacityError extends Error {
   }
 }
 
-export class MeshMaxRoundsError extends Error {
+export class MeshMaxRoundsError extends CodedMeshError {
   readonly code = "MAX_ROUNDS_EXCEEDED";
   constructor(
     public readonly meta: {
@@ -75,7 +91,7 @@ export class MeshMaxRoundsError extends Error {
  * negotiation against them would hang forever. Use `ask` (lateral one-shot)
  * or `create_task` (downward delegation) instead.
  */
-export class CannotNegotiateWithIcError extends Error {
+export class CannotNegotiateWithIcError extends CodedMeshError {
   readonly code = "CANNOT_NEGOTIATE_WITH_IC";
   constructor(public readonly meta: { agentId: string }) {
     super(
