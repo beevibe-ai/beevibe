@@ -155,6 +155,44 @@ describe("TaskService.updateProgress", () => {
     ).rejects.toBeInstanceOf(TaskNotFoundError);
   });
 
+  it("refuses a late update on a task a human already cancelled", async () => {
+    // Without this guard an agent that finishes after the cancel silently
+    // overwrites the human's intervention and loses the "(cancelled by …)"
+    // summary.
+    vi.mocked(taskRepo.findById).mockResolvedValue(
+      makeTask({ status: "cancelled", result_summary: "(cancelled by owner)" }),
+    );
+
+    await expect(
+      service.updateProgress("task_1", "done", "all finished!"),
+    ).rejects.toBeInstanceOf(InvalidTaskTransitionError);
+    expect(taskRepo.updateProgress).not.toHaveBeenCalled();
+  });
+
+  it("refuses a late update on an already-done task", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "done" }));
+
+    await expect(
+      service.updateProgress("task_1", "failed", "actually it broke"),
+    ).rejects.toThrow(/already in terminal status 'done'/);
+    expect(taskRepo.updateProgress).not.toHaveBeenCalled();
+  });
+
+  it("still accepts updates on non-terminal statuses", async () => {
+    // 'failed' and 'blocked' are not "I'm finished" claims — an agent can
+    // still move off them.
+    for (const status of ["failed", "blocked", "review"] as const) {
+      vi.mocked(taskRepo.updateProgress).mockClear();
+      vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status }));
+      vi.mocked(taskRepo.updateProgress).mockImplementation(
+        async (id, s, summary) => makeTask({ id, status: s, result_summary: summary }),
+      );
+
+      await service.updateProgress("task_1", "in_progress", "picking it back up");
+      expect(taskRepo.updateProgress).toHaveBeenCalled();
+    }
+  });
+
   describe("review_policy gating", () => {
     it("agent.review_policy='require_human' + status='done' → transitions to 'review'", async () => {
       vi.mocked(taskRepo.findById).mockResolvedValue(
@@ -572,6 +610,44 @@ describe("TaskService.createWorkProduct + listWorkProducts", () => {
     const out = await service.listWorkProducts("task_1");
     expect(out).toHaveLength(1);
     expect(workProductRepo.listByTask).toHaveBeenCalledWith("task_1");
+  });
+
+  it("getWorkProduct delegates to the repo", async () => {
+    vi.mocked(workProductRepo.findById).mockResolvedValue(makeWorkProduct());
+    const out = await service.getWorkProduct("wp_1");
+    expect(workProductRepo.findById).toHaveBeenCalledWith("wp_1");
+    expect(out?.id).toBe("wp_1");
+  });
+
+  it("getWorkProduct passes an unknown id straight through as undefined", async () => {
+    vi.mocked(workProductRepo.findById).mockResolvedValue(undefined);
+    await expect(service.getWorkProduct("wp_missing")).resolves.toBeUndefined();
+  });
+
+  it("updateWorkProduct forwards the mutable patch to the repo", async () => {
+    vi.mocked(workProductRepo.update).mockImplementation(async (id, patch) =>
+      makeWorkProduct({ id, ...patch }),
+    );
+
+    const out = await service.updateWorkProduct("wp_1", {
+      summary: "now merged",
+      url: "https://example.test/pr/42",
+    });
+
+    expect(workProductRepo.update).toHaveBeenCalledWith("wp_1", {
+      summary: "now merged",
+      url: "https://example.test/pr/42",
+    });
+    expect(out.summary).toBe("now merged");
+  });
+
+  it("updateWorkProduct surfaces the repo's not-found error", async () => {
+    vi.mocked(workProductRepo.update).mockRejectedValue(
+      new Error("work_product wp_missing not found"),
+    );
+    await expect(
+      service.updateWorkProduct("wp_missing", { summary: "x" }),
+    ).rejects.toThrow(/work_product wp_missing not found/);
   });
 });
 

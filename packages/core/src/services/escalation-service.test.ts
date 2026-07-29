@@ -10,6 +10,7 @@ import type {
   NegotiationRoundRepository,
 } from "../ports/negotiation-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
+import type { DispatchService } from "./dispatch-service.js";
 import {
   EscalationNotFoundError,
   EscalationService,
@@ -212,6 +213,50 @@ describe("EscalationService.create", () => {
       svc.create({ negotiationId: "neg_missing", callerAgentId: "agent_a", summary: "x" }),
     ).rejects.toBeInstanceOf(NegotiationNotFoundError);
   });
+
+  it("rejects a negotiation that never started round 1 (no counterparty session)", async () => {
+    // The escalation row requires both session ids; escalating before the
+    // counterparty ever ran would write a half-formed row.
+    vi.mocked(negotiationRepo.findById).mockResolvedValue(
+      makeNeg({ counterparty_session_id: undefined }),
+    );
+    vi.mocked(escalationRepo.findByNegotiation).mockResolvedValue(undefined);
+
+    await expect(
+      svc.create({ negotiationId: "neg_1", callerAgentId: "agent_a", summary: "x" }),
+    ).rejects.toThrow(/no counterparty_session_id/);
+    expect(escalationRepo.create).not.toHaveBeenCalled();
+    expect(negotiationRepo.update).not.toHaveBeenCalled();
+  });
+
+  it("skips the task block when the negotiation isn't task-bound", async () => {
+    vi.mocked(negotiationRepo.findById).mockResolvedValue(
+      makeNeg({ task_id: undefined }),
+    );
+    vi.mocked(escalationRepo.findByNegotiation).mockResolvedValue(undefined);
+    vi.mocked(escalationRepo.create).mockImplementation(async (input) => makeEsc(input));
+    vi.mocked(escalationRepo.findById).mockResolvedValue(makeEsc());
+
+    await svc.create({ negotiationId: "neg_1", callerAgentId: "agent_a", summary: "x" });
+
+    expect(negotiationRepo.update).toHaveBeenCalledWith("neg_1", { status: "escalated" });
+    expect(taskRepo.update).not.toHaveBeenCalled();
+  });
+
+  it("falls back to the created row when the post-update re-fetch misses", async () => {
+    vi.mocked(negotiationRepo.findById).mockResolvedValue(makeNeg());
+    vi.mocked(escalationRepo.findByNegotiation).mockResolvedValue(undefined);
+    vi.mocked(escalationRepo.create).mockImplementation(async (input) => makeEsc(input));
+    vi.mocked(escalationRepo.findById).mockResolvedValue(undefined);
+
+    const result = await svc.create({
+      negotiationId: "neg_1",
+      callerAgentId: "agent_a",
+      summary: "x",
+    });
+
+    expect(result.negotiation_id).toBe("neg_1");
+  });
 });
 
 describe("EscalationService.addContribution", () => {
@@ -271,6 +316,66 @@ describe("EscalationService.addContribution", () => {
     await expect(
       svc.addContribution({ escalationId: "esc_1", callerAgentId: "agent_b" }),
     ).rejects.toBeInstanceOf(EscalationStateError);
+  });
+
+  it("populates the initiator slot when the counterparty escalated", async () => {
+    // Mirror of the first case — the role branch that picks initiator_* keys.
+    vi.mocked(escalationRepo.findById).mockResolvedValue(
+      makeEsc({
+        escalated_by_role: "counterparty",
+        counterparty_proposals: [{ title: "B", description: "b" }],
+        counterparty_submitted_at: new Date(),
+      }),
+    );
+    vi.mocked(negotiationRepo.findById).mockResolvedValue(makeNeg());
+    vi.mocked(escalationRepo.update).mockImplementation(async (id, patch) =>
+      makeEsc({ id, ...(patch as Partial<Escalation>) }),
+    );
+
+    const proposals: Proposal[] = [{ title: "A", description: "a" }];
+    await svc.addContribution({
+      escalationId: "esc_1",
+      callerAgentId: "agent_a",
+      proposals,
+    });
+
+    expect(escalationRepo.update).toHaveBeenCalledWith(
+      "esc_1",
+      expect.objectContaining({
+        initiator_proposals: proposals,
+        initiator_open_questions: [],
+        initiator_submitted_at: expect.any(Date),
+      }),
+    );
+  });
+
+  it("rejects contributions to an escalation that is no longer pending", async () => {
+    vi.mocked(escalationRepo.findById).mockResolvedValue(
+      makeEsc({ status: "resolved" }),
+    );
+
+    await expect(
+      svc.addContribution({ escalationId: "esc_1", callerAgentId: "agent_b" }),
+    ).rejects.toThrow(/not pending \(status='resolved'\)/);
+    // Bails before touching the negotiation.
+    expect(negotiationRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it("throws EscalationNotFoundError for an unknown escalation id", async () => {
+    vi.mocked(escalationRepo.findById).mockResolvedValue(undefined);
+
+    await expect(
+      svc.addContribution({ escalationId: "esc_missing", callerAgentId: "agent_b" }),
+    ).rejects.toBeInstanceOf(EscalationNotFoundError);
+  });
+
+  it("throws NegotiationNotFoundError when the backing negotiation vanished", async () => {
+    vi.mocked(escalationRepo.findById).mockResolvedValue(makeEsc());
+    vi.mocked(negotiationRepo.findById).mockResolvedValue(undefined);
+
+    await expect(
+      svc.addContribution({ escalationId: "esc_1", callerAgentId: "agent_b" }),
+    ).rejects.toBeInstanceOf(NegotiationNotFoundError);
   });
 });
 
@@ -440,6 +545,104 @@ describe("EscalationService.resolve", () => {
         selector: { source: "counterparty", source_index: 0 },
       }),
     ).rejects.toBeInstanceOf(EscalationStateError);
+  });
+});
+
+describe("EscalationService.resolve — dispatch wiring", () => {
+  let dispatchService: DispatchService;
+
+  beforeEach(() => {
+    // Post-Phase-4 nobody polls for 'assigned' tasks, so resolve() must
+    // create the pending session rows itself. Without this the two sides
+    // sit assigned forever.
+    dispatchService = {
+      dispatchTask: vi.fn(async () => ({ session: {}, runtime_id: null })),
+    } as unknown as DispatchService;
+    svc = new EscalationService({
+      escalationRepo,
+      negotiationRepo,
+      negotiationRoundRepo,
+      taskRepo,
+      agentRepo,
+      dispatchService,
+    });
+
+    vi.mocked(escalationRepo.findById).mockResolvedValue(
+      makeEsc({
+        initiator_proposals: [{ title: "A0", description: "a0d" }],
+        counterparty_proposals: [{ title: "B0", description: "b0d" }],
+      }),
+    );
+    vi.mocked(negotiationRepo.findById).mockResolvedValue(makeNeg());
+    vi.mocked(escalationRepo.update).mockImplementation(async (id, patch) =>
+      makeEsc({ id, ...(patch as Partial<Escalation>) }),
+    );
+  });
+
+  it("dispatches both sides with post_escalation reasons pinned to their prior sessions", async () => {
+    await svc.resolve({
+      escalationId: "esc_1",
+      personId: "person_1",
+      selector: { source: "initiator", source_index: 0 },
+      notes: "go with A0",
+    });
+
+    expect(dispatchService.dispatchTask).toHaveBeenCalledTimes(2);
+    const calls = vi.mocked(dispatchService.dispatchTask).mock.calls.map((c) => c[0]);
+
+    const initiator = calls.find((c) => c.agentId === "agent_a");
+    expect(initiator).toBeDefined();
+    expect(initiator!.type).toBe("task");
+    expect(initiator!.reason).toMatchObject({
+      kind: "post_escalation",
+      role: "initiator",
+      prior_session_id: "sess_a",
+    });
+
+    const counterparty = calls.find((c) => c.agentId === "agent_b");
+    expect(counterparty).toBeDefined();
+    expect(counterparty!.reason).toMatchObject({
+      kind: "post_escalation",
+      role: "counterparty",
+      prior_session_id: "sess_b",
+    });
+  });
+
+  it("dispatches each side against its own task, with the resolution in the intent", async () => {
+    const result = await svc.resolve({
+      escalationId: "esc_1",
+      personId: "person_1",
+      selector: { source: "initiator", source_index: 0 },
+    });
+
+    const calls = vi.mocked(dispatchService.dispatchTask).mock.calls.map((c) => c[0]);
+    const initiator = calls.find((c) => c.agentId === "agent_a")!;
+    const counterparty = calls.find((c) => c.agentId === "agent_b")!;
+
+    expect(initiator.task.id).toBe(result.initiatorTaskId);
+    expect(counterparty.task.id).toBe(result.counterpartyTaskId);
+    expect(initiator.intent).toContain(result.initiatorTaskId);
+    expect(counterparty.intent).toContain(result.counterpartyTaskId);
+  });
+
+  it("still resolves when no dispatchService is configured", async () => {
+    svc = new EscalationService({
+      escalationRepo,
+      negotiationRepo,
+      negotiationRoundRepo,
+      taskRepo,
+      agentRepo,
+    });
+
+    const result = await svc.resolve({
+      escalationId: "esc_1",
+      personId: "person_1",
+      selector: { source: "initiator", source_index: 0 },
+    });
+
+    expect(dispatchService.dispatchTask).not.toHaveBeenCalled();
+    expect(result.initiatorTaskId).toBeTruthy();
+    expect(result.counterpartyTaskId).toBeTruthy();
   });
 });
 
