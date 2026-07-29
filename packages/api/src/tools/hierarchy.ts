@@ -169,7 +169,7 @@ function asError(err: unknown): AgentToolResult {
 // ── Shared (IC + team) tools ─────────────────────────────────────────────
 
 function searchContextTool(
-  ctx: HierarchyToolContext,
+  _ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
   return {
