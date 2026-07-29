@@ -168,6 +168,40 @@ Diagnose Turbo's env filtering with
 `npx turbo run build --filter=@beevibe/web --dry-run=json` and check
 `envMode` / `passthrough`.
 
+## Dead-code analysis: known false positives
+
+`knip` and `depcheck` flag the same handful of things on every sweep. All
+of the below are **load-bearing — do not remove.** Verify against this
+table before deleting anything a tool reports as unused.
+
+| Reported as unused | Why it stays |
+| --- | --- |
+| `packages/api` dep `node-pg-migrate` | Runs migrations on deploy via `scripts/start-api.sh`. Removing it broke the Railway deploy once already (#258). |
+| `packages/api` dep `zod` | Required **peer dependency** of `@modelcontextprotocol/sdk` (`^3.25 \|\| ^4.0`). Nothing imports it directly. |
+| `packages/web` devDeps `postcss`, `autoprefixer` | Referenced by `packages/web/postcss.config.js`, which the tools don't parse. |
+| root devDep `prettier` | Formatting is editor/CLI-driven off `.prettierrc.json`; there's no `format` script to detect. |
+| `migrations/*.js` | Applied migration history. **Never** delete a migration file. |
+| `scripts/provision-demo.ts`, `pre-deploy-fix-migration-names.cjs` | Invoked from `scripts/dev.sh` and `scripts/start-api.sh` — shell call sites are invisible to knip. |
+| `scripts/seed-session-search-demo.ts`, `test-session-search.ts`, `packages/sandbox/src/scripts/*` | Documented manual dev/ops utilities, run by hand via `pnpm tsx …`. |
+| `OwnerLookup.singleOwnerSet` / `.meshOwners` | Called by the module-level `RESOLVERS` table, so they must stay public. Knip only checks cross-module use. |
+| `@beevibe/core/{domain,adapters/codex,adapters/opencode,services/skills,auth/constants}` subpath exports | Deliberate library surface. The codex/opencode runtimes are wired through `runtime-registry.ts`, which imports `./codex/runtime.js` directly rather than the barrel. |
+
+Most "unused export" hits are symbols used *within their own file* — the
+`export` is redundant, not dead. Leave them alone unless you're already
+editing the file.
+
+The checks that do find real dead code here:
+
+```bash
+npx tsc -p packages/<pkg>/tsconfig.json --noEmit --noUnusedLocals --noUnusedParameters
+npx tsc -p packages/<pkg>/tsconfig.json --noEmit --allowUnreachableCode false   # TS7027
+```
+
+Note `@typescript-eslint/no-unused-vars` defaults to `args: after-used`,
+so an unused parameter followed by a used one is **not** reported — only
+`--noUnusedParameters` catches it. Convention here is to prefix a
+deliberately-unused param with `_`.
+
 ## Deploying
 
 ```bash
