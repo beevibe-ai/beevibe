@@ -1,9 +1,4 @@
-import type {
-  Negotiation,
-  NegotiationDecision,
-  NegotiationRound,
-  NegotiationStatus,
-} from "../domain/negotiation.js";
+import type { Negotiation, NegotiationRound, NegotiationStatus } from "../domain/negotiation.js";
 
 export type NewNegotiation = Omit<
   Negotiation,
@@ -40,6 +35,3 @@ export interface NegotiationRoundRepository {
   findLatest(negotiationId: string): Promise<NegotiationRound | undefined>;
   create(input: NewNegotiationRound): Promise<NegotiationRound>;
 }
-
-// Helper for ergonomic round-decision filtering by callers.
-export type _RoundDecisionFilter = NegotiationDecision;

@@ -16,9 +16,7 @@ export {
   deriveShortId,
   firstNonEmptyLine,
   formatDurationLabel,
-  toDate,
   truncate,
-  type DateLike,
 } from "@beevibe/core/domain/format";
 
 /** Relative-time label like "just now" / "2m" / "1h" / "3d". */

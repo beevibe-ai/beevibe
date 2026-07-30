@@ -11,15 +11,6 @@ export type RepoRunStatus =
   | "blocked"
   | "cancelled";
 
-export const REPO_RUN_STATUSES: readonly RepoRunStatus[] = [
-  "pending",
-  "running",
-  "succeeded",
-  "failed",
-  "blocked",
-  "cancelled",
-] as const;
-
 /**
  * One transcript event from the sandbox orchestrator. The daemon pushes
  * these through /runtime/events so they land in session_event for the UI;
@@ -81,12 +72,6 @@ export interface LearnedSkill {
 }
 
 export type SkillOutcomeValue = "approved" | "revised" | "rejected";
-
-export const SKILL_OUTCOME_VALUES: readonly SkillOutcomeValue[] = [
-  "approved",
-  "revised",
-  "rejected",
-] as const;
 
 export interface SkillOutcome {
   id: string;
