@@ -257,4 +257,77 @@ describe("SessionSearchService", () => {
       ),
     ).rejects.toThrow(SessionSearchError);
   });
+
+  it("scroll rejects a missing session_id too", async () => {
+    const { service } = makeService({
+      sessions: { sess_a: makeSession({ id: "sess_a", agent_id: "agent_a" }) },
+    });
+    await expect(
+      service.search(
+        { kind: "scroll", session_id: "", around_message_id: "evt_1" },
+        { callerAgentId: "agent_a", hierarchyLevel: "ic", currentSessionId: "sess_a" },
+      ),
+    ).rejects.toThrow(/scroll requires both/);
+  });
+
+  it("read requires a session_id", async () => {
+    const { service } = makeService({
+      sessions: { sess_a: makeSession({ id: "sess_a", agent_id: "agent_a" }) },
+    });
+    await expect(
+      service.search(
+        { kind: "read", session_id: "" },
+        { callerAgentId: "agent_a", hierarchyLevel: "ic", currentSessionId: "sess_a" },
+      ),
+    ).rejects.toThrow(/read requires session_id/);
+  });
+
+  it("routes each request kind to its matching repo method, with scope attached", async () => {
+    const ctx = {
+      callerAgentId: "agent_a",
+      hierarchyLevel: "ic" as const,
+      currentSessionId: "sess_a",
+    };
+    const sessions = { sess_a: makeSession({ id: "sess_a", agent_id: "agent_a" }) };
+
+    const scroll = makeService({ sessions });
+    await scroll.service.search(
+      { kind: "scroll", session_id: "sess_x", around_message_id: "evt_1" },
+      ctx,
+    );
+    expect(scroll.repo.lastScope?.agent_ids).toEqual(["agent_a"]);
+
+    const read = makeService({ sessions });
+    await read.service.search({ kind: "read", session_id: "sess_x" }, ctx);
+    expect(read.repo.lastScope?.agent_ids).toEqual(["agent_a"]);
+
+    const browse = makeService({ sessions });
+    const result = await browse.service.search({ kind: "browse" }, ctx);
+    expect(result).toMatchObject({ kind: "browse" });
+    expect(browse.repo.lastScope?.agent_ids).toEqual(["agent_a"]);
+  });
+
+  it("browse needs no query or session_id", async () => {
+    const { service } = makeService({
+      sessions: { sess_a: makeSession({ id: "sess_a", agent_id: "agent_a" }) },
+    });
+    await expect(
+      service.search(
+        { kind: "browse", limit: 5 },
+        { callerAgentId: "agent_a", hierarchyLevel: "ic", currentSessionId: "sess_a" },
+      ),
+    ).resolves.toMatchObject({ kind: "browse" });
+  });
+
+  it("rejects a whitespace-only discover query", async () => {
+    const { service } = makeService({
+      sessions: { sess_a: makeSession({ id: "sess_a", agent_id: "agent_a" }) },
+    });
+    await expect(
+      service.search(
+        { kind: "discover", query: "   " },
+        { callerAgentId: "agent_a", hierarchyLevel: "ic", currentSessionId: "sess_a" },
+      ),
+    ).rejects.toThrow(/query is required/);
+  });
 });

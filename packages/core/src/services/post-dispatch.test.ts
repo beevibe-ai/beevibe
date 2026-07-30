@@ -1,12 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Agent } from "../domain/agent.js";
 import type { Session } from "../domain/session.js";
 import type { Task } from "../domain/task.js";
+import type { AgentRepository } from "../ports/agent-repo.js";
 import type { SessionRepository } from "../ports/session-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
 import type { DispatchService } from "./dispatch-service.js";
 import type { TaskService } from "./task-service.js";
 import {
   NUDGE_COMPLETION_MARKER,
+  buildPostDispatchHook,
   postDispatchCheck,
 } from "./post-dispatch.js";
 
@@ -37,10 +40,24 @@ function makeSession(overrides: Partial<Session> = {}): Session {
   } as Session;
 }
 
+function makeAgent(overrides: Partial<Agent> = {}): Agent {
+  return {
+    id: "agent_a",
+    name: "Ada",
+    owner_id: "person_owner",
+    hierarchy_level: "ic",
+    runtime_config: { type: "claude" },
+    created_at: new Date(),
+    updated_at: new Date(),
+    ...overrides,
+  };
+}
+
 let taskRepo: TaskRepository;
 let taskService: TaskService;
 let dispatchService: DispatchService;
 let sessionRepo: SessionRepository;
+let agentRepo: AgentRepository;
 
 beforeEach(() => {
   vi.useFakeTimers();
@@ -82,6 +99,9 @@ beforeEach(() => {
   vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue({
     id: "sess_orig",
   } as unknown as Session);
+  agentRepo = {
+    findById: vi.fn(async () => makeAgent()),
+  } as unknown as AgentRepository;
 });
 
 afterEach(() => {
@@ -275,5 +295,91 @@ describe("postDispatchCheck (Phase 4 — dispatchService retry)", () => {
     await p;
 
     expect(dispatchService.dispatchTask).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("buildPostDispatchHook", () => {
+  function hook() {
+    return buildPostDispatchHook({
+      taskRepo,
+      taskService,
+      agentRepo,
+      sessionRepo,
+      dispatchService,
+    });
+  }
+
+  it("ignores non-task sessions", async () => {
+    await hook()(makeSession({ type: "chat", task_id: undefined }));
+
+    expect(agentRepo.findById).not.toHaveBeenCalled();
+    expect(taskRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it("ignores a task-typed session with no task_id", async () => {
+    // Shouldn't happen, but the hook is wired to every terminal session
+    // write — a malformed row must not take the worker down.
+    await hook()(makeSession({ type: "task", task_id: undefined }));
+
+    expect(agentRepo.findById).not.toHaveBeenCalled();
+    expect(taskRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it("ignores mesh sessions", async () => {
+    await hook()(makeSession({ type: "mesh_ask", task_id: undefined }));
+
+    expect(taskRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it("bails when the session's agent no longer exists", async () => {
+    vi.mocked(agentRepo.findById).mockResolvedValue(undefined);
+
+    await hook()(makeSession());
+
+    expect(agentRepo.findById).toHaveBeenCalledWith("agent_a");
+    expect(taskRepo.findById).not.toHaveBeenCalled();
+  });
+
+  it("runs the post-dispatch check for a terminal task session", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(makeTask({ status: "done" }));
+
+    const p = hook()(makeSession({ task_id: "task_t", agent_id: "agent_a" }));
+    await advanceGrace();
+    await p;
+
+    expect(taskRepo.findById).toHaveBeenCalledWith("task_t");
+    expect(taskService.checkAndCompleteParent).toHaveBeenCalledWith("task_t");
+  });
+
+  it("threads the session through, so the stale-dispatch guard sees its id", async () => {
+    vi.mocked(taskRepo.findById).mockResolvedValue(
+      makeTask({ status: "in_progress" }),
+    );
+    vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue({
+      id: "sess_newer",
+    } as unknown as Session);
+
+    const p = hook()(makeSession({ id: "sess_orig" }));
+    await advanceGrace();
+    await p;
+
+    expect(dispatchService.dispatchTask).not.toHaveBeenCalled();
+  });
+
+  it("dispatches the nudge retry for a leaf task the agent left running", async () => {
+    vi.mocked(taskRepo.findById)
+      .mockResolvedValueOnce(makeTask({ status: "in_progress" }))
+      .mockResolvedValueOnce(makeTask({ status: "done" }));
+    vi.mocked(taskRepo.countChildrenNotComplete).mockResolvedValue(0);
+    vi.mocked(taskRepo.countChildren).mockResolvedValue(0);
+
+    const p = hook()(makeSession({ id: "sess_orig", agent_id: "agent_a" }));
+    await advanceGrace();
+    await advanceRetryWait();
+    await p;
+
+    const arg = vi.mocked(dispatchService.dispatchTask).mock.calls[0]![0];
+    expect(arg.agentId).toBe("agent_a");
+    expect(arg.intent).toContain(NUDGE_COMPLETION_MARKER);
   });
 });

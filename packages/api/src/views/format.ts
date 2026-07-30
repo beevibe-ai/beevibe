@@ -12,7 +12,12 @@
 
 import { formatRelative, type DateLike } from "@beevibe/core/domain/format";
 
-export { deriveShortId, firstNonEmptyLine, formatDurationLabel } from "@beevibe/core/domain/format";
+export {
+  deriveShortId,
+  firstNonEmptyLine,
+  formatDurationLabel,
+  truncate,
+} from "@beevibe/core/domain/format";
 
 /** Relative-time label like "just now" / "2m" / "1h" / "3d". */
 export function formatRelativeShort(date: DateLike, now: Date = new Date()): string {

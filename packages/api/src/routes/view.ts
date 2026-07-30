@@ -60,7 +60,7 @@ import { listActivity } from "../views/activity.js";
 import { getWorkProduct } from "../views/work-product.js";
 import { listInbox } from "../views/inbox.js";
 import { getAgentNetwork } from "../views/agent-network.js";
-import { makeErrorHandler } from "./http-errors.js";
+import { loadOwned, makeErrorHandler, requireParam } from "./http-errors.js";
 
 /** Every handler below passes a per-call context, e.g. `[view route: task list]`. */
 const handleError = makeErrorHandler("view route");
@@ -135,11 +135,8 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.get("/task/:id", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_task_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_task_id");
+    if (!id) return;
     try {
       const task = await getTask(deps.pool, id);
       if (!task) {
@@ -185,11 +182,8 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.get("/agent/:id", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_agent_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_agent_id");
+    if (!id) return;
     try {
       const agent = await getAgent(deps.pool, id);
       if (!agent) {
@@ -204,11 +198,8 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.post("/agent/:id/runtime", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_agent_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_agent_id");
+    if (!id) return;
     const body = req.body as { runtime_id?: string | null } | undefined;
     // Allow explicit null to unbind, or a non-empty string to bind.
     const runtimeId =
@@ -225,15 +216,14 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       return;
     }
     try {
-      const existing = await deps.agentRepo.findById(id);
-      if (!existing) {
-        res.status(404).json({ error: "agent_not_found" });
-        return;
-      }
-      if (existing.owner_id !== req.caller.personId) {
-        res.status(403).json({ error: "not_owner" });
-        return;
-      }
+      const existing = await loadOwned(
+        res,
+        req.caller.personId,
+        () => deps.agentRepo.findById(id),
+        (a) => a.owner_id,
+        "agent_not_found",
+      );
+      if (!existing) return;
       // Validate the runtime belongs to a daemon owned by the caller.
       // Otherwise a user could re-target their agent at someone else's
       // daemon (cross-tenant escalation).
@@ -284,11 +274,8 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.post("/agent/:id/model", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_agent_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_agent_id");
+    if (!id) return;
     const body = req.body as { model?: string | null } | undefined;
     // null clears (agent uses CLI default), non-empty string sets.
     const model =
@@ -305,15 +292,14 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       return;
     }
     try {
-      const existing = await deps.agentRepo.findById(id);
-      if (!existing) {
-        res.status(404).json({ error: "agent_not_found" });
-        return;
-      }
-      if (existing.owner_id !== req.caller.personId) {
-        res.status(403).json({ error: "not_owner" });
-        return;
-      }
+      const existing = await loadOwned(
+        res,
+        req.caller.personId,
+        () => deps.agentRepo.findById(id),
+        (a) => a.owner_id,
+        "agent_not_found",
+      );
+      if (!existing) return;
       // Build the next runtime_config: keep the existing fields, override
       // (or remove) just the `model` key. Don't replace the whole config
       // wholesale — type / max_turns / etc. should survive.
@@ -337,11 +323,8 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.post("/agent/:id/review-policy", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_agent_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_agent_id");
+    if (!id) return;
     const body = req.body as { review_policy?: unknown } | undefined;
     const policy = body?.review_policy;
     if (!isReviewPolicy(policy)) {
@@ -352,15 +335,14 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       return;
     }
     try {
-      const existing = await deps.agentRepo.findById(id);
-      if (!existing) {
-        res.status(404).json({ error: "agent_not_found" });
-        return;
-      }
-      if (existing.owner_id !== req.caller.personId) {
-        res.status(403).json({ error: "not_owner" });
-        return;
-      }
+      const existing = await loadOwned(
+        res,
+        req.caller.personId,
+        () => deps.agentRepo.findById(id),
+        (a) => a.owner_id,
+        "agent_not_found",
+      );
+      if (!existing) return;
       const updated = await deps.agentRepo.update(id, { review_policy: policy });
       res.json({ ok: true, review_policy: updated.review_policy });
     } catch (err) {
@@ -370,12 +352,10 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.post("/agent/:id/core-memory/:blockName", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    const blockName = req.params.blockName;
-    if (!id || !blockName) {
-      res.status(400).json({ error: "missing_param" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_param");
+    if (!id) return;
+    const blockName = requireParam(req, res, "blockName", "missing_param");
+    if (!blockName) return;
     const body = req.body as { content?: unknown } | undefined;
     if (typeof body?.content !== "string") {
       res.status(400).json({
@@ -385,15 +365,14 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       return;
     }
     try {
-      const existing = await deps.agentRepo.findById(id);
-      if (!existing) {
-        res.status(404).json({ error: "agent_not_found" });
-        return;
-      }
-      if (existing.owner_id !== req.caller.personId) {
-        res.status(403).json({ error: "not_owner" });
-        return;
-      }
+      const existing = await loadOwned(
+        res,
+        req.caller.personId,
+        () => deps.agentRepo.findById(id),
+        (a) => a.owner_id,
+        "agent_not_found",
+      );
+      if (!existing) return;
       await deps.coreMemory.setContent(id, blockName, body.content);
       res.json({ ok: true });
     } catch (err) {
@@ -411,21 +390,17 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.post("/agent/:id/archive", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_agent_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_agent_id");
+    if (!id) return;
     try {
-      const existing = await deps.agentRepo.findById(id);
-      if (!existing) {
-        res.status(404).json({ error: "agent_not_found" });
-        return;
-      }
-      if (existing.owner_id !== req.caller.personId) {
-        res.status(403).json({ error: "not_owner" });
-        return;
-      }
+      const existing = await loadOwned(
+        res,
+        req.caller.personId,
+        () => deps.agentRepo.findById(id),
+        (a) => a.owner_id,
+        "agent_not_found",
+      );
+      if (!existing) return;
       if (existing.archived_at) {
         res.json({ ok: true, archived_at: existing.archived_at.toISOString() });
         return;
@@ -620,11 +595,8 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.delete("/memory/fact/:id", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_fact_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_fact_id");
+    if (!id) return;
     try {
       const fact = await deps.memoryFactRepo.findById(id);
       if (!fact) {
@@ -651,11 +623,8 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.get("/work-product/:id", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_work_product_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_work_product_id");
+    if (!id) return;
     try {
       const wp = await getWorkProduct(deps.pool, id);
       if (!wp) {

@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Agent } from "../domain/agent.js";
 import type { Session } from "../domain/session.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
@@ -541,6 +541,294 @@ describe("AgentSession.run", () => {
       "hook blew up",
     );
     errSpy.mockRestore();
+  });
+});
+
+// ── The post-Phase-4 claim path + the best-effort side channels ──────────
+
+describe("AgentSession.run — pre-inserted session row (daemon claim path)", () => {
+  beforeEach(() => {
+    vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({
+      systemPromptAppend: "",
+      userMessagePrefix: "",
+      snapshot: { block_count: 0, fact_count: 0, token_count: 0, blocks: [], facts: [] },
+    });
+    vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
+    vi.mocked(sessionRepo.update).mockImplementation(async (id, patch) =>
+      makeSession(id, patch as Partial<Session>),
+    );
+  });
+
+  it("reuses an existing row and only stamps workspace_path", async () => {
+    // dispatchService already inserted the row at status='pending' and the
+    // worker promoted it to 'running'; re-INSERTing would violate the PK.
+    vi.mocked(sessionRepo.findById).mockResolvedValue(makeSession("sess_claimed"));
+
+    await service.run({
+      agentId: "agent_1",
+      intent: "x",
+      workspace: WORKSPACE,
+      sessionId: "sess_claimed",
+      taskId: "task_1",
+    });
+
+    expect(sessionRepo.create).not.toHaveBeenCalled();
+    expect(sessionRepo.update).toHaveBeenCalledWith("sess_claimed", {
+      workspace_path: "/tmp/ws",
+    });
+    expect(vi.mocked(runtime.execute).mock.calls[0]![0].env).toMatchObject({
+      BEEVIBE_SESSION_ID: "sess_claimed",
+    });
+  });
+
+  it("inserts under the caller's id when the row doesn't exist yet (mesh round 1)", async () => {
+    vi.mocked(sessionRepo.findById).mockResolvedValue(undefined);
+    vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
+
+    await service.run({
+      agentId: "agent_1",
+      intent: "x",
+      workspace: WORKSPACE,
+      sessionId: "sess_preassigned",
+    });
+
+    expect(sessionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ id: "sess_preassigned", status: "running" }),
+    );
+  });
+
+  it("stamps room_id only when the session was kicked off inside a room", async () => {
+    vi.mocked(sessionRepo.findById).mockResolvedValue(undefined);
+    vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
+
+    await service.run({
+      agentId: "agent_1",
+      intent: "x",
+      workspace: WORKSPACE,
+      roomId: "room_1",
+    });
+    expect(sessionRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ room_id: "room_1" }),
+    );
+
+    vi.mocked(sessionRepo.create).mockClear();
+    await service.run({ agentId: "agent_1", intent: "x", workspace: WORKSPACE });
+    expect(vi.mocked(sessionRepo.create).mock.calls[0]![0]).not.toHaveProperty("room_id");
+  });
+});
+
+describe("AgentSession.run — best-effort side channels never fail the session", () => {
+  let errSpy: ReturnType<typeof vi.spyOn>;
+  let warnSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    vi.mocked(agentRepo.findById).mockResolvedValue(makeAgent());
+    vi.mocked(sessionRepo.create).mockImplementation(async (i) => makeSession(i.id));
+    vi.mocked(memoryAgent.prepareBriefing).mockResolvedValue({
+      systemPromptAppend: "",
+      userMessagePrefix: "",
+      snapshot: { block_count: 1, fact_count: 2, token_count: 3, blocks: [], facts: [] },
+    });
+    vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult());
+    vi.mocked(sessionRepo.update).mockImplementation(async (id, patch) =>
+      makeSession(id, patch as Partial<Session>),
+    );
+    errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  });
+
+  afterEach(() => {
+    errSpy.mockRestore();
+    warnSpy.mockRestore();
+  });
+
+  it("persists the briefing snapshot, and survives that write failing", async () => {
+    vi.mocked(sessionRepo.update).mockImplementation(async (id, patch) => {
+      if ((patch as { briefing?: unknown }).briefing) throw new Error("audit table gone");
+      return makeSession(id, patch as Partial<Session>);
+    });
+
+    await expect(
+      service.run({ agentId: "agent_1", intent: "x", workspace: WORKSPACE }),
+    ).resolves.toBeDefined();
+
+    expect(errSpy).toHaveBeenCalledWith(
+      expect.stringContaining("failed to persist briefing"),
+      "audit table gone",
+    );
+    expect(runtime.execute).toHaveBeenCalled();
+  });
+
+  it("logs and continues when a session_event append rejects", async () => {
+    vi.mocked(sessionEventRepo.append).mockRejectedValue(new Error("event table gone"));
+    vi.mocked(runtime.execute).mockImplementation(async (ctx) => {
+      ctx.onStep?.({ kind: "tool_call", tool: "Read", description: "/a.ts", timestamp: "t" });
+      return makeRuntimeResult();
+    });
+
+    await expect(
+      service.run({ agentId: "agent_1", intent: "x", workspace: WORKSPACE }),
+    ).resolves.toBeDefined();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      expect.stringContaining("session_event tool_call dropped"),
+      "event table gone",
+    );
+  });
+
+  it("tees every step into session_event AND the caller's onStep", async () => {
+    const callerOnStep = vi.fn();
+    vi.mocked(runtime.execute).mockImplementation(async (ctx) => {
+      ctx.onStep?.({ kind: "agent", description: "thinking", timestamp: "t" });
+      ctx.onStep?.({ kind: "tool_call", tool: "Bash", description: "ls", timestamp: "t" });
+      return makeRuntimeResult({ output: "" });
+    });
+
+    await service.run({
+      agentId: "agent_1",
+      intent: "x",
+      workspace: WORKSPACE,
+      onStep: callerOnStep,
+    });
+
+    expect(callerOnStep).toHaveBeenCalledTimes(2);
+    expect(sessionEventRepo.append).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "tool_call", content: "ls", tool_name: "Bash" }),
+    );
+  });
+
+  it("appends a summary event only when the run produced output", async () => {
+    vi.mocked(runtime.execute).mockResolvedValue(makeRuntimeResult({ output: "" }));
+
+    await service.run({ agentId: "agent_1", intent: "x", workspace: WORKSPACE });
+
+    expect(
+      vi.mocked(sessionEventRepo.append).mock.calls.filter(
+        (c) => c[0].kind === "summary",
+      ),
+    ).toHaveLength(0);
+  });
+
+  it("logs and continues when the onSpawn pid write rejects", async () => {
+    vi.mocked(sessionRepo.update).mockImplementation(async (id, patch) => {
+      if ((patch as { process_pid?: number }).process_pid !== undefined) {
+        throw new Error("pid write failed");
+      }
+      return makeSession(id, patch as Partial<Session>);
+    });
+    vi.mocked(runtime.execute).mockImplementation(async (ctx) => {
+      ctx.onSpawn?.({ process_pid: 42, process_group_id: 42 });
+      return makeRuntimeResult({ process_pid: undefined, process_group_id: undefined });
+    });
+
+    await expect(
+      service.run({ agentId: "agent_1", intent: "x", workspace: WORKSPACE }),
+    ).resolves.toBeDefined();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(errSpy).toHaveBeenCalledWith(
+      "[AgentSession] onSpawn persist failed:",
+      "pid write failed",
+    );
+  });
+
+  it("logs and continues when post-session memory work rejects", async () => {
+    vi.mocked(memoryAgent.onTaskComplete).mockRejectedValue(new Error("promoter down"));
+
+    await expect(
+      service.run({ agentId: "agent_1", intent: "x", workspace: WORKSPACE }),
+    ).resolves.toBeDefined();
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(errSpy).toHaveBeenCalledWith(
+      "[AgentSession] onTaskComplete failed:",
+      "promoter down",
+    );
+  });
+
+  it("logs a hook failure on the runtime-threw path without swallowing the original error", async () => {
+    const onSessionComplete = vi
+      .fn<NonNullable<AgentSessionDeps["onSessionComplete"]>>()
+      .mockRejectedValue(new Error("hook blew up"));
+    const svc = new AgentSession({
+      agentRepo,
+      sessionRepo,
+      sessionEventRepo,
+      runtime,
+      memoryAgent,
+      onSessionComplete,
+    });
+    vi.mocked(runtime.execute).mockRejectedValue(new Error("spawn ENOENT"));
+
+    await expect(
+      svc.run({ agentId: "agent_1", intent: "x", workspace: WORKSPACE }),
+    ).rejects.toThrow("spawn ENOENT");
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(errSpy).toHaveBeenCalledWith(
+      "[AgentSession] onSessionComplete (catch path) failed:",
+      "hook blew up",
+    );
+  });
+
+  it("skips the catch-path hook when skipOnComplete is set", async () => {
+    const onSessionComplete = vi
+      .fn<NonNullable<AgentSessionDeps["onSessionComplete"]>>()
+      .mockResolvedValue();
+    const svc = new AgentSession({
+      agentRepo,
+      sessionRepo,
+      sessionEventRepo,
+      runtime,
+      memoryAgent,
+      onSessionComplete,
+    });
+    vi.mocked(runtime.execute).mockRejectedValue(new Error("spawn ENOENT"));
+
+    await expect(
+      svc.run({
+        agentId: "agent_1",
+        intent: "x",
+        workspace: WORKSPACE,
+        skipOnComplete: true,
+      }),
+    ).rejects.toThrow("spawn ENOENT");
+    await new Promise((r) => setTimeout(r, 0));
+
+    expect(onSessionComplete).not.toHaveBeenCalled();
+  });
+
+  it("maps a gracefully-failed runtime result to status 'failed' with exit_code 1", async () => {
+    vi.mocked(runtime.execute).mockResolvedValue(
+      makeRuntimeResult({ status: "failed", output: "CLI exited with code 1" }),
+    );
+
+    const out = await service.run({
+      agentId: "agent_1",
+      intent: "x",
+      workspace: WORKSPACE,
+    });
+
+    expect(out.status).toBe("failed");
+    const patch = vi
+      .mocked(sessionRepo.update)
+      .mock.calls.find((c) => (c[1] as { status?: string }).status === "failed")![1];
+    expect(patch.exit_code).toBe(1);
+  });
+
+  it("threads extraSystemPromptAppend into the system prompt", async () => {
+    await service.run({
+      agentId: "agent_1",
+      intent: "x",
+      workspace: WORKSPACE,
+      extraSystemPromptAppend: "<room_context>members: A, B</room_context>",
+    });
+
+    expect(
+      vi.mocked(runtime.execute).mock.calls[0]![0].system_prompt_append,
+    ).toContain("<room_context>members: A, B</room_context>");
   });
 });
 

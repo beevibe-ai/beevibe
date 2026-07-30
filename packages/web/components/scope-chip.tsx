@@ -1,5 +1,5 @@
 import type { MemoryScope } from "@beevibe/core";
-import { cn } from "@/lib/utils";
+import { Chip } from "@/components/chip";
 
 const SCOPE_CLASS: Record<MemoryScope, string> = {
   ic: "bg-hier-ic/15 text-hier-ic",
@@ -16,14 +16,8 @@ export function ScopeChip({
   className?: string;
 }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center h-3.5 px-1 rounded text-[10px] font-medium",
-        SCOPE_CLASS[scope],
-        className,
-      )}
-    >
+    <Chip tone={SCOPE_CLASS[scope]} className={className}>
       {scope}
-    </span>
+    </Chip>
   );
 }

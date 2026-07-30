@@ -19,6 +19,7 @@ import {
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { readArtifactBody } from "../views/work-product.js";
+import { loadOwned, requireParam } from "./http-errors.js";
 
 export interface LearnedSkillsRouterDeps {
   authMiddleware: RequestHandler;
@@ -135,21 +136,17 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
   // DELETE /learned-skills/:id
   router.delete("/:id", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const { id } = req.params;
-    if (!id) {
-      res.status(400).json({ error: "missing_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_id");
+    if (!id) return;
     try {
-      const skill = await deps.learnedSkillRepo.findById(id);
-      if (!skill) {
-        res.status(404).json({ error: "not_found" });
-        return;
-      }
-      if (skill.owner_id !== req.caller!.personId) {
-        res.status(403).json({ error: "not_owner" });
-        return;
-      }
+      const skill = await loadOwned(
+        res,
+        req.caller!.personId,
+        () => deps.learnedSkillRepo.findById(id),
+        (s) => s.owner_id,
+        "not_found",
+      );
+      if (!skill) return;
       await deps.learnedSkillRepo.delete(id);
       res.status(204).send();
     } catch (err) {
@@ -164,21 +161,17 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
   // returns a tarball-style instructions response so the user can PR manually.
   router.post("/:id/publish", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const { id } = req.params;
-    if (!id) {
-      res.status(400).json({ error: "missing_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_id");
+    if (!id) return;
     try {
-      const skill = await deps.learnedSkillRepo.findById(id);
-      if (!skill) {
-        res.status(404).json({ error: "not_found" });
-        return;
-      }
-      if (skill.owner_id !== req.caller!.personId) {
-        res.status(403).json({ error: "not_owner" });
-        return;
-      }
+      const skill = await loadOwned(
+        res,
+        req.caller!.personId,
+        () => deps.learnedSkillRepo.findById(id),
+        (s) => s.owner_id,
+        "not_found",
+      );
+      if (!skill) return;
 
       const token = process.env.BEEVIBE_REGISTRY_TOKEN;
       const md = generateSkillMd(

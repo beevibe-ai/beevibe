@@ -51,6 +51,27 @@ export function deriveShortId(id: string): string {
 }
 
 /**
+ * Cap a string at `n` characters, ellipsis included — `truncate(s, 80)`
+ * never returns more than 80 chars.
+ *
+ * The web had this as `truncate` in `lib/format.ts`; the api wrote the
+ * same expression out longhand in two places that build the *same*
+ * field — the chat-thread `title`, once in `views/agents.ts` for the
+ * agent detail page and once in `routes/chat.ts` for the conversation
+ * list. Those two disagreeing would show one thread under two different
+ * titles depending on which page you were looking at, which is exactly
+ * the drift the rest of this module exists to prevent.
+ *
+ * Note this is not the only truncation idiom in the tree: several call
+ * sites use `s.length > n ? s.slice(0, n - 3) + "…"`, which caps at
+ * `n - 2`. That is a different (probably accidental) contract, so those
+ * sites are deliberately left alone rather than silently re-lengthened.
+ */
+export function truncate(s: string, n: number): string {
+  return s.length > n ? s.slice(0, n - 1) + "…" : s;
+}
+
+/**
  * Relative-time label: "just now", "2m", "1h", "3d", "5mo", "1y".
  *
  * The api serializes the bare form into `age` / `elapsed` fields; the

@@ -1,5 +1,5 @@
 import type { FactType } from "@beevibe/core";
-import { cn } from "@/lib/utils";
+import { Chip } from "@/components/chip";
 
 const FACT_TYPE_CLASS: Record<FactType, string> = {
   belief: "bg-type-belief-bg text-type-belief-fg",
@@ -17,14 +17,8 @@ export function FactTypeTag({
   className?: string;
 }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center h-5 px-2 rounded text-[11px] font-medium tracking-[0.01em] whitespace-nowrap",
-        FACT_TYPE_CLASS[type],
-        className,
-      )}
-    >
+    <Chip size="md" tone={FACT_TYPE_CLASS[type]} className={className}>
       {type}
-    </span>
+    </Chip>
   );
 }

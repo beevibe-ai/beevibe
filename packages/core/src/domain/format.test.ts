@@ -5,6 +5,7 @@ import {
   formatDurationLabel,
   formatRelative,
   toDate,
+  truncate,
 } from "./format.js";
 
 const NOW = new Date("2026-01-10T12:00:00Z");
@@ -42,6 +43,28 @@ describe("deriveShortId", () => {
 
   it("returns short ids whole rather than padding", () => {
     expect(deriveShortId("sess_abc")).toBe("abc");
+  });
+});
+
+describe("truncate", () => {
+  it("leaves a string at or under the cap untouched", () => {
+    expect(truncate("short", 80)).toBe("short");
+    expect(truncate("x".repeat(80), 80)).toBe("x".repeat(80));
+  });
+
+  it("caps at n characters INCLUDING the ellipsis", () => {
+    // The contract that matters: the result is never longer than `n`,
+    // so a column sized for 80 chars can't overflow by one.
+    expect(truncate("x".repeat(81), 80)).toHaveLength(80);
+    expect(truncate("x".repeat(200), 80).endsWith("…")).toBe(true);
+  });
+
+  it("keeps the leading n-1 characters", () => {
+    expect(truncate("abcdef", 4)).toBe("abc…");
+  });
+
+  it("is stable on the empty string", () => {
+    expect(truncate("", 80)).toBe("");
   });
 });
 

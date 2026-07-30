@@ -278,10 +278,46 @@ describe("getMeshOverview — nodes + edges + summary", () => {
     expect(summary).toEqual({ asks_24h: 12, in_flight: 3, edge_count: 7 });
   });
 
-  it("accepts an explicit window parameter without crashing", async () => {
+  // The window predicates are the only ones that qualify their column with
+  // `n.` / `s.`. Summary's `asks_24h` counter is a deliberately fixed 24h
+  // bucket on the already-windowed CTE, so it matches neither pattern.
+  const windowPredicates = (pool: ReturnType<typeof makeMockPool>): string[][] =>
+    pool._spy.mock.calls.map(([text]) =>
+      String(text).match(/[ns]\.(?:created_at|started_at) >= NOW\(\) - INTERVAL '[^']+'/g) ?? [],
+    );
+
+  it("threads the window into every query that filters on time", async () => {
     const pool = makeMockPool([[], [], [], [], []]);
-    await expect(getMeshOverview(pool, "7d")).resolves.toBeDefined();
-    await expect(getMeshOverview(pool, "all")).resolves.toBeDefined();
+    await getMeshOverview(pool, "7d");
+
+    // All five queries are built from the same fragment pair, so a regression
+    // that dropped the parameter on any one of them shows up here.
+    const perQuery = windowPredicates(pool);
+    expect(perQuery).toHaveLength(5);
+    for (const predicates of perQuery) {
+      expect(predicates.length).toBeGreaterThan(0);
+      for (const p of predicates) expect(p).toContain("INTERVAL '7 days'");
+    }
+  });
+
+  it("defaults to the 24h window", async () => {
+    const pool = makeMockPool([[], [], [], [], []]);
+    await getMeshOverview(pool);
+
+    for (const predicates of windowPredicates(pool)) {
+      for (const p of predicates) expect(p).toContain("INTERVAL '24 hours'");
+    }
+  });
+
+  it("drops the time predicate entirely for the 'all' window", async () => {
+    const pool = makeMockPool([[], [], [], [], []]);
+    await getMeshOverview(pool, "all");
+
+    expect(windowPredicates(pool).flat()).toEqual([]);
+    // "all" only widens history — the session type filter must survive, or the
+    // graph would pull in every session on the instance.
+    const sql = pool._spy.mock.calls.map(([text]) => String(text));
+    expect(sql.some((t) => t.includes("s.type IN ('mesh_ask', 'blocker')"))).toBe(true);
   });
 });
 

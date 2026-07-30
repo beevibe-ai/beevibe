@@ -2,7 +2,7 @@
  * Web-side display helpers.
  *
  * The ones the api also needs — `deriveShortId`, the relative-time
- * ladder, `formatDurationLabel` — live in `@beevibe/core`
+ * ladder, `formatDurationLabel`, `truncate` — live in `@beevibe/core`
  * and are re-exported here so existing `@/lib/format` imports keep
  * working. They used to be a hand-kept parallel copy of
  * `packages/api/src/views/format.ts`; `deriveShortId` in particular
@@ -13,7 +13,7 @@
 
 import { deriveShortId, formatRelative, type DateLike } from "@beevibe/core/domain/format";
 
-export { deriveShortId, formatDurationLabel } from "@beevibe/core/domain/format";
+export { deriveShortId, formatDurationLabel, truncate } from "@beevibe/core/domain/format";
 
 /** Relative-time label in prose form: "just now" / "2m ago" / "3d ago". */
 export function formatRelativeTime(date: DateLike, now: Date = new Date()): string {
@@ -22,11 +22,6 @@ export function formatRelativeTime(date: DateLike, now: Date = new Date()): stri
 
 export function shortId(id: string): string {
   return `#${deriveShortId(id)}`;
-}
-
-/** Cap a string at `n` chars, adding an ellipsis suffix when truncated. */
-export function truncate(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
 /**

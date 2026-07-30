@@ -64,13 +64,4 @@ describeOrSkip("sandbox primitives (e2e — Docker required)", () => {
       if (sandbox) await destroySandbox(sandbox);
     }
   }, 240_000); // 4 min — apt-get pulls take ~30–60s on a cold base image.
-
-  it("surfaces a friendly error when the docker daemon is unreachable", async () => {
-    // Sanity check that the existing path will error rather than hang
-    // when docker is unavailable. We can't easily simulate "daemon
-    // down" without stopping docker, so this test just ensures the
-    // public surface is callable; the friendly-message path is
-    // exercised in classifyStartupError at the orchestrator layer.
-    expect(typeof createSandbox).toBe("function");
-  });
 });

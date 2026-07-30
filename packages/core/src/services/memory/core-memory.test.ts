@@ -1,7 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CoreMemoryBlock } from "../../domain/core-memory.js";
 import type { CoreMemoryBlockRepository } from "../../ports/core-memory-repo.js";
-import { CoreMemory } from "./core-memory.js";
+import {
+  BlockCharLimitExceededError,
+  BlockNotFoundError,
+  CoreMemory,
+} from "./core-memory.js";
 
 function makeBlock(overrides: Partial<CoreMemoryBlock> = {}): CoreMemoryBlock {
   return {
@@ -147,5 +151,83 @@ describe("CoreMemory plumbing", () => {
     vi.mocked(repo.initDefaults).mockResolvedValue([]);
     await service.initDefaults("agent_1", "team");
     expect(repo.initDefaults).toHaveBeenCalledWith("agent_1", "team");
+  });
+});
+
+describe("CoreMemory.setContent — owner-driven full-block overwrite", () => {
+  it("replaces the whole block, discarding the previous content", async () => {
+    vi.mocked(repo.findOne).mockResolvedValue(
+      makeBlock({ content: "Old persona." }),
+    );
+    vi.mocked(repo.updateContent).mockImplementation(async (_a, _b, c) =>
+      makeBlock({ content: c }),
+    );
+
+    const result = await service.setContent("agent_1", "persona", "Brand new.");
+
+    expect(repo.updateContent).toHaveBeenCalledWith(
+      "agent_1",
+      "persona",
+      "Brand new.",
+    );
+    expect(result.content).toBe("Brand new.");
+  });
+
+  it("allows clearing a block to the empty string", async () => {
+    vi.mocked(repo.findOne).mockResolvedValue(
+      makeBlock({ content: "Something." }),
+    );
+    vi.mocked(repo.updateContent).mockImplementation(async (_a, _b, c) =>
+      makeBlock({ content: c }),
+    );
+
+    await service.setContent("agent_1", "persona", "");
+
+    expect(repo.updateContent).toHaveBeenCalledWith("agent_1", "persona", "");
+  });
+
+  it("accepts content exactly at char_limit", async () => {
+    vi.mocked(repo.findOne).mockResolvedValue(makeBlock({ char_limit: 10 }));
+    vi.mocked(repo.updateContent).mockImplementation(async (_a, _b, c) =>
+      makeBlock({ content: c, char_limit: 10 }),
+    );
+
+    await service.setContent("agent_1", "persona", "0123456789");
+
+    expect(repo.updateContent).toHaveBeenCalled();
+  });
+
+  it("throws BlockNotFoundError when the block was never seeded", async () => {
+    vi.mocked(repo.findOne).mockResolvedValue(undefined);
+
+    await expect(
+      service.setContent("agent_1", "never_seeded", "x"),
+    ).rejects.toBeInstanceOf(BlockNotFoundError);
+    expect(repo.updateContent).not.toHaveBeenCalled();
+  });
+
+  it("throws BlockCharLimitExceededError when content overflows the limit", async () => {
+    vi.mocked(repo.findOne).mockResolvedValue(makeBlock({ char_limit: 10 }));
+
+    await expect(
+      service.setContent("agent_1", "persona", "01234567890"),
+    ).rejects.toBeInstanceOf(BlockCharLimitExceededError);
+    expect(repo.updateContent).not.toHaveBeenCalled();
+  });
+
+  it("names both errors so HTTP callers can map them to 4xx", async () => {
+    // The route layer branches on `instanceof`; `name` is what surfaces in
+    // the response body, so both need to survive subclassing.
+    const notFound = new BlockNotFoundError("agent_1", "persona");
+    expect(notFound.name).toBe("BlockNotFoundError");
+    expect(notFound).toBeInstanceOf(Error);
+    expect(notFound.message).toContain("persona");
+    expect(notFound.message).toContain("agent_1");
+
+    const overflow = new BlockCharLimitExceededError("persona", 100, 137);
+    expect(overflow.name).toBe("BlockCharLimitExceededError");
+    expect(overflow).toBeInstanceOf(Error);
+    expect(overflow.message).toContain("100");
+    expect(overflow.message).toContain("137");
   });
 });
