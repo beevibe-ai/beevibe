@@ -1,11 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { HIERARCHY_LEVELS, type HierarchyLevel } from "./agent.js";
+import type { HierarchyLevel } from "./agent.js";
 import {
   FACT_TYPES,
   FACT_TYPE_DESCRIPTIONS,
   MEMORY_SCOPES,
   hierarchyToScope,
 } from "./memory.js";
+
+/** Every tier, so each assertion below sweeps the whole hierarchy. */
+const HIERARCHY_LEVELS: readonly HierarchyLevel[] = ["ic", "team", "org"];
 
 describe("hierarchyToScope", () => {
   it("maps every hierarchy level to a valid memory scope", () => {

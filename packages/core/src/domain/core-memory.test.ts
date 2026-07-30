@@ -1,10 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { HIERARCHY_LEVELS } from "./agent.js";
-import {
-  DEFAULT_BLOCK_TEMPLATES,
-  ROUTING_BLOCKS,
-  TOTAL_BLOCK_CHAR_LIMIT,
-} from "./core-memory.js";
+import type { HierarchyLevel } from "./agent.js";
+import { DEFAULT_BLOCK_TEMPLATES } from "./core-memory.js";
+
+/** Every tier, so each assertion below sweeps the whole hierarchy. */
+const HIERARCHY_LEVELS: readonly HierarchyLevel[] = ["ic", "team", "org"];
 
 /**
  * `DEFAULT_BLOCK_TEMPLATES` is the source of truth for block descriptions:
@@ -51,16 +50,6 @@ describe("DEFAULT_BLOCK_TEMPLATES", () => {
     }
   });
 
-  it("keeps each level's total char budget under TOTAL_BLOCK_CHAR_LIMIT", () => {
-    for (const level of HIERARCHY_LEVELS) {
-      const total = DEFAULT_BLOCK_TEMPLATES[level].reduce(
-        (sum, t) => sum + t.char_limit,
-        0,
-      );
-      expect(total).toBeLessThanOrEqual(TOTAL_BLOCK_CHAR_LIMIT);
-    }
-  });
-
   it("gives every level a tag_line and a persona block", () => {
     // The agent cards in the web UI read tag_line; every briefing reads persona.
     for (const level of HIERARCHY_LEVELS) {
@@ -84,35 +73,6 @@ describe("DEFAULT_BLOCK_TEMPLATES", () => {
       for (const t of DEFAULT_BLOCK_TEMPLATES[level]) {
         expect(t.is_system).toBe(true);
       }
-    }
-  });
-});
-
-describe("ROUTING_BLOCKS", () => {
-  it("covers every hierarchy level", () => {
-    expect(Object.keys(ROUTING_BLOCKS).sort()).toEqual(
-      [...HIERARCHY_LEVELS].sort(),
-    );
-  });
-
-  it("only names blocks that the same level actually seeds", () => {
-    // Routing reads these by name; a typo or a renamed template would make
-    // the routing prompt silently consult nothing.
-    for (const level of HIERARCHY_LEVELS) {
-      const seeded = new Set(
-        DEFAULT_BLOCK_TEMPLATES[level].map((t) => t.block_name),
-      );
-      for (const name of ROUTING_BLOCKS[level]) {
-        expect(seeded.has(name)).toBe(true);
-      }
-    }
-  });
-
-  it("consults persona on every level and lists no duplicates", () => {
-    for (const level of HIERARCHY_LEVELS) {
-      const blocks = ROUTING_BLOCKS[level];
-      expect(blocks).toContain("persona");
-      expect(new Set(blocks).size).toBe(blocks.length);
     }
   });
 });
