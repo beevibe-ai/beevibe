@@ -13,7 +13,6 @@ import type {
   SessionSearchMsg,
   SessionSearchMsgKind,
 } from "../../domain/session-search.js";
-import { parseUserMessageId, userMessageId } from "../../domain/session-search.js";
 import type {
   SessionSearchRepository,
   SessionSearchScope,
@@ -461,6 +460,3 @@ function clamp(value: number, min: number, max: number): number {
   if (!Number.isFinite(value)) return min;
   return Math.max(min, Math.min(max, Math.floor(value)));
 }
-
-// Re-export id helpers for service-layer convenience.
-export { userMessageId, parseUserMessageId };

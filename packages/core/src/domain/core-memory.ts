@@ -12,18 +12,6 @@ export interface CoreMemoryBlock {
   updated_at: Date;
 }
 
-export const TOTAL_BLOCK_CHAR_LIMIT = 50_000;
-
-/**
- * Blocks consulted when deciding whether to route a request to a peer/sub
- * (i.e., "does this agent know about X?"). Per-tier subset.
- */
-export const ROUTING_BLOCKS: Record<HierarchyLevel, readonly string[]> = {
-  ic: ["persona", "domain"],
-  team: ["persona", "team_members"],
-  org: ["persona", "teams"],
-};
-
 export interface BlockTemplate {
   block_name: string;
   char_limit: number;

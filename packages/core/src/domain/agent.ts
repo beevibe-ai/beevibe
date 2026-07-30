@@ -2,8 +2,6 @@ import type { KnownCli } from "./runtime.js";
 
 export type HierarchyLevel = "ic" | "team" | "org";
 
-export const HIERARCHY_LEVELS: readonly HierarchyLevel[] = ["ic", "team", "org"] as const;
-
 export type ReviewPolicy = "require_human" | "auto_done";
 
 export const REVIEW_POLICIES: readonly ReviewPolicy[] = [

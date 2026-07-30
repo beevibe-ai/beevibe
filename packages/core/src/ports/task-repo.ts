@@ -1,4 +1,4 @@
-import type { Task, TaskStatus, TaskPriority, CreatorType } from "../domain/task.js";
+import type { Task, TaskStatus, TaskPriority } from "../domain/task.js";
 
 export type NewTask = Omit<Task, "created_at" | "updated_at" | "status"> & {
   status?: TaskStatus;
@@ -83,8 +83,3 @@ export interface TaskRepository {
 
   delete(id: string): Promise<void>;
 }
-
-export type TaskCreatorInput = {
-  creator_id: string;
-  creator_type: CreatorType;
-};

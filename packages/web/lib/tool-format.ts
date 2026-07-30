@@ -10,7 +10,6 @@ import {
   PenLine,
   Search,
   ShieldQuestion,
-  Sparkles,
   Terminal,
   UserPlus,
   Wrench,
@@ -328,9 +327,3 @@ export function categoryAccent(category: ToolCategory): string {
       return "text-muted-foreground bg-muted";
   }
 }
-
-/** Re-export so the bubble can render an icon for a step with one import. */
-export { type LucideIcon as ToolIcon } from "lucide-react";
-
-const _SPARKLES = Sparkles; // keep tree-shaker honest if we add a default-icon fallback later
-void _SPARKLES;
