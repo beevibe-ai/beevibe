@@ -8,7 +8,8 @@
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { HierarchyLevel, SessionStatus } from "@beevibe/core";
 import { toAgentDisplay } from "./agent-display.js";
-import { deriveShortId, formatRelativeShort } from "./format.js";
+import { deriveShortId, formatRelativeShort, truncate } from "./format.js";
+import { CHAT_THREAD_TITLE_MAX } from "./types.js";
 import type {
   AgentDisplay,
   AgentDetail,
@@ -293,10 +294,7 @@ export async function getAgent(
   const recent_chat_threads: RecentChatThread[] = chatThreadResult.rows.map((t) => ({
     conversation_id: t.conversation_id,
     short_id: deriveShortId(t.conversation_id),
-    title:
-      t.intent_first.length <= 80
-        ? t.intent_first
-        : t.intent_first.slice(0, 79) + "…",
+    title: truncate(t.intent_first, CHAT_THREAD_TITLE_MAX),
     turn_count: Number(t.turn_count),
     age: formatRelativeShort(t.last_at),
     last_status: recentSessionStatus(t.last_status),

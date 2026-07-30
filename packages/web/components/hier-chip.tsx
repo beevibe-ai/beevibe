@@ -1,4 +1,4 @@
-import { cn } from "@/lib/utils";
+import { Chip } from "@/components/chip";
 
 export type Hierarchy = "ic" | "team" | "org";
 
@@ -17,14 +17,8 @@ export function HierChip({
   className?: string;
 }) {
   return (
-    <span
-      className={cn(
-        "inline-flex items-center h-3.5 px-1 rounded text-[10px] font-medium",
-        HIER_CLASS[hier],
-        className,
-      )}
-    >
+    <Chip tone={HIER_CLASS[hier]} className={className}>
       {hier}
-    </span>
+    </Chip>
   );
 }

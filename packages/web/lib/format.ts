@@ -17,6 +17,7 @@ export {
   deriveShortId,
   formatDurationLabel,
   toDate,
+  truncate,
   type DateLike,
 } from "@beevibe/core/domain/format";
 
@@ -27,11 +28,6 @@ export function formatRelativeTime(date: DateLike, now: Date = new Date()): stri
 
 export function shortId(id: string): string {
   return `#${deriveShortId(id)}`;
-}
-
-/** Cap a string at `n` chars, adding an ellipsis suffix when truncated. */
-export function truncate(s: string, n: number): string {
-  return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
 /**

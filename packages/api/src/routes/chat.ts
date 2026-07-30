@@ -43,6 +43,9 @@ import type { ChatResolver } from "../runtime/chat-resolver.js";
 import type { DaemonHub } from "../runtime/hub.js";
 import { ChatRateLimiter } from "./chat-rate-limit.js";
 import { processResponse, type RepoCard, type SuggestedAction } from "./directives.js";
+import { requireParam } from "./http-errors.js";
+import { truncate } from "../views/format.js";
+import { CHAT_THREAD_TITLE_MAX } from "../views/types.js";
 
 export interface ChatRoutesDeps {
   authMiddleware: RequestHandler;
@@ -469,8 +472,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
       const last = chain.sessions[chain.sessions.length - 1]!;
       return {
         head_id: chain.head_id,
-        title:
-          head.intent.length <= 80 ? head.intent : head.intent.slice(0, 79) + "…",
+        title: truncate(head.intent, CHAT_THREAD_TITLE_MAX),
         turn_count: chain.sessions.length,
         last_at: last.created_at.toISOString(),
         last_preview: previewOf(last),
@@ -486,11 +488,8 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
   // Idempotent: re-deleting an already-deleted chain returns 200.
   router.delete("/conversations/:headId", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const headId = req.params.headId;
-    if (!headId) {
-      res.status(400).json({ error: "missing_head_id" });
-      return;
-    }
+    const headId = requireParam(req, res, "headId", "missing_head_id");
+    if (!headId) return;
     try {
       const agent = await deps.agentRepo.findTopLevelForOwner(req.caller.personId);
       if (!agent) {

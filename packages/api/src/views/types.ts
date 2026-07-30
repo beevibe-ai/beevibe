@@ -124,6 +124,15 @@ export interface RecentSession {
 }
 
 /**
+ * Cap for `RecentChatThread.title` and the identical `title` on the
+ * chat-conversation list (`routes/chat.ts`). Both endpoints derive that
+ * title from the head turn's intent, so the cap has to be one constant —
+ * two values would render the same thread under two different titles
+ * depending on which page you opened.
+ */
+export const CHAT_THREAD_TITLE_MAX = 80;
+
+/**
  * Recent chat conversation surfaced on the agent detail page as one
  * collapsed card per thread. Each thread groups N chat-turn sessions
  * sharing the same `conversation_id` (the head turn's session id —
