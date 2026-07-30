@@ -341,13 +341,34 @@ describe("DaemonOrphanReaper.start / stop", () => {
     await reaper.stop();
   });
 
-  it("a first tick that rejects wedges the reaper: no timer, and restart is a no-op", async () => {
-    // Documents current behaviour, not desired behaviour. start() flips
-    // `running` before awaiting the immediate tick, so a rejection there
-    // escapes past the setInterval call: no poll loop is ever installed,
-    // and the `if (this.running) return` guard makes every later start()
-    // a silent no-op. A caller that logs-and-continues on start() gets a
-    // reaper that never reaps again.
+  it("a first tick that rejects goes to onError instead of escaping", async () => {
+    // `running` is set before the immediate tick is awaited, so an escaping
+    // rejection would leave the reaper flagged running with no timer — dead,
+    // and immune to restart via the `if (this.running) return` guard. The
+    // API calls this as `void reaper.start()`, so it would also be an
+    // unhandled rejection and take the process down.
+    vi.mocked(sessionRepo.listDaemonOrphaned).mockRejectedValue(
+      new Error("db gone"),
+    );
+    const onError = vi.fn();
+    reaper = new DaemonOrphanReaper({
+      sessionRepo,
+      taskRepo,
+      dispatchService,
+      pollIntervalMs: 1_000,
+      onError,
+    });
+
+    await expect(reaper.start()).resolves.toBeUndefined();
+    expect(onError).toHaveBeenCalledWith(expect.any(Error));
+    expect(onError.mock.calls[0]![0].message).toBe("db gone");
+
+    await reaper.stop();
+  });
+
+  it("still installs the poll loop after a failed first tick, and recovers", async () => {
+    // The reap pass is lost, not the reaper: once the DB comes back the
+    // next interval tick succeeds without anyone restarting anything.
     vi.mocked(sessionRepo.listDaemonOrphaned).mockRejectedValue(
       new Error("db gone"),
     );
@@ -359,20 +380,39 @@ describe("DaemonOrphanReaper.start / stop", () => {
       onError: vi.fn(),
     });
 
-    await expect(reaper.start()).rejects.toThrow("db gone");
-
-    vi.mocked(sessionRepo.listDaemonOrphaned).mockResolvedValue([]);
-    await vi.advanceTimersByTimeAsync(5_000);
-    expect(sessionRepo.listDaemonOrphaned).toHaveBeenCalledTimes(1);
-
     await reaper.start();
     expect(sessionRepo.listDaemonOrphaned).toHaveBeenCalledTimes(1);
 
-    // Only an explicit stop() clears `running` and lets a restart take.
-    await reaper.stop();
-    await reaper.start();
+    vi.mocked(sessionRepo.listDaemonOrphaned).mockResolvedValue([fakeSession()]);
+    await vi.advanceTimersByTimeAsync(1_000);
+
     expect(sessionRepo.listDaemonOrphaned).toHaveBeenCalledTimes(2);
+    expect(sessionRepo.update).toHaveBeenCalledWith(
+      "sess_orphan",
+      expect.objectContaining({ status: "failed", error: "daemon_orphaned" }),
+    );
+
     await reaper.stop();
+  });
+
+  it("stop() still halts a reaper whose first tick failed", async () => {
+    vi.mocked(sessionRepo.listDaemonOrphaned).mockRejectedValue(
+      new Error("db gone"),
+    );
+    reaper = new DaemonOrphanReaper({
+      sessionRepo,
+      taskRepo,
+      dispatchService,
+      pollIntervalMs: 1_000,
+      onError: vi.fn(),
+    });
+
+    await reaper.start();
+    await reaper.stop();
+    vi.mocked(sessionRepo.listDaemonOrphaned).mockClear();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sessionRepo.listDaemonOrphaned).not.toHaveBeenCalled();
   });
 
   it("start after stop resumes polling", async () => {

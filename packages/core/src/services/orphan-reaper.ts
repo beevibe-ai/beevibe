@@ -86,10 +86,30 @@ export class DaemonOrphanReaper {
       ((err) => console.error("[daemon-orphan-reaper]", err));
   }
 
+  /**
+   * Run one reap pass immediately, then poll on an interval.
+   *
+   * The first tick is treated exactly like every later one: a failure goes
+   * to `onError` and the poll loop starts anyway. It must not escape.
+   * `running` is set before the await (to close the re-entry window), so a
+   * rejection propagating out of here would leave the reaper flagged as
+   * running with no timer installed — permanently dead, and immune to
+   * restart via the `if (this.running) return` guard above. The API's
+   * composition root calls this as `void reaper.start()`, so an escaping
+   * rejection is also an unhandled rejection, which Node terminates the
+   * process for.
+   *
+   * A transient DB error at boot is the realistic trigger, and it should
+   * cost one reap pass, not the reaper or the process.
+   */
   async start(): Promise<void> {
     if (this.running) return;
     this.running = true;
-    await this.tick();
+    try {
+      await this.tick();
+    } catch (err) {
+      this.onError(asError(err));
+    }
     this.pollTimer = setInterval(() => {
       void this.tick().catch(this.onError);
     }, this.pollIntervalMs);
