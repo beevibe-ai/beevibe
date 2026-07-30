@@ -170,3 +170,126 @@ describe("runCliProcess", () => {
     },
   );
 });
+
+// The onLog fast path calls callbacks directly and only switches to a
+// serial Promise chain once one actually returns a thenable. Both modes
+// must swallow callback failures — a broken log consumer must never take
+// the session down — and the async mode must preserve chunk order.
+describe("runCliProcess — onLog delivery", () => {
+  const emit = (script: string) => ({
+    command: process.execPath,
+    args: ["-e", script],
+    cwd: process.cwd(),
+  });
+
+  it.skipIf(process.platform === "win32")(
+    "delivers stdout and stderr chunks with their stream kind",
+    async () => {
+      const seen: Array<[string, string]> = [];
+      const result = await runCliProcess({
+        ...emit("process.stdout.write('out'); process.stderr.write('err');"),
+        onLog: (kind, text) => {
+          seen.push([kind, text]);
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(seen.some(([k, t]) => k === "stdout" && t.includes("out"))).toBe(true);
+      expect(seen.some(([k, t]) => k === "stderr" && t.includes("err"))).toBe(true);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "survives a synchronous onLog that throws",
+    async () => {
+      let calls = 0;
+      const result = await runCliProcess({
+        ...emit(
+          "for (let i = 0; i < 3; i++) process.stdout.write('chunk' + i + '\\n');",
+        ),
+        onLog: () => {
+          calls++;
+          throw new Error("consumer exploded");
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(calls).toBeGreaterThan(0);
+      expect(result.stdout).toContain("chunk0");
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "switches to async mode on a thenable and preserves chunk order",
+    async () => {
+      const order: string[] = [];
+      const result = await runCliProcess({
+        ...emit(
+          // Space the writes out so they arrive as distinct 'data' events.
+          "let i = 0; const t = setInterval(() => { process.stdout.write('c' + i + '\\n'); if (++i === 4) clearInterval(t); }, 20);",
+        ),
+        onLog: async (_kind, text) => {
+          // Descending delay: if delivery weren't serialised, later chunks
+          // would resolve first and `order` would come out shuffled.
+          const n = Number(text.trim().replace("c", "")) || 0;
+          await new Promise((r) => setTimeout(r, (4 - n) * 5));
+          order.push(text.trim());
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      // The first chunk goes through the sync path (nothing to await yet);
+      // every chunk after it is serialised through the chain. Needs >1
+      // delivery for the ordering claim to mean anything.
+      expect(order.length).toBeGreaterThan(1);
+      expect(order).toEqual([...order].sort());
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "survives an onLog whose promise rejects",
+    async () => {
+      const result = await runCliProcess({
+        ...emit(
+          "let i = 0; const t = setInterval(() => { process.stdout.write('c' + i + '\\n'); if (++i === 3) clearInterval(t); }, 20);",
+        ),
+        onLog: async () => {
+          throw new Error("async consumer exploded");
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain("c0");
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "survives an onLog that throws only after switching to async mode",
+    async () => {
+      let calls = 0;
+      const result = await runCliProcess({
+        ...emit(
+          "let i = 0; const t = setInterval(() => { process.stdout.write('c' + i + '\\n'); if (++i === 3) clearInterval(t); }, 20);",
+        ),
+        onLog: (_kind, text) => {
+          calls++;
+          // First call returns a thenable (flips asyncMode on); later calls
+          // throw synchronously from inside the chain.
+          if (calls === 1) return Promise.resolve();
+          throw new Error(`sync throw inside chain for ${text}`);
+        },
+      });
+
+      expect(result.exitCode).toBe(0);
+      expect(calls).toBeGreaterThan(1);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "runs with no onLog configured at all",
+    async () => {
+      const result = await runCliProcess(emit("process.stdout.write('quiet');"));
+      expect(result.stdout).toContain("quiet");
+    },
+  );
+});

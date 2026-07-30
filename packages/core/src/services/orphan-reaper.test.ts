@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Session } from "../domain/session.js";
 import type { Task } from "../domain/task.js";
 import type { SessionRepository } from "../ports/session-repo.js";
@@ -195,5 +195,201 @@ describe("DaemonOrphanReaper.tick", () => {
       sessionStaleSeconds: 30,
       runtimeHeartbeatStaleSeconds: 10,
     });
+  });
+
+  it("defaults onError to console.error when none is configured", async () => {
+    vi.mocked(sessionRepo.listDaemonOrphaned).mockResolvedValue([fakeSession()]);
+    vi.mocked(sessionRepo.update).mockRejectedValue(new Error("db gone"));
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    reaper = new DaemonOrphanReaper({ sessionRepo, taskRepo, dispatchService });
+
+    const result = await reaper.tick();
+
+    expect(result).toEqual({ reaped: 0, redispatched: 0 });
+    expect(errSpy).toHaveBeenCalledWith(
+      "[daemon-orphan-reaper]",
+      expect.any(Error),
+    );
+    errSpy.mockRestore();
+  });
+
+  it("wraps a non-Error throw before handing it to onError", async () => {
+    vi.mocked(sessionRepo.listDaemonOrphaned).mockResolvedValue([fakeSession()]);
+    vi.mocked(sessionRepo.update).mockRejectedValue("just a string");
+    const onError = vi.fn();
+    reaper = new DaemonOrphanReaper({
+      sessionRepo,
+      taskRepo,
+      dispatchService,
+      onError,
+    });
+
+    await reaper.tick();
+
+    expect(onError).toHaveBeenCalledWith(expect.any(Error));
+    expect(onError.mock.calls[0]![0].message).toBe("just a string");
+  });
+
+  it("keeps reaping the remaining orphans after one of them throws", async () => {
+    vi.mocked(sessionRepo.listDaemonOrphaned).mockResolvedValue([
+      fakeSession({ id: "sess_bad" }),
+      fakeSession({ id: "sess_good", task_id: undefined, type: "chat" }),
+    ]);
+    vi.mocked(sessionRepo.update).mockImplementation(async (id, patch) => {
+      if (id === "sess_bad") throw new Error("row locked");
+      return fakeSession({ id, ...(patch as Partial<Session>) });
+    });
+    const onError = vi.fn();
+    reaper = new DaemonOrphanReaper({
+      sessionRepo,
+      taskRepo,
+      dispatchService,
+      onError,
+    });
+
+    const result = await reaper.tick();
+
+    expect(result.reaped).toBe(1);
+    expect(onError).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("DaemonOrphanReaper.start / stop", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("reaps once immediately, then on every poll interval", async () => {
+    reaper = new DaemonOrphanReaper({
+      sessionRepo,
+      taskRepo,
+      dispatchService,
+      pollIntervalMs: 1_000,
+    });
+
+    await reaper.start();
+    expect(sessionRepo.listDaemonOrphaned).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(3_000);
+    expect(sessionRepo.listDaemonOrphaned).toHaveBeenCalledTimes(4);
+
+    await reaper.stop();
+  });
+
+  it("is idempotent — a second start does not add a second timer", async () => {
+    reaper = new DaemonOrphanReaper({
+      sessionRepo,
+      taskRepo,
+      dispatchService,
+      pollIntervalMs: 1_000,
+    });
+
+    await reaper.start();
+    await reaper.start();
+    vi.mocked(sessionRepo.listDaemonOrphaned).mockClear();
+
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(sessionRepo.listDaemonOrphaned).toHaveBeenCalledTimes(1);
+
+    await reaper.stop();
+  });
+
+  it("stop halts the poll loop", async () => {
+    reaper = new DaemonOrphanReaper({
+      sessionRepo,
+      taskRepo,
+      dispatchService,
+      pollIntervalMs: 1_000,
+    });
+
+    await reaper.start();
+    await reaper.stop();
+    vi.mocked(sessionRepo.listDaemonOrphaned).mockClear();
+
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(sessionRepo.listDaemonOrphaned).not.toHaveBeenCalled();
+  });
+
+  it("stop before start is a no-op", async () => {
+    reaper = new DaemonOrphanReaper({ sessionRepo, taskRepo, dispatchService });
+    await expect(reaper.stop()).resolves.toBeUndefined();
+  });
+
+  it("routes a rejecting interval tick to onError and keeps polling", async () => {
+    const onError = vi.fn();
+    reaper = new DaemonOrphanReaper({
+      sessionRepo,
+      taskRepo,
+      dispatchService,
+      pollIntervalMs: 1_000,
+      onError,
+    });
+
+    await reaper.start();
+    vi.mocked(sessionRepo.listDaemonOrphaned).mockRejectedValue(
+      new Error("db gone"),
+    );
+
+    await vi.advanceTimersByTimeAsync(2_000);
+
+    expect(onError).toHaveBeenCalledTimes(2);
+    expect(onError).toHaveBeenCalledWith(expect.any(Error));
+    await reaper.stop();
+  });
+
+  it("a first tick that rejects wedges the reaper: no timer, and restart is a no-op", async () => {
+    // Documents current behaviour, not desired behaviour. start() flips
+    // `running` before awaiting the immediate tick, so a rejection there
+    // escapes past the setInterval call: no poll loop is ever installed,
+    // and the `if (this.running) return` guard makes every later start()
+    // a silent no-op. A caller that logs-and-continues on start() gets a
+    // reaper that never reaps again.
+    vi.mocked(sessionRepo.listDaemonOrphaned).mockRejectedValue(
+      new Error("db gone"),
+    );
+    reaper = new DaemonOrphanReaper({
+      sessionRepo,
+      taskRepo,
+      dispatchService,
+      pollIntervalMs: 1_000,
+      onError: vi.fn(),
+    });
+
+    await expect(reaper.start()).rejects.toThrow("db gone");
+
+    vi.mocked(sessionRepo.listDaemonOrphaned).mockResolvedValue([]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(sessionRepo.listDaemonOrphaned).toHaveBeenCalledTimes(1);
+
+    await reaper.start();
+    expect(sessionRepo.listDaemonOrphaned).toHaveBeenCalledTimes(1);
+
+    // Only an explicit stop() clears `running` and lets a restart take.
+    await reaper.stop();
+    await reaper.start();
+    expect(sessionRepo.listDaemonOrphaned).toHaveBeenCalledTimes(2);
+    await reaper.stop();
+  });
+
+  it("start after stop resumes polling", async () => {
+    reaper = new DaemonOrphanReaper({
+      sessionRepo,
+      taskRepo,
+      dispatchService,
+      pollIntervalMs: 1_000,
+    });
+
+    await reaper.start();
+    await reaper.stop();
+    vi.mocked(sessionRepo.listDaemonOrphaned).mockClear();
+
+    await reaper.start();
+    expect(sessionRepo.listDaemonOrphaned).toHaveBeenCalledTimes(1);
+
+    await reaper.stop();
   });
 });
