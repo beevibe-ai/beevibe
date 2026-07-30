@@ -95,10 +95,13 @@ export async function runRepoDispatch(
     claude_bin: CLAUDE_BIN,
     max_runtime_seconds: (rr.limits?.wall_clock_minutes ?? 20) * 60,
     on_state: (s) => {
+      // Read the watermark before pushNew moves it — the tool-call scan
+      // below must cover exactly the entries this callback added, or
+      // every install command is re-recorded on each subsequent state.
+      const scanFrom = pushedUpTo;
       pushNew(s.transcript);
       // Walk new tool-call events to capture install/invocation hints.
-      for (let i = pushedUpTo - (s.transcript.length - 0); i < s.transcript.length; i++) {
-        if (i < 0) continue;
+      for (let i = scanFrom; i < s.transcript.length; i++) {
         const ev = s.transcript[i];
         if (ev?.kind === "tool_call") noteCommandFromToolCall(ev.text);
       }
