@@ -120,6 +120,27 @@ pnpm test
 `.github/workflows/ci.yml` is the source of truth; CONTRIBUTING.md has
 the long form. Narrower loop: `pnpm --filter @beevibe/core test`.
 
+### Measuring coverage
+
+No coverage provider is tracked as a dependency — install one for the
+sweep and don't commit it:
+
+```bash
+pnpm add -Dw @vitest/coverage-v8@2.1.9
+cd packages/daemon && npx vitest run --coverage --coverage.provider=v8 \
+  --coverage.all --coverage.include='src/**/*.ts' \
+  --coverage.exclude='src/**/*.test.ts' --exclude '**/*.e2e.test.ts'
+```
+
+Two traps:
+
+- `--coverage.all` is required, or files with no test file at all are
+  simply absent from the report and read as "covered".
+- An **unhandled** error in a test file (the DB-gated suites throw one
+  from `afterAll`) aborts report generation entirely — the run prints
+  results but writes no `coverage-summary.json`. Exclude the DB- and
+  key-gated suites when measuring without Postgres.
+
 ### Recognizing environmental failures vs. real ones
 
 In a sandbox with no Docker and no provider keys, these failures are
