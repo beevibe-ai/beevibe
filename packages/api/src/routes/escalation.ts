@@ -27,6 +27,7 @@ import {
 } from "@beevibe/core/services/escalation-service";
 import { NegotiationNotFoundError } from "@beevibe/core/services/negotiation-service";
 import { requireHuman } from "../auth/middleware.js";
+import { requireParam } from "./http-errors.js";
 
 export interface EscalationRoutesDeps {
   authMiddleware: RequestHandler;
@@ -113,11 +114,8 @@ export function createEscalationRouter(deps: EscalationRoutesDeps): Router {
 
   router.get("/:id", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_escalation_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_escalation_id");
+    if (!id) return;
     try {
       const escalation = await deps.escalationService.getReview(id);
       res.json({ ok: true, escalation });
@@ -128,11 +126,8 @@ export function createEscalationRouter(deps: EscalationRoutesDeps): Router {
 
   router.post("/:id/resolve", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_escalation_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_escalation_id");
+    if (!id) return;
 
     const selectorResult = buildSelector(req.body);
     if (!selectorResult.ok) {

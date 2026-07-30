@@ -17,6 +17,7 @@ export {
   firstNonEmptyLine,
   formatDurationLabel,
   toDate,
+  truncate,
   type DateLike,
 } from "@beevibe/core/domain/format";
 

@@ -14,6 +14,7 @@ import {
   NegotiationNotFoundError,
 } from "@beevibe/core/services/negotiation-service";
 import { requireHuman } from "../auth/middleware.js";
+import { requireParam } from "./http-errors.js";
 
 export interface NegotiationRoutesDeps {
   authMiddleware: RequestHandler;
@@ -26,11 +27,8 @@ export function createNegotiationRouter(deps: NegotiationRoutesDeps): Router {
 
   router.get("/:id", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_negotiation_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_negotiation_id");
+    if (!id) return;
     try {
       const negotiation = await deps.negotiationService.getReview(id);
       res.json({ ok: true, negotiation });

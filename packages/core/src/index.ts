@@ -5,3 +5,4 @@ export * from "./domain/index.js";
 export * from "./ports/index.js";
 export * from "./auth/index.js";
 export * from "./env.js";
+export * from "./process-lifecycle.js";

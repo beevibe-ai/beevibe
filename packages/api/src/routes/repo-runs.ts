@@ -19,6 +19,7 @@ import type {
   SessionEventRepository,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
+import { requireParam } from "./http-errors.js";
 
 export interface RepoRunsRouterDeps {
   authMiddleware: RequestHandler;
@@ -74,11 +75,8 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
   // GET /repo-runs/:id — full run detail including transcript.
   router.get("/:id", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const { id } = req.params;
-    if (!id) {
-      res.status(400).json({ error: "missing_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_id");
+    if (!id) return;
     try {
       const run = await deps.repoRunRepo.findById(id);
       if (!run) {
@@ -114,11 +112,8 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
   // the daemon hub sends a cancel WS message (separate flow).
   router.post("/:id/cancel", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const { id } = req.params;
-    if (!id) {
-      res.status(400).json({ error: "missing_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_id");
+    if (!id) return;
     try {
       const run = await deps.repoRunRepo.findById(id);
       if (!run) {
@@ -152,11 +147,10 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
   // join — for MVP we trust the host_path from repo_run).
   router.get("/:id/artifacts/:file", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const { id, file } = req.params;
-    if (!id || !file) {
-      res.status(400).json({ error: "missing_params" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_params");
+    if (!id) return;
+    const file = requireParam(req, res, "file", "missing_params");
+    if (!file) return;
     try {
       const run = await deps.repoRunRepo.findById(id);
       if (!run) {

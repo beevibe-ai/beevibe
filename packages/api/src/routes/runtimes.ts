@@ -24,6 +24,7 @@ import type {
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "../runtime/hub.js";
+import { loadOwned, requireParam } from "./http-errors.js";
 
 export interface RuntimesRoutesDeps {
   authMiddleware: RequestHandler;
@@ -101,21 +102,19 @@ export function createRuntimesRouter(deps: RuntimesRoutesDeps): Router {
 
   router.post("/:id/revoke", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_daemon_id" });
-      return;
-    }
-    const daemon = await deps.daemonRepo.findById(id);
-    if (!daemon) {
-      res.status(404).json({ error: "daemon_not_found" });
-      return;
-    }
-    if (daemon.owner_person_id !== req.caller.personId) {
-      // Don't leak existence to non-owners — same shape as 404.
-      res.status(404).json({ error: "daemon_not_found" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_daemon_id");
+    if (!id) return;
+    // Non-owners get the 404 shape too — this endpoint deliberately
+    // doesn't confirm that a daemon id exists.
+    const daemon = await loadOwned(
+      res,
+      req.caller.personId,
+      () => deps.daemonRepo.findById(id),
+      (d) => d.owner_person_id,
+      "daemon_not_found",
+      { status: 404, error: "daemon_not_found" },
+    );
+    if (!daemon) return;
     if (daemon.revoked_at) {
       // Idempotent: already revoked is success, not error.
       res.json({ ok: true, daemon_id: id, already_revoked: true });

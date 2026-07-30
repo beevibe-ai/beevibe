@@ -42,6 +42,7 @@ import { buildIntent, type ResumeReason } from "@beevibe/core/services/agent-ses
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "../runtime/hub.js";
+import { requireParam } from "./http-errors.js";
 
 /** Statuses from which /cancel is legal. Anything non-terminal. */
 const CANCELLABLE_FROM: readonly TaskStatus[] = [
@@ -187,11 +188,8 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
   // POST /task/:id/approve
   router.post("/:id/approve", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_task_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_task_id");
+    if (!id) return;
     try {
       const summary =
         typeof req.body?.result_summary === "string"
@@ -208,11 +206,8 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
   // POST /task/:id/reject
   router.post("/:id/reject", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_task_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_task_id");
+    if (!id) return;
     try {
       const summary =
         typeof req.body?.result_summary === "string"
@@ -229,11 +224,8 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
   // POST /task/:id/revise
   router.post("/:id/revise", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_task_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_task_id");
+    if (!id) return;
     const feedback = typeof req.body?.feedback === "string" ? req.body.feedback : "";
     if (!feedback) {
       res.status(400).json({
@@ -289,11 +281,8 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
   // POST /task/:id/retry
   router.post("/:id/retry", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_task_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_task_id");
+    if (!id) return;
     try {
       const { task, assigneeId, priorSessionId } =
         await deps.taskService.prepareRetry(id);
@@ -320,11 +309,8 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
   // POST /task/:id/cancel
   router.post("/:id/cancel", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const id = req.params.id;
-    if (!id) {
-      res.status(400).json({ error: "missing_task_id" });
-      return;
-    }
+    const id = requireParam(req, res, "id", "missing_task_id");
+    if (!id) return;
     try {
       const task = await deps.taskRepo.findById(id);
       if (!task) {

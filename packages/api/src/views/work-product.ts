@@ -11,6 +11,7 @@ import { readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { WorkProductType } from "@beevibe/core";
+import { deriveShortId } from "./format.js";
 
 export interface WorkProductDetail {
   id: string;
@@ -68,10 +69,6 @@ interface Row {
 }
 
 const MAX_BODY_BYTES = 256 * 1024;
-
-function deriveTaskShortId(id: string): string {
-  return id.replace(/^[a-z]+_/, "").slice(0, 6);
-}
 
 function truncateToMax(body: string | null | undefined): string | undefined {
   if (!body) return undefined;
@@ -152,7 +149,7 @@ export async function getWorkProduct(
   return {
     id: row.id,
     task_id: row.task_id,
-    task_short_id: deriveTaskShortId(row.task_id),
+    task_short_id: deriveShortId(row.task_id),
     task_title: row.task_title,
     agent_id: row.agent_id,
     agent_label: row.agent_label,
