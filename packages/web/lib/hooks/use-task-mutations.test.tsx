@@ -10,7 +10,6 @@ vi.mock("@/lib/api/client", () => ({
       reject: vi.fn(),
       revise: vi.fn(),
       cancel: vi.fn(),
-      create: vi.fn(),
     },
   },
 }));
@@ -20,7 +19,6 @@ import {
   useRejectTask,
   useReviseTask,
   useCancelTask,
-  useCreateTask,
 } from "./use-task-mutations";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "./keys";
@@ -29,7 +27,6 @@ const approveMock = vi.mocked(api.tasks.approve);
 const rejectMock = vi.mocked(api.tasks.reject);
 const reviseMock = vi.mocked(api.tasks.revise);
 const cancelMock = vi.mocked(api.tasks.cancel);
-const createMock = vi.mocked(api.tasks.create);
 
 function makeWrapper() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -45,7 +42,6 @@ beforeEach(() => {
   rejectMock.mockReset();
   reviseMock.mockReset();
   cancelMock.mockReset();
-  createMock.mockReset();
 });
 
 afterEach(() => {
@@ -172,25 +168,5 @@ describe("useCancelTask", () => {
     });
 
     await waitFor(() => expect(cancelMock).toHaveBeenCalledWith("t_1", { reason: "scope" }));
-  });
-});
-
-describe("useCreateTask", () => {
-  it("calls api.tasks.create and invalidates the task list", async () => {
-    createMock.mockResolvedValue({} as never);
-    const { invalidateSpy, Wrapper } = makeWrapper();
-
-    const { result } = renderHook(() => useCreateTask(), { wrapper: Wrapper });
-
-    await act(async () => {
-      result.current.mutate({ title: "wire" });
-    });
-
-    await waitFor(() => expect(createMock).toHaveBeenCalledWith({ title: "wire" }));
-
-    const invalidated = invalidateSpy.mock.calls.map((c) => c[0]?.queryKey);
-    expect(invalidated).toEqual(
-      expect.arrayContaining([queryKeys.tasks.all, queryKeys.dashboard.all]),
-    );
   });
 });
