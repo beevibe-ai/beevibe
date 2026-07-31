@@ -21,6 +21,8 @@
  *     Hydrated as reference cards by the UI; collected as `view_refs`.
  */
 
+import { extractGitHubRepoRefs } from "@beevibe/core";
+
 const ENTITY_ID_RE = /\b((?:task|agent|sess)_[A-Za-z0-9]{12})\b/g;
 const OPEN_VIEW_RE =
   /<open_view\s+path="([^"]+)"(?:\s+label="([^"]+)")?\s*\/?>(?:\s*<\/open_view>)?/i;
@@ -35,24 +37,6 @@ const ATTR_LANGUAGE_RE = /\blanguage\s*=\s*"([^"]*)"/i;
 const ATTR_SOURCE_RE = /\bsource\s*=\s*"([^"]*)"/i;
 const ATTR_DESCRIPTION_RE = /\bdescription\s*=\s*"([^"]*)"/i;
 const VALID_REPO_SOURCES = new Set(["learned", "trending", "community", "github"]);
-
-/**
- * Bare GitHub URL pattern. We auto-promote any GitHub repo URL in the
- * agent's visible text into a repo_card, so the user gets a Try button
- * even when the agent emits markdown links instead of <repo_card> tags.
- * Stops at the second path segment so `/owner/repo/blob/...` collapses
- * to the repo root.
- */
-const BARE_GITHUB_URL_RE =
-  /https:\/\/github\.com\/([A-Za-z0-9][A-Za-z0-9._-]*)\/([A-Za-z0-9][A-Za-z0-9._-]*)(?=[/\s)"',<>]|$)/g;
-
-/** github.com paths that aren't repos. */
-const NON_REPO_OWNERS = new Set([
-  "orgs", "settings", "marketplace", "topics", "trending", "features",
-  "pricing", "search", "notifications", "issues", "pulls", "explore",
-  "about", "contact", "site", "security", "login", "signup", "logout",
-  "new",
-]);
 
 /**
  * Paths the chat UI knows how to navigate to. The system prompt names
@@ -192,23 +176,13 @@ export function processResponse(raw: string): ProcessedResponse {
 
   // Auto-promote bare github URLs so Try works when agents skip
   // <repo_card>. URLs stay in `visible` for the markdown renderer.
-  BARE_GITHUB_URL_RE.lastIndex = 0;
-  let urlMatch: RegExpExecArray | null;
-  while ((urlMatch = BARE_GITHUB_URL_RE.exec(visible)) !== null) {
-    const owner = urlMatch[1];
-    const nameRaw = urlMatch[2];
-    if (!owner || !nameRaw) continue;
-    if (NON_REPO_OWNERS.has(owner.toLowerCase())) continue;
-    // Strip trailing periods so sentence punctuation doesn't leak in.
-    const name = nameRaw.replace(/\.git$/i, "").replace(/\.+$/, "");
-    if (!name) continue;
-    const canonical = `https://github.com/${owner}/${name}`;
-    if (seenRepoUrls.has(canonical)) continue;
-    seenRepoUrls.add(canonical);
+  for (const ref of extractGitHubRepoRefs(visible)) {
+    if (seenRepoUrls.has(ref.url)) continue;
+    seenRepoUrls.add(ref.url);
     repoCards.push({
-      repo_url: canonical,
-      owner,
-      name,
+      repo_url: ref.url,
+      owner: ref.owner,
+      name: ref.name,
     });
   }
 

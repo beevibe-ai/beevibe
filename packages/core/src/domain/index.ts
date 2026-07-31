@@ -16,3 +16,4 @@ export * from "./task-watch.js";
 export * from "./session-search.js";
 export * from "./xml.js";
 export * from "./format.js";
+export * from "./github-url.js";
