@@ -1310,13 +1310,12 @@ function createSubordinateAgentTool(
  * Picks IC vs team set based on `ctx.hierarchyLevel`. Team and org both
  * get the team set (org-tier agents have subordinates too).
  *
- * M6.4 totals:
- *   IC tier:   8 shared tools.
- *   Team/org: 15 tools (8 shared + 6 team-only — find_subordinates,
- *                       find_peers, create_task, check_work_status,
- *                       revise_task [parent unblock subordinate],
- *                       add_to_escalation [populate peer slot] —
- *                       plus create_subordinate_agent (Phase 9)).
+ * IC tier gets the shared tools only. Team/org additionally get the
+ * delegation surface: find_subordinates, find_peers, create_task,
+ * check_work_status, revise_task (parent unblocks a subordinate),
+ * add_to_escalation (populate peer slot), and create_subordinate_agent.
+ * `hierarchy.test.ts` pins the exact name sets — see the tier-gating block
+ * there rather than trusting a count in this comment.
  */
 export function buildHierarchyTools(
   ctx: HierarchyToolContext,

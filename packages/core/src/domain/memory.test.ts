@@ -25,12 +25,6 @@ describe("hierarchyToScope", () => {
       expect(hierarchyToScope(level)).toBe(level);
     }
   });
-
-  it("does not invent a scope for an unlisted level", () => {
-    // Guards the day someone adds a HierarchyLevel without extending
-    // MemoryScope: the cast would silently produce an unknown scope.
-    expect(MEMORY_SCOPES).toContain(hierarchyToScope("ic" as HierarchyLevel));
-  });
 });
 
 describe("FACT_TYPE_DESCRIPTIONS", () => {

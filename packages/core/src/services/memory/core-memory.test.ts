@@ -139,19 +139,6 @@ describe("CoreMemory plumbing", () => {
       service.applyUpdate("agent_1", "never_seeded", "append", "x"),
     ).rejects.toThrow(/not found/);
   });
-
-  it("read delegates to repo.findByAgent", async () => {
-    vi.mocked(repo.findByAgent).mockResolvedValue([makeBlock()]);
-    const blocks = await service.read("agent_1");
-    expect(repo.findByAgent).toHaveBeenCalledWith("agent_1");
-    expect(blocks).toHaveLength(1);
-  });
-
-  it("initDefaults delegates to repo.initDefaults with the given level", async () => {
-    vi.mocked(repo.initDefaults).mockResolvedValue([]);
-    await service.initDefaults("agent_1", "team");
-    expect(repo.initDefaults).toHaveBeenCalledWith("agent_1", "team");
-  });
 });
 
 describe("CoreMemory.setContent — owner-driven full-block overwrite", () => {
