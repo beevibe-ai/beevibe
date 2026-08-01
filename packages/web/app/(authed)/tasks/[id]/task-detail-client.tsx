@@ -21,14 +21,12 @@ import {
 } from "@/lib/hooks/use-task-mutations";
 import { TaskLifecycleActions } from "@/components/tasks/task-lifecycle-actions";
 import { isTerminalTaskStatus } from "@/lib/task-status";
-import { isApiConfigured } from "@/lib/api/config";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
-import { DetailShell } from "@/components/detail/detail-shell";
+import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
 import { HierChip } from "@/components/hier-chip";
-import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { richTextToMarkdown } from "@/components/rich-text";
 import { formatRelativeTime, shortId } from "@/lib/format";
@@ -48,49 +46,32 @@ const TasksBackLink = () => (
 );
 
 export function TaskDetailClient({ taskId }: { taskId: string }) {
-  const { data, isLoading, isError } = useTask(taskId);
+  const query = useTask(taskId);
 
-  if (!isApiConfigured) {
-    return (
-      <DetailShell nav={<TasksBackLink />}>
-        <EmptyState
-          icon={ListChecks}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load this task."
-        />
-      </DetailShell>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <DetailShell nav={<TasksBackLink />}>
-        <Skeleton className="h-8 w-2/3 mb-2" />
-        <Skeleton className="h-4 w-1/3 mb-6" />
-        <div className="grid grid-cols-3 gap-6">
-          <div className="col-span-2 space-y-4">
-            <Skeleton className="h-32 w-full rounded-lg" />
-            <Skeleton className="h-24 w-full rounded-lg" />
+  return (
+    <DetailGate
+      nav={<TasksBackLink />}
+      icon={ListChecks}
+      noun="task"
+      id={taskId}
+      query={query}
+      skeleton={
+        <>
+          <Skeleton className="h-8 w-2/3 mb-2" />
+          <Skeleton className="h-4 w-1/3 mb-6" />
+          <div className="grid grid-cols-3 gap-6">
+            <div className="col-span-2 space-y-4">
+              <Skeleton className="h-32 w-full rounded-lg" />
+              <Skeleton className="h-24 w-full rounded-lg" />
+            </div>
+            <Skeleton className="h-40 w-full rounded-lg" />
           </div>
-          <Skeleton className="h-40 w-full rounded-lg" />
-        </div>
-      </DetailShell>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <DetailShell nav={<TasksBackLink />}>
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load task"
-          description={`Task ${taskId} could not be fetched. Check the MCP server logs.`}
-        />
-      </DetailShell>
-    );
-  }
-
-  return <TaskDetailLoaded task={data} />;
+        </>
+      }
+    >
+      {(data) => <TaskDetailLoaded task={data} />}
+    </DetailGate>
+  );
 }
 
 type ReviewMutation = "approve" | "reject" | "revise";
@@ -137,7 +118,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   };
 
   return (
-    <DetailShell nav={<TasksBackLink />}>
+    <>
       <header className="mb-6">
         <div className="flex items-start justify-between gap-6 mb-2">
           <h1 className="text-base font-semibold tracking-tight leading-tight flex-1 min-w-0">{task.title}</h1>
@@ -336,7 +317,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
           </FooterField>
         ) : null}
       </footer>
-    </DetailShell>
+    </>
   );
 }
 

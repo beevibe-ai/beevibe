@@ -2,16 +2,14 @@
 
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
-import { AlertTriangle, Info, Scale } from "lucide-react";
+import { Info, Scale } from "lucide-react";
 import { MeshBackLink } from "@/components/detail/mesh-back-link";
 import { useEscalation } from "@/lib/hooks/use-escalations";
 import { useResolveEscalation } from "@/lib/hooks/use-escalation-mutations";
-import { isApiConfigured } from "@/lib/api/config";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
-import { DetailShell } from "@/components/detail/detail-shell";
+import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
-import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { EscalationStatusPill } from "@/components/detail/status-pill";
 import { MutationError } from "@/components/mutation-error";
@@ -36,46 +34,29 @@ interface SideView {
 }
 
 export function EscalationDetailClient({ escalationId }: { escalationId: string }) {
-  const { data, isLoading, isError } = useEscalation(escalationId);
+  const query = useEscalation(escalationId);
 
-  if (!isApiConfigured) {
-    return (
-      <DetailShell nav={<MeshBackLink />}>
-        <EmptyState
-          icon={Scale}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load this escalation."
-        />
-      </DetailShell>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <DetailShell nav={<MeshBackLink />}>
-        <Skeleton className="h-7 w-40 mb-4" />
-        <Skeleton className="h-24 w-full rounded-lg mb-6" />
-        <div className="grid grid-cols-2 gap-4">
-          <Skeleton className="h-48 w-full rounded-lg" />
-          <Skeleton className="h-48 w-full rounded-lg" />
-        </div>
-      </DetailShell>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <DetailShell nav={<MeshBackLink />}>
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load escalation"
-          description={`Escalation ${escalationId} could not be fetched. Check the MCP server logs.`}
-        />
-      </DetailShell>
-    );
-  }
-
-  return <EscalationDetailLoaded esc={data.escalation} />;
+  return (
+    <DetailGate
+      nav={<MeshBackLink />}
+      icon={Scale}
+      noun="escalation"
+      id={escalationId}
+      query={query}
+      skeleton={
+        <>
+          <Skeleton className="h-7 w-40 mb-4" />
+          <Skeleton className="h-24 w-full rounded-lg mb-6" />
+          <div className="grid grid-cols-2 gap-4">
+            <Skeleton className="h-48 w-full rounded-lg" />
+            <Skeleton className="h-48 w-full rounded-lg" />
+          </div>
+        </>
+      }
+    >
+      {(data) => <EscalationDetailLoaded esc={data.escalation} />}
+    </DetailGate>
+  );
 }
 
 function EscalationDetailLoaded({ esc }: { esc: EscalationReviewDetail }) {
@@ -99,7 +80,7 @@ function EscalationDetailLoaded({ esc }: { esc: EscalationReviewDetail }) {
   };
 
   return (
-    <DetailShell nav={<MeshBackLink />}>
+    <>
       <header className="mb-6">
         <div className="flex items-start justify-between gap-6 mb-3">
           <div className="min-w-0">
@@ -144,7 +125,7 @@ function EscalationDetailLoaded({ esc }: { esc: EscalationReviewDetail }) {
           <FooterField label="Resolved">{formatRelativeTime(esc.resolved_at)}</FooterField>
         ) : null}
       </footer>
-    </DetailShell>
+    </>
   );
 }
 
