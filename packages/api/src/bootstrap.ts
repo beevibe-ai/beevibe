@@ -1,4 +1,3 @@
-import path from "node:path";
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
@@ -23,17 +22,11 @@ import {
   createPool,
 } from "@beevibe/core/adapters/postgres";
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import { OpenAIEmbeddingService } from "@beevibe/core/adapters/openai";
-import { AnthropicLlmProvider } from "@beevibe/core/adapters/anthropic";
-import { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
-import { createDefaultRuntimeRegistry } from "@beevibe/core/adapters/runtime-registry";
 import {
-  CoreMemory,
-  FactPromoter,
-  FactStore,
-  createMemoryAgent,
-  type MemoryAgent,
-} from "@beevibe/core/services/memory";
+  createMemoryStack,
+  createWorkspaceStack,
+  resolveSkillsSourceDir,
+} from "@beevibe/core/composition";
 import { TaskService } from "@beevibe/core/services/task-service";
 import { EscalationService } from "@beevibe/core/services/escalation-service";
 import { NegotiationService } from "@beevibe/core/services/negotiation-service";
@@ -149,14 +142,18 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const skillOutcomeRepo = new PostgresSkillOutcomeRepository(pool);
   const taskWatchRepo = new PostgresTaskWatchRepository(pool);
 
-  // External services (LLM + embeddings) for memory pipeline
-  const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
-  const llm = new AnthropicLlmProvider({ apiKey: cfg.anthropicApiKey });
-
-  // M3 memory services
-  const coreMemory = new CoreMemory({ repo: coreMemoryRepo });
-  const factStore = new FactStore({ repo: memoryFactRepo, embed, llm });
-  const promoter = new FactPromoter({ llm });
+  // M3 memory pipeline: embeddings + LLM + the three services + the
+  // per-agent MemoryAgent factory. Shared with the scheduler composition
+  // root — `makeMemoryAgent` is closed over the services above and is used
+  // by `buildInstructions` for human callers (full briefing on initialize)
+  // and by SessionCache's onEvict to fire `onTaskComplete` for fact
+  // promotion when a chat session ends (DELETE /mcp or 30-min idle).
+  const { embed, coreMemory, factStore, makeMemoryAgent } = createMemoryStack({
+    coreMemoryRepo,
+    memoryFactRepo,
+    openaiApiKey: cfg.openaiApiKey,
+    anthropicApiKey: cfg.anthropicApiKey,
+  });
 
   // M3+M6.4 task service (review_policy gate, work-product CRUD, parent
   // rollup, plus the M6.4 approve/reject/revise split — reviseTask needs
@@ -255,24 +252,8 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   // + runtime registry from M5 (shared across executor + api per the M6
   // composition-root design — both processes can spawn target agent CLIs
   // and the mcp-config.json file-existence guard handles cross-process
-  // contention). M9.3: workspaceManager needs the runtime registry to look
-  // up each agent's declared runtime per-call; construct registry first.
-  const runtimeRegistry = createDefaultRuntimeRegistry();
-  const workspaceManager = new LocalWorkspaceManager({
-    workspaceRoot: cfg.workspaceRoot,
-    mcpServerUrl: cfg.mcpServerUrl,
-    runtimeRegistry,
-    skillsSourceDir: cfg.skillsSourceDir ?? path.resolve(process.cwd(), "skills"),
-  });
-
-  /**
-   * Per-agent MemoryAgent factory. Closed over shared services. Used by:
-   *   - `buildInstructions` for human callers (full briefing on initialize)
-   *   - SessionCache's onEvict to fire `onTaskComplete` for fact promotion
-   *     when a chat session ends (DELETE /mcp or 30-min idle eviction)
-   */
-  const makeMemoryAgent = (agentId: string): MemoryAgent =>
-    createMemoryAgent({ agentId, coreMemory, factStore, promoter, embed });
+  // contention).
+  const { runtimeRegistry, workspaceManager } = createWorkspaceStack(cfg);
 
   // M6.4 mesh server. Phase 4: spawn path goes through dispatchService —
   // daemon claims the pending session for daemon-bound targets, executor
@@ -451,7 +432,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
     hub: daemonHub,
     makeMemoryAgent,
     mcpServerUrl: cfg.mcpServerUrl,
-    skillsSourceDir: cfg.skillsSourceDir ?? path.resolve(process.cwd(), "skills"),
+    skillsSourceDir: resolveSkillsSourceDir(cfg.skillsSourceDir),
     onSessionComplete: async (session) => {
       if (session.type === "chat") {
         chatResolver.resolve(session.id, session);

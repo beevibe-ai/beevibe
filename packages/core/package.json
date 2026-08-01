@@ -18,6 +18,10 @@
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
     },
+    "./composition": {
+      "types": "./dist/composition.d.ts",
+      "default": "./dist/composition.js"
+    },
     "./domain": {
       "types": "./dist/domain/index.d.ts",
       "default": "./dist/domain/index.js"
