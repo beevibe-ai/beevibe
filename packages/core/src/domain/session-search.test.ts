@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  lineageKey,
-  parseUserMessageId,
-  userMessageId,
-} from "./session-search.js";
+import { lineageKey, userMessageId } from "./session-search.js";
 
 describe("lineageKey", () => {
   it("uses conversation_id when the session belongs to a chat thread", () => {
@@ -25,24 +21,11 @@ describe("lineageKey", () => {
   });
 });
 
-describe("userMessageId / parseUserMessageId", () => {
-  it("round-trips a session id through the intent: marker", () => {
-    const id = userMessageId("sess_abc");
-    expect(id).toBe("intent:sess_abc");
-    expect(parseUserMessageId(id)).toBe("sess_abc");
-  });
-
-  it("returns null for session_event row ids", () => {
-    expect(parseUserMessageId("evt_123")).toBeNull();
-  });
-
-  it("returns null when the marker is not at the start", () => {
-    expect(parseUserMessageId("evt_intent:sess_abc")).toBeNull();
-  });
-
-  it("returns an empty session id rather than null for a bare marker", () => {
-    // scroll() passes this straight to the repo, which finds no row — the
-    // parse step deliberately does not second-guess the caller.
-    expect(parseUserMessageId("intent:")).toBe("");
+describe("userMessageId", () => {
+  it("prefixes the session id with the intent: marker", () => {
+    // Must stay byte-identical to userMessageIdExpr() in
+    // adapters/postgres/session-search-repo.ts — scroll() matches the
+    // anchor id against the SQL-built string by equality.
+    expect(userMessageId("sess_abc")).toBe("intent:sess_abc");
   });
 });

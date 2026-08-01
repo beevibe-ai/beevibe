@@ -198,18 +198,10 @@ export function lineageKey(session: {
 
 /**
  * Stable synthetic id for the user-turn message synthesised from
- * {@link Session.intent}. Matches the parsing in
- * {@link parseUserMessageId}.
+ * {@link Session.intent}. The repo builds the same string in SQL — see
+ * `userMessageIdExpr()` in `adapters/postgres/session-search-repo.ts`,
+ * which must agree with this.
  */
 export function userMessageId(sessionId: string): string {
   return `intent:${sessionId}`;
-}
-
-/**
- * Reverse of {@link userMessageId}. Returns the underlying session id
- * when the input is a user-turn marker, or null otherwise.
- */
-export function parseUserMessageId(messageId: string): string | null {
-  if (messageId.startsWith("intent:")) return messageId.slice("intent:".length);
-  return null;
 }
