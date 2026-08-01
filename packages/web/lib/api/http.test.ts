@@ -6,7 +6,7 @@ vi.mock("./config", () => ({
   getUserKey: () => null,
 }));
 
-import { fetchJson, ApiError } from "./http";
+import { asApiError, fetchJson, ApiError } from "./http";
 
 const fetchMock = vi.fn();
 
@@ -178,5 +178,37 @@ describe("fetchJson with userKey configured", () => {
 
     vi.doUnmock("./config");
     vi.resetModules();
+  });
+});
+
+describe("asApiError", () => {
+  it("returns the error when it came from the api layer", () => {
+    const err = new ApiError("HTTP 409", 409, { error: "no_password_set", message: "set one" });
+    const got = asApiError(err);
+    expect(got).toBe(err);
+    expect(got?.status).toBe(409);
+    expect(got?.errorCode).toBe("no_password_set");
+    expect(got?.serverMessage).toBe("set one");
+  });
+
+  it("returns undefined for a throw from anywhere else", () => {
+    expect(asApiError(new TypeError("fetch failed"))).toBeUndefined();
+    expect(asApiError("a string")).toBeUndefined();
+    expect(asApiError(undefined)).toBeUndefined();
+  });
+
+  // The call sites used to reach into `err.body` behind an `as
+  // { message?: string }` cast, which asserts rather than checks — a
+  // non-string `message` reached setError() as-is. `serverMessage` is
+  // populated only after a typeof check, so it drops instead.
+  it("leaves serverMessage unset when the body's message isn't a string", () => {
+    expect(asApiError(new ApiError("HTTP 500", 500, { message: 42 }))?.serverMessage).toBeUndefined();
+  });
+
+  it("survives a body that isn't an object at all", () => {
+    const got = asApiError(new ApiError("HTTP 502", 502, "<html>bad gateway</html>"));
+    expect(got?.status).toBe(502);
+    expect(got?.serverMessage).toBeUndefined();
+    expect(got?.errorCode).toBeUndefined();
   });
 });
