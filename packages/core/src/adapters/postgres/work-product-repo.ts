@@ -9,6 +9,7 @@ import type {
   WorkProductPatch,
 } from "../../ports/work-product-repo.js";
 import type { Pool } from "./client.js";
+import { findRowById } from "./pg-helpers.js";
 import type { WorkProductListRow, WorkProductRow } from "./row-types.js";
 
 // List queries skip the (potentially huge) body and surface its byte size via
@@ -22,11 +23,7 @@ export class PostgresWorkProductRepository implements WorkProductRepository {
   constructor(private pool: Pool) {}
 
   async findById(id: string): Promise<WorkProduct | undefined> {
-    const { rows } = await this.pool.query<WorkProductRow>(
-      `SELECT * FROM work_product WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? rowToWorkProduct(rows[0]) : undefined;
+    return findRowById(this.pool, "work_product", id, rowToWorkProduct);
   }
 
   async listByTask(taskId: string): Promise<WorkProductListItem[]> {

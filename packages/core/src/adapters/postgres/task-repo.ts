@@ -11,18 +11,14 @@ import type {
   TaskListFilter,
 } from "../../ports/task-repo.js";
 import type { Pool } from "./client.js";
-import { buildPatchClause, taskPriorityRankSql } from "./pg-helpers.js";
+import { findRowById, taskPriorityRankSql, updateRowById } from "./pg-helpers.js";
 import type { TaskRow } from "./row-types.js";
 
 export class PostgresTaskRepository implements TaskRepository {
   constructor(private pool: Pool) {}
 
   async findById(id: string): Promise<Task | undefined> {
-    const { rows } = await this.pool.query<TaskRow>(
-      `SELECT * FROM task WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? rowToTask(rows[0]) : undefined;
+    return findRowById(this.pool, "task", id, rowToTask);
   }
 
   async findByIds(ids: string[]): Promise<Task[]> {
@@ -186,36 +182,29 @@ export class PostgresTaskRepository implements TaskRepository {
   }
 
   async update(id: string, patch: TaskPatch): Promise<Task> {
-    const clause = buildPatchClause<TaskPatch>(patch, {
-      title: "title",
-      description: "description",
-      status: "status",
-      priority: "priority",
-      assignee_id: "assignee_id",
-      creator_id: "creator_id",
-      creator_type: "creator_type",
-      parent_task_id: "parent_task_id",
-      result_summary: "result_summary",
-      blocker_agent_id: "blocker_agent_id",
-      blocker_reason: "blocker_reason",
-      repo_url: "repo_url",
-      next_dispatch_context: "next_dispatch_context",
+    return updateRowById<TaskRow, TaskPatch, Task>({
+      pool: this.pool,
+      table: "task",
+      id,
+      patch,
+      columns: {
+        title: "title",
+        description: "description",
+        status: "status",
+        priority: "priority",
+        assignee_id: "assignee_id",
+        creator_id: "creator_id",
+        creator_type: "creator_type",
+        parent_task_id: "parent_task_id",
+        result_summary: "result_summary",
+        blocker_agent_id: "blocker_agent_id",
+        blocker_reason: "blocker_reason",
+        repo_url: "repo_url",
+        next_dispatch_context: "next_dispatch_context",
+      },
+      map: rowToTask,
+      notFound: (id) => `Task not found: ${id}`,
     });
-
-    if (clause.fields.length === 0) {
-      const existing = await this.findById(id);
-      if (!existing) throw new Error(`Task not found: ${id}`);
-      return existing;
-    }
-
-    clause.fields.push(`updated_at = NOW()`);
-
-    const { rows } = await this.pool.query<TaskRow>(
-      `UPDATE task SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
-      [...clause.values, id],
-    );
-    if (!rows[0]) throw new Error(`Task not found: ${id}`);
-    return rowToTask(rows[0]);
   }
 
   async updateProgress(id: string, status: TaskStatus, summary: string): Promise<Task> {

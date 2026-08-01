@@ -4,7 +4,7 @@ import type {
   RuntimeRepository,
 } from "../../ports/runtime-repo.js";
 import type { Pool } from "./client.js";
-import { buildPatchClause } from "./pg-helpers.js";
+import { findRowById, updateRowById } from "./pg-helpers.js";
 import type { RuntimeRow } from "./row-types.js";
 
 function rowToRuntime(row: RuntimeRow): Runtime {
@@ -23,11 +23,7 @@ export class PostgresRuntimeRepository implements RuntimeRepository {
   constructor(private pool: Pool) {}
 
   async findById(id: string): Promise<Runtime | undefined> {
-    const { rows } = await this.pool.query<RuntimeRow>(
-      `SELECT * FROM runtime WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? rowToRuntime(rows[0]) : undefined;
+    return findRowById(this.pool, "runtime", id, rowToRuntime);
   }
 
   async findByDaemonAndCli(
@@ -93,22 +89,20 @@ export class PostgresRuntimeRepository implements RuntimeRepository {
     const normalized: RuntimePatch = patch.capabilities
       ? { ...patch, capabilities: JSON.stringify(patch.capabilities) as unknown as Record<string, unknown> }
       : patch;
-    const clause = buildPatchClause<RuntimePatch>(normalized, {
-      cli_version: "cli_version",
-      last_heartbeat: "last_heartbeat",
-      capabilities: "capabilities",
+    return updateRowById<RuntimeRow, RuntimePatch, Runtime>({
+      pool: this.pool,
+      table: "runtime",
+      id,
+      patch: normalized,
+      columns: {
+        cli_version: "cli_version",
+        last_heartbeat: "last_heartbeat",
+        capabilities: "capabilities",
+      },
+      map: rowToRuntime,
+      notFound: (id) => `runtime ${id} not found`,
+      touchUpdatedAt: false,
     });
-    if (clause.fields.length === 0) {
-      const found = await this.findById(id);
-      if (!found) throw new Error(`runtime ${id} not found`);
-      return found;
-    }
-    const { rows } = await this.pool.query<RuntimeRow>(
-      `UPDATE runtime SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
-      [...clause.values, id],
-    );
-    if (!rows[0]) throw new Error(`runtime ${id} not found`);
-    return rowToRuntime(rows[0]);
   }
 
   async heartbeat(id: string): Promise<void> {
