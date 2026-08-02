@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { queryKeys } from "@/lib/hooks/keys";
 import {
   ChipCaret,
   ChipMenuItem,
   ChipPopover,
 } from "@/components/agents/pickers/chip-popover";
+import {
+  PICKER_SELECT_CLASS,
+  PickerCard,
+  PickerError,
+  PickerHelp,
+  useAgentSettingMutation,
+} from "@/components/agents/pickers/picker-card";
 import { cn } from "@/lib/utils";
 import type { AgentDisplay } from "@/lib/api/types";
 
@@ -26,17 +31,9 @@ export const MODEL_PRESETS: ReadonlyArray<{
 ];
 
 function useModelMutation(agentId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (model: string | null) => api.agents.setModel(agentId, model),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.agents.detail(agentId),
-      });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agentNetwork.all });
-    },
-  });
+  return useAgentSettingMutation((model: string | null) =>
+    api.agents.setModel(agentId, model),
+  );
 }
 
 function presetLabel(value: string): string | undefined {
@@ -121,7 +118,7 @@ export function ModelChip({ agent }: { agent: AgentDisplay }) {
  * for quick toggles.
  */
 export function ModelPicker({ agent }: { agent: AgentDisplay }) {
-  const queryClient = useQueryClient();
+  const mutation = useModelMutation(agent.id);
   const current = agent.model ?? "";
   const isPreset = MODEL_PRESETS.some((p) => p.value === current);
 
@@ -138,22 +135,8 @@ export function ModelPicker({ agent }: { agent: AgentDisplay }) {
     setCustomValue(nextIsPreset ? "" : current);
   }, [current]);
 
-  const mutation = useMutation({
-    mutationFn: (model: string | null) => api.agents.setModel(agent.id, model),
-    onSuccess: () => {
-      void queryClient.invalidateQueries({
-        queryKey: queryKeys.agents.detail(agent.id),
-      });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agentNetwork.all });
-    },
-  });
-
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
-        Model
-      </h3>
+    <PickerCard title="Model">
       <select
         value={customMode ? "__custom" : current}
         disabled={mutation.isPending}
@@ -166,7 +149,7 @@ export function ModelPicker({ agent }: { agent: AgentDisplay }) {
           setCustomMode(false);
           mutation.mutate(v === "" ? null : v);
         }}
-        className="w-full text-sm rounded border border-border bg-background px-2 py-1.5 cursor-pointer disabled:opacity-50"
+        className={PICKER_SELECT_CLASS}
       >
         {MODEL_PRESETS.map((p) => (
           <option key={p.value || "__default"} value={p.value}>
@@ -201,16 +184,12 @@ export function ModelPicker({ agent }: { agent: AgentDisplay }) {
           </button>
         </form>
       ) : null}
-      {mutation.isError ? (
-        <p className="text-xs text-destructive mt-1.5">
-          Couldn&apos;t update model.
-        </p>
-      ) : null}
-      <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+      {mutation.isError ? <PickerError>Couldn&apos;t update model.</PickerError> : null}
+      <PickerHelp>
         Model alias passed to the CLI via <span className="font-mono">--model</span>.
         Leave on &quot;CLI default&quot; to inherit whatever you&apos;ve
         configured in <span className="font-mono">~/.claude</span>.
-      </p>
-    </section>
+      </PickerHelp>
+    </PickerCard>
   );
 }

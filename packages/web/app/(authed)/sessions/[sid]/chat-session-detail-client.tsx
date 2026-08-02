@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, ChevronRight, Terminal, Wrench } from "lucide-react";
+import { ArrowLeft, ChevronRight, Terminal, Wrench } from "lucide-react";
 import { useConversation } from "@/lib/hooks/use-sessions";
-import { isApiConfigured } from "@/lib/api/config";
+import { DetailQuery } from "@/components/detail/detail-query";
 import { DetailShell } from "@/components/detail/detail-shell";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
@@ -33,66 +33,47 @@ import { cn } from "@/lib/utils";
  * `/tasks/[id]/sessions/[sid]`, so we redirect those out.
  */
 export function ChatSessionDetailClient({ sessionShortId }: { sessionShortId: string }) {
-  const { data, isLoading, isError } = useConversation(sessionShortId);
+  const query = useConversation(sessionShortId);
 
   const nav = <BackToChat />;
 
-  if (!isApiConfigured) {
-    return (
-      <DetailShell nav={nav}>
-        <EmptyState
-          icon={Terminal}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the API server to load this session."
-        />
-      </DetailShell>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <DetailShell nav={nav}>
-        <Skeleton className="h-14 w-full mb-6" />
-        <Skeleton className="h-32 w-full mb-5 rounded-lg" />
-        <Skeleton className="h-64 w-full rounded-lg" />
-      </DetailShell>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <DetailShell nav={nav}>
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load session"
-          description={`Session ${sessionShortId} could not be fetched.`}
-        />
-      </DetailShell>
-    );
-  }
-
-  // Task-typed sessions belong on the task-scoped detail page; redirect via a
-  // visible link rather than auto-routing so the user keeps control.
-  if (data.type === "task" && data.task_id) {
-    return (
-      <DetailShell nav={nav}>
-        <EmptyState
-          icon={Terminal}
-          title="This is a task session"
-          description="Open the task-scoped session view for full context."
-          cta={{
-            href: `/tasks/${data.task_id}/sessions/${data.short_id}`,
-            label: "Open task session",
-          }}
-        />
-      </DetailShell>
-    );
-  }
-
   return (
-    <DetailShell nav={nav}>
-      <ConversationBody conversation={data} />
-    </DetailShell>
+    <DetailQuery
+      query={query}
+      nav={nav}
+      icon={Terminal}
+      entity="session"
+      entityId={sessionShortId}
+      skeleton={
+        <>
+          <Skeleton className="h-14 w-full mb-6" />
+          <Skeleton className="h-32 w-full mb-5 rounded-lg" />
+          <Skeleton className="h-64 w-full rounded-lg" />
+        </>
+      }
+    >
+      {(data) =>
+        // Task-typed sessions belong on the task-scoped detail page; redirect
+        // via a visible link rather than auto-routing so the user keeps control.
+        data.type === "task" && data.task_id ? (
+          <DetailShell nav={nav}>
+            <EmptyState
+              icon={Terminal}
+              title="This is a task session"
+              description="Open the task-scoped session view for full context."
+              cta={{
+                href: `/tasks/${data.task_id}/sessions/${data.short_id}`,
+                label: "Open task session",
+              }}
+            />
+          </DetailShell>
+        ) : (
+          <DetailShell nav={nav}>
+            <ConversationBody conversation={data} />
+          </DetailShell>
+        )
+      }
+    </DetailQuery>
   );
 }
 

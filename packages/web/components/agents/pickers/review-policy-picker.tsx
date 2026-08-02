@@ -1,30 +1,25 @@
 "use client";
 
-import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { queryKeys } from "@/lib/hooks/keys";
 import {
   ChipCaret,
   ChipMenuItem,
   ChipPopover,
 } from "@/components/agents/pickers/chip-popover";
-import { cn } from "@/lib/utils";
+import {
+  PICKER_SELECT_CLASS,
+  PickerCard,
+  PickerError,
+  PickerHelp,
+  useAgentSettingMutation,
+} from "@/components/agents/pickers/picker-card";
 import type { AgentDisplay } from "@/lib/api/types";
 import type { ReviewPolicy } from "@beevibe/core";
 
 function useReviewPolicyMutation(agentId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (policy: ReviewPolicy) =>
-      api.agents.setReviewPolicy(agentId, policy),
-    onSuccess: () => {
-      // List rows source from useAgentNetwork() — different cache
-      // slot from the per-agent detail. Both need to be bumped or
-      // the view that wasn't invalidated stays stale.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agentNetwork.all });
-    },
-  });
+  return useAgentSettingMutation((policy: ReviewPolicy) =>
+    api.agents.setReviewPolicy(agentId, policy),
+  );
 }
 
 /** Eye icon used on the "Require human" chip. Tracks the chip's text color. */
@@ -117,32 +112,22 @@ export function ReviewPolicyPicker({ agent }: { agent: AgentDisplay }) {
     agent.review_policy === "require_human" ? "require_human" : "auto_done";
 
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
-        Review policy
-      </h3>
+    <PickerCard title="Review policy">
       <select
         value={current}
         disabled={mutation.isPending}
         onChange={(e) => mutation.mutate(e.target.value as ReviewPolicy)}
-        className={cn(
-          "w-full text-sm rounded border border-border bg-background px-2 py-1.5",
-          "cursor-pointer disabled:opacity-50",
-        )}
+        className={PICKER_SELECT_CLASS}
       >
         <option value="auto_done">Auto-done (default)</option>
         <option value="require_human">Require human review</option>
       </select>
-      {mutation.isError ? (
-        <p className="text-xs text-destructive mt-1.5">
-          Couldn&apos;t update review policy.
-        </p>
-      ) : null}
-      <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+      {mutation.isError ? <PickerError>Couldn&apos;t update review policy.</PickerError> : null}
+      <PickerHelp>
         When the agent declares a task <span className="font-mono">done</span>,
         auto-done closes it. Require-human routes it through{" "}
         <span className="font-mono">review</span> so you sign off first.
-      </p>
-    </section>
+      </PickerHelp>
+    </PickerCard>
   );
 }

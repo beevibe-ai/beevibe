@@ -18,7 +18,7 @@
  * guess); it matches M6's singular-noun, no-prefix style (`/task/:id/...`).
  */
 
-import { Router, type RequestHandler } from "express";
+import { Router, type RequestHandler, type Response } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   MEMORY_SCOPES,
@@ -60,7 +60,12 @@ import { listActivity } from "../views/activity.js";
 import { getWorkProduct } from "../views/work-product.js";
 import { listInbox } from "../views/inbox.js";
 import { getAgentNetwork } from "../views/agent-network.js";
-import { loadOwned, makeErrorHandler, requireParam } from "./http-errors.js";
+import {
+  loadOwned,
+  makeErrorHandler,
+  parseNullableString,
+  requireParam,
+} from "./http-errors.js";
 
 /** Every handler below passes a per-call context, e.g. `[view route: task list]`. */
 const handleError = makeErrorHandler("view route");
@@ -91,6 +96,21 @@ function isReviewPolicy(v: unknown): v is ReviewPolicy {
 
 export function createViewRouter(deps: ViewRoutesDeps): Router {
   const router = Router();
+
+  /**
+   * `loadOwned` bound to the agent repo — the five agent-mutating handlers
+   * (`runtime`, `model`, `review-policy`, `core-memory`, `archive`) passed
+   * byte-identical arguments, so the projector and the error code lived in
+   * five places instead of one.
+   */
+  const loadOwnedAgent = (res: Response, personId: string, id: string) =>
+    loadOwned(
+      res,
+      personId,
+      () => deps.agentRepo.findById(id),
+      (a) => a.owner_id,
+      "agent_not_found",
+    );
   router.use(deps.authMiddleware);
 
   router.get("/task", async (req, res) => {
@@ -200,29 +220,11 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     if (!requireHuman(req, res)) return;
     const id = requireParam(req, res, "id", "missing_agent_id");
     if (!id) return;
-    const body = req.body as { runtime_id?: string | null } | undefined;
     // Allow explicit null to unbind, or a non-empty string to bind.
-    const runtimeId =
-      body?.runtime_id === null
-        ? null
-        : typeof body?.runtime_id === "string" && body.runtime_id
-          ? body.runtime_id
-          : undefined;
-    if (runtimeId === undefined) {
-      res.status(400).json({
-        error: "invalid_body",
-        message: "expected { runtime_id: string | null }",
-      });
-      return;
-    }
+    const runtimeId = parseNullableString(req, res, "runtime_id");
+    if (runtimeId === undefined) return;
     try {
-      const existing = await loadOwned(
-        res,
-        req.caller.personId,
-        () => deps.agentRepo.findById(id),
-        (a) => a.owner_id,
-        "agent_not_found",
-      );
+      const existing = await loadOwnedAgent(res, req.caller.personId, id);
       if (!existing) return;
       // Validate the runtime belongs to a daemon owned by the caller.
       // Otherwise a user could re-target their agent at someone else's
@@ -276,29 +278,11 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     if (!requireHuman(req, res)) return;
     const id = requireParam(req, res, "id", "missing_agent_id");
     if (!id) return;
-    const body = req.body as { model?: string | null } | undefined;
     // null clears (agent uses CLI default), non-empty string sets.
-    const model =
-      body?.model === null
-        ? null
-        : typeof body?.model === "string" && body.model
-          ? body.model
-          : undefined;
-    if (model === undefined) {
-      res.status(400).json({
-        error: "invalid_body",
-        message: "expected { model: string | null }",
-      });
-      return;
-    }
+    const model = parseNullableString(req, res, "model");
+    if (model === undefined) return;
     try {
-      const existing = await loadOwned(
-        res,
-        req.caller.personId,
-        () => deps.agentRepo.findById(id),
-        (a) => a.owner_id,
-        "agent_not_found",
-      );
+      const existing = await loadOwnedAgent(res, req.caller.personId, id);
       if (!existing) return;
       // Build the next runtime_config: keep the existing fields, override
       // (or remove) just the `model` key. Don't replace the whole config
@@ -335,13 +319,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       return;
     }
     try {
-      const existing = await loadOwned(
-        res,
-        req.caller.personId,
-        () => deps.agentRepo.findById(id),
-        (a) => a.owner_id,
-        "agent_not_found",
-      );
+      const existing = await loadOwnedAgent(res, req.caller.personId, id);
       if (!existing) return;
       const updated = await deps.agentRepo.update(id, { review_policy: policy });
       res.json({ ok: true, review_policy: updated.review_policy });
@@ -365,13 +343,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       return;
     }
     try {
-      const existing = await loadOwned(
-        res,
-        req.caller.personId,
-        () => deps.agentRepo.findById(id),
-        (a) => a.owner_id,
-        "agent_not_found",
-      );
+      const existing = await loadOwnedAgent(res, req.caller.personId, id);
       if (!existing) return;
       await deps.coreMemory.setContent(id, blockName, body.content);
       res.json({ ok: true });
@@ -393,13 +365,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     const id = requireParam(req, res, "id", "missing_agent_id");
     if (!id) return;
     try {
-      const existing = await loadOwned(
-        res,
-        req.caller.personId,
-        () => deps.agentRepo.findById(id),
-        (a) => a.owner_id,
-        "agent_not_found",
-      );
+      const existing = await loadOwnedAgent(res, req.caller.personId, id);
       if (!existing) return;
       if (existing.archived_at) {
         res.json({ ok: true, archived_at: existing.archived_at.toISOString() });

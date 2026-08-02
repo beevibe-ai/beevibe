@@ -5,6 +5,7 @@ import type {
   RecoveredPosition,
   ResolutionProposal,
 } from "../domain/escalation.js";
+import type { Negotiation } from "../domain/negotiation.js";
 import type { NextDispatchContext } from "../domain/task.js";
 import { escalationId as makeEscalationId, taskId as makeTaskId } from "../domain/ids.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
@@ -191,16 +192,9 @@ export class EscalationService {
    * must be the party who DIDN'T escalate.
    */
   async addContribution(input: AddToEscalationInput): Promise<Escalation> {
-    const esc = await this.deps.escalationRepo.findById(input.escalationId);
-    if (!esc) throw new EscalationNotFoundError(input.escalationId);
-    if (esc.status !== "pending") {
-      throw new EscalationStateError(
-        `escalation ${esc.id} is not pending (status='${esc.status}')`,
-      );
-    }
-
-    const neg = await this.deps.negotiationRepo.findById(esc.negotiation_id);
-    if (!neg) throw new NegotiationNotFoundError(esc.negotiation_id);
+    const { esc, neg } = await this.loadWithNegotiation(input.escalationId, {
+      requirePending: true,
+    });
 
     const role = this.callerRole(neg, input.callerAgentId);
     if (role === esc.escalated_by_role) {
@@ -246,11 +240,9 @@ export class EscalationService {
    * only — the escalation row is never mutated.
    */
   async getReview(escalationId: string): Promise<EscalationReview> {
-    const esc = await this.deps.escalationRepo.findById(escalationId);
-    if (!esc) throw new EscalationNotFoundError(escalationId);
-
-    const neg = await this.deps.negotiationRepo.findById(esc.negotiation_id);
-    if (!neg) throw new NegotiationNotFoundError(esc.negotiation_id);
+    const { esc, neg } = await this.loadWithNegotiation(escalationId, {
+      requirePending: false,
+    });
 
     const [initiatorAgent, counterpartyAgent] = await Promise.all([
       this.deps.agentRepo.findById(neg.initiator_agent_id),
@@ -303,16 +295,9 @@ export class EscalationService {
    * picks them up within ≤30s. NO spawning happens here.
    */
   async resolve(input: ResolveInput): Promise<ResolveResult> {
-    const esc = await this.deps.escalationRepo.findById(input.escalationId);
-    if (!esc) throw new EscalationNotFoundError(input.escalationId);
-    if (esc.status !== "pending") {
-      throw new EscalationStateError(
-        `escalation ${esc.id} is not pending (status='${esc.status}')`,
-      );
-    }
-
-    const neg = await this.deps.negotiationRepo.findById(esc.negotiation_id);
-    if (!neg) throw new NegotiationNotFoundError(esc.negotiation_id);
+    const { esc, neg } = await this.loadWithNegotiation(input.escalationId, {
+      requirePending: true,
+    });
 
     const chosenProposal = this.buildResolutionProposal(esc, input.selector);
 
@@ -420,6 +405,35 @@ export class EscalationService {
   }
 
   // ── helpers ────────────────────────────────────────────────────────────
+
+  /**
+   * Load an escalation together with the negotiation it hangs off, throwing
+   * the same not-found / not-pending errors all three call sites raised by
+   * hand.
+   *
+   * `addContribution`, `resolve` and `getReview` each opened with this
+   * fetch-and-check preamble. The first two additionally require the
+   * escalation to still be pending — `getReview` deliberately doesn't, since
+   * it renders resolved escalations too — so `requirePending` gates that
+   * half rather than the whole helper being duplicated for one line.
+   */
+  private async loadWithNegotiation(
+    escalationId: string,
+    { requirePending }: { requirePending: boolean },
+  ): Promise<{ esc: Escalation; neg: Negotiation }> {
+    const esc = await this.deps.escalationRepo.findById(escalationId);
+    if (!esc) throw new EscalationNotFoundError(escalationId);
+    if (requirePending && esc.status !== "pending") {
+      throw new EscalationStateError(
+        `escalation ${esc.id} is not pending (status='${esc.status}')`,
+      );
+    }
+
+    const neg = await this.deps.negotiationRepo.findById(esc.negotiation_id);
+    if (!neg) throw new NegotiationNotFoundError(esc.negotiation_id);
+
+    return { esc, neg };
+  }
 
   private callerRole(
     neg: { initiator_agent_id: string; counterparty_agent_id: string },

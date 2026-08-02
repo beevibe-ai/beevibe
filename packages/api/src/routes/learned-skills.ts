@@ -9,7 +9,7 @@
 
 import { writeFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
-import { Router, type RequestHandler } from "express";
+import { Router, type RequestHandler, type Response } from "express";
 import {
   learnedSkillId as newLearnedSkillId,
   type LearnedSkillRepository,
@@ -42,6 +42,19 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
   const router = Router();
   const repoRoot = resolve(deps.repoRoot ?? process.cwd());
   router.use(deps.authMiddleware);
+
+  /**
+   * `loadOwned` bound to the learned-skill repo — `DELETE /:id` and
+   * `POST /:id/publish` passed byte-identical arguments.
+   */
+  const loadOwnedSkill = (res: Response, personId: string, id: string) =>
+    loadOwned(
+      res,
+      personId,
+      () => deps.learnedSkillRepo.findById(id),
+      (sk) => sk.owner_id,
+      "not_found",
+    );
 
   // GET /learned-skills
   router.get("/", async (req, res) => {
@@ -139,13 +152,7 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
     const id = requireParam(req, res, "id", "missing_id");
     if (!id) return;
     try {
-      const skill = await loadOwned(
-        res,
-        req.caller!.personId,
-        () => deps.learnedSkillRepo.findById(id),
-        (s) => s.owner_id,
-        "not_found",
-      );
+      const skill = await loadOwnedSkill(res, req.caller!.personId, id);
       if (!skill) return;
       await deps.learnedSkillRepo.delete(id);
       res.status(204).send();
@@ -164,13 +171,7 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
     const id = requireParam(req, res, "id", "missing_id");
     if (!id) return;
     try {
-      const skill = await loadOwned(
-        res,
-        req.caller!.personId,
-        () => deps.learnedSkillRepo.findById(id),
-        (s) => s.owner_id,
-        "not_found",
-      );
+      const skill = await loadOwnedSkill(res, req.caller!.personId, id);
       if (!skill) return;
 
       const token = process.env.BEEVIBE_REGISTRY_TOKEN;

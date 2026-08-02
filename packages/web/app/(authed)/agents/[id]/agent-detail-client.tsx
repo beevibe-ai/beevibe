@@ -4,10 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, AlertTriangle, Bot, Archive } from "lucide-react";
+import { ArrowLeft, Bot, Archive } from "lucide-react";
 import { useAgent } from "@/lib/hooks/use-agents";
 import { useIsOwner, useMe } from "@/lib/hooks/use-me";
-import { isApiConfigured } from "@/lib/api/config";
 import { formatReviewPolicy } from "@/lib/format";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/hooks/keys";
@@ -20,9 +19,9 @@ import { RecentChatThreadRow } from "@/components/agents/recent-chat-thread-row"
 import { RuntimePicker } from "@/components/agents/pickers/runtime-picker";
 import { ModelPicker } from "@/components/agents/pickers/model-picker";
 import { ReviewPolicyPicker } from "@/components/agents/pickers/review-policy-picker";
-import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { DetailQuery } from "@/components/detail/detail-query";
 import { DetailShell } from "@/components/detail/detail-shell";
 import { FooterField } from "@/components/detail/footer-field";
 import { Metric } from "@/components/detail/metric";
@@ -40,48 +39,31 @@ const AgentsBackLink = () => (
 );
 
 export function AgentDetailClient({ agentId }: { agentId: string }) {
-  const { data, isLoading, isError } = useAgent(agentId);
+  const query = useAgent(agentId);
 
-  if (!isApiConfigured) {
-    return (
-      <DetailShell nav={<AgentsBackLink />}>
-        <EmptyState
-          icon={Bot}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load this agent."
-        />
-      </DetailShell>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <DetailShell nav={<AgentsBackLink />}>
-        <Skeleton className="h-14 w-full mb-6" />
-        <div className="grid grid-cols-3 gap-6">
-          <div className="col-span-2 space-y-4">
-            <Skeleton className="h-32 w-full rounded-lg" />
+  return (
+    <DetailQuery
+      query={query}
+      nav={<AgentsBackLink />}
+      icon={Bot}
+      entity="agent"
+      entityId={agentId}
+      skeleton={
+        <>
+          <Skeleton className="h-14 w-full mb-6" />
+          <div className="grid grid-cols-3 gap-6">
+            <div className="col-span-2 space-y-4">
+              <Skeleton className="h-32 w-full rounded-lg" />
+              <Skeleton className="h-40 w-full rounded-lg" />
+            </div>
             <Skeleton className="h-40 w-full rounded-lg" />
           </div>
-          <Skeleton className="h-40 w-full rounded-lg" />
-        </div>
-      </DetailShell>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <DetailShell nav={<AgentsBackLink />}>
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load agent"
-          description={`Agent ${agentId} could not be fetched.`}
-        />
-      </DetailShell>
-    );
-  }
-
-  return <AgentDetailLoaded agent={data} />;
+        </>
+      }
+    >
+      {(agent) => <AgentDetailLoaded agent={agent} />}
+    </DetailQuery>
+  );
 }
 
 function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {

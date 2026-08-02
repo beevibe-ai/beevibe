@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Request, Response } from "express";
-import { loadOwned, requireParam } from "./http-errors.js";
+import { loadOwned, parseNullableString, requireParam } from "./http-errors.js";
 
 function fakeRes(): Response & { statusCode?: number; body?: unknown } {
   const res = {
@@ -20,6 +20,10 @@ function fakeRes(): Response & { statusCode?: number; body?: unknown } {
 
 function fakeReq(params: Record<string, unknown>): Request {
   return { params } as unknown as Request;
+}
+
+function fakeBodyReq(body: unknown): Request {
+  return { body } as unknown as Request;
 }
 
 describe("requireParam", () => {
@@ -134,5 +138,48 @@ describe("loadOwned", () => {
     const load = vi.fn().mockResolvedValue(agent);
     await loadOwned(fakeRes(), "person_1", load, (a: typeof agent) => a.owner_id, "nf");
     expect(load).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("parseNullableString", () => {
+  it("passes an explicit null through as the clear-it signal", () => {
+    const res = fakeRes();
+    expect(parseNullableString(fakeBodyReq({ model: null }), res, "model")).toBeNull();
+    expect(res.statusCode).toBeUndefined();
+  });
+
+  it("returns a non-empty string as the set-it value", () => {
+    const res = fakeRes();
+    expect(parseNullableString(fakeBodyReq({ model: "opus" }), res, "model")).toBe("opus");
+    expect(res.statusCode).toBeUndefined();
+  });
+
+  it("400s on an empty string rather than setting the field to it", () => {
+    // The subtle half of the ternary both call sites spelled out: "" is
+    // falsy, so it has to fall through to the 400 instead of being stored.
+    const res = fakeRes();
+    expect(parseNullableString(fakeBodyReq({ model: "" }), res, "model")).toBeUndefined();
+    expect(res.statusCode).toBe(400);
+  });
+
+  it("400s on a missing field, a missing body, and a wrong type", () => {
+    for (const body of [{}, undefined, { model: 7 }, { model: ["opus"] }]) {
+      const res = fakeRes();
+      expect(parseNullableString(fakeBodyReq(body), res, "model")).toBeUndefined();
+      expect(res.statusCode).toBe(400);
+      expect(res.body).toEqual({
+        error: "invalid_body",
+        message: "expected { model: string | null }",
+      });
+    }
+  });
+
+  it("names the field it was asked about in the 400 message", () => {
+    const res = fakeRes();
+    parseNullableString(fakeBodyReq({}), res, "runtime_id");
+    expect(res.body).toEqual({
+      error: "invalid_body",
+      message: "expected { runtime_id: string | null }",
+    });
   });
 });

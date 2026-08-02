@@ -2,16 +2,11 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import {
-  AlertTriangle,
-  ArrowLeft,
-  ChevronRight,
-  ExternalLink,
-  FileText,
-} from "lucide-react";
+import { ArrowLeft, ChevronRight, ExternalLink, FileText } from "lucide-react";
 import { api, type WorkProductDetail } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
+import { DetailQuery } from "@/components/detail/detail-query";
 import { DetailShell } from "@/components/detail/detail-shell";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
@@ -21,47 +16,31 @@ import { FooterField } from "@/components/detail/footer-field";
 import { formatRelativeTime, shortId } from "@/lib/format";
 
 export function WorkProductDetailClient({ workProductId }: { workProductId: string }) {
-  const { data, isLoading, isError } = useQuery<WorkProductDetail>({
+  const query = useQuery<WorkProductDetail>({
     queryKey: queryKeys.workProducts.detail(workProductId),
     queryFn: ({ signal }) => api.workProducts.get(workProductId, { signal }),
     enabled: isApiConfigured && !!workProductId,
     staleTime: 30_000,
   });
 
-  if (!isApiConfigured) {
-    return (
-      <DetailShell>
-        <EmptyState
-          icon={FileText}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the api server to load this work product."
-        />
-      </DetailShell>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <DetailShell>
-        <Skeleton className="h-14 w-full mb-6" />
-        <Skeleton className="h-64 w-full rounded-lg" />
-      </DetailShell>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <DetailShell>
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load work product"
-          description={`Work product ${workProductId} could not be fetched.`}
-        />
-      </DetailShell>
-    );
-  }
-
-  return <Body wp={data} />;
+  // No `nav` on the gates: the loaded state swaps in breadcrumbs built from
+  // the fetched work product, which by definition aren't available yet here.
+  return (
+    <DetailQuery
+      query={query}
+      icon={FileText}
+      entity="work product"
+      entityId={workProductId}
+      skeleton={
+        <>
+          <Skeleton className="h-14 w-full mb-6" />
+          <Skeleton className="h-64 w-full rounded-lg" />
+        </>
+      }
+    >
+      {(wp) => <Body wp={wp} />}
+    </DetailQuery>
+  );
 }
 
 function Body({ wp }: { wp: WorkProductDetail }) {

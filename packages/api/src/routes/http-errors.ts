@@ -107,3 +107,34 @@ export function makeErrorHandler(
     });
   };
 }
+
+/**
+ * Read a `{ field: string | null }` body field, 400-ing on anything else.
+ *
+ * `POST /agent/:id/runtime` and `POST /agent/:id/model` both accept "explicit
+ * null clears it, non-empty string sets it, everything else is a 400" and
+ * both spelled out the same nested ternary plus the same error envelope. The
+ * ternary is easy to get subtly wrong — an empty string has to fall through
+ * to the 400, not through to the "sets it" branch — so it is worth having
+ * one copy.
+ *
+ * Returns `undefined` after responding, which is unambiguous because a valid
+ * value is `string | null`. The caller's next line is
+ * `if (value === undefined) return;` — the same guard convention as
+ * `requireParam` and `loadOwned`.
+ */
+export function parseNullableString(
+  req: Request,
+  res: Response,
+  field: string,
+): string | null | undefined {
+  const body = req.body as Record<string, unknown> | undefined;
+  const value = body?.[field];
+  if (value === null) return null;
+  if (typeof value === "string" && value) return value;
+  res.status(400).json({
+    error: "invalid_body",
+    message: `expected { ${field}: string | null }`,
+  });
+  return undefined;
+}

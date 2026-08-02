@@ -1,16 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, MessagesSquare, Scale } from "lucide-react";
+import { MessagesSquare, Scale } from "lucide-react";
 import { MeshBackLink } from "@/components/detail/mesh-back-link";
 import { useNegotiation } from "@/lib/hooks/use-negotiations";
-import { isApiConfigured } from "@/lib/api/config";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { DetailQuery } from "@/components/detail/detail-query";
 import { DetailShell } from "@/components/detail/detail-shell";
 import { FooterField } from "@/components/detail/footer-field";
 import { NegotiationStatusPill } from "@/components/detail/status-pill";
-import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { formatRelativeTime } from "@/lib/format";
 import type {
@@ -20,46 +19,29 @@ import type {
 } from "@/lib/types/negotiations";
 
 export function NegotiationDetailClient({ negotiationId }: { negotiationId: string }) {
-  const { data, isLoading, isError } = useNegotiation(negotiationId);
+  const query = useNegotiation(negotiationId);
 
-  if (!isApiConfigured) {
-    return (
-      <DetailShell nav={<MeshBackLink />}>
-        <EmptyState
-          icon={MessagesSquare}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load this negotiation."
-        />
-      </DetailShell>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <DetailShell nav={<MeshBackLink />}>
-        <Skeleton className="h-7 w-40 mb-4" />
-        <Skeleton className="h-24 w-full rounded-lg mb-6" />
-        <div className="space-y-3">
-          <Skeleton className="h-32 w-full rounded-lg" />
-          <Skeleton className="h-32 w-full rounded-lg" />
-        </div>
-      </DetailShell>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <DetailShell nav={<MeshBackLink />}>
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load negotiation"
-          description={`Negotiation ${negotiationId} could not be fetched. Check the MCP server logs.`}
-        />
-      </DetailShell>
-    );
-  }
-
-  return <NegotiationDetailLoaded neg={data.negotiation} />;
+  return (
+    <DetailQuery
+      query={query}
+      nav={<MeshBackLink />}
+      icon={MessagesSquare}
+      entity="negotiation"
+      entityId={negotiationId}
+      skeleton={
+        <>
+          <Skeleton className="h-7 w-40 mb-4" />
+          <Skeleton className="h-24 w-full rounded-lg mb-6" />
+          <div className="space-y-3">
+            <Skeleton className="h-32 w-full rounded-lg" />
+            <Skeleton className="h-32 w-full rounded-lg" />
+          </div>
+        </>
+      }
+    >
+      {(data) => <NegotiationDetailLoaded neg={data.negotiation} />}
+    </DetailQuery>
+  );
 }
 
 const DECISION_BADGE: Record<NegotiationDecision, string> = {
