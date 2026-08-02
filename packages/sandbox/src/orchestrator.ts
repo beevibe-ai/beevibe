@@ -143,7 +143,10 @@ function classifyStartupError(err: unknown): string {
   if (/Cannot connect to the Docker daemon/i.test(raw)) {
     return "Docker isn't running. Start Docker Desktop and try the run again.";
   }
-  if (/ENOENT.*docker/i.test(raw)) {
+  // Node formats a missing binary as `spawn docker ENOENT` — binary
+  // first, errno second — so match the two tokens independently rather
+  // than assuming an order.
+  if (/ENOENT/i.test(raw) && /docker/i.test(raw)) {
     return "The `docker` CLI isn't on PATH. Install Docker Desktop (or set DOCKER_HOST).";
   }
   if (/no space left on device/i.test(raw)) {
@@ -256,6 +259,9 @@ export async function runRepoAgent(opts: OrchestratorOptions): Promise<RunState>
       onTranscript: (kind, text) => log(kind, text),
     });
 
+    const timeoutSeconds = opts.max_runtime_seconds ?? 600;
+    const timedOutMessage = `Run hit the ${timeoutSeconds}s wall-clock budget — agent didn't finish in time.`;
+
     if (claudeResult.exit_code !== 0 && claudeResult.exit_code !== null) {
       const tail = claudeResult.stderr.slice(-500);
       log(
@@ -264,18 +270,27 @@ export async function runRepoAgent(opts: OrchestratorOptions): Promise<RunState>
       );
       state.status = claudeResult.timed_out ? "blocked" : "failed";
       state.error = claudeResult.timed_out
-        ? `Run hit the ${opts.max_runtime_seconds ?? 600}s wall-clock budget — agent didn't finish in time.`
+        ? timedOutMessage
         : `Claude exited ${claudeResult.exit_code}.${tail ? " " + tail.slice(-200) : ""}`;
       state.finished_at = nowIso();
       emit();
       return state;
     }
 
-    log("log", "Child claude exited cleanly. Collecting artifacts…");
+    // A child killed by our timeout closes with a null code rather than a
+    // number, so it lands here rather than in the branch above. Collect
+    // regardless — a timed-out agent may still have exported something
+    // useful — but don't let the timeout be reported as an empty run.
+    log(
+      "log",
+      claudeResult.timed_out
+        ? `Child claude hit the ${timeoutSeconds}s wall-clock cap. Collecting whatever it exported…`
+        : "Child claude exited cleanly. Collecting artifacts…",
+    );
     state.artifacts = await collectArtifacts(sandbox);
     if (state.artifacts.length === 0) {
       state.status = "blocked";
-      state.error = "agent produced no artifacts";
+      state.error = claudeResult.timed_out ? timedOutMessage : "agent produced no artifacts";
     } else {
       state.status = "succeeded";
     }
