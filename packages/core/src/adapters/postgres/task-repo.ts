@@ -272,9 +272,12 @@ function rowToTask(row: TaskRow): Task {
     blocker_reason: row.blocker_reason ?? undefined,
     repo_url: row.repo_url ?? undefined,
     // The DB column is JSONB; the typed shape is enforced via NextDispatchContext
-    // when written by reviseTask + EscalationService.
+    // when written by reviseTask + EscalationService. The row type is an
+    // untyped `Record`, so this is an assertion about data we wrote, not a
+    // narrowing TS can check — hence the trip through `unknown`.
     next_dispatch_context:
-      (row.next_dispatch_context as Task["next_dispatch_context"]) ?? undefined,
+      (row.next_dispatch_context as unknown as Task["next_dispatch_context"]) ??
+      undefined,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
