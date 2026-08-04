@@ -12,21 +12,9 @@
 
 import { promises as fs } from "node:fs";
 import { join } from "node:path";
+import type { RuntimeSkillsResponse } from "@beevibe/core";
 import type { ApiClient } from "./api-client.js";
 import { getConfigRoot } from "./config.js";
-
-interface RuntimeSkillFile {
-  path: string;
-  content: string;
-}
-interface RuntimeSkill {
-  name: string;
-  files: RuntimeSkillFile[];
-}
-interface RuntimeSkillsResponse {
-  version: string;
-  skills: RuntimeSkill[];
-}
 
 export function skillsCacheDir(configRoot?: string): string {
   return join(getConfigRoot(configRoot), "skills");

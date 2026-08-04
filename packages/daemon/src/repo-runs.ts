@@ -13,7 +13,11 @@
  * work_product rows and update the repo_run record.
  */
 
-import type { SessionEventKind, TerminalSessionStatus } from "@beevibe/core";
+import type {
+  RuntimeDoneRequest,
+  SessionEventKind,
+  TerminalSessionStatus,
+} from "@beevibe/core";
 import { runRepoAgent, type TranscriptEvent } from "@beevibe/sandbox/orchestrator";
 import type { ApiClient } from "./api-client.js";
 import { createEventBatcher } from "./event-batcher.js";
@@ -134,7 +138,10 @@ export async function runRepoDispatch(
     sandbox_path: a.sandbox_path,
   }));
 
-  const done = {
+  // Typed against the shared contract rather than inferred: this body is
+  // the /runtime/done request the api parses, so a field renamed on the
+  // server side should break the build here, not in production.
+  const done: RuntimeDoneRequest = {
     session_id: payload.session_id,
     status,
     result_summary:
