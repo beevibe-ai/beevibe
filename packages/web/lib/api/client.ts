@@ -7,10 +7,7 @@ import type {
   RepoRun,
   RepoRunStatus,
   ReviewPolicy,
-  SessionStatus,
-  SessionType,
   Task,
-  TaskPriority,
 } from "@beevibe/core";
 export type { RepoRun, RepoRunStatus, LearnedSkill };
 import type {
@@ -60,14 +57,6 @@ export interface ReviseTaskInput {
 
 export interface CancelTaskInput {
   reason?: string;
-}
-
-export interface CreateTaskInput {
-  title: string;
-  description?: string;
-  priority?: TaskPriority;
-  assignee_id?: string;
-  parent_task_id?: string;
 }
 
 export interface UserPreferences {
@@ -240,22 +229,6 @@ export interface WorkProductDetail {
   updated_at: string;
 }
 
-export interface ActivityEntry {
-  id: string;
-  short_id: string;
-  agent_id: string;
-  agent_label: string;
-  agent_hierarchy: HierarchyLevel;
-  type: SessionType;
-  status: SessionStatus;
-  intent: string;
-  task_id: string | null;
-  task_title: string | null;
-  task_short_id: string | null;
-  started_at: string;
-  duration_label: string;
-}
-
 export interface RuntimePanelEntry {
   id: string;
   cli: string;
@@ -409,9 +382,6 @@ export const api = {
         `/task/${encodeURIComponent(id)}/retry`,
         { method: "POST" },
       ),
-    // Backend hasn't shipped POST /task (create) yet — see #30.
-    create: (input: CreateTaskInput) =>
-      fetchJson<Task>("/task", { method: "POST", body: input }),
   },
   agents: {
     list: (opts: ReadOptions = {}) =>
@@ -613,14 +583,6 @@ export const api = {
         { method: "DELETE" },
       ),
   },
-  activity: {
-    /** Recent sessions across the caller's agent tree. Used by the live chat rail. */
-    list: (opts: ReadOptions & { limit?: number } = {}) =>
-      fetchJson<ActivityEntry[]>("/activity", {
-        signal: opts.signal,
-        ...(opts.limit ? { query: { limit: opts.limit } } : {}),
-      }),
-  },
   workProducts: {
     get: (id: string, opts: ReadOptions = {}) =>
       fetchJson<WorkProductDetail>(`/work-product/${encodeURIComponent(id)}`, {
@@ -728,8 +690,6 @@ export const api = {
       fetchJson<{ skills: LearnedSkill[] }>("/learned-skills", { signal: opts.signal }),
     create: (input: { name: string; goal_pattern: string; repo_run_id: string }) =>
       fetchJson<{ skill: LearnedSkill }>("/learned-skills", { method: "POST", body: input }),
-    delete: (id: string) =>
-      fetchJson<void>(`/learned-skills/${encodeURIComponent(id)}`, { method: "DELETE" }),
   },
   findRepo: {
     /** Ranked search across all 4 find_repo tiers. Empty `goal` is a 400. */
