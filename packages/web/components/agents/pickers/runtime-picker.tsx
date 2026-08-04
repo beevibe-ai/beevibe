@@ -1,16 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { api, type RuntimesListResponse } from "@/lib/api/client";
 import { queryKeys } from "@/lib/hooks/keys";
-import { cn } from "@/lib/utils";
 import {
   ChipCaret,
   ChipMenuItem,
   ChipPopover,
   StatusDot,
 } from "@/components/agents/pickers/chip-popover";
+import {
+  PICKER_SELECT_CLASS,
+  PickerCard,
+  PickerError,
+  PickerHelp,
+  useAgentSettingMutation,
+} from "@/components/agents/pickers/picker-card";
 import type { AgentDisplay } from "@/lib/api/types";
 
 type RuntimeOption = {
@@ -59,20 +65,9 @@ function useRuntimesQuery() {
 }
 
 function useRuntimeMutation(agentId: string) {
-  const queryClient = useQueryClient();
-  return useMutation({
-    mutationFn: (runtimeId: string | null) =>
-      api.agents.setRuntime(agentId, runtimeId),
-    onSuccess: () => {
-      // The list view consumes data via useAgentNetwork() — that's
-      // a separate cache slot (["agent-network", ...]) from the
-      // per-agent detail (["agents", ...]). Invalidating only one
-      // leaves the other stale, so a mutation appears to silently
-      // do nothing in whichever view didn't get its key bumped.
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agents.all });
-      void queryClient.invalidateQueries({ queryKey: queryKeys.agentNetwork.all });
-    },
-  });
+  return useAgentSettingMutation((runtimeId: string | null) =>
+    api.agents.setRuntime(agentId, runtimeId),
+  );
 }
 
 /**
@@ -185,10 +180,7 @@ export function RuntimePicker({ agent }: { agent: AgentDisplay }) {
   const value = agent.preferred_runtime_id ?? "";
 
   return (
-    <section className="rounded-lg border border-border bg-card p-4">
-      <h3 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
-        Runtime
-      </h3>
+    <PickerCard title="Runtime">
       {runtimesQuery.isLoading ? (
         <p className="text-xs text-muted-foreground italic">Loading runtimes…</p>
       ) : all.length === 0 ? (
@@ -208,10 +200,7 @@ export function RuntimePicker({ agent }: { agent: AgentDisplay }) {
               const next = e.target.value === "" ? null : e.target.value;
               mutation.mutate(next);
             }}
-            className={cn(
-              "w-full text-sm rounded border border-border bg-background px-2 py-1.5",
-              "cursor-pointer disabled:opacity-50",
-            )}
+            className={PICKER_SELECT_CLASS}
           >
             <option value="">— unbound —</option>
             {all.map((r) => (
@@ -221,25 +210,21 @@ export function RuntimePicker({ agent }: { agent: AgentDisplay }) {
               </option>
             ))}
           </select>
-          {mutation.isError ? (
-            <p className="text-xs text-destructive mt-1.5">
-              Couldn&apos;t update runtime.
-            </p>
-          ) : null}
-          <p className="text-[11px] text-muted-foreground mt-2 leading-snug">
+          {mutation.isError ? <PickerError>Couldn&apos;t update runtime.</PickerError> : null}
+          <PickerHelp>
             The agent runs on this daemon&apos;s CLI. Unbinding makes task / chat
             sessions sit pending until rebound; mesh asks fall back to the
             server.
-          </p>
-          <p className="text-[11px] text-muted-foreground mt-1 leading-snug">
+          </PickerHelp>
+          <PickerHelp className="mt-1">
             Don&apos;t see a CLI you just installed?{" "}
             <Link href="/runtimes" className="underline hover:text-foreground">
               Sync your daemon
             </Link>
             .
-          </p>
+          </PickerHelp>
         </>
       )}
-    </section>
+    </PickerCard>
   );
 }

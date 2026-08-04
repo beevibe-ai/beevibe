@@ -738,4 +738,28 @@ describe("EscalationService.getReview", () => {
     vi.mocked(escalationRepo.findById).mockResolvedValue(undefined);
     await expect(svc.getReview("esc_missing")).rejects.toThrow(EscalationNotFoundError);
   });
+
+  it("still reads a resolved escalation — unlike the mutating paths", async () => {
+    // getReview shares its fetch-and-check preamble with addContribution and
+    // resolve, but deliberately does NOT require status='pending': the review
+    // page renders resolved escalations too. Pin that difference so the
+    // shared loader can't quietly grow a pending check.
+    vi.mocked(escalationRepo.findById).mockResolvedValue(
+      makeEsc({
+        status: "resolved",
+        initiator_proposals: [{ title: "A", description: "a" }],
+        initiator_submitted_at: new Date(),
+        counterparty_proposals: [{ title: "B", description: "b" }],
+        counterparty_submitted_at: new Date(),
+      }),
+    );
+    vi.mocked(negotiationRepo.findById).mockResolvedValue(makeNeg());
+    vi.mocked(negotiationRoundRepo.listByNegotiation).mockResolvedValue([]);
+
+    const review = await svc.getReview("esc_1");
+
+    expect(review.status).toBe("resolved");
+    expect(review.initiator_recovered).toBeUndefined();
+    expect(review.counterparty_recovered).toBeUndefined();
+  });
 });
