@@ -223,6 +223,34 @@ so an unused parameter followed by a used one is **not** reported — only
 `--noUnusedParameters` catches it. Convention here is to prefix a
 deliberately-unused param with `_`.
 
+### knip's blind spot: symbols behind `@beevibe/core` subpath barrels
+
+`packages/core/package.json` declares 26 `exports` subpaths. knip treats
+each one as an **entry point**, so anything re-exported from a barrel
+(`domain/index.ts`, `adapters/postgres/index.ts`, …) is "reachable" and
+never flagged — no matter how many packages actually import it. Every
+core dead-export found so far was invisible to knip for this reason.
+
+Sweep it by name instead — for each `export function|class|const` under
+`packages/*/src/**`, grep the whole monorepo and discount (a) the
+declaring file and (b) pure re-export lines in `index.ts`:
+
+```bash
+git grep -n -w -- "<symbol>" -- 'packages/**' 'scripts/**' | grep -v /dist/
+```
+
+Zero surviving hits = dead. Hits only from `*.test.ts` = alive only for
+its own test — check whether it's a deliberate test seam (`clearCache()`
+in `api/src/sse/owner-lookup.ts` is marked `@internal Tests only`) before
+touching it.
+
+### Dead in-repo, but not ours to delete
+
+| Thing | Why it survived the sweep |
+| --- | --- |
+| `GET /activity` → `api/src/views/activity.ts` | No caller anywhere in the monorepo, but it's a **documented public endpoint** (`packages/api/README.md`). Retiring it is a product call. The web stub that used to reach it (`api.activity.list`) is removed by #273; `queryKeys.activity` + its `lib/sse.ts` invalidations are inert once that lands. |
+| `PostgresMemoryPromotionEventRepository` | Never constructed — `bootstrap.ts` builds the MemoryAgent without `promotionEventRepo`, so the M8.D promotion audit log never writes even though the port, the service branch, its tests and the read-side `views/promotions.ts` all exist. That's **unfinished wiring, not dead code**; deleting the adapter makes finishing it harder. |
+
 ## Deploying
 
 ```bash
