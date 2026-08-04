@@ -1,3 +1,5 @@
+import type { ResolutionProposal } from "./escalation.js";
+
 export type TaskStatus =
   | "pending"
   | "assigned"
@@ -54,28 +56,25 @@ export type CreatorType = "person" | "agent";
  * doesn't need to call `findLatestForTask` for synthetic tasks (B-side
  * post-escalation tasks have no own prior session via that path).
  */
-export type NextDispatchContext =
-  | {
-      kind: "revision";
-      feedback: string;
-      source: "human" | "parent_agent";
-      from_status: "review" | "needs_revision" | "blocked";
-      reviser_agent_id?: string;
-      prior_session_id?: string;
-    }
-  | {
-      kind: "post_escalation";
-      role: "initiator" | "counterparty";
-      /** Stored as JSONB; structurally matches ResolutionProposal. */
-      resolution: {
-        title: string;
-        description: string;
-        source: "initiator" | "counterparty" | "human";
-        source_index?: number;
-      };
-      notes?: string;
-      prior_session_id?: string;
-    };
+export interface RevisionContext {
+  kind: "revision";
+  feedback: string;
+  source: "human" | "parent_agent";
+  from_status: "review" | "needs_revision" | "blocked";
+  reviser_agent_id?: string;
+  prior_session_id?: string;
+}
+
+export interface PostEscalationContext {
+  kind: "post_escalation";
+  role: "initiator" | "counterparty";
+  /** Stored as JSONB, so this is the serialized form of the same shape. */
+  resolution: ResolutionProposal;
+  notes?: string;
+  prior_session_id?: string;
+}
+
+export type NextDispatchContext = RevisionContext | PostEscalationContext;
 
 export interface Task {
   id: string;

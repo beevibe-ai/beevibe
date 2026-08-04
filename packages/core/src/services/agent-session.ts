@@ -1,4 +1,4 @@
-import type { ResolutionProposal } from "../domain/escalation.js";
+import type { NextDispatchContext } from "../domain/task.js";
 import type { Session, SessionEventKind, SessionType } from "../domain/session.js";
 import { sessionEventId, sessionId as newSessionId } from "../domain/ids.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
@@ -373,21 +373,11 @@ export type ResumeReason =
       kind: "chat_continuation";
       prior_session_id: string;
     }
-  | {
-      kind: "revision";
-      feedback: string;
-      source: "human" | "parent_agent";
-      from_status: "review" | "needs_revision" | "blocked";
-      reviser_agent_id?: string;
-      prior_session_id?: string;
-    }
-  | {
-      kind: "post_escalation";
-      role: "initiator" | "counterparty";
-      resolution: ResolutionProposal;
-      notes?: string;
-      prior_session_id?: string;
-    };
+  // The explicit-context kinds ARE `task.next_dispatch_context` — dispatch
+  // reads the JSONB column straight into this union, so they have to stay
+  // structurally identical. Referencing the domain type keeps that a fact
+  // rather than a convention two files have to remember.
+  | NextDispatchContext;
 
 /**
  * The minimal Task fields buildIntent needs. Avoids importing the full Task

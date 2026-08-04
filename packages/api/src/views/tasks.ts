@@ -180,7 +180,9 @@ function rowToTaskListItem(row: TaskListRow): TaskListItem {
     blocker_agent_id: row.blocker_agent_id ?? undefined,
     blocker_reason: row.blocker_reason ?? undefined,
     repo_url: row.repo_url ?? undefined,
-    next_dispatch_context: row.next_dispatch_context as Task["next_dispatch_context"],
+    // JSONB column read back as an untyped `Record` — an assertion about
+    // data the write path typed, not something TS can narrow.
+    next_dispatch_context: row.next_dispatch_context as unknown as Task["next_dispatch_context"],
     created_at: row.created_at,
     updated_at: row.updated_at,
     assignee_hierarchy: row.assignee_hier ?? undefined,
