@@ -1,18 +1,26 @@
 /**
- * Wire types for the /runtime/* surface. Shared between the api server
- * (handlers in router.ts) and any daemon implementation (packages/daemon
- * lands in Phase 5). Kept in @beevibe/api for now; promote to a shared
- * package if more consumers need them.
+ * Wire types for the /runtime/* surface — the contract between the api
+ * server (handlers in `packages/api/src/runtime/router.ts`) and the
+ * daemon that claims sessions and spawns CLIs (`packages/daemon`).
+ *
+ * These lived in `@beevibe/api` with a note to "promote to a shared
+ * package if more consumers need them". The daemon then landed and,
+ * having no way to import from the api, hand-copied six of them:
+ * `DispatchPayload`, `RunRepoDispatch` and `RunRepoArtifact` into
+ * `spawner.ts`, and the three skills-bundle shapes into
+ * `skills-cache.ts`. Both halves of a wire contract declared twice is a
+ * drift risk with teeth — the copies had already diverged, with the
+ * daemon spelling `agent_hierarchy_level` and `type` as inline literal
+ * unions instead of `HierarchyLevel` / `SessionType`, so adding a
+ * session type in core would leave the daemon's payload type silently
+ * stale while the server started sending it.
+ *
+ * Types only, no runtime values: safe anywhere core is importable.
  */
 
-import type {
-  HierarchyLevel,
-  KnownCli,
-  SessionEventKind,
-  SessionStatus,
-  SessionType,
-  SessionUsage,
-} from "@beevibe/core";
+import type { HierarchyLevel } from "./agent.js";
+import type { KnownCli } from "./runtime.js";
+import type { SessionEventKind, SessionStatus, SessionType, SessionUsage } from "./session.js";
 
 /* ─── Register ───────────────────────────────────────────────────────── */
 

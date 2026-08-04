@@ -1,7 +1,12 @@
 /**
  * Spawn the CLI for a claimed session and stream events back to the
  * api server. The dispatch payload is the contract between
- * /runtime/claim and this module.
+ * /runtime/claim and this module — it lives in `@beevibe/core`'s
+ * `domain/daemon-protocol.ts` alongside the rest of the /runtime/*
+ * wire types, so the api's response type and the daemon's request type
+ * are one declaration rather than two copies that can drift apart.
+ * Re-exported here because this module's own consumers
+ * (`claimer.ts`, `repo-runs.ts`) import it from `./spawner.js`.
  *
  * Workspace + skills sync run through `LocalWorkspaceManager` from
  * `@beevibe/core` so the daemon's filesystem layout matches the
@@ -15,7 +20,7 @@ import {
 } from "@beevibe/core/adapters/runtime-registry";
 import type {
   Agent,
-  KnownCli,
+  DispatchPayload,
   RuntimeRegistry,
   RuntimeStep,
   RuntimeResult,
@@ -27,52 +32,11 @@ import { createEventBatcher } from "./event-batcher.js";
 import { error, log } from "./logger.js";
 import { runRepoDispatch } from "./repo-runs.js";
 
-export interface DispatchPayload {
-  session_id: string;
-  agent_id: string;
-  agent_api_key: string;
-  agent_hierarchy_level: "ic" | "team" | "org";
-  runtime_type: KnownCli;
-  intent: string;
-  system_prompt_append: string;
-  resume_session_id?: string;
-  model?: string;
-  max_turns?: number;
-  env: Record<string, string>;
-  type: "task" | "mesh_ask" | "mesh_negotiate" | "blocker" | "chat" | "run_repo";
-  mcp_server_url: string;
-  /**
-   * Set when type === 'run_repo'. The spawner branches into the
-   * Docker-sandbox orchestrator instead of the CLI runtime path.
-   * Capability Network (#149).
-   */
-  run_repo?: RunRepoDispatch;
-}
-
-export interface RunRepoDispatch {
-  /** Pre-created repo_run row id the daemon reports back against. */
-  repo_run_id: string;
-  /** GitHub repo the child agent should borrow. */
-  repo_url: string;
-  /** What the child agent is being asked to do, in plain language. */
-  goal: string;
-  /** Optional input file to pre-stage into the sandbox before the agent starts. */
-  input_url?: string;
-  input_filename?: string;
-  limits?: {
-    wall_clock_minutes?: number;
-    max_install_attempts?: number;
-    disk_mb?: number;
-  };
-}
-
-export interface RunRepoArtifact {
-  filename: string;
-  title: string;
-  size_bytes: number;
-  host_path: string;
-  sandbox_path?: string;
-}
+export type {
+  DispatchPayload,
+  RunRepoArtifact,
+  RunRepoDispatch,
+} from "@beevibe/core";
 
 export interface SpawnDeps {
   api: ApiClient;

@@ -20,6 +20,17 @@ import {
   type RuntimeRepository,
   type TaskRepository,
   type WorkProductRepository,
+  type DispatchPayload,
+  type RuntimeDoneRequest,
+  type RuntimeEventInput,
+  type RuntimeEventsRequest,
+  type RuntimeHeartbeatRequest,
+  type RuntimeRegisterRequest,
+  type RuntimeRegisterResponse,
+  type RuntimeSkill,
+  type RuntimeSkillsResponse,
+  type RuntimeSyncRequest,
+  type RuntimeSyncResponse,
 } from "@beevibe/core";
 import {
   generateDaemonApiKey,
@@ -34,19 +45,6 @@ import {
 import { transitionTaskOnClaim } from "@beevibe/core/services/dispatch-service";
 import { requireDaemon, requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "./hub.js";
-import type {
-  DispatchPayload,
-  RuntimeDoneRequest,
-  RuntimeEventInput,
-  RuntimeEventsRequest,
-  RuntimeHeartbeatRequest,
-  RuntimeRegisterRequest,
-  RuntimeRegisterResponse,
-  RuntimeSkill,
-  RuntimeSkillsResponse,
-  RuntimeSyncRequest,
-  RuntimeSyncResponse,
-} from "./types.js";
 
 export interface RuntimeRouterDeps {
   /** Required on every /runtime/* request. Resolves bv_u_ or bv_d_. */
