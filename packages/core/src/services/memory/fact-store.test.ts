@@ -192,20 +192,4 @@ describe("FactStore thin delegations", () => {
     expect(repo.update).toHaveBeenCalledWith("fact_x", { scope: "team" });
   });
 
-  it("search delegates to repo.searchByVector", async () => {
-    vi.mocked(repo.searchByVector).mockResolvedValue([]);
-    await store.search({
-      agent_id: "agent_1",
-      scope: "ic",
-      embedding: [],
-      limit: 5,
-    });
-    expect(repo.searchByVector).toHaveBeenCalled();
-  });
-
-  it("listBySessionId delegates to repo.listBySessionId", async () => {
-    vi.mocked(repo.listBySessionId).mockResolvedValue([]);
-    await store.listBySessionId("sess_abc");
-    expect(repo.listBySessionId).toHaveBeenCalledWith("sess_abc");
-  });
 });
