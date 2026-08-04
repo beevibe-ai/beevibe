@@ -12,6 +12,7 @@
  *   forgets.
  */
 
+import { extractGitHubRepoRefs } from "../domain/github-url.js";
 import type { SessionRepository } from "../ports/session-repo.js";
 import type { SessionEventRepository } from "../ports/session-event-repo.js";
 import type { WorkProductRepository } from "../ports/work-product-repo.js";
@@ -33,66 +34,6 @@ export interface ReferencedReposDeps {
   sessionEventRepo: SessionEventRepository;
   workProductRepo: WorkProductRepository;
   learnedSkillRepo: LearnedSkillRepository;
-}
-
-// Repo root only — owner/name are alphanumeric + dot/hyphen/underscore in
-// GitHub's schema. We deliberately STOP at the second path segment, so
-// `/owner/repo/blob/main/CLAUDE.md` collapses to the repo root. The
-// boundary class (`[\s)"',<>]|$`) keeps trailing punctuation out.
-const GITHUB_URL_RE =
-  /https:\/\/github\.com\/([A-Za-z0-9][A-Za-z0-9._-]*)\/([A-Za-z0-9][A-Za-z0-9._-]*)(?=[/\s)"',<>]|$)/g;
-
-// Paths under github.com that aren't repos. github.com/orgs/foo, settings,
-// marketplace, etc. — filter at the owner segment, not the URL.
-const NON_REPO_OWNERS = new Set([
-  "orgs",
-  "settings",
-  "marketplace",
-  "topics",
-  "trending",
-  "features",
-  "pricing",
-  "search",
-  "notifications",
-  "issues",
-  "pulls",
-  "explore",
-  "about",
-  "contact",
-  "site",
-  "security",
-  "login",
-  "signup",
-  "logout",
-  "new",
-]);
-
-// Common false-positive `name` values that show up when a regex sweeps
-// commit metadata or download URLs (`github.com/owner/repo.git`, raw
-// fragments, etc.). `.git` is the only common one — strip it.
-function normalizeName(raw: string): string {
-  return raw.replace(/\.git$/i, "");
-}
-
-function extractFromString(text: string): Array<{ owner: string; name: string; url: string }> {
-  const out: Array<{ owner: string; name: string; url: string }> = [];
-  if (!text) return out;
-  GITHUB_URL_RE.lastIndex = 0;
-  let match: RegExpExecArray | null;
-  while ((match = GITHUB_URL_RE.exec(text)) !== null) {
-    const owner = match[1];
-    const nameRaw = match[2];
-    if (!owner || !nameRaw) continue;
-    if (NON_REPO_OWNERS.has(owner.toLowerCase())) continue;
-    const name = normalizeName(nameRaw);
-    if (!name) continue;
-    out.push({
-      owner,
-      name,
-      url: `https://github.com/${owner}/${name}`,
-    });
-  }
-  return out;
 }
 
 /**
@@ -141,7 +82,7 @@ export async function getReferencedRepos(
   // Aggregate by canonical URL.
   const tally = new Map<string, { owner: string; name: string; url: string; count: number }>();
   for (const src of sources) {
-    for (const hit of extractFromString(src)) {
+    for (const hit of extractGitHubRepoRefs(src)) {
       const prior = tally.get(hit.url);
       if (prior) {
         prior.count += 1;

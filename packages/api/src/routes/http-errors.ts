@@ -34,6 +34,49 @@ export function requireParam(
 }
 
 /**
+ * The 400 a handler returns when the request body doesn't typecheck.
+ *
+ * Six handlers across `view`, `learned-skills` and `me` wrote out the
+ * same `res.status(400).json({ error: "invalid_body", message })`. The
+ * `message` stays a parameter rather than being derived: the wording is
+ * not uniform (`view` describes the expected shape, `learned-skills`
+ * lists the missing fields) and it is the only part a client sees, so
+ * this factors out the envelope, not the prose.
+ */
+export function invalidBody(res: Response, message: string): void {
+  res.status(400).json({ error: "invalid_body", message });
+}
+
+/**
+ * Read a body field that accepts either an explicit `null` (clear the
+ * value) or a non-empty string (set it), 400-ing on anything else —
+ * absent, empty string, wrong type.
+ *
+ * `view`'s `/agent/:id/runtime` and `/agent/:id/model` are the same
+ * nullable-string patch endpoint over different columns, and each had
+ * spelled the three-way ternary out by hand. The distinction that makes
+ * it fiddly is that `null` is a *valid* value here while `undefined`
+ * means "reject" — inverted from the usual falsy check, and easy to get
+ * subtly wrong when written twice.
+ *
+ * Returns `undefined` after responding, so the caller's next line is
+ * `if (value === undefined) return;` — note the explicit compare, since
+ * a returned `null` is success.
+ */
+export function requireNullableString(
+  req: Request,
+  res: Response,
+  field: string,
+): string | null | undefined {
+  const body = req.body as Record<string, unknown> | undefined;
+  const raw = body?.[field];
+  if (raw === null) return null;
+  if (typeof raw === "string" && raw) return raw;
+  invalidBody(res, `expected { ${field}: string | null }`);
+  return undefined;
+}
+
+/**
  * Load an entity and gate it on the caller owning it: 404 when it
  * doesn't exist, 403 when it belongs to somebody else.
  *

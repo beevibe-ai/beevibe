@@ -19,7 +19,7 @@ import {
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { readArtifactBody } from "../views/work-product.js";
-import { loadOwned, requireParam } from "./http-errors.js";
+import { invalidBody, loadOwned, requireParam } from "./http-errors.js";
 
 export interface LearnedSkillsRouterDeps {
   authMiddleware: RequestHandler;
@@ -65,7 +65,7 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
       repo_run_id: string;
     }>;
     if (!body.name || !body.goal_pattern || !body.repo_run_id) {
-      res.status(400).json({ error: "invalid_body", message: "name, goal_pattern, repo_run_id required" });
+      invalidBody(res, "name, goal_pattern, repo_run_id required");
       return;
     }
     // Validate slug — lowercase alphanum + hyphens only.

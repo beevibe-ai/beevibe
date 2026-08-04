@@ -576,25 +576,48 @@ function trendingHaystack(e: TrendingRepoEntry): string {
   return [e.owner, e.name, e.description ?? ""].filter(Boolean).join(" ");
 }
 
-async function ensureTrendingEmbeddings(
-  entries: TrendingRepoEntry[],
+/**
+ * Resolve one vector per distinct entry, cheapest source first: the
+ * entry's own precomputed `embedding`, then the process-level cache,
+ * then a single batched embed call for whatever is left. Newly embedded
+ * vectors are written back to `cache`.
+ *
+ * The trending and community tiers differ only in which cache they use
+ * and in how an entry projects to its cache key and its embeddable text
+ * — the resolution order, the dedup, the batch call and the write-back
+ * are the same work, so they share one implementation. `key` and `text`
+ * diverge for trending (keyed on the normalized URL, embedded on
+ * owner/name/description) and coincide for community (both are
+ * `goal_pattern`).
+ *
+ * Entries whose `text` is empty are skipped rather than embedded — there
+ * is no signal in a zero-length haystack, and it would still cost a slot
+ * in the batch.
+ */
+async function ensureEmbeddings<T extends { embedding?: number[] }>(
+  entries: readonly T[],
   embeddings: EmbeddingService,
+  spec: {
+    cache: Map<string, number[]>;
+    key: (entry: T) => string;
+    text: (entry: T) => string;
+  },
 ): Promise<Map<string, number[]>> {
   const out = new Map<string, number[]>();
   const toEmbed: { key: string; text: string }[] = [];
   for (const e of entries) {
-    const key = normalizeUrl(e.repo_url);
-    if (out.has(key)) continue; // dedup across daily/weekly
+    const key = spec.key(e);
+    if (out.has(key)) continue; // dedup (e.g. a repo in both daily and weekly)
     if (Array.isArray(e.embedding) && e.embedding.length > 0) {
       out.set(key, e.embedding);
       continue;
     }
-    const cached = trendingEmbeddingCache.get(key);
+    const cached = spec.cache.get(key);
     if (cached) {
       out.set(key, cached);
       continue;
     }
-    const text = trendingHaystack(e);
+    const text = spec.text(e);
     if (!text) continue;
     toEmbed.push({ key, text });
   }
@@ -604,41 +627,32 @@ async function ensureTrendingEmbeddings(
     const key = toEmbed[i]!.key;
     const vec = vecs[i];
     if (!vec) continue;
-    trendingEmbeddingCache.set(key, vec);
+    spec.cache.set(key, vec);
     out.set(key, vec);
   }
   return out;
 }
 
-async function ensureRegistryEmbeddings(
+function ensureTrendingEmbeddings(
+  entries: TrendingRepoEntry[],
+  embeddings: EmbeddingService,
+): Promise<Map<string, number[]>> {
+  return ensureEmbeddings(entries, embeddings, {
+    cache: trendingEmbeddingCache,
+    key: (e) => normalizeUrl(e.repo_url),
+    text: trendingHaystack,
+  });
+}
+
+function ensureRegistryEmbeddings(
   entries: CommunityRegistryEntry[],
   embeddings: EmbeddingService,
 ): Promise<Map<string, number[]>> {
-  const out = new Map<string, number[]>();
-  const toEmbed: { key: string; text: string }[] = [];
-  for (const e of entries) {
-    if (out.has(e.goal_pattern)) continue;
-    if (Array.isArray(e.embedding) && e.embedding.length > 0) {
-      out.set(e.goal_pattern, e.embedding);
-      continue;
-    }
-    const cached = communityEmbeddingCache.get(e.goal_pattern);
-    if (cached) {
-      out.set(e.goal_pattern, cached);
-      continue;
-    }
-    toEmbed.push({ key: e.goal_pattern, text: e.goal_pattern });
-  }
-  if (toEmbed.length === 0) return out;
-  const vecs = await embeddings.embedBatch(toEmbed.map((t) => t.text));
-  for (let i = 0; i < toEmbed.length; i++) {
-    const key = toEmbed[i]!.key;
-    const vec = vecs[i];
-    if (!vec) continue;
-    communityEmbeddingCache.set(key, vec);
-    out.set(key, vec);
-  }
-  return out;
+  return ensureEmbeddings(entries, embeddings, {
+    cache: communityEmbeddingCache,
+    key: (e) => e.goal_pattern,
+    text: (e) => e.goal_pattern,
+  });
 }
 
 function popularityScore(stars: number): number {
