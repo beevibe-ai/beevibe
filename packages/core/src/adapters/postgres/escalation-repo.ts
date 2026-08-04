@@ -9,7 +9,7 @@ import type {
   EscalationRepository,
   NewEscalation,
 } from "../../ports/escalation-repo.js";
-import { buildPatchClause } from "./pg-helpers.js";
+import { findRowById, updateRowById } from "./pg-helpers.js";
 import type { Pool } from "./client.js";
 import type { EscalationRow } from "./row-types.js";
 
@@ -17,11 +17,7 @@ export class PostgresEscalationRepository implements EscalationRepository {
   constructor(private pool: Pool) {}
 
   async findById(id: string): Promise<Escalation | undefined> {
-    const { rows } = await this.pool.query<EscalationRow>(
-      `SELECT * FROM escalation WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? rowToEscalation(rows[0]) : undefined;
+    return findRowById(this.pool, "escalation", id, rowToEscalation);
   }
 
   async findByNegotiation(negotiationId: string): Promise<Escalation | undefined> {
@@ -92,34 +88,27 @@ export class PostgresEscalationRepository implements EscalationRepository {
       }),
     };
 
-    const clause = buildPatchClause<EscalationPatch>(stringified, {
-      counterparty_proposals: "counterparty_proposals",
-      counterparty_open_questions: "counterparty_open_questions",
-      counterparty_submitted_at: "counterparty_submitted_at",
-      initiator_proposals: "initiator_proposals",
-      initiator_open_questions: "initiator_open_questions",
-      initiator_submitted_at: "initiator_submitted_at",
-      status: "status",
-      resolution_proposal: "resolution_proposal",
-      resolution_notes: "resolution_notes",
-      resolved_by: "resolved_by",
-      resolved_at: "resolved_at",
+    return updateRowById<EscalationRow, EscalationPatch, Escalation>({
+      pool: this.pool,
+      table: "escalation",
+      id,
+      patch: stringified,
+      columns: {
+        counterparty_proposals: "counterparty_proposals",
+        counterparty_open_questions: "counterparty_open_questions",
+        counterparty_submitted_at: "counterparty_submitted_at",
+        initiator_proposals: "initiator_proposals",
+        initiator_open_questions: "initiator_open_questions",
+        initiator_submitted_at: "initiator_submitted_at",
+        status: "status",
+        resolution_proposal: "resolution_proposal",
+        resolution_notes: "resolution_notes",
+        resolved_by: "resolved_by",
+        resolved_at: "resolved_at",
+      },
+      map: rowToEscalation,
+      notFound: (id) => `Escalation not found: ${id}`,
     });
-
-    if (clause.fields.length === 0) {
-      const existing = await this.findById(id);
-      if (!existing) throw new Error(`Escalation not found: ${id}`);
-      return existing;
-    }
-
-    clause.fields.push(`updated_at = NOW()`);
-
-    const { rows } = await this.pool.query<EscalationRow>(
-      `UPDATE escalation SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
-      [...clause.values, id],
-    );
-    if (!rows[0]) throw new Error(`Escalation not found: ${id}`);
-    return rowToEscalation(rows[0]);
   }
 }
 

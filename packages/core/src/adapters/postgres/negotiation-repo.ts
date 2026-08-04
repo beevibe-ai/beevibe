@@ -11,7 +11,7 @@ import type {
   NewNegotiation,
   NewNegotiationRound,
 } from "../../ports/negotiation-repo.js";
-import { buildPatchClause } from "./pg-helpers.js";
+import { findRowById, updateRowById } from "./pg-helpers.js";
 import type { Pool } from "./client.js";
 import type { NegotiationRoundRow, NegotiationRow } from "./row-types.js";
 
@@ -19,11 +19,7 @@ export class PostgresNegotiationRepository implements NegotiationRepository {
   constructor(private pool: Pool) {}
 
   async findById(id: string): Promise<Negotiation | undefined> {
-    const { rows } = await this.pool.query<NegotiationRow>(
-      `SELECT * FROM negotiation WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? rowToNegotiation(rows[0]) : undefined;
+    return findRowById(this.pool, "negotiation", id, rowToNegotiation);
   }
 
   async findActiveBetween(
@@ -68,26 +64,19 @@ export class PostgresNegotiationRepository implements NegotiationRepository {
   }
 
   async update(id: string, patch: NegotiationPatch): Promise<Negotiation> {
-    const clause = buildPatchClause<NegotiationPatch>(patch, {
-      status: "status",
-      counterparty_session_id: "counterparty_session_id",
-      rounds_completed: "rounds_completed",
+    return updateRowById<NegotiationRow, NegotiationPatch, Negotiation>({
+      pool: this.pool,
+      table: "negotiation",
+      id,
+      patch,
+      columns: {
+        status: "status",
+        counterparty_session_id: "counterparty_session_id",
+        rounds_completed: "rounds_completed",
+      },
+      map: rowToNegotiation,
+      notFound: (id) => `Negotiation not found: ${id}`,
     });
-
-    if (clause.fields.length === 0) {
-      const existing = await this.findById(id);
-      if (!existing) throw new Error(`Negotiation not found: ${id}`);
-      return existing;
-    }
-
-    clause.fields.push(`updated_at = NOW()`);
-
-    const { rows } = await this.pool.query<NegotiationRow>(
-      `UPDATE negotiation SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
-      [...clause.values, id],
-    );
-    if (!rows[0]) throw new Error(`Negotiation not found: ${id}`);
-    return rowToNegotiation(rows[0]);
   }
 }
 

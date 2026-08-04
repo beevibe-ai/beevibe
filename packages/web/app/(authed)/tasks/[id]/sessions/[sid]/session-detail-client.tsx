@@ -1,18 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { AlertTriangle, ChevronRight, Terminal } from "lucide-react";
+import { ChevronRight, Terminal } from "lucide-react";
 import { useSession } from "@/lib/hooks/use-sessions";
-import { isApiConfigured } from "@/lib/api/config";
 import { Avatar } from "@/components/avatar";
 import { HierChip } from "@/components/hier-chip";
 import { SessionStatusPill } from "@/components/detail/status-pill";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
-import { DetailShell } from "@/components/detail/detail-shell";
+import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
 import { BriefingComposer } from "@/components/sessions/briefing-composer";
 import { Transcript } from "@/components/sessions/transcript";
-import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { formatIntent, shortId } from "@/lib/format";
 import type { SessionDisplay } from "@/lib/types/sessions";
@@ -23,50 +21,31 @@ interface Props {
 }
 
 export function SessionDetailClient({ taskId, sessionShortId }: Props) {
-  const { data, isLoading, isError } = useSession(sessionShortId);
-
-  const nav = (
-    <Breadcrumbs taskId={taskId} taskTitle={data?.task_title ?? null} sessionShortId={sessionShortId} />
-  );
-
-  if (!isApiConfigured) {
-    return (
-      <DetailShell nav={nav}>
-        <EmptyState
-          icon={Terminal}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load this session."
-        />
-      </DetailShell>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <DetailShell nav={nav}>
-        <Skeleton className="h-14 w-full mb-6" />
-        <Skeleton className="h-32 w-full mb-5 rounded-lg" />
-        <Skeleton className="h-64 w-full rounded-lg" />
-      </DetailShell>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <DetailShell nav={nav}>
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load session"
-          description={`Session ${sessionShortId} could not be fetched.`}
-        />
-      </DetailShell>
-    );
-  }
+  const query = useSession(sessionShortId);
 
   return (
-    <DetailShell nav={nav}>
-      <SessionDetailBody session={data} taskId={taskId} />
-    </DetailShell>
+    <DetailGate
+      nav={
+        <Breadcrumbs
+          taskId={taskId}
+          taskTitle={query.data?.task_title ?? null}
+          sessionShortId={sessionShortId}
+        />
+      }
+      icon={Terminal}
+      noun="session"
+      id={sessionShortId}
+      query={query}
+      skeleton={
+        <>
+          <Skeleton className="h-14 w-full mb-6" />
+          <Skeleton className="h-32 w-full mb-5 rounded-lg" />
+          <Skeleton className="h-64 w-full rounded-lg" />
+        </>
+      }
+    >
+      {(session) => <SessionDetailBody session={session} taskId={taskId} />}
+    </DetailGate>
   );
 }
 

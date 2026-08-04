@@ -8,17 +8,14 @@ import type {
   TaskWatchRepository,
 } from "../../ports/task-watch-repo.js";
 import type { Pool } from "./client.js";
+import { findRowById } from "./pg-helpers.js";
 import type { TaskWatchRow } from "./row-types.js";
 
 export class PostgresTaskWatchRepository implements TaskWatchRepository {
   constructor(private pool: Pool) {}
 
   async findById(id: string): Promise<TaskWatch | undefined> {
-    const { rows } = await this.pool.query<TaskWatchRow>(
-      `SELECT * FROM task_watch WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? rowToTaskWatch(rows[0]) : undefined;
+    return findRowById(this.pool, "task_watch", id, rowToTaskWatch);
   }
 
   async listByWaiterSession(waiterSessionId: string): Promise<TaskWatch[]> {

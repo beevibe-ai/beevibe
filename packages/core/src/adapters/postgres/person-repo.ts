@@ -1,18 +1,14 @@
 import type { Person } from "../../domain/person.js";
 import type { PersonRepository, NewPerson, PersonPatch } from "../../ports/person-repo.js";
 import type { Pool } from "./client.js";
-import { buildPatchClause } from "./pg-helpers.js";
+import { findRowById, updateRowById } from "./pg-helpers.js";
 import type { PersonRow } from "./row-types.js";
 
 export class PostgresPersonRepository implements PersonRepository {
   constructor(private pool: Pool) {}
 
   async findById(id: string): Promise<Person | undefined> {
-    const { rows } = await this.pool.query<PersonRow>(
-      `SELECT * FROM person WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? rowToPerson(rows[0]) : undefined;
+    return findRowById(this.pool, "person", id, rowToPerson);
   }
 
   async findByEmail(email: string): Promise<Person | undefined> {
@@ -57,29 +53,22 @@ export class PostgresPersonRepository implements PersonRepository {
   }
 
   async update(id: string, patch: PersonPatch): Promise<Person> {
-    const clause = buildPatchClause<PersonPatch>(patch, {
-      name: "name",
-      email: "email",
-      api_key: "api_key",
-      password_hash: "password_hash",
-      onboarding_completed_at: "onboarding_completed_at",
-      capability_network_enabled: "capability_network_enabled",
+    return updateRowById<PersonRow, PersonPatch, Person>({
+      pool: this.pool,
+      table: "person",
+      id,
+      patch,
+      columns: {
+        name: "name",
+        email: "email",
+        api_key: "api_key",
+        password_hash: "password_hash",
+        onboarding_completed_at: "onboarding_completed_at",
+        capability_network_enabled: "capability_network_enabled",
+      },
+      map: rowToPerson,
+      notFound: (id) => `Person not found: ${id}`,
     });
-
-    if (clause.fields.length === 0) {
-      const existing = await this.findById(id);
-      if (!existing) throw new Error(`Person not found: ${id}`);
-      return existing;
-    }
-
-    clause.fields.push(`updated_at = NOW()`);
-
-    const { rows } = await this.pool.query<PersonRow>(
-      `UPDATE person SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
-      [...clause.values, id],
-    );
-    if (!rows[0]) throw new Error(`Person not found: ${id}`);
-    return rowToPerson(rows[0]);
   }
 
   async delete(id: string): Promise<void> {
