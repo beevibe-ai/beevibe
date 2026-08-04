@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Loader2, Sparkles, UserPlus } from "lucide-react";
 import { PASSWORD_MIN_LENGTH } from "@beevibe/core/auth/constants";
 import { api } from "@/lib/api/client";
-import { ApiError } from "@/lib/api/http";
+import { asApiError } from "@/lib/api/http";
 import { getUserKey, isApiConfigured, setUserKey } from "@/lib/api/config";
 
 /**
@@ -76,12 +76,11 @@ export function SignUpClient() {
       // case `/welcome` does the right thing via /me's needs_onboarding.
       router.replace(res.existed ? "/" : "/welcome");
     } catch (err) {
-      const status = err instanceof ApiError ? err.status : undefined;
-      const body = err instanceof ApiError ? (err.body as { message?: string } | undefined) : undefined;
+      const apiErr = asApiError(err);
       setError(
-        status === 404
+        apiErr?.status === 404
           ? "Sign-up isn't enabled on this server. Ask the admin to provision a key for you."
-          : body?.message ?? `Couldn't sign you up — ${(err as Error).message}`,
+          : apiErr?.serverMessage ?? `Couldn't sign you up — ${(err as Error).message}`,
       );
     } finally {
       setSubmitting(false);

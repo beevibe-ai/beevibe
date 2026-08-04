@@ -27,6 +27,7 @@ import type {
   RuntimeRegistry,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
+import { invalidBody } from "./http-errors.js";
 
 export interface MeRoutesDeps {
   authMiddleware: RequestHandler;
@@ -84,7 +85,7 @@ export function createMeRouter(deps: MeRoutesDeps): Router {
     if (!requireHuman(req, res)) return;
     const body = req.body as { capability_network_enabled?: unknown } | undefined;
     if (!body || typeof body.capability_network_enabled !== "boolean") {
-      res.status(400).json({ error: "invalid_body", message: "capability_network_enabled (boolean) required" });
+      invalidBody(res, "capability_network_enabled (boolean) required");
       return;
     }
     const updated = await deps.personRepo.update(req.caller.personId, {

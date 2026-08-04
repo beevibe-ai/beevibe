@@ -12,18 +12,14 @@ import type {
   SessionPatch,
 } from "../../ports/session-repo.js";
 import type { Pool } from "./client.js";
-import { buildPatchClause, taskPriorityRankSql } from "./pg-helpers.js";
+import { findRowById, taskPriorityRankSql, updateRowById } from "./pg-helpers.js";
 import type { SessionRow } from "./row-types.js";
 
 export class PostgresSessionRepository implements SessionRepository {
   constructor(private pool: Pool) {}
 
   async findById(id: string): Promise<Session | undefined> {
-    const { rows } = await this.pool.query<SessionRow>(
-      `SELECT * FROM session WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? rowToSession(rows[0]) : undefined;
+    return findRowById(this.pool, "session", id, rowToSession);
   }
 
   async findLatestForTask(taskId: string): Promise<Session | undefined> {
@@ -346,38 +342,34 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   async update(id: string, patch: SessionPatch): Promise<Session> {
-    const clause = buildPatchClause<SessionPatch>(patch, {
-      prior_session_id: "prior_session_id",
-      status: "status",
-      intent: "intent",
-      cli_session_id: "cli_session_id",
-      workspace_path: "workspace_path",
-      process_pid: "process_pid",
-      process_group_id: "process_group_id",
-      result_summary: "result_summary",
-      exit_code: "exit_code",
-      error: "error",
-      usage: "usage",
-      briefing: "briefing",
-      runtime_id: "runtime_id",
-      spawn_mode: "spawn_mode",
-      last_event_at: "last_event_at",
-      started_at: "started_at",
-      completed_at: "completed_at",
+    return updateRowById<SessionRow, SessionPatch, Session>({
+      pool: this.pool,
+      table: "session",
+      id,
+      patch,
+      columns: {
+        prior_session_id: "prior_session_id",
+        status: "status",
+        intent: "intent",
+        cli_session_id: "cli_session_id",
+        workspace_path: "workspace_path",
+        process_pid: "process_pid",
+        process_group_id: "process_group_id",
+        result_summary: "result_summary",
+        exit_code: "exit_code",
+        error: "error",
+        usage: "usage",
+        briefing: "briefing",
+        runtime_id: "runtime_id",
+        spawn_mode: "spawn_mode",
+        last_event_at: "last_event_at",
+        started_at: "started_at",
+        completed_at: "completed_at",
+      },
+      map: rowToSession,
+      notFound: (id) => `Session not found: ${id}`,
+      touchUpdatedAt: false,
     });
-
-    if (clause.fields.length === 0) {
-      const existing = await this.findById(id);
-      if (!existing) throw new Error(`Session not found: ${id}`);
-      return existing;
-    }
-
-    const { rows } = await this.pool.query<SessionRow>(
-      `UPDATE session SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
-      [...clause.values, id],
-    );
-    if (!rows[0]) throw new Error(`Session not found: ${id}`);
-    return rowToSession(rows[0]);
   }
 }
 

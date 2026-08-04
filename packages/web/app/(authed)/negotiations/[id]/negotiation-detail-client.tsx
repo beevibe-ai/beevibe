@@ -6,8 +6,7 @@ import { MeshBackLink } from "@/components/detail/mesh-back-link";
 import { useNegotiation } from "@/lib/hooks/use-negotiations";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
-import { DetailQuery } from "@/components/detail/detail-query";
-import { DetailShell } from "@/components/detail/detail-shell";
+import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
 import { NegotiationStatusPill } from "@/components/detail/status-pill";
 import { Skeleton } from "@/components/skeleton";
@@ -22,12 +21,12 @@ export function NegotiationDetailClient({ negotiationId }: { negotiationId: stri
   const query = useNegotiation(negotiationId);
 
   return (
-    <DetailQuery
-      query={query}
+    <DetailGate
       nav={<MeshBackLink />}
       icon={MessagesSquare}
-      entity="negotiation"
-      entityId={negotiationId}
+      noun="negotiation"
+      id={negotiationId}
+      query={query}
       skeleton={
         <>
           <Skeleton className="h-7 w-40 mb-4" />
@@ -40,7 +39,7 @@ export function NegotiationDetailClient({ negotiationId }: { negotiationId: stri
       }
     >
       {(data) => <NegotiationDetailLoaded neg={data.negotiation} />}
-    </DetailQuery>
+    </DetailGate>
   );
 }
 
@@ -70,7 +69,7 @@ function NegotiationDetailLoaded({ neg }: { neg: NegotiationReviewDetail }) {
         : id;
 
   return (
-    <DetailShell nav={<MeshBackLink />}>
+    <>
       <header className="mb-6">
         <div className="flex items-start justify-between gap-6 mb-3">
           <div className="min-w-0">
@@ -143,7 +142,7 @@ function NegotiationDetailLoaded({ neg }: { neg: NegotiationReviewDetail }) {
           <FooterField label="Updated">{formatRelativeTime(neg.updated_at)}</FooterField>
         ) : null}
       </footer>
-    </DetailShell>
+    </>
   );
 }
 

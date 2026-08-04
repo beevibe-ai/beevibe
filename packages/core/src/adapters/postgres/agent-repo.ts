@@ -1,18 +1,14 @@
 import type { Agent, HierarchyLevel, ReviewPolicy, RuntimeConfig } from "../../domain/agent.js";
 import type { AgentRepository, NewAgent, AgentPatch } from "../../ports/agent-repo.js";
 import type { Pool } from "./client.js";
-import { buildPatchClause } from "./pg-helpers.js";
+import { findRowById, updateRowById } from "./pg-helpers.js";
 import type { AgentRow } from "./row-types.js";
 
 export class PostgresAgentRepository implements AgentRepository {
   constructor(private pool: Pool) {}
 
   async findById(id: string): Promise<Agent | undefined> {
-    const { rows } = await this.pool.query<AgentRow>(
-      `SELECT * FROM agent WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? rowToAgent(rows[0]) : undefined;
+    return findRowById(this.pool, "agent", id, rowToAgent);
   }
 
   async findByApiKey(apiKey: string): Promise<Agent | undefined> {
@@ -134,35 +130,28 @@ export class PostgresAgentRepository implements AgentRepository {
   }
 
   async update(id: string, patch: AgentPatch): Promise<Agent> {
-    const clause = buildPatchClause<AgentPatch>(patch, {
-      name: "name",
-      owner_id: "owner_id",
-      parent_agent_id: "parent_agent_id",
-      hierarchy_level: "hierarchy_level",
-      api_key: "api_key",
-      review_policy: "review_policy",
-      runtime_config: "runtime_config",
-      max_task_sessions: "max_task_sessions",
-      max_mesh_sessions: "max_mesh_sessions",
-      max_negotiation_rounds: "max_negotiation_rounds",
-      preferred_runtime_id: "preferred_runtime_id",
-      archived_at: "archived_at",
+    return updateRowById<AgentRow, AgentPatch, Agent>({
+      pool: this.pool,
+      table: "agent",
+      id,
+      patch,
+      columns: {
+        name: "name",
+        owner_id: "owner_id",
+        parent_agent_id: "parent_agent_id",
+        hierarchy_level: "hierarchy_level",
+        api_key: "api_key",
+        review_policy: "review_policy",
+        runtime_config: "runtime_config",
+        max_task_sessions: "max_task_sessions",
+        max_mesh_sessions: "max_mesh_sessions",
+        max_negotiation_rounds: "max_negotiation_rounds",
+        preferred_runtime_id: "preferred_runtime_id",
+        archived_at: "archived_at",
+      },
+      map: rowToAgent,
+      notFound: (id) => `Agent not found: ${id}`,
     });
-
-    if (clause.fields.length === 0) {
-      const existing = await this.findById(id);
-      if (!existing) throw new Error(`Agent not found: ${id}`);
-      return existing;
-    }
-
-    clause.fields.push(`updated_at = NOW()`);
-
-    const { rows } = await this.pool.query<AgentRow>(
-      `UPDATE agent SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
-      [...clause.values, id],
-    );
-    if (!rows[0]) throw new Error(`Agent not found: ${id}`);
-    return rowToAgent(rows[0]);
   }
 
   async delete(id: string): Promise<void> {

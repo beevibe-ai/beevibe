@@ -20,6 +20,7 @@ import type {
   SkillOutcomeStats,
 } from "../../ports/repo-run-repo.js";
 import type { Pool } from "./client.js";
+import { findRowById } from "./pg-helpers.js";
 
 interface RepoRunRow {
   id: string;
@@ -97,11 +98,7 @@ export class PostgresRepoRunRepository implements RepoRunRepository {
   }
 
   async findById(id: string): Promise<RepoRun | undefined> {
-    const { rows } = await this.pool.query<RepoRunRow>(
-      `SELECT * FROM repo_run WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? rowToRepoRun(rows[0]) : undefined;
+    return findRowById(this.pool, "repo_run", id, rowToRepoRun);
   }
 
   async findBySessionId(sessionId: string): Promise<RepoRun | undefined> {
@@ -202,11 +199,7 @@ export class PostgresLearnedSkillRepository implements LearnedSkillRepository {
   }
 
   async findById(id: string): Promise<LearnedSkill | undefined> {
-    const { rows } = await this.pool.query<LearnedSkillRow>(
-      `SELECT * FROM learned_skill WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? rowToLearnedSkill(rows[0]) : undefined;
+    return findRowById(this.pool, "learned_skill", id, rowToLearnedSkill);
   }
 
   async findByOwnerAndName(

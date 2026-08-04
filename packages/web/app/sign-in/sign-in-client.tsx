@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, KeyRound, Loader2, LogIn } from "lucide-react";
 import { SIGNIN_NO_PASSWORD_SET } from "@beevibe/core/auth/constants";
 import { api } from "@/lib/api/client";
-import { ApiError } from "@/lib/api/http";
+import { asApiError } from "@/lib/api/http";
 import {
   getUserKey,
   isApiConfigured,
@@ -65,21 +65,19 @@ export function SignInClient() {
       setUserKey(res.api_key);
       router.replace(next);
     } catch (err) {
-      const status = err instanceof ApiError ? err.status : undefined;
-      const body =
-        err instanceof ApiError ? (err.body as { error?: string; message?: string } | undefined) : undefined;
+      const apiErr = asApiError(err);
       // Friendly fallback for legacy users whose accounts predate
       // passwords — push them to the paste-key path.
-      if (status === 409 && body?.error === SIGNIN_NO_PASSWORD_SET) {
+      if (apiErr?.status === 409 && apiErr.errorCode === SIGNIN_NO_PASSWORD_SET) {
         setMode("key");
         setError(
-          body.message ??
+          apiErr.serverMessage ??
             "This account predates passwords — sign in with your bv_u_ key once, then re-sign-up to set a password.",
         );
-      } else if (status === 401) {
+      } else if (apiErr?.status === 401) {
         setError("Email or password is incorrect.");
       } else {
-        setError(body?.message ?? `Couldn't sign you in — ${(err as Error).message}`);
+        setError(apiErr?.serverMessage ?? `Couldn't sign you in — ${(err as Error).message}`);
       }
     } finally {
       setSubmitting(false);
@@ -105,9 +103,8 @@ export function SignInClient() {
       router.replace(next);
     } catch (err) {
       window.localStorage.removeItem("bv:user_key");
-      const status = err instanceof ApiError ? err.status : undefined;
       setError(
-        status === 401
+        asApiError(err)?.status === 401
           ? "Key wasn't recognized. Double-check it or ask your admin to provision a new one."
           : `Couldn't verify the key — ${(err as Error).message}`,
       );

@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { ArrowLeft, ChevronRight, Terminal, Wrench } from "lucide-react";
 import { useConversation } from "@/lib/hooks/use-sessions";
-import { DetailQuery } from "@/components/detail/detail-query";
-import { DetailShell } from "@/components/detail/detail-shell";
+import { DetailGate } from "@/components/detail/detail-gate";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { SessionStatusPill } from "@/components/detail/status-pill";
@@ -35,15 +34,13 @@ import { cn } from "@/lib/utils";
 export function ChatSessionDetailClient({ sessionShortId }: { sessionShortId: string }) {
   const query = useConversation(sessionShortId);
 
-  const nav = <BackToChat />;
-
   return (
-    <DetailQuery
-      query={query}
-      nav={nav}
+    <DetailGate
+      nav={<BackToChat />}
       icon={Terminal}
-      entity="session"
-      entityId={sessionShortId}
+      noun="session"
+      id={sessionShortId}
+      query={query}
       skeleton={
         <>
           <Skeleton className="h-14 w-full mb-6" />
@@ -52,28 +49,24 @@ export function ChatSessionDetailClient({ sessionShortId }: { sessionShortId: st
         </>
       }
     >
-      {(data) =>
+      {(conversation) =>
         // Task-typed sessions belong on the task-scoped detail page; redirect
         // via a visible link rather than auto-routing so the user keeps control.
-        data.type === "task" && data.task_id ? (
-          <DetailShell nav={nav}>
-            <EmptyState
-              icon={Terminal}
-              title="This is a task session"
-              description="Open the task-scoped session view for full context."
-              cta={{
-                href: `/tasks/${data.task_id}/sessions/${data.short_id}`,
-                label: "Open task session",
-              }}
-            />
-          </DetailShell>
+        conversation.type === "task" && conversation.task_id ? (
+          <EmptyState
+            icon={Terminal}
+            title="This is a task session"
+            description="Open the task-scoped session view for full context."
+            cta={{
+              href: `/tasks/${conversation.task_id}/sessions/${conversation.short_id}`,
+              label: "Open task session",
+            }}
+          />
         ) : (
-          <DetailShell nav={nav}>
-            <ConversationBody conversation={data} />
-          </DetailShell>
+          <ConversationBody conversation={conversation} />
         )
       }
-    </DetailQuery>
+    </DetailGate>
   );
 }
 

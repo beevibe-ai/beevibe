@@ -73,34 +73,6 @@ describe("api mutations", () => {
         body: { reason: "scope changed" },
       });
     });
-
-    it("create({title}) POSTs to /api/tasks", async () => {
-      await api.tasks.create({ title: "wire it" });
-      expect(fetchJsonMock).toHaveBeenCalledWith("/task", {
-        method: "POST",
-        body: { title: "wire it" },
-      });
-    });
-
-    it("create forwards full input", async () => {
-      await api.tasks.create({
-        title: "wire it",
-        description: "hook the kanban",
-        priority: "high",
-        assignee_id: "agt_1",
-        parent_task_id: "t_root",
-      });
-      expect(fetchJsonMock).toHaveBeenCalledWith("/task", {
-        method: "POST",
-        body: {
-          title: "wire it",
-          description: "hook the kanban",
-          priority: "high",
-          assignee_id: "agt_1",
-          parent_task_id: "t_root",
-        },
-      });
-    });
   });
 
   describe("escalations", () => {

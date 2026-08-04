@@ -21,6 +21,21 @@ export class ApiError extends Error {
   }
 }
 
+/**
+ * Narrow a caught `unknown` to an `ApiError`, or `undefined` when the throw
+ * came from somewhere else (a network failure, a bug in our own code).
+ *
+ * The three auth-form handlers each opened their catch block with the same
+ * `err instanceof ApiError ? … : undefined` pair, once for `status` and once
+ * for `body` — and then re-derived from `body` what the constructor above
+ * has already extracted into `errorCode` and `serverMessage`. Going through
+ * this instead means a call site reads the validated fields rather than
+ * casting `unknown`.
+ */
+export function asApiError(err: unknown): ApiError | undefined {
+  return err instanceof ApiError ? err : undefined;
+}
+
 /** Best-effort human-readable message: server message > error.message > raw status. */
 export function describeError(err: unknown): string {
   if (err instanceof ApiError) {

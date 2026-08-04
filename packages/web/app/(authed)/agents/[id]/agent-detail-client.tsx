@@ -21,8 +21,7 @@ import { ModelPicker } from "@/components/agents/pickers/model-picker";
 import { ReviewPolicyPicker } from "@/components/agents/pickers/review-policy-picker";
 import { Skeleton } from "@/components/skeleton";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
-import { DetailQuery } from "@/components/detail/detail-query";
-import { DetailShell } from "@/components/detail/detail-shell";
+import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
 import { Metric } from "@/components/detail/metric";
 import { cn } from "@/lib/utils";
@@ -42,12 +41,12 @@ export function AgentDetailClient({ agentId }: { agentId: string }) {
   const query = useAgent(agentId);
 
   return (
-    <DetailQuery
-      query={query}
+    <DetailGate
       nav={<AgentsBackLink />}
       icon={Bot}
-      entity="agent"
-      entityId={agentId}
+      noun="agent"
+      id={agentId}
+      query={query}
       skeleton={
         <>
           <Skeleton className="h-14 w-full mb-6" />
@@ -61,8 +60,8 @@ export function AgentDetailClient({ agentId }: { agentId: string }) {
         </>
       }
     >
-      {(agent) => <AgentDetailLoaded agent={agent} />}
-    </DetailQuery>
+      {(data) => <AgentDetailLoaded agent={data} />}
+    </DetailGate>
   );
 }
 
@@ -99,7 +98,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
   const showAside = isOwner === true || agent.outgoing_mesh_hints.length > 0;
 
   return (
-    <DetailShell nav={<AgentsBackLink />}>
+    <>
       <header className="mb-6">
         <div className="flex items-start gap-4">
           <Avatar
@@ -296,6 +295,6 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
           </FooterField>
         ) : null}
       </footer>
-    </DetailShell>
+    </>
   );
 }

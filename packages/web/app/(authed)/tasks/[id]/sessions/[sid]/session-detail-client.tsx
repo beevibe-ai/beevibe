@@ -7,8 +7,7 @@ import { Avatar } from "@/components/avatar";
 import { HierChip } from "@/components/hier-chip";
 import { SessionStatusPill } from "@/components/detail/status-pill";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
-import { DetailQuery } from "@/components/detail/detail-query";
-import { DetailShell } from "@/components/detail/detail-shell";
+import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
 import { BriefingComposer } from "@/components/sessions/briefing-composer";
 import { Transcript } from "@/components/sessions/transcript";
@@ -24,21 +23,19 @@ interface Props {
 export function SessionDetailClient({ taskId, sessionShortId }: Props) {
   const query = useSession(sessionShortId);
 
-  const nav = (
-    <Breadcrumbs
-      taskId={taskId}
-      taskTitle={query.data?.task_title ?? null}
-      sessionShortId={sessionShortId}
-    />
-  );
-
   return (
-    <DetailQuery
-      query={query}
-      nav={nav}
+    <DetailGate
+      nav={
+        <Breadcrumbs
+          taskId={taskId}
+          taskTitle={query.data?.task_title ?? null}
+          sessionShortId={sessionShortId}
+        />
+      }
       icon={Terminal}
-      entity="session"
-      entityId={sessionShortId}
+      noun="session"
+      id={sessionShortId}
+      query={query}
       skeleton={
         <>
           <Skeleton className="h-14 w-full mb-6" />
@@ -47,12 +44,8 @@ export function SessionDetailClient({ taskId, sessionShortId }: Props) {
         </>
       }
     >
-      {(session) => (
-        <DetailShell nav={nav}>
-          <SessionDetailBody session={session} taskId={taskId} />
-        </DetailShell>
-      )}
-    </DetailQuery>
+      {(session) => <SessionDetailBody session={session} taskId={taskId} />}
+    </DetailGate>
   );
 }
 

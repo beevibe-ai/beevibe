@@ -4,6 +4,7 @@ import type {
   NewMemoryPromotionEvent,
 } from "../../ports/promotion-event-repo.js";
 import type { Pool } from "./client.js";
+import { findRowById } from "./pg-helpers.js";
 
 interface PromotionEventRow {
   id: string;
@@ -75,10 +76,6 @@ export class PostgresMemoryPromotionEventRepository
   }
 
   async findById(id: string): Promise<MemoryPromotionEvent | undefined> {
-    const { rows } = await this.pool.query<PromotionEventRow>(
-      `SELECT * FROM memory_promotion_event WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? rowToEvent(rows[0]) : undefined;
+    return findRowById(this.pool, "memory_promotion_event", id, rowToEvent);
   }
 }

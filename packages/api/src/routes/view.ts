@@ -61,9 +61,10 @@ import { getWorkProduct } from "../views/work-product.js";
 import { listInbox } from "../views/inbox.js";
 import { getAgentNetwork } from "../views/agent-network.js";
 import {
+  invalidBody,
   loadOwned,
   makeErrorHandler,
-  parseNullableString,
+  requireNullableString,
   requireParam,
 } from "./http-errors.js";
 
@@ -96,12 +97,12 @@ function isReviewPolicy(v: unknown): v is ReviewPolicy {
 
 export function createViewRouter(deps: ViewRoutesDeps): Router {
   const router = Router();
+  router.use(deps.authMiddleware);
 
   /**
-   * `loadOwned` bound to the agent repo — the five agent-mutating handlers
-   * (`runtime`, `model`, `review-policy`, `core-memory`, `archive`) passed
-   * byte-identical arguments, so the projector and the error code lived in
-   * five places instead of one.
+   * `loadOwned` bound to the agent table — the five `/agent/:id/*` mutation
+   * handlers below all gate on the caller owning the agent, and all five
+   * passed the identical projector and error code to do it.
    */
   const loadOwnedAgent = (res: Response, personId: string, id: string) =>
     loadOwned(
@@ -111,7 +112,6 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       (a) => a.owner_id,
       "agent_not_found",
     );
-  router.use(deps.authMiddleware);
 
   router.get("/task", async (req, res) => {
     if (!requireHuman(req, res)) return;
@@ -221,7 +221,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     const id = requireParam(req, res, "id", "missing_agent_id");
     if (!id) return;
     // Allow explicit null to unbind, or a non-empty string to bind.
-    const runtimeId = parseNullableString(req, res, "runtime_id");
+    const runtimeId = requireNullableString(req, res, "runtime_id");
     if (runtimeId === undefined) return;
     try {
       const existing = await loadOwnedAgent(res, req.caller.personId, id);
@@ -279,7 +279,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     const id = requireParam(req, res, "id", "missing_agent_id");
     if (!id) return;
     // null clears (agent uses CLI default), non-empty string sets.
-    const model = parseNullableString(req, res, "model");
+    const model = requireNullableString(req, res, "model");
     if (model === undefined) return;
     try {
       const existing = await loadOwnedAgent(res, req.caller.personId, id);
@@ -312,10 +312,10 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     const body = req.body as { review_policy?: unknown } | undefined;
     const policy = body?.review_policy;
     if (!isReviewPolicy(policy)) {
-      res.status(400).json({
-        error: "invalid_body",
-        message: `expected { review_policy: ${REVIEW_POLICIES.map((p) => `"${p}"`).join(" | ")} }`,
-      });
+      invalidBody(
+        res,
+        `expected { review_policy: ${REVIEW_POLICIES.map((p) => `"${p}"`).join(" | ")} }`,
+      );
       return;
     }
     try {
@@ -336,10 +336,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     if (!blockName) return;
     const body = req.body as { content?: unknown } | undefined;
     if (typeof body?.content !== "string") {
-      res.status(400).json({
-        error: "invalid_body",
-        message: "expected { content: string }",
-      });
+      invalidBody(res, "expected { content: string }");
       return;
     }
     try {

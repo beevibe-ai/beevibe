@@ -5,7 +5,6 @@ import {
   type RejectTaskInput,
   type ReviseTaskInput,
   type CancelTaskInput,
-  type CreateTaskInput,
 } from "@/lib/api/client";
 import { queryKeys } from "./keys";
 
@@ -61,16 +60,5 @@ export function useRetryTask(taskId: string) {
   return useMutation({
     mutationFn: () => api.tasks.retry(taskId),
     onSuccess,
-  });
-}
-
-export function useCreateTask() {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: (input: CreateTaskInput) => api.tasks.create(input),
-    onSuccess: () => {
-      client.invalidateQueries({ queryKey: queryKeys.tasks.all });
-      client.invalidateQueries({ queryKey: queryKeys.dashboard.all });
-    },
   });
 }

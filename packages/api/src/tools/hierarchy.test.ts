@@ -1,9 +1,9 @@
 /**
  * Hierarchy / work-product tools — unit tests with vitest fakes (no DB).
  *
- * Covers all 12 tools (8 IC-shared + 4 team-only) plus the IC vs team set
- * gating in `buildHierarchyTools`. Each tool's handler is a thin closure
- * over (ctx, services); the fakes here exercise auth + delegation.
+ * Covers the IC-shared and team-only tools plus the IC vs team set gating
+ * in `buildHierarchyTools`. Each tool's handler is a thin closure over
+ * (ctx, services); the fakes here exercise auth + delegation.
  */
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -11,6 +11,7 @@ import type {
   AgentProvisionEventRepository,
   AgentRepository,
   CoreMemoryBlockRepository,
+  HierarchyLevel,
   Session,
   Task,
   TaskRepository,
@@ -192,48 +193,47 @@ async function callTool(
 
 // ── Tier gating ──────────────────────────────────────────────────────────
 
+/** Every tier gets these; the IC tier gets nothing else. */
+const SHARED_TOOLS = [
+  "create_work_product",
+  "find_up",
+  "get_agent_profile",
+  "get_task",
+  "get_work_product",
+  "list_work_products",
+  "search_context",
+  "update_progress",
+  "update_work_product",
+];
+
+/** Delegation surface — only tiers that can have subordinates get these. */
+const TEAM_ONLY_TOOLS = [
+  "add_to_escalation",
+  "check_work_status",
+  "create_subordinate_agent",
+  "create_task",
+  "find_peers",
+  "find_subordinates",
+  "revise_task",
+];
+
+function toolNames(level: HierarchyLevel): string[] {
+  return buildHierarchyTools({ agentId: `agent_${level}`, hierarchyLevel: level }, buildServices())
+    .map((t) => t.name)
+    .sort();
+}
+
 describe("buildHierarchyTools — IC vs team gating", () => {
-  it("IC tier exposes 9 shared tools (no find_subordinates / find_peers / create_task / check_work_status)", () => {
-    const tools = buildHierarchyTools(
-      { agentId: "agent_ic", hierarchyLevel: "ic" },
-      buildServices(),
-    );
-    const names = tools.map((t) => t.name).sort();
-    expect(names).toEqual([
-      "create_work_product",
-      "find_up",
-      "get_agent_profile",
-      "get_task",
-      "get_work_product",
-      "list_work_products",
-      "search_context",
-      "update_progress",
-      "update_work_product",
-    ]);
+  it("IC tier gets the shared tools and nothing that implies subordinates", () => {
+    expect(toolNames("ic")).toEqual([...SHARED_TOOLS].sort());
   });
 
-  it("team tier exposes 16 tools (9 shared + 6 team-only + create_subordinate_agent)", () => {
-    const tools = buildHierarchyTools(
-      { agentId: "agent_t", hierarchyLevel: "team" },
-      buildServices(),
-    );
-    const names = tools.map((t) => t.name);
-    expect(names.length).toBe(16);
-    expect(names).toContain("find_subordinates");
-    expect(names).toContain("find_peers");
-    expect(names).toContain("create_task");
-    expect(names).toContain("check_work_status");
-    expect(names).toContain("revise_task");
-    expect(names).toContain("add_to_escalation");
-    expect(names).toContain("create_subordinate_agent");
+  it("team tier gets the shared tools plus the delegation surface", () => {
+    expect(toolNames("team")).toEqual([...SHARED_TOOLS, ...TEAM_ONLY_TOOLS].sort());
   });
 
-  it("org tier also gets all 16 (parents have subordinates too)", () => {
-    const tools = buildHierarchyTools(
-      { agentId: "agent_o", hierarchyLevel: "org" },
-      buildServices(),
-    );
-    expect(tools.length).toBe(16);
+  it("org tier gets exactly the team set (parents have subordinates too)", () => {
+    expect(toolNames("org")).toEqual(toolNames("team"));
   });
 });
 

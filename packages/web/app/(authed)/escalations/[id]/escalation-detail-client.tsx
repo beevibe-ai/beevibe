@@ -8,8 +8,7 @@ import { useEscalation } from "@/lib/hooks/use-escalations";
 import { useResolveEscalation } from "@/lib/hooks/use-escalation-mutations";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
-import { DetailQuery } from "@/components/detail/detail-query";
-import { DetailShell } from "@/components/detail/detail-shell";
+import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
 import { Skeleton } from "@/components/skeleton";
 import { EscalationStatusPill } from "@/components/detail/status-pill";
@@ -38,12 +37,12 @@ export function EscalationDetailClient({ escalationId }: { escalationId: string 
   const query = useEscalation(escalationId);
 
   return (
-    <DetailQuery
-      query={query}
+    <DetailGate
       nav={<MeshBackLink />}
       icon={Scale}
-      entity="escalation"
-      entityId={escalationId}
+      noun="escalation"
+      id={escalationId}
+      query={query}
       skeleton={
         <>
           <Skeleton className="h-7 w-40 mb-4" />
@@ -56,7 +55,7 @@ export function EscalationDetailClient({ escalationId }: { escalationId: string 
       }
     >
       {(data) => <EscalationDetailLoaded esc={data.escalation} />}
-    </DetailQuery>
+    </DetailGate>
   );
 }
 
@@ -81,7 +80,7 @@ function EscalationDetailLoaded({ esc }: { esc: EscalationReviewDetail }) {
   };
 
   return (
-    <DetailShell nav={<MeshBackLink />}>
+    <>
       <header className="mb-6">
         <div className="flex items-start justify-between gap-6 mb-3">
           <div className="min-w-0">
@@ -126,7 +125,7 @@ function EscalationDetailLoaded({ esc }: { esc: EscalationReviewDetail }) {
           <FooterField label="Resolved">{formatRelativeTime(esc.resolved_at)}</FooterField>
         ) : null}
       </footer>
-    </DetailShell>
+    </>
   );
 }
 

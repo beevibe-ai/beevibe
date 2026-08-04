@@ -1,4 +1,3 @@
-import path from "node:path";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   PostgresAgentRepository,
@@ -10,16 +9,7 @@ import {
   PostgresWorkProductRepository,
   createPool,
 } from "@beevibe/core/adapters/postgres";
-import { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
-import { OpenAIEmbeddingService } from "@beevibe/core/adapters/openai";
-import { AnthropicLlmProvider } from "@beevibe/core/adapters/anthropic";
-import { createDefaultRuntimeRegistry } from "@beevibe/core/adapters/runtime-registry";
-import {
-  CoreMemory,
-  FactPromoter,
-  FactStore,
-  createMemoryAgent,
-} from "@beevibe/core/services/memory";
+import { createMemoryStack, createWorkspaceStack } from "@beevibe/core/composition";
 import { TaskService } from "@beevibe/core/services/task-service";
 import { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { CancelListener } from "./cancel-listener.js";
@@ -83,29 +73,15 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
   const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
   const memoryFactRepo = new PostgresMemoryFactRepository(pool);
 
-  // External-service adapters
-  const embed = new OpenAIEmbeddingService({ apiKey: cfg.openaiApiKey });
-  const llm = new AnthropicLlmProvider({ apiKey: cfg.anthropicApiKey });
-
-  // Workspace + runtime (shared with M6 via the factory).
-  // M9.3: workspaceManager needs the runtime registry to look up the agent's
-  // declared runtime per-call and resolve its skills discovery dir; construct
-  // registry first so we can pass it in.
-  const runtimeRegistry = createDefaultRuntimeRegistry();
-  const workspaceManager = new LocalWorkspaceManager({
-    workspaceRoot: cfg.workspaceRoot,
-    mcpServerUrl: cfg.mcpServerUrl,
-    runtimeRegistry,
-    skillsSourceDir: cfg.skillsSourceDir ?? path.resolve(process.cwd(), "skills"),
+  // Workspace + runtime, and the memory pipeline — both shared with the
+  // api composition root.
+  const { runtimeRegistry, workspaceManager } = createWorkspaceStack(cfg);
+  const { makeMemoryAgent } = createMemoryStack({
+    coreMemoryRepo,
+    memoryFactRepo,
+    openaiApiKey: cfg.openaiApiKey,
+    anthropicApiKey: cfg.anthropicApiKey,
   });
-
-  // Memory services
-  const coreMemory = new CoreMemory({ repo: coreMemoryRepo });
-  const factStore = new FactStore({ repo: memoryFactRepo, embed, llm });
-  const promoter = new FactPromoter({ llm });
-
-  const makeMemoryAgent = (agentId: string) =>
-    createMemoryAgent({ agentId, coreMemory, factStore, promoter, embed });
 
   const taskService = new TaskService({
     taskRepo,

@@ -24,8 +24,7 @@ import { isTerminalTaskStatus } from "@/lib/task-status";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
-import { DetailQuery } from "@/components/detail/detail-query";
-import { DetailShell } from "@/components/detail/detail-shell";
+import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
@@ -50,12 +49,12 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
   const query = useTask(taskId);
 
   return (
-    <DetailQuery
-      query={query}
+    <DetailGate
       nav={<TasksBackLink />}
       icon={ListChecks}
-      entity="task"
-      entityId={taskId}
+      noun="task"
+      id={taskId}
+      query={query}
       skeleton={
         <>
           <Skeleton className="h-8 w-2/3 mb-2" />
@@ -70,8 +69,8 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
         </>
       }
     >
-      {(task) => <TaskDetailLoaded task={task} />}
-    </DetailQuery>
+      {(data) => <TaskDetailLoaded task={data} />}
+    </DetailGate>
   );
 }
 
@@ -119,7 +118,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   };
 
   return (
-    <DetailShell nav={<TasksBackLink />}>
+    <>
       <header className="mb-6">
         <div className="flex items-start justify-between gap-6 mb-2">
           <h1 className="text-base font-semibold tracking-tight leading-tight flex-1 min-w-0">{task.title}</h1>
@@ -318,7 +317,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
           </FooterField>
         ) : null}
       </footer>
-    </DetailShell>
+    </>
   );
 }
 

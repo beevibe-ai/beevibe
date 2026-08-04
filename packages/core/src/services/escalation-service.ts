@@ -192,7 +192,7 @@ export class EscalationService {
    * must be the party who DIDN'T escalate.
    */
   async addContribution(input: AddToEscalationInput): Promise<Escalation> {
-    const { esc, neg } = await this.loadWithNegotiation(input.escalationId, {
+    const { esc, neg } = await this.loadEscalationContext(input.escalationId, {
       requirePending: true,
     });
 
@@ -240,7 +240,7 @@ export class EscalationService {
    * only — the escalation row is never mutated.
    */
   async getReview(escalationId: string): Promise<EscalationReview> {
-    const { esc, neg } = await this.loadWithNegotiation(escalationId, {
+    const { esc, neg } = await this.loadEscalationContext(escalationId, {
       requirePending: false,
     });
 
@@ -295,7 +295,7 @@ export class EscalationService {
    * picks them up within ≤30s. NO spawning happens here.
    */
   async resolve(input: ResolveInput): Promise<ResolveResult> {
-    const { esc, neg } = await this.loadWithNegotiation(input.escalationId, {
+    const { esc, neg } = await this.loadEscalationContext(input.escalationId, {
       requirePending: true,
     });
 
@@ -407,23 +407,27 @@ export class EscalationService {
   // ── helpers ────────────────────────────────────────────────────────────
 
   /**
-   * Load an escalation together with the negotiation it hangs off, throwing
-   * the same not-found / not-pending errors all three call sites raised by
-   * hand.
+   * Load an escalation together with the negotiation it hangs off, raising
+   * the not-found error appropriate to whichever is missing.
    *
-   * `addContribution`, `resolve` and `getReview` each opened with this
-   * fetch-and-check preamble. The first two additionally require the
-   * escalation to still be pending — `getReview` deliberately doesn't, since
-   * it renders resolved escalations too — so `requirePending` gates that
-   * half rather than the whole helper being duplicated for one line.
+   * Every entry point that takes an `escalationId` opens this way, and the
+   * two that mutate (`addContribution`, `resolve`) additionally require the
+   * row still be pending — a resolved escalation must not take another
+   * contribution or be resolved twice. `getReview` is read-only and passes
+   * `requirePending: false` so a human can still open a resolved escalation.
+   *
+   * The pending check lives here rather than at each call site because it is
+   * the guard whose absence is silent: forgetting a not-found check throws on
+   * the next line anyway, where forgetting the status check writes to a row
+   * that has already been decided.
    */
-  private async loadWithNegotiation(
+  private async loadEscalationContext(
     escalationId: string,
-    { requirePending }: { requirePending: boolean },
+    opts: { requirePending: boolean },
   ): Promise<{ esc: Escalation; neg: Negotiation }> {
     const esc = await this.deps.escalationRepo.findById(escalationId);
     if (!esc) throw new EscalationNotFoundError(escalationId);
-    if (requirePending && esc.status !== "pending") {
+    if (opts.requirePending && esc.status !== "pending") {
       throw new EscalationStateError(
         `escalation ${esc.id} is not pending (status='${esc.status}')`,
       );

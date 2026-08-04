@@ -4,7 +4,7 @@ import type {
   DaemonRepository,
 } from "../../ports/daemon-repo.js";
 import type { Pool } from "./client.js";
-import { buildPatchClause } from "./pg-helpers.js";
+import { findRowById, updateRowById } from "./pg-helpers.js";
 import type { DaemonRow } from "./row-types.js";
 
 function rowToDaemon(row: DaemonRow): Daemon {
@@ -24,11 +24,7 @@ export class PostgresDaemonRepository implements DaemonRepository {
   constructor(private pool: Pool) {}
 
   async findById(id: string): Promise<Daemon | undefined> {
-    const { rows } = await this.pool.query<DaemonRow>(
-      `SELECT * FROM daemon WHERE id = $1 LIMIT 1`,
-      [id],
-    );
-    return rows[0] ? rowToDaemon(rows[0]) : undefined;
+    return findRowById(this.pool, "daemon", id, rowToDaemon);
   }
 
   async findByOwnerAndExternalId(
@@ -86,23 +82,21 @@ export class PostgresDaemonRepository implements DaemonRepository {
   }
 
   async update(id: string, patch: DaemonPatch): Promise<Daemon> {
-    const clause = buildPatchClause<DaemonPatch>(patch, {
-      device_name: "device_name",
-      token_hash: "token_hash",
-      last_seen_at: "last_seen_at",
-      revoked_at: "revoked_at",
+    return updateRowById<DaemonRow, DaemonPatch, Daemon>({
+      pool: this.pool,
+      table: "daemon",
+      id,
+      patch,
+      columns: {
+        device_name: "device_name",
+        token_hash: "token_hash",
+        last_seen_at: "last_seen_at",
+        revoked_at: "revoked_at",
+      },
+      map: rowToDaemon,
+      notFound: (id) => `daemon ${id} not found`,
+      touchUpdatedAt: false,
     });
-    if (clause.fields.length === 0) {
-      const found = await this.findById(id);
-      if (!found) throw new Error(`daemon ${id} not found`);
-      return found;
-    }
-    const { rows } = await this.pool.query<DaemonRow>(
-      `UPDATE daemon SET ${clause.fields.join(", ")} WHERE id = $${clause.nextIndex} RETURNING *`,
-      [...clause.values, id],
-    );
-    if (!rows[0]) throw new Error(`daemon ${id} not found`);
-    return rowToDaemon(rows[0]);
   }
 
   async touchLastSeen(id: string): Promise<void> {
