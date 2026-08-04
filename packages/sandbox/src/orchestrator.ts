@@ -143,7 +143,10 @@ function classifyStartupError(err: unknown): string {
   if (/Cannot connect to the Docker daemon/i.test(raw)) {
     return "Docker isn't running. Start Docker Desktop and try the run again.";
   }
-  if (/ENOENT.*docker/i.test(raw)) {
+  // Node formats spawn failures as "spawn docker ENOENT" — the binary name
+  // comes *before* the code, so match the two independently rather than in
+  // order. `runDocker` also wraps the same text in <spawn-error> tags.
+  if (/ENOENT/i.test(raw) && /docker/i.test(raw)) {
     return "The `docker` CLI isn't on PATH. Install Docker Desktop (or set DOCKER_HOST).";
   }
   if (/no space left on device/i.test(raw)) {
@@ -256,16 +259,31 @@ export async function runRepoAgent(opts: OrchestratorOptions): Promise<RunState>
       onTranscript: (kind, text) => log(kind, text),
     });
 
+    // Check the timeout before the exit code: we kill the child with
+    // SIGTERM, and a signalled process closes with a null code, which the
+    // exit-code branch below deliberately treats as a clean exit. Reading
+    // `timed_out` first is what keeps a timed-out run from being reported
+    // as "agent produced no artifacts".
+    if (claudeResult.timed_out) {
+      log(
+        "error",
+        `Child claude exceeded the ${opts.max_runtime_seconds ?? 600}s budget and was killed.`,
+      );
+      state.status = "blocked";
+      state.error = `Run hit the ${opts.max_runtime_seconds ?? 600}s wall-clock budget — agent didn't finish in time.`;
+      state.finished_at = nowIso();
+      emit();
+      return state;
+    }
+
     if (claudeResult.exit_code !== 0 && claudeResult.exit_code !== null) {
       const tail = claudeResult.stderr.slice(-500);
       log(
         "error",
         `Child claude exited with code ${claudeResult.exit_code}: ${tail}`,
       );
-      state.status = claudeResult.timed_out ? "blocked" : "failed";
-      state.error = claudeResult.timed_out
-        ? `Run hit the ${opts.max_runtime_seconds ?? 600}s wall-clock budget — agent didn't finish in time.`
-        : `Claude exited ${claudeResult.exit_code}.${tail ? " " + tail.slice(-200) : ""}`;
+      state.status = "failed";
+      state.error = `Claude exited ${claudeResult.exit_code}.${tail ? " " + tail.slice(-200) : ""}`;
       state.finished_at = nowIso();
       emit();
       return state;
