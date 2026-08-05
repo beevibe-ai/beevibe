@@ -3,8 +3,8 @@
  *
  * Per-tool handler behavior is covered indirectly by the m6/m7 e2e scripts
  * (mesh flows require live Postgres + spawned CLI subprocesses). This file
- * locks the static tier inventory so future skill-loader work can rely on
- * the tool counts being stable.
+ * locks the static tier inventory — the exact tool *names* each tier gets,
+ * so future skill-loader work can rely on the surface being stable.
  */
 import { describe, expect, it } from "vitest";
 import type { ResolvedCaller } from "@beevibe/core/auth";
@@ -22,28 +22,19 @@ const fakeCaller: ResolvedCaller = {
 const fakeCtx = { caller: fakeCaller, beevibeSid: "ses_x" };
 
 describe("buildIcMeshTools (M9.1)", () => {
-  it("returns exactly 2 tools: respond_ask + report_blocker", () => {
+  // Exact set, not a superset: ICs are responders, not initiators, so the
+  // absences matter as much as the presences. No `respond_negotiate`
+  // (M9.1 dropped it — ICs are workers, not deciders) and none of the
+  // initiator-side surface (`ask`, `negotiate`, `escalate_to_humans`).
+  it("gets exactly respond_ask + report_blocker", () => {
     const tools = buildIcMeshTools(fakeCtx, fakeServices);
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual(["report_blocker", "respond_ask"]);
   });
-
-  it("does NOT include respond_negotiate (M9.1 dropped it; ICs are workers, not deciders)", () => {
-    const tools = buildIcMeshTools(fakeCtx, fakeServices);
-    expect(tools.some((t) => t.name === "respond_negotiate")).toBe(false);
-  });
-
-  it("does NOT include any initiator-side tools", () => {
-    const tools = buildIcMeshTools(fakeCtx, fakeServices);
-    const names = tools.map((t) => t.name);
-    expect(names).not.toContain("ask");
-    expect(names).not.toContain("negotiate");
-    expect(names).not.toContain("escalate_to_humans");
-  });
 });
 
 describe("buildTeamMeshTools", () => {
-  it("returns exactly 6 tools (full mesh surface)", () => {
+  it("gets the full mesh surface — initiator and responder sides both", () => {
     const tools = buildTeamMeshTools(fakeCtx, fakeServices);
     const names = tools.map((t) => t.name).sort();
     expect(names).toEqual([
