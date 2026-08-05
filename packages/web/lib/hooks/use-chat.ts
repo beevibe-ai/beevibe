@@ -6,34 +6,18 @@ import {
   api,
   type ChatHistoryMessage,
   type ChatHistoryResponse,
-  type ChatRepoCard,
   type ChatTurnResponse,
-  type SuggestedAction,
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { ApiError } from "@/lib/api/http";
 import { queryKeys } from "./keys";
 
-export interface ChatMessage {
-  /** Stable key for React; not persisted. */
-  id: string;
-  /**
-   * `system` is used for autonomous trigger annotations (currently just
-   * watch_tasks fires). UI renders them as compact pills between bubbles.
-   */
-  role: "user" | "agent" | "system";
-  content: string;
-  /** Set on agent messages so the UI can link to the session detail page. */
-  session_id?: string;
-  /** Entity ids the agent referenced — rendered as inline cards. */
-  view_refs?: string[];
-  /** Resolved `<open_view>` directive — rendered as an "Open this →" CTA. */
-  open_view?: { path: string; label?: string };
-  /** Resolved `<suggest_action>` chips — chip shows label, clicking sends prompt (or label). */
-  suggested_actions?: SuggestedAction[];
-  /** Resolved `<repo_card>` directives — rendered as a structured repo list. */
-  repo_cards?: ChatRepoCard[];
-}
+/**
+ * A message on the chat surface. Locally-minted optimistic turns and
+ * server-rendered history are the same shape, so this is the wire type
+ * itself — re-exported under the name the chat components already use.
+ */
+export type ChatMessage = ChatHistoryMessage;
 
 let nextLocalId = 0;
 const localId = (): string => `m_${++nextLocalId}`;
@@ -46,19 +30,6 @@ function mintSessionId(): string {
   let suffix = "";
   for (const b of bytes) suffix += SID_ALPHABET[b % SID_ALPHABET.length];
   return `sess_${suffix}`;
-}
-
-function fromHistory(m: ChatHistoryMessage): ChatMessage {
-  return {
-    id: m.id,
-    role: m.role,
-    content: m.content,
-    ...(m.session_id ? { session_id: m.session_id } : {}),
-    ...(m.view_refs ? { view_refs: m.view_refs } : {}),
-    ...(m.open_view ? { open_view: m.open_view } : {}),
-    ...(m.suggested_actions ? { suggested_actions: m.suggested_actions } : {}),
-    ...(m.repo_cards ? { repo_cards: m.repo_cards } : {}),
-  };
 }
 
 export interface UseChatOptions {
@@ -167,7 +138,7 @@ export function useChat(opts: UseChatOptions = {}) {
   // from the URL — first click looks like a no-op, second click works.
   // Suppress the stale read until the seed has fired this entry.
   const messages = useMemo<ChatMessage[]>(
-    () => (fresh && !freshSeeded ? [] : (history.data?.messages ?? []).map(fromHistory)),
+    () => (fresh && !freshSeeded ? [] : (history.data?.messages ?? [])),
     [fresh, freshSeeded, history.data],
   );
 

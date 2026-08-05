@@ -10,6 +10,7 @@ export * from "./negotiation.js";
 export * from "./escalation.js";
 export * from "./daemon.js";
 export * from "./daemon-protocol.js";
+export * from "./chat-protocol.js";
 export * from "./runtime.js";
 export * from "./room.js";
 export * from "./repo-run.js";

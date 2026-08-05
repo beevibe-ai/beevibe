@@ -18,7 +18,7 @@ import { isApiConfigured } from "@/lib/api/config";
 import {
   api,
   type ChatConversationsResponse,
-  type ChatRepoCard,
+  type RepoCard,
   type SuggestedAction,
 } from "@/lib/api/client";
 import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
@@ -707,21 +707,21 @@ function SuggestedActions({
   );
 }
 
-const SOURCE_BADGE_CLASS: Record<NonNullable<ChatRepoCard["source"]>, string> = {
+const SOURCE_BADGE_CLASS: Record<NonNullable<RepoCard["source"]>, string> = {
   learned: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
   trending: "bg-amber-500/15 text-amber-300 border-amber-500/30",
   community: "bg-sky-500/15 text-sky-300 border-sky-500/30",
   github: "bg-muted text-muted-foreground border-border",
 };
 
-const SOURCE_LABEL: Record<NonNullable<ChatRepoCard["source"]>, string> = {
+const SOURCE_LABEL: Record<NonNullable<RepoCard["source"]>, string> = {
   learned: "Learned",
   trending: "Trending",
   community: "Community",
   github: "GitHub",
 };
 
-function RepoCards({ cards }: { cards: ChatRepoCard[] }) {
+function RepoCards({ cards }: { cards: RepoCard[] }) {
   return (
     <div className="mt-2 flex flex-col gap-1.5">
       {cards.map((card) => (
@@ -737,7 +737,7 @@ function RepoCards({ cards }: { cards: ChatRepoCard[] }) {
  * use_repo sandbox run with a sensible default goal, then the button
  * swaps to a deep-link into the playground (the run detail page).
  */
-function RepoCardRow({ card }: { card: ChatRepoCard }) {
+function RepoCardRow({ card }: { card: RepoCard }) {
   const [watchUrl, setWatchUrl] = useState<string | null>(null);
   const tryRun = useMutation({
     mutationFn: () =>

@@ -32,23 +32,21 @@ import {
   roomMessageId as makeRoomMessageId,
   type Agent,
   type AgentRepository,
+  type OpenView,
   type PersonRepository,
+  type RepoCard,
   type RoomMessage,
   type RoomRepository,
   type RuntimeRegistry,
   type SessionEventRepository,
   type SessionRepository,
+  type SuggestedAction,
   type WorkspaceManager,
 } from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 import { requireHuman } from "../auth/middleware.js";
 import { makeErrorHandler } from "./http-errors.js";
-import {
-  processResponse,
-  type OpenView,
-  type RepoCard,
-  type SuggestedAction,
-} from "./directives.js";
+import { processResponse } from "./directives.js";
 
 export interface RoomRoutesDeps {
   authMiddleware: RequestHandler;

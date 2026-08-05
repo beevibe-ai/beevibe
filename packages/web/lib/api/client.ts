@@ -1,15 +1,25 @@
 import { fetchJson } from "./http";
 import type {
+  ChatHistoryMessage,
   HierarchyLevel,
   KnownCli,
   LearnedSkill,
   MemoryScope,
+  OpenView,
+  RepoCard,
   RepoRun,
   RepoRunStatus,
   ReviewPolicy,
+  SuggestedAction,
   Task,
 } from "@beevibe/core";
 export type { RepoRun, RepoRunStatus, LearnedSkill };
+/**
+ * Chat wire types come from `@beevibe/core` so the api server that emits
+ * them and this client that renders them read one declaration. Re-exported
+ * here because the chat UI imports its types from the api client.
+ */
+export type { ChatHistoryMessage, OpenView, RepoCard, SuggestedAction };
 import type {
   TaskDetail,
   AgentDetail,
@@ -91,29 +101,6 @@ export interface ChatSendInput {
   session_id?: string;
 }
 
-export interface SuggestedAction {
-  /** Short text shown on the chip. */
-  label: string;
-  /** Optional longer message sent on click — defaults to label. */
-  prompt?: string;
-}
-
-/**
- * Rich repo card from a `<repo_card>` chat directive. Agents emit one
- * per find_repo result after grouping; the chat UI renders them as
- * styled rows with stars + language + source-tier badge instead of a
- * markdown bullet list.
- */
-export interface ChatRepoCard {
-  repo_url: string;
-  owner: string;
-  name: string;
-  stars?: number;
-  language?: string;
-  source?: "learned" | "trending" | "community" | "github";
-  description?: string;
-}
-
 export interface ChatTurnResponse {
   ok: true;
   agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" };
@@ -126,7 +113,7 @@ export interface ChatTurnResponse {
    * If the agent emitted an `<open_view path="..."/>` directive, the
    * resolved path is here so the chat UI can render a prominent "Open this →" CTA.
    */
-  open_view?: { path: string; label?: string };
+  open_view?: OpenView;
   /**
    * If the agent ended its reply with `<suggest_action>` directives, each
    * label becomes a clickable chip below the bubble that re-sends the
@@ -137,7 +124,7 @@ export interface ChatTurnResponse {
    * `<repo_card>` directives the agent emitted (typically after find_repo).
    * Rendered as a structured repo list with stars + language + source.
    */
-  repo_cards?: ChatRepoCard[];
+  repo_cards?: RepoCard[];
 }
 
 export interface Room {
@@ -168,9 +155,9 @@ export interface RoomMessage {
   session_id?: string;
   /** Entity ids the agent referenced in this message, hydrated as cards. */
   view_refs?: string[];
-  open_view?: { path: string; label?: string };
+  open_view?: OpenView;
   suggested_actions?: SuggestedAction[];
-  repo_cards?: ChatRepoCard[];
+  repo_cards?: RepoCard[];
   created_at: string;
 }
 
@@ -269,22 +256,6 @@ export interface SignupResponse {
   primary_agent: { id: string; name: string; hierarchy: "ic" | "team" | "org" };
   /** True when an existing person with this email was returned instead of created. */
   existed: boolean;
-}
-
-export interface ChatHistoryMessage {
-  id: string;
-  /**
-   * `system` marks autonomous trigger annotations (e.g. watch_tasks fired —
-   * "2 tasks completed: …"). Rendered as a compact pill between user/agent
-   * bubbles so the user can see *why* the agent is suddenly running.
-   */
-  role: "user" | "agent" | "system";
-  content: string;
-  session_id?: string;
-  view_refs?: string[];
-  open_view?: { path: string; label?: string };
-  suggested_actions?: SuggestedAction[];
-  repo_cards?: ChatRepoCard[];
 }
 
 export interface ChatHistoryResponse {
