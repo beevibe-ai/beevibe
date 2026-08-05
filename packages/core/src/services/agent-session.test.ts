@@ -68,7 +68,6 @@ beforeEach(() => {
   agentRepo = {
     findById: vi.fn(),
     findByApiKey: vi.fn(),
-    findByOwnerId: vi.fn(),
     findTopLevelForOwner: vi.fn(),
     findSubordinates: vi.fn(),
     findPeers: vi.fn(),

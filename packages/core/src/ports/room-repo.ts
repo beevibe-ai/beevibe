@@ -22,13 +22,9 @@ export interface RoomRepository {
   addPersonMember(roomId: string, personId: string): Promise<void>;
   addAgentMember(roomId: string, agentId: string): Promise<void>;
   listMembers(roomId: string): Promise<RoomMember[]>;
-  /** All person ids that are members of this room. Used for SSE fanout. */
-  listMemberPersonIds(roomId: string): Promise<string[]>;
   /** All agent ids that are members of this room. */
   listMemberAgentIds(roomId: string): Promise<string[]>;
   isMember(roomId: string, personId: string): Promise<boolean>;
-  /** True if both agents are co-members of any room. Used by the mesh ask gate. */
-  areAgentsCoMembers(agentA: string, agentB: string): Promise<boolean>;
 
   // ── Messages ──────────────────────────────────────────────────────────
   appendMessage(input: NewRoomMessage): Promise<RoomMessage>;

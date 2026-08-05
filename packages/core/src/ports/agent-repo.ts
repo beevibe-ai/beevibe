@@ -9,8 +9,6 @@ export interface AgentRepository {
 
   findByApiKey(apiKey: string): Promise<Agent | undefined>;
 
-  findByOwnerId(ownerId: string): Promise<Agent[]>;
-
   /**
    * Find the user's primary agent — team-level if it exists, otherwise org-level.
    * IC agents are intentionally excluded (they're subordinates, not entry points).
