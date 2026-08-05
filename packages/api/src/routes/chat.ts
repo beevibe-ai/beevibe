@@ -29,6 +29,7 @@ import {
   isInFlightSessionStatus,
   isKnownCli,
   type AgentRepository,
+  type ChatHistoryMessage,
   type KnownCli,
   type PersonRepository,
   type RuntimeRepository,
@@ -42,7 +43,7 @@ import { requireHuman } from "../auth/middleware.js";
 import type { ChatResolver } from "../runtime/chat-resolver.js";
 import type { DaemonHub } from "../runtime/hub.js";
 import { ChatRateLimiter } from "./chat-rate-limit.js";
-import { processResponse, type RepoCard, type SuggestedAction } from "./directives.js";
+import { processResponse } from "./directives.js";
 import { requireParam } from "./http-errors.js";
 import { truncate } from "../views/format.js";
 import { CHAT_THREAD_TITLE_MAX } from "../views/types.js";
@@ -73,24 +74,8 @@ export interface ChatRoutesDeps {
 // #63 signup PR (it depends on person.onboarding_completed_at, which doesn't
 // land until that work).
 
-interface HistoryMessage {
-  id: string;
-  /**
-   * `system` is used for autonomous trigger messages — currently just the
-   * watch_tasks fire ("Watch fired — 2 tasks completed: …"). It tells the
-   * chat surface "the agent's next reply is responding to THIS, not to a
-   * user message," so the UI can render a compact pill above the agent
-   * bubble. The agent never produces system messages directly — they're
-   * derived from the wake session's `<system-wake>`-wrapped intent.
-   */
-  role: "user" | "agent" | "system";
-  content: string;
-  session_id?: string;
-  view_refs?: string[];
-  open_view?: { path: string; label?: string };
-  suggested_actions?: SuggestedAction[];
-  repo_cards?: RepoCard[];
-}
+// The history message shape lives in @beevibe/core as ChatHistoryMessage —
+// the web client renders it, so both halves read one declaration.
 
 /**
  * Extract the user-facing summary out of a `<system-wake>`-wrapped intent.
@@ -267,8 +252,8 @@ export function failureMessageFor(s: {
   return DAEMON_LOG_POINTER;
 }
 
-export function chainToMessages(chain: ConversationChain): HistoryMessage[] {
-  const messages: HistoryMessage[] = [];
+export function chainToMessages(chain: ConversationChain): ChatHistoryMessage[] {
+  const messages: ChatHistoryMessage[] = [];
   for (const s of chain.sessions) {
     if (s.intent.startsWith(SYSTEM_WAKE_INTENT_OPEN)) {
       // System-generated wake turn (watch_tasks fired). Emit a `system`

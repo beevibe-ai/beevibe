@@ -21,7 +21,13 @@
  *     Hydrated as reference cards by the UI; collected as `view_refs`.
  */
 
-import { extractGitHubRepoRefs } from "@beevibe/core";
+import {
+  extractGitHubRepoRefs,
+  type ChatDirectives,
+  type OpenView,
+  type RepoCard,
+  type SuggestedAction,
+} from "@beevibe/core";
 
 const ENTITY_ID_RE = /\b((?:task|agent|sess)_[A-Za-z0-9]{12})\b/g;
 const OPEN_VIEW_RE =
@@ -72,42 +78,11 @@ const SUGGEST_ACTION_RE =
 const ATTR_LABEL_RE = /\blabel\s*=\s*"([^"]*)"/i;
 const ATTR_PROMPT_RE = /\bprompt\s*=\s*"([^"]*)"/i;
 
-export interface SuggestedAction {
-  /** Short text shown on the chip. */
-  label: string;
-  /** Optional fuller text sent on click — defaults to label. */
-  prompt?: string;
-}
-
-export interface OpenView {
-  path: string;
-  label?: string;
-}
-
-export interface RepoCard {
-  /** Canonical https://github.com/owner/name. */
-  repo_url: string;
-  /** Owner/name parsed out of repo_url; convenience for the renderer. */
-  owner: string;
-  name: string;
-  /** Stars (lifetime, from GitHub search) when the agent knew it. */
-  stars?: number;
-  /** Primary language label when known. */
-  language?: string;
-  /** Source tier — one of learned / trending / community / github. */
-  source?: "learned" | "trending" | "community" | "github";
-  /** Short description string for the card body. */
-  description?: string;
-}
-
-export interface ProcessedResponse {
+export interface ProcessedResponse extends ChatDirectives {
   /** Directive-stripped, ready for markdown render. */
   visible: string;
-  /** Entity ids referenced inline (e.g. task_xxx, agent_yyy). */
+  /** Always present here — the parser emits `[]` rather than omitting it. */
   view_refs: string[];
-  open_view?: OpenView;
-  suggested_actions?: SuggestedAction[];
-  repo_cards?: RepoCard[];
 }
 
 export function processResponse(raw: string): ProcessedResponse {
