@@ -122,15 +122,6 @@ export class PostgresRoomRepository implements RoomRepository {
     return rows;
   }
 
-  async listMemberPersonIds(roomId: string): Promise<string[]> {
-    const { rows } = await this.pool.query<{ person_id: string }>(
-      `SELECT person_id FROM room_member
-       WHERE room_id = $1 AND kind = 'person' AND person_id IS NOT NULL`,
-      [roomId],
-    );
-    return rows.map((r) => r.person_id);
-  }
-
   async listMemberAgentIds(roomId: string): Promise<string[]> {
     const { rows } = await this.pool.query<{ agent_id: string }>(
       `SELECT agent_id FROM room_member
@@ -147,22 +138,6 @@ export class PostgresRoomRepository implements RoomRepository {
          WHERE room_id = $1 AND kind = 'person' AND person_id = $2
        ) AS exists`,
       [roomId, personId],
-    );
-    return !!rows[0]?.exists;
-  }
-
-  async areAgentsCoMembers(agentA: string, agentB: string): Promise<boolean> {
-    if (agentA === agentB) return false;
-    const { rows } = await this.pool.query<{ exists: boolean }>(
-      `SELECT EXISTS (
-         SELECT 1
-         FROM room_member ra
-         JOIN room_member rb
-           ON ra.room_id = rb.room_id
-         WHERE ra.kind = 'agent' AND ra.agent_id = $1
-           AND rb.kind = 'agent' AND rb.agent_id = $2
-       ) AS exists`,
-      [agentA, agentB],
     );
     return !!rows[0]?.exists;
   }

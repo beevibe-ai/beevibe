@@ -22,24 +22,20 @@ const eventInvalidations: Record<string, InvalidationKey[]> = {
   "task.updated": [
     queryKeys.tasks.all,
     queryKeys.dashboard.all,
-    queryKeys.activity.all,
     queryKeys.inbox.all,
   ],
   "task.created": [
     queryKeys.tasks.all,
     queryKeys.dashboard.all,
-    queryKeys.activity.all,
     queryKeys.inbox.all,
   ],
   "agent.updated": [
     queryKeys.agents.all,
-    queryKeys.activity.all,
     queryKeys.agentNetwork.all,
   ],
   "session.updated": [
     queryKeys.sessions.all,
     queryKeys.tasks.all,
-    queryKeys.activity.all,
     // Match ALL chat history slots, not just the `<latest>` one. A user
     // viewing a specific conversation (cacheId = conv head) needs the
     // same auto-recovery: when their pending chat session completes, the
@@ -63,8 +59,8 @@ const eventInvalidations: Record<string, InvalidationKey[]> = {
   "memory.fact.created": [queryKeys.memory.all],
   "memory.fact.deleted": [queryKeys.memory.all],
   "promotion.created": [queryKeys.promotions.all, queryKeys.memory.all],
-  "mesh.activity": [queryKeys.mesh.all, queryKeys.activity.all, queryKeys.inbox.all],
-  "room.message": [queryKeys.rooms.all, queryKeys.activity.all],
+  "mesh.activity": [queryKeys.mesh.all, queryKeys.inbox.all],
+  "room.message": [queryKeys.rooms.all],
   "runtime.updated": [queryKeys.runtimes.all, queryKeys.agents.all],
 };
 

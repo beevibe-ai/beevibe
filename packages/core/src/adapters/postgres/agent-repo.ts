@@ -19,14 +19,6 @@ export class PostgresAgentRepository implements AgentRepository {
     return rows[0] ? rowToAgent(rows[0]) : undefined;
   }
 
-  async findByOwnerId(ownerId: string): Promise<Agent[]> {
-    const { rows } = await this.pool.query<AgentRow>(
-      `SELECT * FROM agent WHERE owner_id = $1 ORDER BY created_at ASC`,
-      [ownerId],
-    );
-    return rows.map(rowToAgent);
-  }
-
   async findTopLevelForOwner(ownerId: string): Promise<Agent | undefined> {
     // team before org — alphabetical DESC picks 'team' over 'org'
     const { rows } = await this.pool.query<AgentRow>(
