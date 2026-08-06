@@ -3,10 +3,10 @@
  *
  * `room_member` carries a single `subject_id` alongside separate
  * `person_id` / `agent_id` columns, which is what makes the conflict
- * key, the kind filters and the `areAgentsCoMembers` self-join worth
- * exercising against a real engine rather than a fake pool: a wrong
- * `ON CONFLICT` target silently duplicates members, and a missing kind
- * filter leaks agents into the person list (and vice versa).
+ * key and the kind filters worth exercising against a real engine
+ * rather than a fake pool: a wrong `ON CONFLICT` target silently
+ * duplicates members, and a missing kind filter leaks persons into
+ * the agent list (and vice versa).
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
@@ -34,7 +34,6 @@ describe("PostgresRoomRepository", () => {
   let alice: string;
   let bob: string;
   let alicesTeam: string;
-  let bobsTeam: string;
 
   beforeAll(() => {
     pool = createTestPool();
@@ -57,15 +56,6 @@ describe("PostgresRoomRepository", () => {
         id: agentId(),
         name: "Alice's Team",
         owner_id: alice,
-        hierarchy_level: "team",
-        runtime_config: DEFAULT_RUNTIME_CONFIG,
-      })
-    ).id;
-    bobsTeam = (
-      await agents.create({
-        id: agentId(),
-        name: "Bob's Team",
-        owner_id: bob,
         hierarchy_level: "team",
         runtime_config: DEFAULT_RUNTIME_CONFIG,
       })
@@ -172,13 +162,14 @@ describe("PostgresRoomRepository", () => {
     ]);
   });
 
-  it("splits the person and agent id lists by kind", async () => {
+  it("keeps person members out of the agent id list", async () => {
     const room = await newRoom();
     await rooms.addPersonMember(room.id, alice);
     await rooms.addPersonMember(room.id, bob);
     await rooms.addAgentMember(room.id, alicesTeam);
 
-    expect((await rooms.listMemberPersonIds(room.id)).sort()).toEqual([alice, bob].sort());
+    // Persons and agents share the `subject_id` column — the kind
+    // filter is what keeps persons out of the agent list.
     expect(await rooms.listMemberAgentIds(room.id)).toEqual([alicesTeam]);
   });
 
@@ -186,7 +177,6 @@ describe("PostgresRoomRepository", () => {
     const room = await newRoom();
 
     expect(await rooms.listMembers(room.id)).toEqual([]);
-    expect(await rooms.listMemberPersonIds(room.id)).toEqual([]);
     expect(await rooms.listMemberAgentIds(room.id)).toEqual([]);
   });
 
@@ -203,46 +193,6 @@ describe("PostgresRoomRepository", () => {
     expect(await rooms.isMember(room.id, alicesTeam)).toBe(false);
     expect(await rooms.isMember(other.id, alice)).toBe(false);
     expect(await rooms.isMember("room_missing", alice)).toBe(false);
-  });
-
-  it("detects agent co-membership across any shared room", async () => {
-    const room = await newRoom();
-    const otherRoom = await newRoom({ name: "Other" });
-    const loner = (
-      await agents.create({
-        id: agentId(),
-        name: "Loner",
-        owner_id: bob,
-        hierarchy_level: "ic",
-        runtime_config: DEFAULT_RUNTIME_CONFIG,
-      })
-    ).id;
-    await rooms.addAgentMember(room.id, alicesTeam);
-    await rooms.addAgentMember(room.id, bobsTeam);
-    await rooms.addAgentMember(otherRoom.id, loner);
-
-    expect(await rooms.areAgentsCoMembers(alicesTeam, bobsTeam)).toBe(true);
-    // Symmetric — the mesh gate must answer the same either direction.
-    expect(await rooms.areAgentsCoMembers(bobsTeam, alicesTeam)).toBe(true);
-    expect(await rooms.areAgentsCoMembers(alicesTeam, loner)).toBe(false);
-    expect(await rooms.areAgentsCoMembers(alicesTeam, "agent_nobody")).toBe(false);
-  });
-
-  it("never reports an agent as a co-member of itself", async () => {
-    const room = await newRoom();
-    await rooms.addAgentMember(room.id, alicesTeam);
-
-    // Short-circuits before the query — an agent sharing a room with
-    // itself must not open the mesh ask path back to its own inbox.
-    expect(await rooms.areAgentsCoMembers(alicesTeam, alicesTeam)).toBe(false);
-  });
-
-  it("does not treat a person co-member as an agent co-member", async () => {
-    const room = await newRoom();
-    await rooms.addPersonMember(room.id, alice);
-    await rooms.addPersonMember(room.id, bob);
-
-    expect(await rooms.areAgentsCoMembers(alice, bob)).toBe(false);
   });
 
   // ── Messages ───────────────────────────────────────────────────────────
@@ -341,22 +291,25 @@ describe("PostgresRoomRepository", () => {
   it("breaks a created_at tie by id so the order is stable", async () => {
     const room = await newRoom();
     const sameInstant = new Date("2026-03-01T00:00:00Z");
-    for (const content of ["a", "b", "c"]) {
-      const msg = await rooms.appendMessage({
-        id: roomMessageId(),
+    // Fixed lowercase ids, inserted out of order: C, en_US.utf8 and JS
+    // code-unit ordering all agree on them, so the assertion pins the
+    // id tie-break itself rather than the database's collation.
+    for (const id of ["rmsg_tie_c", "rmsg_tie_a", "rmsg_tie_b"]) {
+      await rooms.appendMessage({
+        id,
         room_id: room.id,
         kind: "human",
         sender_person_id: alice,
-        content,
+        content: id,
       });
       await pool.query(`UPDATE room_message SET created_at = $2 WHERE id = $1`, [
-        msg.id,
+        id,
         sameInstant,
       ]);
     }
 
     const listed = await rooms.listMessages(room.id);
-    expect(listed.map((m) => m.id)).toEqual([...listed.map((m) => m.id)].sort());
+    expect(listed.map((m) => m.id)).toEqual(["rmsg_tie_a", "rmsg_tie_b", "rmsg_tie_c"]);
     expect(await rooms.listMessages(room.id)).toEqual(listed);
   });
 
