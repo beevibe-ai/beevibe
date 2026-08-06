@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,91 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+export interface CliRuntimeSessionOptions<Event> {
+  /** Log tag for the truncation warning — `"CodexRuntime"`, `"OpenCodeRuntime"`, … */
+  runtimeTag: string;
+  /** The session being run; supplies `onStep`, `onSpawn` and `abort_signal`. */
+  context: RuntimeContext;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /** Piped to the child's stdin. Only Claude Code uses this (prompt on stdin). */
+  stdin?: string;
+  /** Parse one stdout line into a provider event; `null` skips the line. */
+  parseLine: (line: string) => Event | null;
+  /** Step events to forward to `context.onStep` for one parsed event. */
+  extractSteps: (event: Event) => Iterable<RuntimeStep>;
+  /** Map the collected events to a `RuntimeResult` once the process exits. */
+  parseEvents: (events: Event[], exitCode: number | null) => RuntimeResult;
+  /**
+   * Cleanup for the abort path, run before the `cancelled` result is
+   * returned. `parseEvents` is not called on that path, so anything a
+   * runtime does there (codex deletes its `--output-last-message` file)
+   * has to be undone here too.
+   */
+  onAbort?: () => void;
+}
+
+/**
+ * Run one CLI session end to end: spawn the process, parse its NDJSON stdout
+ * into provider events as they stream, forward step events, then map the
+ * result.
+ *
+ * This sequence — buffer lines, push events, flush the trailing partial line,
+ * warn on truncation, short-circuit on abort, merge process metadata into the
+ * parsed result — was written out identically in all three CLI adapters. The
+ * ordering is load-bearing (flushing *after* the process settles is what
+ * captures a stream that ends without a newline; checking `aborted` *before*
+ * parsing is what keeps a cancelled session from being reported as a failure),
+ * so it is the kind of thing that should exist once rather than three times.
+ *
+ * Everything provider-specific stays at the call site: argv, env scrubbing and
+ * the event schema are passed in, not branched on here.
+ */
+export async function runCliSession<Event>(
+  opts: CliRuntimeSessionOptions<Event>,
+): Promise<RuntimeResult> {
+  const { context } = opts;
+
+  // Parse incrementally during streaming rather than re-reading the whole
+  // stdout after close. A line buffer handles chunk boundaries — a single
+  // JSON event can arrive split across chunks.
+  const events: Event[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of opts.extractSteps(event)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: opts.command,
+    args: opts.args,
+    cwd: opts.cwd,
+    env: opts.env,
+    stdin: opts.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Emit any final partial line (stream that ended without a trailing \n).
+  stdout.flush();
+
+  warnIfTruncated(opts.runtimeTag, result);
+
+  if (result.aborted) {
+    opts.onAbort?.();
+    return cancelledResult(result);
+  }
+
+  return finalizeCliResult(opts.parseEvents(events, result.exitCode), result);
 }
