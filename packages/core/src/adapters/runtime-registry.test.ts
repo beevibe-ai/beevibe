@@ -6,22 +6,17 @@ import {
 } from "./runtime-registry.js";
 
 describe("createDefaultRuntimeRegistry", () => {
-  it("registers claude-code", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["claude"]).toBeDefined();
-    expect(registry["claude"]!.type).toBe("claude");
-  });
-
-  it("registers opencode", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["opencode"]).toBeDefined();
-    expect(registry["opencode"]!.type).toBe("opencode");
-  });
-
-  it("registers codex", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["codex"]).toBeDefined();
-    expect(registry["codex"]!.type).toBe("codex");
+  // Exact set, not per-runtime presence checks: this is the one place
+  // both composition roots (api/scheduler via composition.ts, daemon via
+  // start.ts + spawner.ts) get their runtimes from, so a runtime dropped
+  // here silently stops dispatching. An exact match also keeps the
+  // key-vs-type check below from passing vacuously on an empty registry.
+  it("registers exactly the three production runtimes", () => {
+    expect(Object.keys(createDefaultRuntimeRegistry()).sort()).toEqual([
+      "claude",
+      "codex",
+      "opencode",
+    ]);
   });
 
   it("every registry value's .type matches its registry key (sanity check against typos)", () => {

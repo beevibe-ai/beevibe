@@ -3,10 +3,10 @@
  *
  * `room_member` carries a single `subject_id` alongside separate
  * `person_id` / `agent_id` columns, which is what makes the conflict
- * key, the kind filters and the `areAgentsCoMembers` self-join worth
- * exercising against a real engine rather than a fake pool: a wrong
- * `ON CONFLICT` target silently duplicates members, and a missing kind
- * filter leaks agents into the person list (and vice versa).
+ * key and the kind filters worth exercising against a real engine
+ * rather than a fake pool: a wrong `ON CONFLICT` target silently
+ * duplicates members, and a missing kind filter leaks agents into the
+ * person list (and vice versa).
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
@@ -172,13 +172,15 @@ describe("PostgresRoomRepository", () => {
     ]);
   });
 
-  it("splits the person and agent id lists by kind", async () => {
+  // The kind filter is the point: `alice`/`bob` sit in the same
+  // `subject_id` column as `alicesTeam`, so a missing `kind = 'agent'`
+  // predicate would leak the two people into the agent list.
+  it("lists only agent members, not the people sharing subject_id", async () => {
     const room = await newRoom();
     await rooms.addPersonMember(room.id, alice);
     await rooms.addPersonMember(room.id, bob);
     await rooms.addAgentMember(room.id, alicesTeam);
 
-    expect((await rooms.listMemberPersonIds(room.id)).sort()).toEqual([alice, bob].sort());
     expect(await rooms.listMemberAgentIds(room.id)).toEqual([alicesTeam]);
   });
 
@@ -186,7 +188,6 @@ describe("PostgresRoomRepository", () => {
     const room = await newRoom();
 
     expect(await rooms.listMembers(room.id)).toEqual([]);
-    expect(await rooms.listMemberPersonIds(room.id)).toEqual([]);
     expect(await rooms.listMemberAgentIds(room.id)).toEqual([]);
   });
 
@@ -203,46 +204,6 @@ describe("PostgresRoomRepository", () => {
     expect(await rooms.isMember(room.id, alicesTeam)).toBe(false);
     expect(await rooms.isMember(other.id, alice)).toBe(false);
     expect(await rooms.isMember("room_missing", alice)).toBe(false);
-  });
-
-  it("detects agent co-membership across any shared room", async () => {
-    const room = await newRoom();
-    const otherRoom = await newRoom({ name: "Other" });
-    const loner = (
-      await agents.create({
-        id: agentId(),
-        name: "Loner",
-        owner_id: bob,
-        hierarchy_level: "ic",
-        runtime_config: DEFAULT_RUNTIME_CONFIG,
-      })
-    ).id;
-    await rooms.addAgentMember(room.id, alicesTeam);
-    await rooms.addAgentMember(room.id, bobsTeam);
-    await rooms.addAgentMember(otherRoom.id, loner);
-
-    expect(await rooms.areAgentsCoMembers(alicesTeam, bobsTeam)).toBe(true);
-    // Symmetric — the mesh gate must answer the same either direction.
-    expect(await rooms.areAgentsCoMembers(bobsTeam, alicesTeam)).toBe(true);
-    expect(await rooms.areAgentsCoMembers(alicesTeam, loner)).toBe(false);
-    expect(await rooms.areAgentsCoMembers(alicesTeam, "agent_nobody")).toBe(false);
-  });
-
-  it("never reports an agent as a co-member of itself", async () => {
-    const room = await newRoom();
-    await rooms.addAgentMember(room.id, alicesTeam);
-
-    // Short-circuits before the query — an agent sharing a room with
-    // itself must not open the mesh ask path back to its own inbox.
-    expect(await rooms.areAgentsCoMembers(alicesTeam, alicesTeam)).toBe(false);
-  });
-
-  it("does not treat a person co-member as an agent co-member", async () => {
-    const room = await newRoom();
-    await rooms.addPersonMember(room.id, alice);
-    await rooms.addPersonMember(room.id, bob);
-
-    expect(await rooms.areAgentsCoMembers(alice, bob)).toBe(false);
   });
 
   // ── Messages ───────────────────────────────────────────────────────────
