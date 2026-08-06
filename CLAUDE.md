@@ -203,7 +203,7 @@ table before deleting anything a tool reports as unused.
 | root devDep `prettier` | Formatting is editor/CLI-driven off `.prettierrc.json`; there's no `format` script to detect. |
 | `migrations/*.js` | Applied migration history. **Never** delete a migration file. |
 | `scripts/provision-demo.ts`, `pre-deploy-fix-migration-names.cjs` | Invoked from `scripts/dev.sh` and `scripts/start-api.sh` — shell call sites are invisible to knip. |
-| `scripts/seed-session-search-demo.ts`, `test-session-search.ts`, `packages/sandbox/src/scripts/*` | Documented manual dev/ops utilities, run by hand via `pnpm tsx …`. |
+| `scripts/seed-session-search-demo.ts`, `test-session-search.ts`, `test-watch-tasks.sh`, `packages/sandbox/src/scripts/*` | Documented manual dev/ops utilities, run by hand via `pnpm tsx …` / `bash …`. `test-watch-tasks.sh` is a DB-level smoke against a live `pnpm dev` stack — it catches migration drift the `beevibe_test` vitest DB can't. |
 | `OwnerLookup.singleOwnerSet` / `.meshOwners` | Called by the module-level `RESOLVERS` table, so they must stay public. Knip only checks cross-module use. |
 | `@beevibe/core/{domain,adapters/codex,adapters/opencode,services/skills,auth/constants}` subpath exports | Deliberate library surface. The codex/opencode runtimes are wired through `runtime-registry.ts`, which imports `./codex/runtime.js` directly rather than the barrel. |
 
@@ -243,6 +243,32 @@ Zero surviving hits = dead. Hits only from `*.test.ts` = alive only for
 its own test — check whether it's a deliberate test seam (`clearCache()`
 in `api/src/sse/owner-lookup.ts` is marked `@internal Tests only`) before
 touching it.
+
+### The CSS layer is invisible to every TS tool
+
+knip, depcheck and `tsc` all stop at the TypeScript graph, so a CSS rule
+or a `tailwind.config.ts` theme key can lose its last consumer and stay
+forever. Sweep it by name — every class token in `globals.css` against
+the rest of the package:
+
+```bash
+for c in $(grep -oE '\.[a-zA-Z][a-zA-Z0-9_-]*' packages/web/app/globals.css \
+             | tr -d '.' | sort -u); do
+  n=$(git grep -l -w -- "$c" -- packages/web ':!packages/web/app/globals.css' | wc -l)
+  [ "$n" -eq 0 ] && echo "UNUSED: $c"
+done
+```
+
+Same shape works for `--custom-properties` (match `var(--x)`) and for
+`tailwind.config.ts` `keyframes`/`animation` keys (match `animate-<key>`).
+Two traps:
+
+- A tailwind `animation` key is only reachable via the generated
+  `animate-<key>` utility, so grep that, not the bare key.
+- `bg-popover` / `text-popover-foreground` appear in JSX but `popover` is
+  **not** in `tailwind.config.ts` `colors`, so those classes generate no
+  CSS and the `--popover` vars in `globals.css` read as unused. That's a
+  missing theme key, not dead code — don't delete the vars.
 
 ### Dead in-repo, but not ours to delete
 
