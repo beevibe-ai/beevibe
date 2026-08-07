@@ -64,12 +64,20 @@ import {
   invalidBody,
   loadOwned,
   makeErrorHandler,
+  makeServiceErrorHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
+import { numericQuery } from "./query-params.js";
 
 /** Every handler below passes a per-call context, e.g. `[view route: task list]`. */
 const handleError = makeErrorHandler("view route");
+
+/** The core_memory write is the one handler here with expected typed failures. */
+const handleCoreMemoryError = makeServiceErrorHandler("view route", [
+  [BlockNotFoundError, 404, "block_not_found"],
+  [BlockCharLimitExceededError, 400, "char_limit_exceeded"],
+]);
 
 export interface ViewRoutesDeps {
   authMiddleware: RequestHandler;
@@ -345,15 +353,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       await deps.coreMemory.setContent(id, blockName, body.content);
       res.json({ ok: true });
     } catch (err) {
-      if (err instanceof BlockNotFoundError) {
-        res.status(404).json({ error: "block_not_found", message: err.message });
-        return;
-      }
-      if (err instanceof BlockCharLimitExceededError) {
-        res.status(400).json({ error: "char_limit_exceeded", message: err.message });
-        return;
-      }
-      handleError(err, res, "agent core_memory update");
+      handleCoreMemoryError(err, res, "agent core_memory update");
     }
   });
 
@@ -471,12 +471,10 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.get("/memory/activity", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const weeksRaw = req.query.weeks;
     const sinceRaw = req.query.since;
-    const weeks =
-      typeof weeksRaw === "string" && weeksRaw.trim()
-        ? Number(weeksRaw)
-        : 12;
+    // `min: 1` keeps `?weeks=` (which `Number("")` reads as 0) resolving to
+    // the default window rather than being passed down as a zero-week range.
+    const weeks = numericQuery(req, "weeks", { min: 1, fallback: 12 })!;
     // Validate `since` up front so a malformed date returns 400 rather than
     // a 500 from the eventual Postgres parse error.
     let since: string | undefined;
@@ -515,8 +513,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.get("/promotion", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : NaN;
-    const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+    const limit = numericQuery(req, "limit");
     try {
       const events = await listPromotions(deps.pool, req.caller.personId, { limit });
       res.json(events);
@@ -532,8 +529,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       scopeParam && SCOPES.has(scopeParam as MemoryScope)
         ? (scopeParam as MemoryScope)
         : undefined;
-    const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : NaN;
-    const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+    const limit = numericQuery(req, "limit");
 
     try {
       const facts = await listMemoryFacts(deps.pool, req.caller.personId, {
@@ -603,8 +599,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
   router.get("/inbox", async (req, res) => {
     if (!requireHuman(req, res)) return;
     try {
-      const limitParam = typeof req.query.limit === "string" ? Number(req.query.limit) : 50;
-      const limit = Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 200 ? limitParam : 50;
+      const limit = numericQuery(req, "limit", { min: 1, max: 200, fallback: 50 });
       const items = await listInbox(deps.pool, req.caller.personId, { limit });
       res.json(items);
     } catch (err) {
@@ -615,12 +610,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
   router.get("/activity", async (req, res) => {
     if (!requireHuman(req, res)) return;
     try {
-      const limitParam =
-        typeof req.query.limit === "string" ? Number(req.query.limit) : 20;
-      const limit =
-        Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 100
-          ? limitParam
-          : 20;
+      const limit = numericQuery(req, "limit", { min: 1, max: 100, fallback: 20 })!;
       const entries = await listActivity(deps.pool, req.caller.personId, limit);
       res.json(entries);
     } catch (err) {

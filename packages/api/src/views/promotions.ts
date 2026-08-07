@@ -10,6 +10,7 @@
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { FactType, MemoryScope } from "@beevibe/core";
 import type { PromotionEvent } from "./types.js";
+import { clampInt } from "./bounds.js";
 
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 500;
@@ -65,10 +66,11 @@ export async function listPromotions(
   ownerId: string,
   filter: PromotionsFilter = {},
 ): Promise<PromotionEvent[]> {
-  const limit = Math.min(
-    Math.max(1, filter.limit ?? DEFAULT_LIMIT),
-    MAX_LIMIT,
-  );
+  const limit = clampInt(filter.limit, {
+    min: 1,
+    max: MAX_LIMIT,
+    fallback: DEFAULT_LIMIT,
+  });
   const { rows } = await pool.query<EventRow>(LIST_SQL, [ownerId, limit]);
   return rows.map(rowToPromotionEvent);
 }

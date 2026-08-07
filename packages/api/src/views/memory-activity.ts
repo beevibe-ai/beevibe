@@ -25,6 +25,7 @@ import type {
   ScopeTypeRow,
   WeeklyArchivalRow,
 } from "./types.js";
+import { clampInt } from "./bounds.js";
 
 export interface MemoryActivityOptions {
   /** Window for weekly trend + scope×type breakdown. Clamped 1..52. */
@@ -37,7 +38,13 @@ export async function getMemoryActivity(
   pool: Pool,
   opts: MemoryActivityOptions,
 ): Promise<MemoryActivitySummary> {
-  const weeks = clampInt(opts.weeks, 1, 52, 12);
+  const weeks = clampInt(opts.weeks, {
+    min: 1,
+    max: 52,
+    fallback: 12,
+    // A window below the minimum is garbage input, not "one week please".
+    belowMin: "fallback",
+  });
   const weeksInterval = `${weeks} weeks`;
 
   const [
@@ -407,11 +414,6 @@ async function queryBeforeAfter(
 // ─────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────
-
-function clampInt(value: number, min: number, max: number, fallback: number): number {
-  if (!Number.isFinite(value) || value < min) return fallback;
-  return Math.min(Math.max(Math.trunc(value), min), max);
-}
 
 /**
  * node-postgres parses `::date` columns as JS Date at LOCAL midnight, so

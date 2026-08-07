@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  makeServiceErrorHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +218,71 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("makeServiceErrorHandler", () => {
+  class NotFound extends Error {}
+  class Conflict extends Error {}
+  class NarrowerConflict extends Conflict {}
+
+  const handle = makeServiceErrorHandler("widget route", [
+    [NarrowerConflict, 422, "narrower"],
+    [NotFound, 404, "widget_not_found"],
+    [Conflict, 409, "invalid_state"],
+  ]);
+
+  it("maps a known error to its status + code, carrying the message", () => {
+    const res = fakeRes();
+    handle(new NotFound("Widget w_1 not found"), res);
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({
+      error: "widget_not_found",
+      message: "Widget w_1 not found",
+    });
+  });
+
+  it("does not log a mapped error — it is an expected outcome", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    handle(new Conflict("already resolved"), fakeRes());
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  // Rows are tested in order, so a subclass listed first wins. Getting
+  // this wrong would silently downgrade a narrower error to its base.
+  it("takes the first matching row, so a subclass can precede its base", () => {
+    const res = fakeRes();
+    handle(new NarrowerConflict("nope"), res);
+    expect(res.statusCode).toBe(422);
+    expect(res.body).toMatchObject({ error: "narrower" });
+  });
+
+  it("falls through to the shared 500 for an unmapped error", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    handle(new Error("boom"), res, "resolve");
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "boom" });
+    expect(spy).toHaveBeenCalledWith("[widget route: resolve]", expect.any(Error));
+    spy.mockRestore();
+  });
+
+  it("stringifies a non-Error throw on the fallback path", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    handle("just a string", res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "just a string" });
+    expect(spy).toHaveBeenCalledWith("[widget route]", "just a string");
+    spy.mockRestore();
+  });
+
+  it("falls through when the table is empty", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeServiceErrorHandler("bare", [])(new NotFound("x"), res);
+    expect(res.statusCode).toBe(500);
+    spy.mockRestore();
   });
 });

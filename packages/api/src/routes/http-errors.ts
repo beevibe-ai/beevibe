@@ -150,3 +150,48 @@ export function makeErrorHandler(
     });
   };
 }
+
+/**
+ * A known service error and the HTTP response it maps to: the error class
+ * to test with `instanceof`, the status, and the wire `error` code.
+ */
+export type ServiceErrorMapping = readonly [
+  error: abstract new (...args: never[]) => Error,
+  status: number,
+  code: string,
+];
+
+/**
+ * A {@link makeErrorHandler} that first walks a table of known service
+ * errors, and only falls through to the 500 for anything unrecognised.
+ *
+ * `task`, `escalation` and `negotiation` each wrote this out by hand: an
+ * `if (err instanceof XError) { res.status(N).json({ error, message:
+ * err.message }); return; }` ladder followed by a verbatim re-implementation
+ * of `makeErrorHandler`'s body. Three copies of the 500 tail meant the
+ * "one place the error envelope lives" that #259 established was already
+ * back up to four. Here the tail is the shared one by construction — a
+ * router can only add rows to the ladder, not re-spell the fallback.
+ *
+ * Mappings are tested in order, so a subclass must be listed before its
+ * base for the narrower row to win.
+ *
+ * `context` is forwarded to the fallback and used only there: the mapped
+ * branches are expected outcomes and deliberately don't log, matching what
+ * all three routers already did.
+ */
+export function makeServiceErrorHandler(
+  tag: string,
+  mappings: readonly ServiceErrorMapping[],
+): (err: unknown, res: Response, context?: string) => void {
+  const fallback = makeErrorHandler(tag);
+  return (err, res, context) => {
+    for (const [ctor, status, code] of mappings) {
+      if (err instanceof ctor) {
+        res.status(status).json({ error: code, message: (err as Error).message });
+        return;
+      }
+    }
+    fallback(err, res, context);
+  };
+}

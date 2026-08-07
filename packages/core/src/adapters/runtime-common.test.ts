@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import type { RuntimeContext, RuntimeResult, RuntimeStep } from "../ports/runtime.js";
 import {
   cancelledResult,
+  createEventStream,
   createStdoutLineReader,
   finalizeCliResult,
   warnIfTruncated,
@@ -145,5 +146,72 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+describe("createEventStream", () => {
+  interface Evt {
+    n: number;
+  }
+
+  const parseLine = (line: string): Evt | null =>
+    line.startsWith("evt:") ? { n: Number(line.slice(4)) } : null;
+  const extractSteps = (evt: Evt): RuntimeStep[] =>
+    [{ kind: "text", content: String(evt.n) } as unknown as RuntimeStep];
+
+  function ctx(onStep?: (step: RuntimeStep) => void): RuntimeContext {
+    return { onStep } as unknown as RuntimeContext;
+  }
+
+  it("collects parsed events in arrival order across chunk boundaries", () => {
+    const stream = createEventStream(ctx(), parseLine, extractSteps);
+    stream.onLog("stdout", "evt:1\nev");
+    stream.onLog("stdout", "t:2\n");
+    expect(stream.events).toEqual([{ n: 1 }, { n: 2 }]);
+  });
+
+  it("drops lines the parser rejects instead of failing the run", () => {
+    const stream = createEventStream(ctx(), parseLine, extractSteps);
+    stream.onLog("stdout", "some npm warning\nevt:7\n");
+    expect(stream.events).toEqual([{ n: 7 }]);
+  });
+
+  it("fans each event out through extractSteps when onStep is set", () => {
+    const steps: RuntimeStep[] = [];
+    const stream = createEventStream(ctx((s) => steps.push(s)), parseLine, extractSteps);
+    stream.onLog("stdout", "evt:1\nevt:2\n");
+    expect(steps.map((s) => (s as { content: string }).content)).toEqual(["1", "2"]);
+  });
+
+  // The adapters guard on `onStep` before calling extract* — a runtime with
+  // no step consumer shouldn't pay for the per-event derivation at all.
+  it("skips extractSteps entirely when there is no onStep", () => {
+    const extract = vi.fn(extractSteps);
+    const stream = createEventStream(ctx(), parseLine, extract);
+    stream.onLog("stdout", "evt:1\n");
+    expect(stream.events).toHaveLength(1);
+    expect(extract).not.toHaveBeenCalled();
+  });
+
+  it("ignores stderr", () => {
+    const stream = createEventStream(ctx(), parseLine, extractSteps);
+    stream.onLog("stderr", "evt:9\n");
+    expect(stream.events).toEqual([]);
+  });
+
+  it("emits a trailing line with no newline only on flush", () => {
+    const stream = createEventStream(ctx(), parseLine, extractSteps);
+    stream.onLog("stdout", "evt:3");
+    expect(stream.events).toEqual([]);
+    stream.flush();
+    expect(stream.events).toEqual([{ n: 3 }]);
+  });
+
+  it("is a no-op when flushed with nothing pending", () => {
+    const stream = createEventStream(ctx(), parseLine, extractSteps);
+    stream.onLog("stdout", "evt:4\n");
+    stream.flush();
+    stream.flush();
+    expect(stream.events).toEqual([{ n: 4 }]);
   });
 });

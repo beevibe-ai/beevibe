@@ -140,10 +140,8 @@ function makeRoomRepo(): RoomRepository {
     addPersonMember: vi.fn(async () => {}),
     addAgentMember: vi.fn(async () => {}),
     listMembers: vi.fn(async () => []),
-    listMemberPersonIds: vi.fn(async () => []),
     listMemberAgentIds: vi.fn(async () => []),
     isMember: vi.fn(async () => true),
-    areAgentsCoMembers: vi.fn(async () => true),
     appendMessage: vi.fn(async (input) => fakeMessage({ ...input })),
     listMessages: vi.fn(async () => []),
   } as unknown as RoomRepository;
