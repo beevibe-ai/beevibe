@@ -64,12 +64,19 @@ import {
   invalidBody,
   loadOwned,
   makeErrorHandler,
+  makeServiceErrorHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
 
 /** Every handler below passes a per-call context, e.g. `[view route: task list]`. */
 const handleError = makeErrorHandler("view route");
+
+/** The core_memory write is the one handler here with expected typed failures. */
+const handleCoreMemoryError = makeServiceErrorHandler("view route", [
+  [BlockNotFoundError, 404, "block_not_found"],
+  [BlockCharLimitExceededError, 400, "char_limit_exceeded"],
+]);
 
 export interface ViewRoutesDeps {
   authMiddleware: RequestHandler;
@@ -345,15 +352,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       await deps.coreMemory.setContent(id, blockName, body.content);
       res.json({ ok: true });
     } catch (err) {
-      if (err instanceof BlockNotFoundError) {
-        res.status(404).json({ error: "block_not_found", message: err.message });
-        return;
-      }
-      if (err instanceof BlockCharLimitExceededError) {
-        res.status(400).json({ error: "char_limit_exceeded", message: err.message });
-        return;
-      }
-      handleError(err, res, "agent core_memory update");
+      handleCoreMemoryError(err, res, "agent core_memory update");
     }
   });
 
