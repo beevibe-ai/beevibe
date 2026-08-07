@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, type TaskListFilter } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
+import { useDetailQuery } from "./detail-query";
 import { queryKeys } from "./keys";
 
 export function useTasks(filter: TaskListFilter = {}) {
@@ -23,9 +24,10 @@ export function useTasks(filter: TaskListFilter = {}) {
 }
 
 export function useTask(id: string | undefined) {
-  return useQuery({
-    queryKey: id ? queryKeys.tasks.detail(id) : queryKeys.tasks.all,
-    queryFn: ({ signal }) => api.tasks.get(id as string, { signal }),
-    enabled: isApiConfigured && !!id,
+  return useDetailQuery({
+    id,
+    key: queryKeys.tasks.detail,
+    fallbackKey: queryKeys.tasks.all,
+    fetch: api.tasks.get,
   });
 }
