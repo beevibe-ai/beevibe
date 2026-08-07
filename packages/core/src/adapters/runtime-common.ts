@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,42 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * The stdout side of a CLI runtime's `execute`, in one piece.
+ *
+ * All three adapters spelled out the same block: allocate an `events`
+ * array, define a `handleLine` that parses a line, drops it when it
+ * doesn't parse, pushes it, and — only when the caller wants steps —
+ * fans it out through the adapter's `extract*StepEvents`; then wrap that
+ * in a {@link createStdoutLineReader}. The only per-adapter parts are the
+ * two functions, both of which are already parameters.
+ *
+ * Keeping the collected array next to the reader that fills it also
+ * removes the one way the block could be mis-assembled: three separate
+ * bindings (`events`, `handleLine`, `stdout`) where the caller had to
+ * remember to pass `stdout.onLog` to `runCliProcess`, call `stdout.flush()`
+ * after it settled, and then read `events` — with nothing tying the three
+ * together.
+ */
+export function createEventStream<E>(
+  context: RuntimeContext,
+  parseLine: (line: string) => E | null,
+  extractSteps: (event: E) => RuntimeStep[],
+): {
+  /** Every parsed event, in arrival order. Filled as the process runs. */
+  events: E[];
+  onLog: (stream: "stdout" | "stderr", chunk: string) => void;
+  flush: () => void;
+} {
+  const events: E[] = [];
+  const reader = createStdoutLineReader((line) => {
+    const event = parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of extractSteps(event)) context.onStep(step);
+  });
+  return { events, onLog: reader.onLog, flush: reader.flush };
 }
