@@ -19,8 +19,6 @@ export interface SessionRepository {
 
   listForTask(taskId: string): Promise<Session[]>;
 
-  listForAgent(agentId: string): Promise<Session[]>;
-
   /**
    * Most-recent chat sessions for an agent, capped at `limit`. Used by
    * the chat surface to rehydrate history on page load. Bounded so a

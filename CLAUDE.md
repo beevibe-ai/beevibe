@@ -251,6 +251,42 @@ touching it.
 | `GET /activity` → `api/src/views/activity.ts` | No caller anywhere in the monorepo, but it's a **documented public endpoint** (`packages/api/README.md`). Retiring it is a product call. The web side is fully gone: the client stub (`api.activity.list`) went with #273, and `queryKeys.activity` + its no-op `lib/sse.ts` invalidations went with #283. |
 | `SkillOutcomeRepository.listBySkill` / `.statsForSkill`, `AgentProvisionEventRepository.listByParent` | Uncalled **read** halves of audit trails whose write side is live and accumulating rows (`skill_outcome` via `recordCapabilityOutcome`, `agent_provision_event` via `create_subordinate_agent`). Same call as the promotion repo below — the consumers (discovery-ranker feedback, agents-page audit panel) are unbuilt, not removed. Deleting the queries makes finishing them harder. |
 | `PostgresMemoryPromotionEventRepository` | Never constructed — `bootstrap.ts` builds the MemoryAgent without `promotionEventRepo`, so the M8.D promotion audit log never writes even though the port, the service branch, its tests and the read-side `views/promotions.ts` all exist. That's **unfinished wiring, not dead code**; deleting the adapter makes finishing it harder. |
+| `TaskRepository.clearBlocker` / `TaskService.clearBlocker` | The **write** side is live — mesh's `report_blocker` calls `taskService.markBlocked`, so tasks really do enter the blocked state — but nothing in production ever clears one. Same call as the promotion repo: deleting the un-block half cements a one-way door. |
+
+### Sweeping repository methods (the layer knip can't see)
+
+knip reports *modules*, so a port method that no module imports by name is
+invisible to it. Sweep methods separately — for each `name(` declared in a
+`packages/core/src/ports/*.ts` interface, grep the monorepo for `.name(`:
+
+```bash
+git grep -n -- "\.<method>(" -- 'packages/**' 'scripts/**' | grep -v /dist/
+```
+
+Discount the port declaration, the Postgres adapter, that adapter's own
+test, and `vi.fn()` stubs in service-test fakes (those exist only because
+the interface demands the member). Zero surviving hits = the method has no
+production caller. #295 removed 14 that way.
+
+**The trap that broke main after #285:** `packages/core/tsconfig.json`
+excludes `**/*.test.ts` and `**/test-fakes.ts`, so `pnpm typecheck` does
+**not** see stale references in core test files, and vitest's esbuild
+transform strips types without checking them — a removed method survives
+both gates and only explodes when a DB-gated suite finally runs. Check
+core's tests explicitly before pushing any port change:
+
+```bash
+cat > packages/core/tsconfig.tests.json <<'EOF'
+{ "extends": "./tsconfig.json", "compilerOptions": { "noEmit": true },
+  "include": ["src/**/*"], "exclude": ["dist", "node_modules"] }
+EOF
+npx tsc -p packages/core/tsconfig.tests.json --noEmit
+rm packages/core/tsconfig.tests.json
+```
+
+It reports ~72 **pre-existing** errors (drifted fakes, loose `vi.fn()`
+typing), so compare per-file error counts against a stashed baseline
+rather than expecting zero.
 
 ## Deploying
 

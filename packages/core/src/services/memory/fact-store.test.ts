@@ -32,7 +32,6 @@ beforeEach(() => {
     update: vi.fn(),
     delete: vi.fn(),
     searchByVector: vi.fn(),
-    listByAgentScope: vi.fn(),
     listBySessionId: vi.fn(),
   };
   embed = {

@@ -137,29 +137,7 @@ describe("PostgresNegotiationRepository", () => {
     expect(escalated.status).toBe("escalated");
   });
 
-  it("findActiveBetween returns the latest active row for the (initiator, counterparty) pair", async () => {
-    const oldNeg = await negotiations.create({
-      id: negotiationId(),
-      initiator_agent_id: initiatorAgent,
-      initiator_session_id: initiatorSession,
-      counterparty_agent_id: counterpartyAgent,
-      max_rounds: 5,
-    });
-    await negotiations.update(oldNeg.id, { status: "accepted" });
-
-    const newNeg = await negotiations.create({
-      id: negotiationId(),
-      initiator_agent_id: initiatorAgent,
-      initiator_session_id: initiatorSession,
-      counterparty_agent_id: counterpartyAgent,
-      max_rounds: 5,
-    });
-
-    const active = await negotiations.findActiveBetween(initiatorAgent, counterpartyAgent);
-    expect(active?.id).toBe(newNeg.id);
-  });
-
-  it("rounds CRUD + listByNegotiation order + findLatest + UNIQUE round_number", async () => {
+  it("rounds CRUD + listByNegotiation order + UNIQUE round_number", async () => {
     const neg = await negotiations.create({
       id: negotiationId(),
       initiator_agent_id: initiatorAgent,
@@ -195,10 +173,7 @@ describe("PostgresNegotiationRepository", () => {
 
     const list = await rounds.listByNegotiation(neg.id);
     expect(list.map((r) => r.round_number)).toEqual([1, 2, 3]);
-
-    const latest = await rounds.findLatest(neg.id);
-    expect(latest?.round_number).toBe(3);
-    expect(latest?.decision).toBe("accept");
+    expect(list.at(-1)?.decision).toBe("accept");
 
     // UNIQUE(negotiation_id, round_number)
     await expect(

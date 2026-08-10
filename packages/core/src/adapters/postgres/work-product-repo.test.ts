@@ -105,14 +105,6 @@ describe("PostgresWorkProductRepository", () => {
     expect(await wps.listByTask("task_missing")).toEqual([]);
   });
 
-  it("listByAgent filters + sorts by created_at DESC", async () => {
-    const a = await wps.create(newWp({ title: "first" }));
-    await new Promise((r) => setTimeout(r, 5));
-    const b = await wps.create(newWp({ title: "second" }));
-    const list = await wps.listByAgent(agent);
-    expect(list.map((w) => w.id)).toEqual([b.id, a.id]);
-  });
-
   it("listByTask returns body_bytes from SQL and omits body content", async () => {
     await wps.create(newWp({ title: "with body", body: "hello" }));
     await wps.create(newWp({ title: "no body" }));

@@ -9,7 +9,7 @@
  *
  * Latency budget:
  *   - approve / reject / revise / create: 0–30s end-to-end (DB write here,
- *     then executor's next poll picks up assignable tasks via listAssignable;
+ *     then the executor's next poll claims the pending session;
  *     done/cancelled are terminal so no further work).
  *   - cancel: <200ms target end-to-end (DB write + pg_notify; executor
  *     receives notification; AbortController fires; CLI subprocess

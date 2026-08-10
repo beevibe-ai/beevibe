@@ -18,29 +18,6 @@ export class PostgresTaskWatchRepository implements TaskWatchRepository {
     return findRowById(this.pool, "task_watch", id, rowToTaskWatch);
   }
 
-  async listByWaiterSession(waiterSessionId: string): Promise<TaskWatch[]> {
-    const { rows } = await this.pool.query<TaskWatchRow>(
-      `SELECT * FROM task_watch
-        WHERE waiter_session_id = $1
-        ORDER BY created_at DESC`,
-      [waiterSessionId],
-    );
-    return rows.map(rowToTaskWatch);
-  }
-
-  async listWaitingForTask(taskId: string): Promise<TaskWatch[]> {
-    // `task_ids @> ARRAY[$1]` (not `$1 = ANY(task_ids)`) is the form Postgres
-    // plans against the partial GIN on `task_ids WHERE status='waiting'`.
-    const { rows } = await this.pool.query<TaskWatchRow>(
-      `SELECT * FROM task_watch
-        WHERE status = 'waiting'
-          AND task_ids @> ARRAY[$1]
-        ORDER BY created_at ASC`,
-      [taskId],
-    );
-    return rows.map(rowToTaskWatch);
-  }
-
   async create(input: NewTaskWatch): Promise<TaskWatch> {
     if (input.task_ids.length === 0) {
       throw new Error("task_watch.task_ids must be non-empty");

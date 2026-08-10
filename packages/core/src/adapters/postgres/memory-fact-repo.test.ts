@@ -393,33 +393,6 @@ describe("PostgresMemoryFactRepository", () => {
     expect(await facts.findById(f.id)).toBeUndefined();
   });
 
-  it("listByAgentScope orders by created_at DESC and respects limit", async () => {
-    await facts.create({
-      id: factId(),
-      agent_id: aid,
-      scope: "ic",
-      fact_type: "belief",
-      content: "first",
-      embedding: unitVector(0),
-      source_session_ids: [],
-    });
-    await new Promise((r) => setTimeout(r, 10));
-    await facts.create({
-      id: factId(),
-      agent_id: aid,
-      scope: "ic",
-      fact_type: "belief",
-      content: "second",
-      embedding: unitVector(1),
-      source_session_ids: [],
-    });
-    const ordered = await facts.listByAgentScope(aid, "ic");
-    expect(ordered.map((f) => f.content)).toEqual(["second", "first"]);
-
-    const capped = await facts.listByAgentScope(aid, "ic", 1);
-    expect(capped.map((f) => f.content)).toEqual(["second"]);
-  });
-
   it("deleting agent cascades to facts (FK ON DELETE CASCADE)", async () => {
     await facts.create({
       id: factId(),
@@ -431,6 +404,9 @@ describe("PostgresMemoryFactRepository", () => {
       source_session_ids: [],
     });
     await agents.delete(aid);
-    expect(await facts.listByAgentScope(aid, "ic")).toEqual([]);
+    const { rows } = await pool.query(`SELECT id FROM memory_fact WHERE agent_id = $1`, [
+      aid,
+    ]);
+    expect(rows).toEqual([]);
   });
 });

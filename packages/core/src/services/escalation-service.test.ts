@@ -66,28 +66,22 @@ beforeEach(() => {
   escalationRepo = {
     findById: vi.fn(),
     findByNegotiation: vi.fn(),
-    listPending: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
   };
   negotiationRepo = {
     findById: vi.fn(),
-    findActiveBetween: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
   };
   negotiationRoundRepo = {
     listByNegotiation: vi.fn(),
-    findLatest: vi.fn(),
     create: vi.fn(),
   };
   taskRepo = {
     findById: vi.fn(),
     list: vi.fn(),
     listByAssignee: vi.fn(),
-    listAssignable: vi.fn(),
-    claimById: vi.fn(),
-    listReviewQueue: vi.fn(),
     countChildrenNotComplete: vi.fn(),
     countChildren: vi.fn(),
     create: vi.fn(async (input) => ({ ...input, status: input.status ?? "pending", priority: input.priority, created_at: new Date(), updated_at: new Date() }) as Task),
@@ -112,7 +106,6 @@ beforeEach(() => {
     findSubordinates: vi.fn(),
     findPeers: vi.fn(),
     findParent: vi.fn(),
-    findByLevel: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
