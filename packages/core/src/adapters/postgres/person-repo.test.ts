@@ -96,18 +96,6 @@ describe("PostgresPersonRepository", () => {
     expect((await repo.findByApiKey("bv_u_second"))?.id).toBe(p.id);
   });
 
-  it("findManyByIds returns rows for given IDs, empty array for empty input", async () => {
-    const a = await repo.create({ id: personId(), name: "A" });
-    const b = await repo.create({ id: personId(), name: "B" });
-    const c = await repo.create({ id: personId(), name: "C" });
-
-    const subset = await repo.findManyByIds([a.id, c.id]);
-    expect(subset.map((p) => p.id).sort()).toEqual([a.id, c.id].sort());
-    expect(subset.find((p) => p.id === b.id)).toBeUndefined();
-
-    expect(await repo.findManyByIds([])).toEqual([]);
-  });
-
   it("update patches name + email, sets updated_at forward", async () => {
     const p = await repo.create({ id: personId(), name: "Before", email: "before@x.com" });
     const beforeUpdate = p.updated_at.getTime();

@@ -127,22 +127,6 @@ export class PostgresMemoryFactRepository implements MemoryFactRepository {
     return rows.map(rowToFact);
   }
 
-  async listByAgentScope(
-    agentId: string,
-    scope: MemoryScope,
-    limit = 100,
-  ): Promise<MemoryFact[]> {
-    const { rows } = await this.pool.query<MemoryFactRow>(
-      `SELECT ${FACT_COLUMNS}
-         FROM memory_fact
-        WHERE agent_id = $1 AND scope = $2
-        ORDER BY created_at DESC
-        LIMIT $3`,
-      [agentId, scope, limit],
-    );
-    return rows.map(rowToFact);
-  }
-
   async listBySessionId(sessionId: string): Promise<MemoryFact[]> {
     const { rows } = await this.pool.query<MemoryFactRow>(
       `SELECT ${FACT_COLUMNS}

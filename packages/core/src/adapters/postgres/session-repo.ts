@@ -43,16 +43,6 @@ export class PostgresSessionRepository implements SessionRepository {
     return rows.map(rowToSession);
   }
 
-  async listForAgent(agentId: string): Promise<Session[]> {
-    const { rows } = await this.pool.query<SessionRow>(
-      `SELECT * FROM session
-        WHERE agent_id = $1
-        ORDER BY created_at DESC`,
-      [agentId],
-    );
-    return rows.map(rowToSession);
-  }
-
   async listChatForAgent(agentId: string, limit: number): Promise<Session[]> {
     const { rows } = await this.pool.query<SessionRow>(
       `SELECT * FROM session

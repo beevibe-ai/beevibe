@@ -64,23 +64,6 @@ describe("PostgresRuntimeRepository", () => {
     ).rejects.toThrow();
   });
 
-  it("listByOwnerAndCli orders by last_heartbeat DESC NULLS LAST and excludes revoked daemons", async () => {
-    const r1 = runtimeId();
-    const r2 = runtimeId();
-    await runtimes.create({ id: r1, daemon_id: dId, cli: "claude" });
-    await runtimes.create({ id: r2, daemon_id: dId, cli: "codex" });
-    // Heartbeat r2's codex (different cli) — shouldn't appear in claude list
-    await runtimes.heartbeat(r2);
-
-    const claudeRuntimes = await runtimes.listByOwnerAndCli(ownerId, "claude");
-    expect(claudeRuntimes.map((r) => r.id)).toEqual([r1]);
-
-    // Revoke daemon → both runtimes excluded.
-    await daemons.revoke(dId);
-    const post = await runtimes.listByOwnerAndCli(ownerId, "claude");
-    expect(post).toEqual([]);
-  });
-
   it("heartbeat advances last_heartbeat", async () => {
     const id = runtimeId();
     await runtimes.create({ id, daemon_id: dId, cli: "claude" });

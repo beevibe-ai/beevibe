@@ -33,9 +33,6 @@ export interface MemoryFactRepository {
    */
   searchByVector(params: VectorSearchParams): Promise<MemoryFact[]>;
 
-  /** Non-vector structured query: by agent + scope, for enumeration. */
-  listByAgentScope(agentId: string, scope: MemoryScope, limit?: number): Promise<MemoryFact[]>;
-
   /**
    * Fetch every fact whose `source_session_ids` contains the given session id.
    * Used by MemoryAgent.onTaskComplete to enumerate facts touched during a

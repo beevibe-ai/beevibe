@@ -23,7 +23,6 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
-  PostgresMemoryFactRepository,
   PostgresPersonRepository,
   PostgresSessionRepository,
   type Pool,
@@ -41,7 +40,6 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
   let agentRepo: PostgresAgentRepository;
   let personRepo: PostgresPersonRepository;
   let coreMemoryRepo: PostgresCoreMemoryRepository;
-  let factRepo: PostgresMemoryFactRepository;
   let sessionRepo: PostgresSessionRepository;
   let api: BootstrapResult;
   const port = 3987;
@@ -51,7 +49,6 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
     agentRepo = new PostgresAgentRepository(pool);
     personRepo = new PostgresPersonRepository(pool);
     coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
-    factRepo = new PostgresMemoryFactRepository(pool);
     sessionRepo = new PostgresSessionRepository(pool);
 
     api = await bootstrap({
@@ -233,7 +230,17 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
       // addOrMerge stamps the fact's scope from the saver's hierarchy_level.
       // The caller here is a team-tier human, so the fact lands at scope='team'.
       // FactPromoter.onTaskComplete can elevate to 'org' later if it recurs.
-      const facts = await factRepo.listByAgentScope(team.agent.id, "team");
+      const { rows: facts } = await pool.query<{
+        content: string;
+        fact_type: string;
+        source_session_ids: string[];
+      }>(
+        `SELECT content, fact_type, source_session_ids
+           FROM memory_fact
+          WHERE agent_id = $1 AND scope = $2
+          ORDER BY created_at DESC`,
+        [team.agent.id, "team"],
+      );
       expect(facts).toHaveLength(1);
       expect(facts[0]?.content).toContain("green");
       expect(facts[0]?.fact_type).toBe("preference");

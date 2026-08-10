@@ -50,7 +50,6 @@ function makeRepoRunRepo(): RepoRunRepository {
     create: vi.fn(),
     findById: vi.fn(),
     findBySessionId: vi.fn(),
-    listByAgent: vi.fn(),
     listRecent: vi.fn(),
     update: vi.fn(),
   };

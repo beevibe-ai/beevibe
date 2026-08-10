@@ -21,7 +21,6 @@ function makePersonRepo(): PersonRepository {
     findById: vi.fn(),
     findByEmail: vi.fn(),
     findByApiKey: vi.fn(),
-    findManyByIds: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
