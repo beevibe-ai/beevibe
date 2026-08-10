@@ -113,6 +113,61 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       "agent_not_found",
     );
 
+  /**
+   * "Fetch one row by route param, or 404" — the shape every detail route in
+   * this router has.
+   *
+   * Five handlers spelled this out: auth-gate, narrow the param, call a
+   * `views/*` composer, 404 when it resolves `undefined`, otherwise `res.json`,
+   * with `handleError` on the catch. Two of them (`/session/:shortId` and its
+   * `/conversation` sibling) already went through a local `shortIdRoute`
+   * factory — this is that factory with the three hardcoded strings lifted
+   * into parameters, so `/task/:id`, `/agent/:id` and `/work-product/:id` can
+   * stop hand-rolling it. All five composers already share one signature,
+   * `(pool, id) => Promise<T | undefined>`, which is what makes them
+   * interchangeable here.
+   *
+   * `shortIdRoute` also hand-rolled the param narrowing that `requireParam`
+   * exists to do; the 400 body it produced (`{ error: <code> }`) is
+   * byte-identical, so routing through `requireParam` drops that copy too.
+   *
+   * The `AmbiguousShortIdError` → 409 branch stays unconditional. Only the
+   * two session composers throw it (a short id can prefix-match more than one
+   * session); for the other three the branch is inert, which is cheaper than
+   * a config knob no caller would ever vary.
+   */
+  const detailRoute =
+    <T>(opts: {
+      /** Route param to read, e.g. `"id"` or `"shortId"`. */
+      param: string;
+      /** 400 code when the param is missing/empty. Not uniform across routes. */
+      missingError: string;
+      /** 404 code when the composer resolves `undefined`. */
+      notFoundError: string;
+      /** `handleError` context, e.g. `"task detail"`. */
+      label: string;
+      fetch: (pool: Pool, id: string) => Promise<T | undefined>;
+    }): RequestHandler =>
+    async (req, res) => {
+      if (!requireHuman(req, res)) return;
+      const id = requireParam(req, res, opts.param, opts.missingError);
+      if (!id) return;
+      try {
+        const result = await opts.fetch(deps.pool, id);
+        if (!result) {
+          res.status(404).json({ error: opts.notFoundError });
+          return;
+        }
+        res.json(result);
+      } catch (err) {
+        if (err instanceof AmbiguousShortIdError) {
+          res.status(409).json({ error: "ambiguous_short_id", message: err.message });
+          return;
+        }
+        handleError(err, res, opts.label);
+      }
+    };
+
   router.get("/task", async (req, res) => {
     if (!requireHuman(req, res)) return;
 
@@ -153,21 +208,16 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     }
   });
 
-  router.get("/task/:id", async (req, res) => {
-    if (!requireHuman(req, res)) return;
-    const id = requireParam(req, res, "id", "missing_task_id");
-    if (!id) return;
-    try {
-      const task = await getTask(deps.pool, id);
-      if (!task) {
-        res.status(404).json({ error: "task_not_found" });
-        return;
-      }
-      res.json(task);
-    } catch (err) {
-      handleError(err, res, "task detail");
-    }
-  });
+  router.get(
+    "/task/:id",
+    detailRoute({
+      param: "id",
+      missingError: "missing_task_id",
+      notFoundError: "task_not_found",
+      label: "task detail",
+      fetch: getTask,
+    }),
+  );
 
   router.get("/agent", async (req, res) => {
     if (!requireHuman(req, res)) return;
@@ -200,21 +250,16 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     }
   });
 
-  router.get("/agent/:id", async (req, res) => {
-    if (!requireHuman(req, res)) return;
-    const id = requireParam(req, res, "id", "missing_agent_id");
-    if (!id) return;
-    try {
-      const agent = await getAgent(deps.pool, id);
-      if (!agent) {
-        res.status(404).json({ error: "agent_not_found" });
-        return;
-      }
-      res.json(agent);
-    } catch (err) {
-      handleError(err, res, "agent detail");
-    }
-  });
+  router.get(
+    "/agent/:id",
+    detailRoute({
+      param: "id",
+      missingError: "missing_agent_id",
+      notFoundError: "agent_not_found",
+      label: "agent detail",
+      fetch: getAgent,
+    }),
+  );
 
   router.post("/agent/:id/runtime", async (req, res) => {
     if (!requireHuman(req, res)) return;
@@ -375,42 +420,27 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     }
   });
 
-  // Both short_id session routes share the same shape: require human →
-  // validate short_id → fetch → 404 on miss, 409 on ambiguous prefix.
-  // Factored so the single-session and whole-conversation lookups stay in
-  // lockstep (e.g. if the error contract or auth check changes).
-  const shortIdRoute =
-    <T>(
-      fetch: (pool: Pool, shortId: string) => Promise<T | undefined>,
-      errorLabel: string,
-    ): RequestHandler =>
-    async (req, res) => {
-      if (!requireHuman(req, res)) return;
-      // Express 5 types a bare params value as `string | string[]`; a single
-      // `:shortId` segment is always a string at runtime, but narrow it so
-      // the type matches `fetch`'s `string` param.
-      const shortId = req.params.shortId;
-      if (typeof shortId !== "string" || !shortId) {
-        res.status(400).json({ error: "missing_short_id" });
-        return;
-      }
-      try {
-        const result = await fetch(deps.pool, shortId);
-        if (!result) {
-          res.status(404).json({ error: "session_not_found" });
-          return;
-        }
-        res.json(result);
-      } catch (err) {
-        if (err instanceof AmbiguousShortIdError) {
-          res.status(409).json({ error: "ambiguous_short_id", message: err.message });
-          return;
-        }
-        handleError(err, res, errorLabel);
-      }
-    };
+  /**
+   * `detailRoute` bound to the session short-id contract, so the single-session
+   * and whole-conversation lookups keep sharing one param name, one 400 code
+   * and one 404 code instead of repeating all three.
+   */
+  const sessionDetailRoute = <T>(
+    fetch: (pool: Pool, shortId: string) => Promise<T | undefined>,
+    label: string,
+  ): RequestHandler =>
+    detailRoute({
+      param: "shortId",
+      missingError: "missing_short_id",
+      notFoundError: "session_not_found",
+      label,
+      fetch,
+    });
 
-  router.get("/session/:shortId", shortIdRoute(getSessionByShortId, "session detail"));
+  router.get(
+    "/session/:shortId",
+    sessionDetailRoute(getSessionByShortId, "session detail"),
+  );
 
   // Whole-conversation detail: given the short_id of any chat turn (in
   // practice the head turn's, the URL key the agent detail page links to),
@@ -419,7 +449,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
   // page renders them unchanged.
   router.get(
     "/session/:shortId/conversation",
-    shortIdRoute(getConversationByShortId, "conversation detail"),
+    sessionDetailRoute(getConversationByShortId, "conversation detail"),
   );
 
   /**
@@ -584,21 +614,16 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     }
   });
 
-  router.get("/work-product/:id", async (req, res) => {
-    if (!requireHuman(req, res)) return;
-    const id = requireParam(req, res, "id", "missing_work_product_id");
-    if (!id) return;
-    try {
-      const wp = await getWorkProduct(deps.pool, id);
-      if (!wp) {
-        res.status(404).json({ error: "work_product_not_found" });
-        return;
-      }
-      res.json(wp);
-    } catch (err) {
-      handleError(err, res, "work product detail");
-    }
-  });
+  router.get(
+    "/work-product/:id",
+    detailRoute({
+      param: "id",
+      missingError: "missing_work_product_id",
+      notFoundError: "work_product_not_found",
+      label: "work product detail",
+      fetch: getWorkProduct,
+    }),
+  );
 
   router.get("/inbox", async (req, res) => {
     if (!requireHuman(req, res)) return;

@@ -185,41 +185,50 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
     }
   });
 
+  /**
+   * The approve / reject pair: identical bodies apart from which
+   * `TaskService` verb they call and which outcome they record. Both take an
+   * optional `result_summary`, both fire the best-effort capability-outcome
+   * write, and both answer with the same `{ ok, task: { id, status } }`
+   * projection — so a change to any of that had two places to land.
+   *
+   * `revise`, `retry` and `cancel` deliberately stay hand-written below:
+   * revise dispatches a follow-up session, retry builds a resume reason, and
+   * cancel runs a transition gate plus the WS/pg_notify fan-out. They share
+   * the preamble, not the shape.
+   */
+  const reviewRoute = (
+    apply: (id: string, summary: string | undefined) => Promise<{ id: string; status: string }>,
+    outcome: "approved" | "rejected",
+  ): RequestHandler =>
+    async (req, res) => {
+      if (!requireHuman(req, res)) return;
+      const id = requireParam(req, res, "id", "missing_task_id");
+      if (!id) return;
+      try {
+        const summary =
+          typeof req.body?.result_summary === "string"
+            ? req.body.result_summary
+            : undefined;
+        const updated = await apply(id, summary);
+        void recordCapabilityOutcome(id, outcome, req.caller!.personId, deps);
+        res.json({ ok: true, task: { id: updated.id, status: updated.status } });
+      } catch (err) {
+        handleServiceError(err, res);
+      }
+    };
+
   // POST /task/:id/approve
-  router.post("/:id/approve", async (req, res) => {
-    if (!requireHuman(req, res)) return;
-    const id = requireParam(req, res, "id", "missing_task_id");
-    if (!id) return;
-    try {
-      const summary =
-        typeof req.body?.result_summary === "string"
-          ? req.body.result_summary
-          : undefined;
-      const updated = await deps.taskService.approveTask(id, summary);
-      void recordCapabilityOutcome(id, "approved", req.caller!.personId, deps);
-      res.json({ ok: true, task: { id: updated.id, status: updated.status } });
-    } catch (err) {
-      handleServiceError(err, res);
-    }
-  });
+  router.post(
+    "/:id/approve",
+    reviewRoute((id, summary) => deps.taskService.approveTask(id, summary), "approved"),
+  );
 
   // POST /task/:id/reject
-  router.post("/:id/reject", async (req, res) => {
-    if (!requireHuman(req, res)) return;
-    const id = requireParam(req, res, "id", "missing_task_id");
-    if (!id) return;
-    try {
-      const summary =
-        typeof req.body?.result_summary === "string"
-          ? req.body.result_summary
-          : undefined;
-      const updated = await deps.taskService.rejectTask(id, summary);
-      void recordCapabilityOutcome(id, "rejected", req.caller!.personId, deps);
-      res.json({ ok: true, task: { id: updated.id, status: updated.status } });
-    } catch (err) {
-      handleServiceError(err, res);
-    }
-  });
+  router.post(
+    "/:id/reject",
+    reviewRoute((id, summary) => deps.taskService.rejectTask(id, summary), "rejected"),
+  );
 
   // POST /task/:id/revise
   router.post("/:id/revise", async (req, res) => {

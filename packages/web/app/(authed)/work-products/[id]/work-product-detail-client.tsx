@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ChevronRight,
@@ -9,7 +8,7 @@ import {
   FileText,
 } from "lucide-react";
 import { api, type WorkProductDetail } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
+import { useApiDetailQuery } from "@/lib/hooks/api-query";
 import { queryKeys } from "@/lib/hooks/keys";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { EmptyState } from "@/components/empty-state";
@@ -20,10 +19,11 @@ import { FooterField } from "@/components/detail/footer-field";
 import { formatRelativeTime, shortId } from "@/lib/format";
 
 export function WorkProductDetailClient({ workProductId }: { workProductId: string }) {
-  const query = useQuery<WorkProductDetail>({
-    queryKey: queryKeys.workProducts.detail(workProductId),
-    queryFn: ({ signal }) => api.workProducts.get(workProductId, { signal }),
-    enabled: isApiConfigured && !!workProductId,
+  const query = useApiDetailQuery<WorkProductDetail>({
+    id: workProductId,
+    keyFor: queryKeys.workProducts.detail,
+    fallbackKey: queryKeys.workProducts.all,
+    fetch: (id, ctx) => api.workProducts.get(id, ctx),
     staleTime: 30_000,
   });
 
