@@ -31,8 +31,10 @@ import { api } from "@/lib/api/client";
 const listMock = vi.mocked(api.tasks.list);
 const getMock = vi.mocked(api.tasks.get);
 
-function wrapper() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+function wrapper(queryOptions: { staleTime?: number } = {}) {
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false, ...queryOptions } },
+  });
   return function TestQueryWrapper({ children }: { children: ReactNode }) {
     return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
   };
@@ -81,18 +83,24 @@ describe("useTasks", () => {
     expect(listMock).toHaveBeenCalledWith({ view: "mine" }, expect.objectContaining({}));
   });
 
-  it("treats different filters as separate cache entries", async () => {
-    listMock.mockResolvedValueOnce([sampleTask]).mockResolvedValueOnce([]);
+  // `refetchOnMount: "always"` is a deliberate choice on this hook (see the
+  // comment in use-tasks.ts): landing on /tasks must re-hit the API even
+  // when the slot already holds fresh data, because a missed SSE event
+  // would otherwise leave the board stale. Pinned with `staleTime:
+  // Infinity`, which is the only setting under which a second mount would
+  // otherwise be served purely from cache.
+  it("refetches on every mount even when the cached entry is fresh", async () => {
+    listMock.mockResolvedValue([sampleTask]);
+    const wrap = wrapper({ staleTime: Infinity });
 
-    const wrap = wrapper();
     const a = renderHook(() => useTasks({ view: "mine" }), { wrapper: wrap });
     await waitFor(() => expect(a.result.current.isSuccess).toBe(true));
+    expect(listMock).toHaveBeenCalledTimes(1);
+
     const b = renderHook(() => useTasks({ view: "mine" }), { wrapper: wrap });
     await waitFor(() => expect(b.result.current.isSuccess).toBe(true));
-
     expect(listMock).toHaveBeenCalledTimes(2);
-    expect(listMock).toHaveBeenNthCalledWith(1, { view: "mine" }, expect.objectContaining({}));
-    expect(listMock).toHaveBeenNthCalledWith(2, { view: "mine" }, expect.objectContaining({}));
+    expect(listMock).toHaveBeenLastCalledWith({ view: "mine" }, expect.objectContaining({}));
   });
 
   it("surfaces errors from the api", async () => {
