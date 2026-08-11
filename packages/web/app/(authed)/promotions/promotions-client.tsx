@@ -1,11 +1,10 @@
 "use client";
 
-import { AlertTriangle, Info, TrendingUp, type LucideIcon } from "lucide-react";
-import { EmptyState } from "@/components/empty-state";
+import { Info, TrendingUp } from "lucide-react";
+import { EmptyCard, PageGate } from "@/components/page-gate";
 import { PromotionEventSkeleton } from "@/components/skeletons";
 import { PromotionEventRow } from "@/components/promotions/event-row";
 import { usePromotions } from "@/lib/hooks/use-promotions";
-import { isApiConfigured } from "@/lib/api/config";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
 
 export function PromotionsClient() {
@@ -26,7 +25,25 @@ export function PromotionsClient() {
           </div>
         </div>
 
-        <Body data={data} isLoading={isLoading} isError={isError} />
+        <PageGate
+          query={{ data, isLoading, isError }}
+          notConfigured={{
+            icon: TrendingUp,
+            title: "No promotions yet",
+            description:
+              "Set NEXT_PUBLIC_BV_API_URL and run the API server to load promotion events.",
+          }}
+          error={{ title: "Couldn't load promotions" }}
+          skeleton={
+            <div className="pl-8 space-y-3">
+              {[0, 1, 2].map((i) => (
+                <PromotionEventSkeleton key={i} />
+              ))}
+            </div>
+          }
+        >
+          {(events) => <Loaded events={events} />}
+        </PageGate>
 
         <div className="mt-10 text-xs text-muted-foreground flex items-start gap-2 max-w-2xl">
           <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
@@ -42,42 +59,10 @@ export function PromotionsClient() {
   );
 }
 
-function Body({
-  data,
-  isLoading,
-  isError,
-}: {
-  data: PromotionEvent[] | undefined;
-  isLoading: boolean;
-  isError: boolean;
-}) {
-  if (!isApiConfigured) {
+function Loaded({ events }: { events: PromotionEvent[] }) {
+  if (events.length === 0) {
     return (
-      <EmptyWrapper
-        icon={TrendingUp}
-        title="No promotions yet"
-        description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load promotion events."
-      />
-    );
-  }
-
-  if (isError) {
-    return <EmptyWrapper icon={AlertTriangle} title="Couldn't load promotions" />;
-  }
-
-  if (isLoading) {
-    return (
-      <div className="pl-8 space-y-3">
-        {[0, 1, 2].map((i) => (
-          <PromotionEventSkeleton key={i} />
-        ))}
-      </div>
-    );
-  }
-
-  if (!data || data.length === 0) {
-    return (
-      <EmptyWrapper
+      <EmptyCard
         icon={TrendingUp}
         title="No promotions yet"
         description="Promotion decisions appear here as agents accumulate facts across sessions."
@@ -87,17 +72,9 @@ function Body({
 
   return (
     <div className="pl-8 border-l border-border">
-      {data.map((event) => (
+      {events.map((event) => (
         <PromotionEventRow key={event.id} event={event} />
       ))}
-    </div>
-  );
-}
-
-function EmptyWrapper(props: { icon: LucideIcon; title: string; description?: string }) {
-  return (
-    <div className="rounded-lg border border-dashed border-border">
-      <EmptyState {...props} />
     </div>
   );
 }

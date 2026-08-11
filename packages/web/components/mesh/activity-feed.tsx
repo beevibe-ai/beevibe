@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Network, X } from "lucide-react";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyCard } from "@/components/page-gate";
 import { cn } from "@/lib/utils";
 import type { MeshAsk, MeshAskType, MeshHover } from "@/lib/types/mesh";
 
@@ -103,24 +103,22 @@ export function MeshActivityFeed({
       ) : null}
 
       {visible.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border">
-          <EmptyState
-            icon={Network}
-            title={
-              all.length === 0
-                ? "No mesh asks yet"
-                : selectedAgent
-                  ? `No asks for ${selectedAgent}`
-                  : `No ${filter === "all" ? "" : filter} asks in this window`
-            }
-            description={
-              all.length === 0
-                ? "When agents ask each other for help, exchanges appear here. Ask your team agent to spawn a few subordinates and assign them work."
-                : undefined
-            }
-            cta={all.length === 0 ? { href: "/", label: "Open chat" } : undefined}
-          />
-        </div>
+        <EmptyCard
+          icon={Network}
+          title={
+            all.length === 0
+              ? "No mesh asks yet"
+              : selectedAgent
+                ? `No asks for ${selectedAgent}`
+                : `No ${filter === "all" ? "" : filter} asks in this window`
+          }
+          description={
+            all.length === 0
+              ? "When agents ask each other for help, exchanges appear here. Ask your team agent to spawn a few subordinates and assign them work."
+              : undefined
+          }
+          cta={all.length === 0 ? { href: "/", label: "Open chat" } : undefined}
+        />
       ) : (
         <ul className="space-y-2">
           {visible.map((ask) => {
