@@ -2,6 +2,7 @@ import type { CoreMemory, CoreMemoryOperation } from "@beevibe/core/services/mem
 import type { HierarchyLevel } from "@beevibe/core";
 import { DEFAULT_BLOCK_TEMPLATES } from "@beevibe/core";
 import type { AgentTool } from "./types.js";
+import { toolError } from "./errors.js";
 
 const OPERATIONS: readonly CoreMemoryOperation[] = ["append", "replace"];
 
@@ -196,43 +197,19 @@ export function createUpdateCoreMemoryTool(
       const oldContent = input.old_content;
 
       if (typeof blockName !== "string" || !blockName.trim()) {
-        return {
-          content: { error: "invalid_block_name", message: "block_name must be a non-empty string" },
-          isError: true,
-        };
+        return toolError("invalid_block_name", "block_name must be a non-empty string");
       }
       if (!tierBlocks.includes(blockName)) {
-        return {
-          content: {
-            error: "unknown_block",
-            message: `block_name must be one of: ${tierBlocks.join(", ")}`,
-          },
-          isError: true,
-        };
+        return toolError("unknown_block", `block_name must be one of: ${tierBlocks.join(", ")}`);
       }
       if (typeof operation !== "string" || !OPERATIONS.includes(operation as CoreMemoryOperation)) {
-        return {
-          content: {
-            error: "invalid_operation",
-            message: `operation must be one of: ${OPERATIONS.join(", ")}`,
-          },
-          isError: true,
-        };
+        return toolError("invalid_operation", `operation must be one of: ${OPERATIONS.join(", ")}`);
       }
       if (typeof content !== "string") {
-        return {
-          content: { error: "invalid_content", message: "content must be a string" },
-          isError: true,
-        };
+        return toolError("invalid_content", "content must be a string");
       }
       if (operation === "replace" && (typeof oldContent !== "string" || !oldContent)) {
-        return {
-          content: {
-            error: "missing_old_content",
-            message: "operation='replace' requires old_content",
-          },
-          isError: true,
-        };
+        return toolError("missing_old_content", "operation='replace' requires old_content");
       }
 
       try {
@@ -251,13 +228,7 @@ export function createUpdateCoreMemoryTool(
           },
         };
       } catch (err) {
-        return {
-          content: {
-            error: "update_failed",
-            message: err instanceof Error ? err.message : String(err),
-          },
-          isError: true,
-        };
+        return toolError("update_failed", err instanceof Error ? err.message : String(err));
       }
     },
   };

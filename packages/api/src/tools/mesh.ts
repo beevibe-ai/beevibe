@@ -15,7 +15,7 @@ import type {
   CreateEscalationInput,
 } from "@beevibe/core/services/escalation-service";
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import { toolErrorFromThrown } from "./errors.js";
+import { toolError, toolErrorFromThrown } from "./errors.js";
 import type { AgentTool } from "./types.js";
 import type { McpCaller } from "./assemble.js";
 import type { MeshServer } from "../mesh/server.js";
@@ -311,14 +311,11 @@ function reportBlockerTool(ctx: MeshToolContext, services: MeshToolServices): Ag
         // Server derives parent from caller's hierarchy. Direct parent only.
         const parent = await services.agentRepo.findParent(ctx.caller.agentId);
         if (!parent) {
-          return {
-            content: {
-              error: "no_parent_to_block",
-              message:
-                "Top-level agents have no parent to report blockers to. Use escalate_to_humans or update_progress('failed') instead.",
-            },
-            isError: true,
-          };
+          return toolError(
+            "no_parent_to_block",
+            "Top-level agents have no parent to report blockers to. " +
+              "Use escalate_to_humans or update_progress('failed') instead.",
+          );
         }
 
         // Mark the task blocked + record the blocker_agent_id + reason.

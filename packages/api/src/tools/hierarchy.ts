@@ -52,7 +52,7 @@ import {
   buildIntent,
   type ResumeReason,
 } from "@beevibe/core/services/agent-session";
-import { toolErrorFromThrown } from "./errors.js";
+import { toolError, toolErrorFromThrown } from "./errors.js";
 import type { AgentTool } from "./types.js";
 
 // ── Agent-callable status subsets ─────────────────────────────────────────
@@ -685,13 +685,10 @@ function createTaskTool(
         // Authz: assignee must be one of caller's subordinates.
         const subs = await services.agentRepo.findSubordinates(ctx.agentId);
         if (!subs.some((s) => s.id === targetId)) {
-          return {
-            content: {
-              error: "not_subordinate",
-              message: `Cannot assign tasks to ${targetId} — not a direct subordinate of ${ctx.agentId}.`,
-            },
-            isError: true,
-          };
+          return toolError(
+            "not_subordinate",
+            `Cannot assign tasks to ${targetId} — not a direct subordinate of ${ctx.agentId}.`,
+          );
         }
 
         const priority = (input.priority as (typeof TASK_PRIORITIES)[number]) ?? "medium";
@@ -787,13 +784,10 @@ function checkWorkStatusTool(
         if (targetId !== ctx.agentId) {
           const subs = await services.agentRepo.findSubordinates(ctx.agentId);
           if (!subs.some((s) => s.id === targetId)) {
-            return {
-              content: {
-                error: "unauthorized",
-                message: `Can only check work status for self or a direct subordinate.`,
-              },
-              isError: true,
-            };
+            return toolError(
+              "unauthorized",
+              `Can only check work status for self or a direct subordinate.`,
+            );
           }
         }
 
@@ -863,10 +857,7 @@ function reviseTaskTool(
           return { content: { error: "task_not_found", task_id: taskId }, isError: true };
         }
         if (!task.assignee_id) {
-          return {
-            content: { error: "task_unassigned", message: "task has no assignee" },
-            isError: true,
-          };
+          return toolError("task_unassigned", "task has no assignee");
         }
 
         // Authz: caller must be the assignee's direct parent.
@@ -875,13 +866,10 @@ function reviseTaskTool(
           return { content: { error: "assignee_not_found" }, isError: true };
         }
         if (assignee.parent_agent_id !== ctx.agentId) {
-          return {
-            content: {
-              error: "not_parent",
-              message: `caller ${ctx.agentId} is not the parent of task assignee ${task.assignee_id}`,
-            },
-            isError: true,
-          };
+          return toolError(
+            "not_parent",
+            `caller ${ctx.agentId} is not the parent of task assignee ${task.assignee_id}`,
+          );
         }
 
         const updated = await services.taskService.reviseTask(taskId, feedback, {
@@ -921,7 +909,7 @@ function reviseTaskTool(
         };
       } catch (err) {
         if (err instanceof InvalidTaskTransitionError) {
-          return { content: { error: "invalid_transition", message: err.message }, isError: true };
+          return toolError("invalid_transition", err.message);
         }
         return toolErrorFromThrown(err);
       }
@@ -1134,14 +1122,10 @@ function createSubordinateAgentTool(
     handler: async (input) => {
       try {
         if (ctx.hierarchyLevel === "ic") {
-          return {
-            content: {
-              error: "ic_cannot_spawn",
-              message:
-                "Only team/org agents can spawn subordinates; you are an IC.",
-            },
-            isError: true,
-          };
+          return toolError(
+            "ic_cannot_spawn",
+            "Only team/org agents can spawn subordinates; you are an IC.",
+          );
         }
 
         const name = String(input.name ?? "").trim();
@@ -1151,34 +1135,25 @@ function createSubordinateAgentTool(
         const activeContext = String(input.active_context ?? "").trim();
         const constraints = String(input.constraints ?? "").trim();
         if (!name || !tagLine || !persona || !domain) {
-          return {
-            content: {
-              error: "missing_required_fields",
-              message: "name, tag_line, persona, and domain are all required",
-            },
-            isError: true,
-          };
+          return toolError(
+            "missing_required_fields",
+            "name, tag_line, persona, and domain are all required",
+          );
         }
         // Soft-enforce the tag_line limit so the UI's agent card line stays
         // legible. Hard limit is the column char_limit.
         if (tagLine.length > 100) {
-          return {
-            content: {
-              error: "tag_line_too_long",
-              message: "tag_line must be ≤100 chars",
-              actual: tagLine.length,
-            },
-            isError: true,
-          };
+          return toolError(
+            "tag_line_too_long",
+            "tag_line must be ≤100 chars",
+            { actual: tagLine.length },
+          );
         }
         if (name.length > 80 || PROVISION_NAME_INVALID_RE.test(name)) {
-          return {
-            content: {
-              error: "invalid_name",
-              message: "name must be 1-80 chars and contain no control characters",
-            },
-            isError: true,
-          };
+          return toolError(
+            "invalid_name",
+            "name must be 1-80 chars and contain no control characters",
+          );
         }
 
         // Resolve the parent (caller) so we can inherit owner_id + runtime config.
@@ -1198,17 +1173,12 @@ function createSubordinateAgentTool(
           24 * 60 * 60,
         );
         if (recentSpawns >= SUBORDINATE_DAILY_CAP) {
-          return {
-            content: {
-              error: "subordinate_daily_cap",
-              message:
-                `Parent '${parent.name}' has spawned ${recentSpawns} subordinates in the last 24h ` +
-                `(cap: ${SUBORDINATE_DAILY_CAP}). Reuse an existing specialist or wait for the window to expire.`,
-              cap: SUBORDINATE_DAILY_CAP,
-              count: recentSpawns,
-            },
-            isError: true,
-          };
+          return toolError(
+            "subordinate_daily_cap",
+            `Parent '${parent.name}' has spawned ${recentSpawns} subordinates in the last 24h ` +
+              `(cap: ${SUBORDINATE_DAILY_CAP}). Reuse an existing specialist or wait for the window to expire.`,
+            { cap: SUBORDINATE_DAILY_CAP, count: recentSpawns },
+          );
         }
 
         // Inherit the parent's runtime so all the user's agents share the
