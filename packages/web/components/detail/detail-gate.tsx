@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { AlertTriangle, type LucideIcon } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
 import { DetailShell } from "./detail-shell";
+import { gateCopy } from "./gate-copy";
 import { EmptyState } from "@/components/empty-state";
 
 interface Props<T> {
@@ -43,14 +44,12 @@ interface Props<T> {
  * `noun` here, so a page can't word them a fourth way.
  */
 export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }: Props<T>) {
+  const copy = gateCopy(noun, id);
+
   if (!isApiConfigured) {
     return (
       <DetailShell nav={nav}>
-        <EmptyState
-          icon={icon}
-          title="API not configured"
-          description={`Set NEXT_PUBLIC_BV_API_URL and run the API server to load this ${noun}.`}
-        />
+        <EmptyState icon={icon} title="API not configured" description={copy.notConfigured} />
       </DetailShell>
     );
   }
@@ -60,13 +59,12 @@ export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }
   }
 
   if (query.isError || !query.data) {
-    const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
     return (
       <DetailShell nav={nav}>
         <EmptyState
           icon={AlertTriangle}
-          title={`Couldn't load ${noun}`}
-          description={`${Noun} ${id} could not be fetched. Check the API server logs.`}
+          title={copy.errorTitle}
+          description={copy.errorDescription}
         />
       </DetailShell>
     );
