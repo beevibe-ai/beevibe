@@ -16,7 +16,7 @@
  *     killed).
  */
 
-import { Router, type RequestHandler, type Response } from "express";
+import { Router, type RequestHandler } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   TASK_PRIORITIES,
@@ -42,7 +42,7 @@ import { buildIntent, type ResumeReason } from "@beevibe/core/services/agent-ses
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "../runtime/hub.js";
-import { requireParam } from "./http-errors.js";
+import { makeDomainErrorHandler, requireParam } from "./http-errors.js";
 
 /** Statuses from which /cancel is legal. Anything non-terminal. */
 const CANCELLABLE_FROM: readonly TaskStatus[] = [
@@ -115,21 +115,10 @@ async function recordCapabilityOutcome(
   }
 }
 
-function handleServiceError(err: unknown, res: Response): void {
-  if (err instanceof TaskNotFoundError) {
-    res.status(404).json({ error: "task_not_found", message: err.message });
-    return;
-  }
-  if (err instanceof InvalidTaskTransitionError) {
-    res.status(409).json({ error: "invalid_transition", message: err.message });
-    return;
-  }
-  console.error("[task route]", err);
-  res.status(500).json({
-    error: "internal_error",
-    message: err instanceof Error ? err.message : String(err),
-  });
-}
+const handleServiceError = makeDomainErrorHandler("task route", [
+  { error: TaskNotFoundError, status: 404, code: "task_not_found" },
+  { error: InvalidTaskTransitionError, status: 409, code: "invalid_transition" },
+]);
 
 function parsePriority(input: unknown): TaskPriority | undefined {
   if (typeof input !== "string") return undefined;

@@ -6,7 +6,7 @@ import { AlertTriangle, Bot, LayoutGrid, List, Maximize2, Minus, Plus } from "lu
 import type { PanZoomTransform } from "@/lib/hooks/use-pan-zoom";
 import { useAgentNetwork } from "@/lib/hooks/use-agent-network";
 import { isApiConfigured } from "@/lib/api/config";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyPanel } from "@/components/empty-state";
 import { TeamOrbit } from "@/components/team-orbit";
 import { AgentDetailPanel } from "@/components/agents/agent-detail-panel";
 import { AgentsListView } from "@/components/agents/agents-list-view";
@@ -400,9 +400,12 @@ function CenteredShell({
 }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center p-6">
-      <div className="rounded-lg border border-dashed border-border w-full max-w-md">
-        <EmptyState icon={icon} title={title} description={description} />
-      </div>
+      <EmptyPanel
+        className="w-full max-w-md"
+        icon={icon}
+        title={title}
+        description={description}
+      />
     </div>
   );
 }

@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  makeDomainErrorHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +218,67 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+class NotFound extends Error {}
+class Conflict extends Error {}
+class ConflictSubclass extends Conflict {}
+
+describe("makeDomainErrorHandler", () => {
+  const handle = makeDomainErrorHandler("test route", [
+    { error: NotFound, status: 404, code: "not_found" },
+    { error: Conflict, status: 409, code: "conflict" },
+  ]);
+
+  it("maps a listed error class to its status and code, keeping the message", () => {
+    const res = fakeRes();
+    handle(new NotFound("no such task"), res);
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "not_found", message: "no such task" });
+  });
+
+  it("picks the entry matching the thrown class, not just the first one", () => {
+    const res = fakeRes();
+    handle(new Conflict("already done"), res);
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({ error: "conflict", message: "already done" });
+  });
+
+  // The three routers this replaced all relied on `instanceof`, which is
+  // true for subclasses too. Locking it in so a future domain-error
+  // hierarchy keeps answering with its base's status instead of 500-ing.
+  it("matches a subclass of a listed error via instanceof", () => {
+    const res = fakeRes();
+    handle(new ConflictSubclass("derived"), res);
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({ error: "conflict", message: "derived" });
+  });
+
+  it("falls through to a logged 500 for an unrecognized error", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    handle(new Error("boom"), res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "boom" });
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("stringifies a non-Error throw on the fallthrough branch", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    handle("just a string", res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "just a string" });
+    spy.mockRestore();
+  });
+
+  it("includes the per-call context in the fallthrough log tag", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    handle(new Error("boom"), res, "resolve");
+    expect(spy).toHaveBeenCalledWith("[test route: resolve]", expect.any(Error));
+    spy.mockRestore();
   });
 });

@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Network, X } from "lucide-react";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyPanel } from "@/components/empty-state";
 import { cn } from "@/lib/utils";
 import type { MeshAsk, MeshAskType, MeshHover } from "@/lib/types/mesh";
 
@@ -103,8 +103,7 @@ export function MeshActivityFeed({
       ) : null}
 
       {visible.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border">
-          <EmptyState
+        <EmptyPanel
             icon={Network}
             title={
               all.length === 0
@@ -119,8 +118,7 @@ export function MeshActivityFeed({
                 : undefined
             }
             cta={all.length === 0 ? { href: "/", label: "Open chat" } : undefined}
-          />
-        </div>
+        />
       ) : (
         <ul className="space-y-2">
           {visible.map((ask) => {

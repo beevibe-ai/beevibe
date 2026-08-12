@@ -150,3 +150,52 @@ export function makeErrorHandler(
     });
   };
 }
+
+/**
+ * One entry in a router's domain-error table: "instances of this error
+ * class answer with this status and this error code".
+ *
+ * The constructor is typed as an abstract-constructor-shaped value rather
+ * than `new (...) => Error` so subclasses of an abstract domain-error base
+ * can be listed too — `instanceof` works either way, but a plain
+ * `new`-signature won't accept an abstract class.
+ */
+export interface DomainErrorMapping {
+  error: abstract new (...args: never[]) => Error;
+  status: number;
+  code: string;
+}
+
+/**
+ * The catch-block every service-backed router grew its own copy of: walk a
+ * table of domain error classes, answer the first `instanceof` hit with its
+ * status + code, and fall through to {@link makeErrorHandler}'s log-and-500
+ * for anything unrecognized.
+ *
+ * `task`, `escalation` and `negotiation` each spelled this out by hand —
+ * `task.ts`'s `handleServiceError`, `escalation.ts`'s
+ * `handleEscalationError`, and an inline copy in `negotiation.ts`'s one
+ * handler. All three ended in the identical five-line 500 tail that
+ * `makeErrorHandler` already owns, so the copies were re-deriving a helper
+ * that sat one import away; only the class→code prefix differed.
+ *
+ * Order matters and is preserved: the first matching entry wins, so a
+ * subclass must be listed ahead of its base. `message` stays the error's
+ * own `err.message` for both the mapped and the fallthrough branch, which
+ * is what all three routers already did.
+ */
+export function makeDomainErrorHandler(
+  tag: string,
+  mappings: readonly DomainErrorMapping[],
+): (err: unknown, res: Response, context?: string) => void {
+  const fallback = makeErrorHandler(tag);
+  return (err, res, context) => {
+    for (const m of mappings) {
+      if (err instanceof m.error) {
+        res.status(m.status).json({ error: m.code, message: (err as Error).message });
+        return;
+      }
+    }
+    fallback(err, res, context);
+  };
+}

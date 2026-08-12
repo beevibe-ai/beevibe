@@ -8,6 +8,7 @@ import { isApiConfigured } from "@/lib/api/config";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { DatePicker, todayIso } from "@/components/date-picker";
+import { cn } from "@/lib/utils";
 import type {
   AgentActivityRow,
   AgentRatioRow,
@@ -339,40 +340,32 @@ function ScopeTypeSection({ rows }: { rows: ScopeTypeRow[] }) {
     byScope[r.scope] = byScope[r.scope] ?? {};
     byScope[r.scope]![r.fact_type] = r.writes;
   }
+  const columns: Array<StatColumn<(typeof scopes)[number]>> = [
+    {
+      header: "Scope",
+      align: "left",
+      className: "text-foreground",
+      cell: (scope) => scope,
+    },
+    ...FACT_TYPES.map((ft) => ({
+      header: ft,
+      cell: (scope: (typeof scopes)[number]) => {
+        const writes = byScope[scope]?.[ft];
+        return writes ? fmt(writes) : "—";
+      },
+    })),
+    {
+      header: "Total",
+      className: "font-semibold",
+      cell: (scope) => {
+        const total = Object.values(byScope[scope] ?? {}).reduce((a, b) => a + b, 0);
+        return total ? fmt(total) : "—";
+      },
+    },
+  ];
   return (
     <Card title="Archival writes · scope × fact_type">
-      <table className="w-full text-xs">
-        <thead className="text-muted-foreground text-[10px] uppercase tracking-wider">
-          <tr className="border-b border-border/40">
-            <th className="text-left py-1.5">Scope</th>
-            {FACT_TYPES.map((ft) => (
-              <th key={ft} className="text-right py-1.5">
-                {ft}
-              </th>
-            ))}
-            <th className="text-right py-1.5">Total</th>
-          </tr>
-        </thead>
-        <tbody className="tabular-nums">
-          {scopes.map((scope) => {
-            const row = byScope[scope] ?? {};
-            const total = Object.values(row).reduce((a, b) => a + b, 0);
-            return (
-              <tr key={scope} className="border-b border-border/20 last:border-0">
-                <td className="py-1.5 text-foreground">{scope}</td>
-                {FACT_TYPES.map((ft) => (
-                  <td key={ft} className="text-right py-1.5">
-                    {row[ft] ? fmt(row[ft]!) : "—"}
-                  </td>
-                ))}
-                <td className="text-right py-1.5 font-semibold">
-                  {total ? fmt(total) : "—"}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <StatTable columns={columns} rows={scopes} rowKey={(scope) => scope} />
     </Card>
   );
 }
@@ -381,42 +374,35 @@ function ScopeTypeSection({ rows }: { rows: ScopeTypeRow[] }) {
 // Top + dormant agents
 // ─────────────────────────────────────────────────────────────────────────
 
+/** Agent name + tier — the two leading columns every per-agent table opens with. */
+function agentIdentityColumns<T extends { agent_id: string; name: string; tier: string }>(
+  maxWidth = "max-w-[160px]",
+): Array<StatColumn<T>> {
+  return [
+    {
+      header: "Agent",
+      align: "left",
+      className: `text-foreground truncate ${maxWidth}`,
+      cell: (r) => <AgentLink id={r.agent_id} name={r.name} />,
+    },
+    { header: "Tier", align: "left", className: "text-muted-foreground", cell: (r) => r.tier },
+  ];
+}
+
 function TopAgentsTable({ rows }: { rows: AgentActivityRow[] }) {
   return (
     <Card title="Top writers · 30d" subtitle="by archival count">
-      {rows.length === 0 ? (
-        <EmptyHint>No agents wrote archival in the last 30 days.</EmptyHint>
-      ) : (
-        <table className="w-full text-xs">
-          <thead className="text-muted-foreground text-[10px] uppercase tracking-wider">
-            <tr className="border-b border-border/40">
-              <th className="text-left py-1.5">Agent</th>
-              <th className="text-left py-1.5">Tier</th>
-              <th className="text-right py-1.5">Writes</th>
-              <th className="text-right py-1.5">Types</th>
-              <th className="text-right py-1.5">Last</th>
-            </tr>
-          </thead>
-          <tbody className="tabular-nums">
-            {rows.map((r) => (
-              <tr key={r.agent_id} className="border-b border-border/20 last:border-0">
-                <td className="py-1.5 text-foreground truncate max-w-[160px]">
-                  <Link
-                    href={`/agents/${r.agent_id}`}
-                    className="hover:underline"
-                  >
-                    {r.name}
-                  </Link>
-                </td>
-                <td className="py-1.5 text-muted-foreground">{r.tier}</td>
-                <td className="text-right py-1.5">{fmt(r.writes_30d)}</td>
-                <td className="text-right py-1.5">{r.type_variety}</td>
-                <td className="text-right py-1.5 text-muted-foreground">{r.last_write}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <StatTable
+        rows={rows}
+        rowKey={(r) => r.agent_id}
+        empty="No agents wrote archival in the last 30 days."
+        columns={[
+          ...agentIdentityColumns<AgentActivityRow>(),
+          { header: "Writes", cell: (r) => fmt(r.writes_30d) },
+          { header: "Types", cell: (r) => r.type_variety },
+          { header: "Last", className: "text-muted-foreground", cell: (r) => r.last_write },
+        ]}
+      />
     </Card>
   );
 }
@@ -424,39 +410,24 @@ function TopAgentsTable({ rows }: { rows: AgentActivityRow[] }) {
 function DormantAgentsTable({ rows }: { rows: DormantAgentRow[] }) {
   return (
     <Card title="Dormant · 0 writes in 30d" subtitle="newest agents first">
-      {rows.length === 0 ? (
-        <EmptyHint>All agents wrote archival in the last 30 days.</EmptyHint>
-      ) : (
-        <table className="w-full text-xs">
-          <thead className="text-muted-foreground text-[10px] uppercase tracking-wider">
-            <tr className="border-b border-border/40">
-              <th className="text-left py-1.5">Agent</th>
-              <th className="text-left py-1.5">Tier</th>
-              <th className="text-right py-1.5">Last write</th>
-              <th className="text-right py-1.5">Created</th>
-            </tr>
-          </thead>
-          <tbody className="tabular-nums">
-            {rows.map((r) => (
-              <tr key={r.agent_id} className="border-b border-border/20 last:border-0">
-                <td className="py-1.5 text-foreground truncate max-w-[160px]">
-                  <Link
-                    href={`/agents/${r.agent_id}`}
-                    className="hover:underline"
-                  >
-                    {r.name}
-                  </Link>
-                </td>
-                <td className="py-1.5 text-muted-foreground">{r.tier}</td>
-                <td className="text-right py-1.5 text-muted-foreground">
-                  {r.last_write_ever ?? "never"}
-                </td>
-                <td className="text-right py-1.5 text-muted-foreground">{r.agent_created}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <StatTable
+        rows={rows}
+        rowKey={(r) => r.agent_id}
+        empty="All agents wrote archival in the last 30 days."
+        columns={[
+          ...agentIdentityColumns<DormantAgentRow>(),
+          {
+            header: "Last write",
+            className: "text-muted-foreground",
+            cell: (r) => r.last_write_ever ?? "never",
+          },
+          {
+            header: "Created",
+            className: "text-muted-foreground",
+            cell: (r) => r.agent_created,
+          },
+        ]}
+      />
     </Card>
   );
 }
@@ -471,41 +442,20 @@ function CoreSnapshotTable({ rows }: { rows: CoreSnapshotRow[] }) {
       title="Core memory · current state"
       subtitle="snapshot proxies (undercount churn)"
     >
-      {rows.length === 0 ? (
-        <EmptyHint>No core memory blocks exist yet.</EmptyHint>
-      ) : (
-        <table className="w-full text-xs">
-          <thead className="text-muted-foreground text-[10px] uppercase tracking-wider">
-            <tr className="border-b border-border/40">
-              <th className="text-left py-1.5">Tier</th>
-              <th className="text-left py-1.5">Block</th>
-              <th className="text-right py-1.5">Blocks</th>
-              <th className="text-right py-1.5">Non-empty</th>
-              <th className="text-right py-1.5">Ever updated</th>
-              <th className="text-right py-1.5">Updated 30d</th>
-              <th className="text-right py-1.5">Avg chars</th>
-            </tr>
-          </thead>
-          <tbody className="tabular-nums">
-            {rows.map((r) => (
-              <tr
-                key={`${r.tier}:${r.block_name}`}
-                className="border-b border-border/20 last:border-0"
-              >
-                <td className="py-1.5 text-muted-foreground">{r.tier}</td>
-                <td className="py-1.5 text-foreground">{r.block_name}</td>
-                <td className="text-right py-1.5">{fmt(r.blocks)}</td>
-                <td className="text-right py-1.5">{fmt(r.non_empty)}</td>
-                <td className="text-right py-1.5">{fmt(r.ever_updated)}</td>
-                <td className="text-right py-1.5">{fmt(r.updated_30d)}</td>
-                <td className="text-right py-1.5 text-muted-foreground">
-                  {fmt(r.avg_chars)}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <StatTable
+        rows={rows}
+        rowKey={(r) => `${r.tier}:${r.block_name}`}
+        empty="No core memory blocks exist yet."
+        columns={[
+          { header: "Tier", align: "left", className: "text-muted-foreground", cell: (r) => r.tier },
+          { header: "Block", align: "left", className: "text-foreground", cell: (r) => r.block_name },
+          { header: "Blocks", cell: (r) => fmt(r.blocks) },
+          { header: "Non-empty", cell: (r) => fmt(r.non_empty) },
+          { header: "Ever updated", cell: (r) => fmt(r.ever_updated) },
+          { header: "Updated 30d", cell: (r) => fmt(r.updated_30d) },
+          { header: "Avg chars", className: "text-muted-foreground", cell: (r) => fmt(r.avg_chars) },
+        ]}
+      />
     </Card>
   );
 }
@@ -516,38 +466,17 @@ function RatioTable({ rows }: { rows: AgentRatioRow[] }) {
       title="Archival ÷ core · per agent (30d)"
       subtitle="high ratio = bias toward archival, never touches core"
     >
-      {rows.length === 0 ? (
-        <EmptyHint>No memory writes in the last 30 days.</EmptyHint>
-      ) : (
-        <table className="w-full text-xs">
-          <thead className="text-muted-foreground text-[10px] uppercase tracking-wider">
-            <tr className="border-b border-border/40">
-              <th className="text-left py-1.5">Agent</th>
-              <th className="text-left py-1.5">Tier</th>
-              <th className="text-right py-1.5">Archival</th>
-              <th className="text-right py-1.5">Core touched</th>
-              <th className="text-right py-1.5">Ratio</th>
-            </tr>
-          </thead>
-          <tbody className="tabular-nums">
-            {rows.map((r) => (
-              <tr key={r.agent_id} className="border-b border-border/20 last:border-0">
-                <td className="py-1.5 text-foreground truncate max-w-[200px]">
-                  <Link href={`/agents/${r.agent_id}`} className="hover:underline">
-                    {r.name}
-                  </Link>
-                </td>
-                <td className="py-1.5 text-muted-foreground">{r.tier}</td>
-                <td className="text-right py-1.5">{fmt(r.archival_30d)}</td>
-                <td className="text-right py-1.5">{fmt(r.core_touched_30d)}</td>
-                <td className="text-right py-1.5 font-semibold">
-                  {r.ratio === null ? "—" : r.ratio}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
+      <StatTable
+        rows={rows}
+        rowKey={(r) => r.agent_id}
+        empty="No memory writes in the last 30 days."
+        columns={[
+          ...agentIdentityColumns<AgentRatioRow>("max-w-[200px]"),
+          { header: "Archival", cell: (r) => fmt(r.archival_30d) },
+          { header: "Core touched", cell: (r) => fmt(r.core_touched_30d) },
+          { header: "Ratio", className: "font-semibold", cell: (r) => (r.ratio === null ? "—" : r.ratio) },
+        ]}
+      />
     </Card>
   );
 }
@@ -651,6 +580,88 @@ function EmptyHint({ children }: { children: React.ReactNode }) {
     <div className="text-xs text-muted-foreground py-4 text-center">
       {children}
     </div>
+  );
+}
+
+/**
+ * One column of a {@link StatTable}: its header, how to render a cell, and
+ * which way it aligns. `align` defaults to `"right"` because every table on
+ * this page is one or two label columns followed by a run of numbers.
+ *
+ * `className` is merged onto the `<td>` rather than replacing it, so a
+ * column can add emphasis (`font-semibold` on a total, `text-muted-foreground`
+ * on a de-emphasized timestamp) without restating the padding and alignment.
+ */
+interface StatColumn<T> {
+  header: React.ReactNode;
+  cell: (row: T) => React.ReactNode;
+  align?: "left" | "right";
+  className?: string;
+}
+
+/**
+ * The metrics table this page draws five times.
+ *
+ * `ScopeTypeSection`, `TopAgentsTable`, `DormantAgentsTable`,
+ * `CoreSnapshotTable` and `RatioTable` had each spelled out the same
+ * `<table>` / `<thead>` / `<tbody>` scaffold with the same six utility-class
+ * strings — `w-full text-xs`, the `text-[10px] uppercase tracking-wider`
+ * head, `border-b border-border/40`, `tabular-nums`, `border-b
+ * border-border/20 last:border-0`, `py-1.5`. Only the column list and the
+ * empty-state sentence actually differed between them, so those are the two
+ * things this takes as props.
+ *
+ * Rendering `empty` in place of the table (rather than an empty `<tbody>`)
+ * preserves what four of the five already did; `ScopeTypeSection` pivots a
+ * fixed three-scope matrix and can't be empty, so it passes no `empty`.
+ */
+function StatTable<T>({
+  columns,
+  rows,
+  rowKey,
+  empty,
+}: {
+  columns: ReadonlyArray<StatColumn<T>>;
+  rows: readonly T[];
+  rowKey: (row: T, index: number) => string;
+  empty?: React.ReactNode;
+}) {
+  if (rows.length === 0 && empty !== undefined) return <EmptyHint>{empty}</EmptyHint>;
+  return (
+    <table className="w-full text-xs">
+      <thead className="text-muted-foreground text-[10px] uppercase tracking-wider">
+        <tr className="border-b border-border/40">
+          {columns.map((c, i) => (
+            <th key={i} className={c.align === "left" ? "text-left py-1.5" : "text-right py-1.5"}>
+              {c.header}
+            </th>
+          ))}
+        </tr>
+      </thead>
+      <tbody className="tabular-nums">
+        {rows.map((row, ri) => (
+          <tr key={rowKey(row, ri)} className="border-b border-border/20 last:border-0">
+            {columns.map((c, ci) => (
+              <td
+                key={ci}
+                className={cn(c.align === "left" ? "py-1.5" : "text-right py-1.5", c.className)}
+              >
+                {c.cell(row)}
+              </td>
+            ))}
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+/** The agent-name link three of the tables render identically. */
+function AgentLink({ id, name }: { id: string; name: string }) {
+  return (
+    <Link href={`/agents/${id}`} className="hover:underline">
+      {name}
+    </Link>
   );
 }
 

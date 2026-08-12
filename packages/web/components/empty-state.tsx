@@ -16,6 +16,30 @@ interface Props {
   className?: string;
 }
 
+/**
+ * `EmptyState` inside the dashed-border panel that every page-level
+ * empty / error / not-connected branch draws around it.
+ *
+ * The wrapper is one div, which is exactly why it got copy-pasted instead
+ * of shared: `dashboard`, `mesh`, `runtimes` and `activity-feed` each
+ * inlined `<div className="rounded-lg border border-dashed border-border">`
+ * around an `<EmptyState>`, and `promotions` had already extracted a
+ * private `EmptyWrapper` doing the same thing — the abstraction was
+ * wanted three times over, it just never made it out of its file.
+ *
+ * `className` merges rather than replaces so the two call sites that need
+ * sizing (`agents`' centered shell wants `w-full max-w-md`, `runtimes`'
+ * no-daemons panel wants `bg-card/40 p-8`) keep their own chrome without
+ * re-spelling the border.
+ */
+export function EmptyPanel({ className, ...props }: Props) {
+  return (
+    <div className={cn("rounded-lg border border-dashed border-border", className)}>
+      <EmptyState {...props} />
+    </div>
+  );
+}
+
 export function EmptyState({ icon: Icon, title, description, cta, className }: Props) {
   return (
     <div
