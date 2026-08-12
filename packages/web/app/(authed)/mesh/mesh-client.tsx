@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { AlertTriangle, Info, Network } from "lucide-react";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyPanel } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { MeshAskSkeleton } from "@/components/skeletons";
 import { MeshActivityFeed } from "@/components/mesh/activity-feed";
@@ -58,21 +58,17 @@ function Body({
 }) {
   if (!isApiConfigured) {
     return (
-      <div className="rounded-lg border border-dashed border-border">
-        <EmptyState
-          icon={Network}
-          title="No mesh asks yet"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load mesh activity."
-        />
-      </div>
+      <EmptyPanel
+        icon={Network}
+        title="No mesh asks yet"
+        description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load mesh activity."
+      />
     );
   }
 
   if (isError) {
     return (
-      <div className="rounded-lg border border-dashed border-border">
-        <EmptyState icon={AlertTriangle} title="Couldn't load mesh activity" />
-      </div>
+      <EmptyPanel icon={AlertTriangle} title="Couldn't load mesh activity" />
     );
   }
 

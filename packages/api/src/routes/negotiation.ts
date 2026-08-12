@@ -14,12 +14,16 @@ import {
   NegotiationNotFoundError,
 } from "@beevibe/core/services/negotiation-service";
 import { requireHuman } from "../auth/middleware.js";
-import { requireParam } from "./http-errors.js";
+import { makeDomainErrorHandler, requireParam } from "./http-errors.js";
 
 export interface NegotiationRoutesDeps {
   authMiddleware: RequestHandler;
   negotiationService: NegotiationService;
 }
+
+const handleNegotiationError = makeDomainErrorHandler("negotiation route", [
+  { error: NegotiationNotFoundError, status: 404, code: "negotiation_not_found" },
+]);
 
 export function createNegotiationRouter(deps: NegotiationRoutesDeps): Router {
   const router = Router();
@@ -33,15 +37,7 @@ export function createNegotiationRouter(deps: NegotiationRoutesDeps): Router {
       const negotiation = await deps.negotiationService.getReview(id);
       res.json({ ok: true, negotiation });
     } catch (err) {
-      if (err instanceof NegotiationNotFoundError) {
-        res.status(404).json({ error: "negotiation_not_found", message: err.message });
-        return;
-      }
-      console.error("[negotiation route]", err);
-      res.status(500).json({
-        error: "internal_error",
-        message: err instanceof Error ? err.message : String(err),
-      });
+      handleNegotiationError(err, res);
     }
   });
 
