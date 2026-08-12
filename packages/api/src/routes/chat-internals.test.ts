@@ -225,6 +225,25 @@ describe("chainToMessages", () => {
     expect(out[3]?.content).toBe("Both done; running tests.");
   });
 
+  it("renders a failed turn's agent bubble via failureMessageFor", () => {
+    const s = makeSession({
+      id: "sess_bad",
+      intent: "deploy",
+      status: "failed",
+      error: "ENOSPC: no space left on device",
+    });
+    const out = chainToMessages({ head_id: s.id, sessions: [s] });
+    expect(out.map((m) => m.role)).toEqual(["user", "agent"]);
+    expect(out[1]?.content).toBe("ENOSPC: no space left on device");
+    expect(out[1]?.session_id).toBe("sess_bad");
+  });
+
+  it("emits no agent bubble for an in-flight turn", () => {
+    const s = makeSession({ id: "sess_run", intent: "deploy", status: "running" });
+    const out = chainToMessages({ head_id: s.id, sessions: [s] });
+    expect(out.map((m) => m.role)).toEqual(["user"]);
+  });
+
   it("preserves a 'Wake reason:' prefix in the system message", () => {
     const s = makeSession({
       id: "sess_wake",
