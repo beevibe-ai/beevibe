@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { RuntimeContext, RuntimeStep } from "../../ports/runtime.js";
 import { CodexRuntime } from "./runtime.js";
@@ -253,6 +253,19 @@ describe("CodexRuntime.execute", () => {
     mockRunCli({ ...MOCK_OK, aborted: true, stdout: "" });
     const result = await new CodexRuntime().execute(ctx());
     expect(result.status).toBe("cancelled");
+  });
+
+  it("deletes the last-message file on the abort path too", async () => {
+    // The success path reads the file and then removes it. Cancelling
+    // short-circuits before that read, so the cleanup has to be repeated on
+    // the abort branch — otherwise every cancelled turn leaves a
+    // `.beevibe-codex-last-message-*.txt` behind in the workspace.
+    mockRunCli({ ...MOCK_OK, aborted: true, stdout: "" });
+    await new CodexRuntime().execute(ctx());
+    const outputIdx = lastOptions?.args?.indexOf("--output-last-message") ?? -1;
+    const outputPath = outputIdx >= 0 ? lastOptions?.args?.[outputIdx + 1] : undefined;
+    expect(outputPath).toBeDefined();
+    expect(existsSync(outputPath as string)).toBe(false);
   });
 
   it("surfaces stderr tail on failure so /runtime/done has something actionable", async () => {

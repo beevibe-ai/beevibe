@@ -8,21 +8,16 @@ import type {
   RuntimeWorkspaceContext,
   Workspace,
 } from "../../ports/runtime.js";
-import { runCliProcess } from "../claude-code/spawn.js";
 import { MCP_TOOL_TIMEOUT_MS } from "../local-workspace/manager.js";
 import {
-  cancelledResult,
   cliVersionHealthCheck,
   composePrompt,
-  createStdoutLineReader,
-  finalizeCliResult,
-  warnIfTruncated,
+  runCliSession,
 } from "../runtime-common.js";
 import {
   extractCodexStepEvents,
   parseCodexEventLine,
   parseCodexEvents,
-  type CodexEvent,
 } from "./stream-json.js";
 
 export interface CodexRuntimeConfig {
@@ -120,44 +115,26 @@ export class CodexRuntime implements AgentRuntime {
     if (context.env) Object.assign(env, context.env);
     if (prepared) env.BEEVIBE_AGENT_API_KEY = prepared.agentApiKey;
 
-    const events: CodexEvent[] = [];
-    const handleLine = (line: string): void => {
-      const evt = parseCodexEventLine(line);
-      if (!evt) return;
-      events.push(evt);
-      if (!context.onStep) return;
-      for (const step of extractCodexStepEvents(evt)) {
-        context.onStep(step);
-      }
-    };
-    const stdout = createStdoutLineReader(handleLine);
-
-    const result = await runCliProcess({
+    return runCliSession({
+      runtimeTag: "CodexRuntime",
+      context,
       command: this.config.command ?? "codex",
       args,
       cwd: context.workspace.path,
       env,
-      abortSignal: context.abort_signal,
-      onSpawn: ({ pid, process_group_id }) => {
-        context.onSpawn?.({ process_pid: pid, process_group_id });
+      parseLine: parseCodexEventLine,
+      extractSteps: extractCodexStepEvents,
+      // codex writes its final assistant message to a side file rather than
+      // the event stream, so read (and clean up) that here...
+      parseEvents: (events, exitCode) => {
+        const lastMessage = readIfExists(lastMessagePath);
+        removeIfExists(lastMessagePath);
+        return parseCodexEvents(events, exitCode, lastMessage);
       },
-      onLog: stdout.onLog,
+      // ...and on the abort path, where there is no message to read but the
+      // file still has to go — codex leaves it behind otherwise.
+      onAbort: () => removeIfExists(lastMessagePath),
     });
-    stdout.flush();
-
-    warnIfTruncated("CodexRuntime", result);
-
-    if (result.aborted) {
-      removeIfExists(lastMessagePath);
-      return cancelledResult(result);
-    }
-
-    const lastMessage = readIfExists(lastMessagePath);
-    removeIfExists(lastMessagePath);
-    return finalizeCliResult(
-      parseCodexEvents(events, result.exitCode, lastMessage),
-      result,
-    );
   }
 
   async healthCheck(): Promise<RuntimeHealth> {
