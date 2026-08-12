@@ -122,10 +122,26 @@ export function createMemoryAgent(deps: MemoryAgentDeps): MemoryAgent {
 
   return {
     async prepareBriefing(intent: string): Promise<BriefingResult> {
-      const [blocks, facts] = await Promise.all([
-        deps.coreMemory.read(deps.agentId),
-        searchFacts(intent),
-      ]);
+      // searchFacts() drives the OpenAI embed call + the pgvector query.
+      // A transient OpenAI hiccup must not fail the whole briefing —
+      // /runtime/claim already won the atomic UPDATE for this session,
+      // so throwing here would mark a legitimately-claimed session
+      // `failed`. Degrade to an empty archival half (the agent's core
+      // memory still ships in the system prompt) and log loudly so the
+      // operator sees the underlying provider error.
+      //
+      // coreMemory.read is a plain Postgres read; structural DB failures
+      // should propagate so the caller can decide whether to retry the
+      // whole claim.
+      const blocksPromise = deps.coreMemory.read(deps.agentId);
+      const factsPromise = searchFacts(intent).catch((err: unknown) => {
+        console.error(
+          `[MemoryAgent] prepareBriefing search degraded for ${deps.agentId} — returning 0 archival facts:`,
+          err instanceof Error ? err.message : err,
+        );
+        return [] as readonly MemoryFact[];
+      });
+      const [blocks, facts] = await Promise.all([blocksPromise, factsPromise]);
       return composeBriefing(blocks, facts);
     },
 

@@ -297,7 +297,6 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
    * on the hot path.
    */
   const sessionCache = new SessionCache({
-    sessionRepo,
     maxEntries: cfg.sessionCacheMaxEntries,
     idleTimeoutMs: cfg.sessionCacheIdleTimeoutMs,
     onEvict: async (beevibeSid) => {
@@ -307,6 +306,27 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
       await memoryAgent.onTaskComplete(beevibeSid);
     },
   });
+
+  // SessionCache is in-memory: on api restart a `running` chat session
+  // has no daemon to report it terminal and would sit `running` forever.
+  // One-shot sweep at boot reaps stale chat rows (2× the cache's idle TTL)
+  // before startIdleSweep so the sweep can't race the orphan write.
+  const chatOrphanThresholdMs = (cfg.sessionCacheIdleTimeoutMs ?? 30 * 60 * 1000) * 2;
+  try {
+    const reaped = await sessionRepo.markAbandonedChatSessions(chatOrphanThresholdMs);
+    if (reaped > 0) {
+      console.warn(
+        `[bootstrap] reaped ${reaped} abandoned chat session(s) older than ${Math.round(
+          chatOrphanThresholdMs / 60_000,
+        )}m at startup`,
+      );
+    }
+  } catch (err) {
+    console.error(
+      "[bootstrap] markAbandonedChatSessions failed (non-fatal):",
+      err instanceof Error ? err.message : err,
+    );
+  }
   sessionCache.startIdleSweep();
 
   const server = new BeevibeApiServer({

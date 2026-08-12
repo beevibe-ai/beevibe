@@ -1,17 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { SessionRepository } from "@beevibe/core";
 import { SessionCache } from "./session-cache.js";
-
-function fakeSessionRepo(): { repo: SessionRepository; updates: Array<{ id: string; patch: unknown }> } {
-  const updates: Array<{ id: string; patch: unknown }> = [];
-  const repo = {
-    update: vi.fn(async (id: string, patch: unknown) => {
-      updates.push({ id, patch });
-      return {} as unknown as ReturnType<SessionRepository["update"]>;
-    }),
-  } as unknown as SessionRepository;
-  return { repo, updates };
-}
 
 describe("SessionCache", () => {
   beforeEach(() => {
@@ -23,8 +11,7 @@ describe("SessionCache", () => {
   });
 
   it("set + get round-trips an mcpSid → beevibeSid mapping", () => {
-    const { repo } = fakeSessionRepo();
-    const cache = new SessionCache({ sessionRepo: repo });
+    const cache = new SessionCache();
 
     cache.set("mcp-1", "beevibe-1");
     expect(cache.get("mcp-1")).toBe("beevibe-1");
@@ -32,15 +19,13 @@ describe("SessionCache", () => {
   });
 
   it("get on unknown sid returns undefined", () => {
-    const { repo } = fakeSessionRepo();
-    const cache = new SessionCache({ sessionRepo: repo });
+    const cache = new SessionCache();
     expect(cache.get("unknown")).toBeUndefined();
   });
 
-  it("LRU evicts oldest when maxEntries reached on set()", async () => {
-    const { repo, updates } = fakeSessionRepo();
+  it("LRU evicts oldest when maxEntries reached on set() and fires onEvict (no status write)", async () => {
     const onEvict = vi.fn(async () => {});
-    const cache = new SessionCache({ sessionRepo: repo, maxEntries: 2, onEvict });
+    const cache = new SessionCache({ maxEntries: 2, onEvict });
 
     cache.set("A", "beevibe-A");
     await vi.advanceTimersByTimeAsync(10);
@@ -53,20 +38,19 @@ describe("SessionCache", () => {
     expect(cache.get("B")).toBe("beevibe-B");
     expect(cache.get("C")).toBe("beevibe-C");
 
-    // The evicted A should have been promoted via repo.update + onEvict.
-    // Eviction is fire-and-forget (void promise) so we drain the microtask queue.
+    // Eviction is fire-and-forget (void promise) so drain the microtask queue.
     await vi.runAllTimersAsync();
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(updates.length).toBe(1);
-    expect(updates[0]?.id).toBe("beevibe-A");
+    // F-SL-1: LRU eviction must NOT write status — that happens only via
+    // /runtime/done. onEvict still fires so the memory pipeline can
+    // promote facts.
     expect(onEvict).toHaveBeenCalledWith("beevibe-A", "lru");
   });
 
   it("get() refreshes the access time so the recently-used isn't evicted", async () => {
-    const { repo } = fakeSessionRepo();
-    const cache = new SessionCache({ sessionRepo: repo, maxEntries: 2 });
+    const cache = new SessionCache({ maxEntries: 2 });
 
     cache.set("A", "beevibe-A");
     await vi.advanceTimersByTimeAsync(10);
@@ -85,14 +69,9 @@ describe("SessionCache", () => {
     expect(cache.get("C")).toBe("beevibe-C");
   });
 
-  it("idle sweep evicts entries past idleTimeoutMs and triggers update + onEvict", async () => {
-    const { repo, updates } = fakeSessionRepo();
+  it("idle sweep evicts entries past idleTimeoutMs and fires onEvict (no status write)", async () => {
     const onEvict = vi.fn(async () => {});
-    const cache = new SessionCache({
-      sessionRepo: repo,
-      idleTimeoutMs: 1000,
-      onEvict,
-    });
+    const cache = new SessionCache({ idleTimeoutMs: 1000, onEvict });
 
     cache.set("idle-sid", "beevibe-idle");
     expect(cache.size()).toBe(1);
@@ -102,15 +81,13 @@ describe("SessionCache", () => {
     await cache.sweepIdle();
 
     expect(cache.size()).toBe(0);
-    expect(updates).toHaveLength(1);
-    expect(updates[0]?.id).toBe("beevibe-idle");
-    expect((updates[0]?.patch as { status: string }).status).toBe("succeeded");
+    // F-SL-1: idle eviction is UI/promotion-only — only onEvict fires.
     expect(onEvict).toHaveBeenCalledWith("beevibe-idle", "idle");
   });
 
   it("idle sweep skips entries that were recently accessed", async () => {
-    const { repo, updates } = fakeSessionRepo();
-    const cache = new SessionCache({ sessionRepo: repo, idleTimeoutMs: 1000 });
+    const onEvict = vi.fn(async () => {});
+    const cache = new SessionCache({ idleTimeoutMs: 1000, onEvict });
 
     cache.set("fresh-sid", "beevibe-fresh");
     await vi.advanceTimersByTimeAsync(800);
@@ -121,39 +98,71 @@ describe("SessionCache", () => {
     await cache.sweepIdle();
 
     expect(cache.size()).toBe(1);
-    expect(updates).toHaveLength(0);
+    expect(onEvict).not.toHaveBeenCalled();
   });
 
-  it("explicit delete fires onEvict with reason='explicit' and updates the session row", async () => {
-    const { repo, updates } = fakeSessionRepo();
+  it("explicit delete fires onEvict with reason='explicit' (no status write)", async () => {
     const onEvict = vi.fn(async () => {});
-    const cache = new SessionCache({ sessionRepo: repo, onEvict });
+    const cache = new SessionCache({ onEvict });
 
     cache.set("X", "beevibe-X");
     const removed = await cache.delete("X");
 
     expect(removed).toBe(true);
     expect(cache.size()).toBe(0);
-    expect(updates).toHaveLength(1);
-    expect(updates[0]?.id).toBe("beevibe-X");
     expect(onEvict).toHaveBeenCalledWith("beevibe-X", "explicit");
   });
 
   it("explicit delete on unknown sid returns false and triggers nothing", async () => {
-    const { repo, updates } = fakeSessionRepo();
     const onEvict = vi.fn(async () => {});
-    const cache = new SessionCache({ sessionRepo: repo, onEvict });
+    const cache = new SessionCache({ onEvict });
 
     const removed = await cache.delete("never-set");
 
     expect(removed).toBe(false);
-    expect(updates).toHaveLength(0);
     expect(onEvict).not.toHaveBeenCalled();
   });
 
+  it("eviction without an onEvict callback wired is a clean no-op", async () => {
+    // Construct with no onEvict so we can verify nothing throws when the
+    // hook isn't wired (e.g., tests / minimal setups). All three eviction
+    // paths must remain safe.
+    const cache = new SessionCache({ maxEntries: 1, idleTimeoutMs: 100 });
+
+    cache.set("A", "beevibe-A");
+    cache.set("B", "beevibe-B"); // LRU evict A
+    await vi.runAllTimersAsync();
+    await Promise.resolve();
+    expect(cache.get("A")).toBeUndefined();
+
+    cache.set("C", "beevibe-C");
+    await vi.advanceTimersByTimeAsync(500);
+    await cache.sweepIdle(); // idle evict B and C
+    expect(cache.size()).toBe(0);
+
+    cache.set("D", "beevibe-D");
+    await expect(cache.delete("D")).resolves.toBe(true);
+  });
+
+  it("logs and swallows an onEvict error so eviction always removes the entry", async () => {
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const onEvict = vi.fn(async () => {
+      throw new Error("promotion blew up");
+    });
+    const cache = new SessionCache({ onEvict });
+
+    cache.set("X", "beevibe-X");
+    const removed = await cache.delete("X");
+
+    expect(removed).toBe(true);
+    expect(cache.size()).toBe(0);
+    expect(onEvict).toHaveBeenCalledOnce();
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
   it("startIdleSweep is idempotent and stopIdleSweep clears the timer", () => {
-    const { repo } = fakeSessionRepo();
-    const cache = new SessionCache({ sessionRepo: repo });
+    const cache = new SessionCache();
 
     cache.startIdleSweep(1000);
     cache.startIdleSweep(1000); // no-op

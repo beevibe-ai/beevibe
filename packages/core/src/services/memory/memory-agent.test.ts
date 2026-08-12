@@ -186,6 +186,65 @@ describe("MemoryAgent.prepareBriefing", () => {
     expect(briefing.snapshot.fact_count).toBe(0);
   });
 
+  it("returns a degraded briefing (empty archival half) when the embedder throws", async () => {
+    // F-SL-3: a transient OpenAI hiccup inside prepareBriefing used to
+    // propagate up through /runtime/claim's composeDispatchPayload and
+    // mark a legitimately-claimed session 'failed'. Now prepareBriefing
+    // logs and degrades to zero archival facts — core_memory still
+    // ships in the system prompt unchanged.
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(coreMemory.read).mockResolvedValue([
+      makeBlock("persona", "Senior infra engineer."),
+    ]);
+    vi.mocked(embed.embed).mockRejectedValue(new Error("OpenAI 503"));
+
+    const briefing = await agent.prepareBriefing("anything");
+
+    expect(briefing.systemPromptAppend).toContain(
+      '<block name="persona">Senior infra engineer.</block>',
+    );
+    expect(briefing.userMessagePrefix).toBe("");
+    expect(briefing.snapshot.block_count).toBe(1);
+    expect(briefing.snapshot.fact_count).toBe(0);
+    // factStore.search must NOT have been called — the embed step failed
+    // before we'd have a query vector to hand it.
+    expect(factStore.search).not.toHaveBeenCalled();
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
+  it("returns a degraded briefing when factStore.search throws (pgvector hiccup)", async () => {
+    // The pgvector query is the other half of the transient-failure path —
+    // same degradation contract applies. Keeps the audit's "structural vs
+    // transient" line clean: searchFacts as a unit degrades, coreMemory.read
+    // still propagates.
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    vi.mocked(coreMemory.read).mockResolvedValue([]);
+    vi.mocked(embed.embed).mockResolvedValue([0.1, 0.2]);
+    vi.mocked(factStore.search).mockRejectedValue(new Error("pgvector OOM"));
+
+    const briefing = await agent.prepareBriefing("anything");
+
+    expect(briefing.userMessagePrefix).toBe("");
+    expect(briefing.snapshot.fact_count).toBe(0);
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
+  it("still propagates coreMemory.read errors (DB failure is structural, not transient)", async () => {
+    // coreMemory.read hits Postgres directly — a failure there means the
+    // claim path should bail rather than dispatch the agent with a hollow
+    // briefing. Locks the audit's contract: structural failures fail
+    // hard; transient provider hiccups degrade.
+    vi.mocked(coreMemory.read).mockRejectedValue(new Error("connection terminated"));
+    vi.mocked(embed.embed).mockResolvedValue([]);
+    vi.mocked(factStore.search).mockResolvedValue([]);
+
+    await expect(agent.prepareBriefing("anything")).rejects.toThrow(
+      "connection terminated",
+    );
+  });
+
   it("accepts a custom factsPerBriefing limit", async () => {
     const custom = createMemoryAgent({
       agentId: "agent_1",

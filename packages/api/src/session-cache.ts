@@ -1,15 +1,12 @@
-import type { SessionRepository } from "@beevibe/core";
-
 export interface SessionCacheConfig {
-  sessionRepo: SessionRepository;
   /** Maximum entries before LRU eviction kicks in. Default 1000. */
   maxEntries?: number;
   /** Idle timeout in ms. After this much time without access, eviction fires. Default 30 min. */
   idleTimeoutMs?: number;
   /**
-   * Called after a session is evicted (idle or LRU). Typically wired to
-   * `memoryAgent.onTaskComplete(beevibeSid)` for fact promotion. Errors are
-   * caught and logged.
+   * Called after a session is evicted (idle / LRU / explicit). Typically
+   * wired to `memoryAgent.onTaskComplete(beevibeSid)` for fact promotion.
+   * Errors are caught and logged.
    */
   onEvict?: (beevibeSid: string, reason: "idle" | "lru" | "explicit") => Promise<void>;
 }
@@ -28,10 +25,18 @@ interface CacheEntry {
  * Eviction:
  *   - LRU when `maxEntries` reached on `set()`.
  *   - Idle timeout via the periodic sweep (`startIdleSweep`).
- * Both eviction paths call `sessionRepo.update(sid, {status:'succeeded'})`
- * and fire `onEvict` to allow downstream cleanup (memory promotion).
+ *   - Explicit via `delete()` (e.g., on `DELETE /mcp`).
  *
- * Lost on api-server restart — matches the resolver-map limitation. M6 doc'd.
+ * Eviction is UI/promotion-only — it fires `onEvict` so the memory pipeline
+ * can promote facts for the ended turn, but it does NOT write the session
+ * row's status. All session-status writes flow through the daemon's
+ * `/runtime/done`; treating cache eviction as a status signal would
+ * silently mark legitimately-running sessions `succeeded` when the cache
+ * hits its `maxEntries` cap or the idle TTL fires mid-turn.
+ *
+ * Lost on api-server restart. Rows that were `running` when the cache
+ * vanished are reaped by the bootstrap `markAbandonedChatSessions` sweep,
+ * not by this cache.
  */
 export class SessionCache {
   private map = new Map<string, CacheEntry>();
@@ -39,7 +44,7 @@ export class SessionCache {
   private readonly idleTimeoutMs: number;
   private sweepTimer?: ReturnType<typeof setInterval>;
 
-  constructor(private readonly config: SessionCacheConfig) {
+  constructor(private readonly config: SessionCacheConfig = {}) {
     this.maxEntries = config.maxEntries ?? 1000;
     this.idleTimeoutMs = config.idleTimeoutMs ?? 30 * 60 * 1000;
   }
@@ -122,17 +127,12 @@ export class SessionCache {
     beevibeSid: string,
     reason: "idle" | "lru" | "explicit",
   ): Promise<void> {
+    if (!this.config.onEvict) return;
     try {
-      await this.config.sessionRepo.update(beevibeSid, {
-        status: "succeeded",
-        completed_at: new Date(),
-      });
-      if (this.config.onEvict) {
-        await this.config.onEvict(beevibeSid, reason);
-      }
+      await this.config.onEvict(beevibeSid, reason);
     } catch (err) {
       console.error(
-        `[session-cache] eviction (${reason}) failed for ${beevibeSid}:`,
+        `[session-cache] onEvict (${reason}) failed for ${beevibeSid}:`,
         err,
       );
     }
