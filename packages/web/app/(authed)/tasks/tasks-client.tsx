@@ -9,6 +9,12 @@ import { EmptyState } from "@/components/empty-state";
 import { TaskDetailPanel } from "@/components/tasks/task-detail-panel";
 import { useTasks } from "@/lib/hooks/use-tasks";
 import { isApiConfigured } from "@/lib/api/config";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  API_UNREACHABLE_DESCRIPTION,
+  apiNotConfiguredDescription,
+  couldNotLoadTitle,
+} from "@/lib/api/messages";
 import { countArchivedTasks, groupTasks } from "@/lib/tasks-grouping";
 
 interface EmptyMessage {
@@ -129,16 +135,15 @@ function pickEmptyMessage(state: {
   if (state.isError) {
     return {
       icon: AlertTriangle,
-      title: "Couldn't load tasks",
-      description:
-        "The API is configured but unreachable. Check that the MCP server is running.",
+      title: couldNotLoadTitle("tasks"),
+      description: API_UNREACHABLE_DESCRIPTION,
     };
   }
   if (!state.isApiConfigured) {
     return {
       icon: ListChecks,
-      title: "No tasks yet",
-      description: "Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load tasks.",
+      title: API_NOT_CONFIGURED_TITLE,
+      description: apiNotConfiguredDescription("tasks"),
     };
   }
   // Suppress the empty state while ANY fetch is in flight — including a

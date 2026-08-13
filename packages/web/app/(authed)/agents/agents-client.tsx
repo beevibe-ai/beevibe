@@ -6,6 +6,12 @@ import { AlertTriangle, Bot, LayoutGrid, List, Maximize2, Minus, Plus } from "lu
 import type { PanZoomTransform } from "@/lib/hooks/use-pan-zoom";
 import { useAgentNetwork } from "@/lib/hooks/use-agent-network";
 import { isApiConfigured } from "@/lib/api/config";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  API_UNREACHABLE_DESCRIPTION,
+  apiNotConfiguredDescription,
+  couldNotLoadTitle,
+} from "@/lib/api/messages";
 import { EmptyState } from "@/components/empty-state";
 import { TeamOrbit } from "@/components/team-orbit";
 import { AgentDetailPanel } from "@/components/agents/agent-detail-panel";
@@ -101,11 +107,15 @@ export function AgentsClient() {
       {!isApiConfigured ? (
         <CenteredShell
           icon={Bot}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load agents."
+          title={API_NOT_CONFIGURED_TITLE}
+          description={apiNotConfiguredDescription("agents")}
         />
       ) : isError ? (
-        <CenteredShell icon={AlertTriangle} title="Couldn't load the network" />
+        <CenteredShell
+          icon={AlertTriangle}
+          title={couldNotLoadTitle("the network")}
+          description={API_UNREACHABLE_DESCRIPTION}
+        />
       ) : view === "list" ? (
         <AgentsListView
           agents={selfAgents}

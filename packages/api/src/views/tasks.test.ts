@@ -5,6 +5,7 @@
  * mapping layer without needing a database.
  */
 import { describe, it, expect } from "vitest";
+import { TASK_STATUSES } from "@beevibe/core";
 import { listTasks, getTask } from "./tasks.js";
 import { makeMockPool } from "./test-helpers.js";
 
@@ -70,14 +71,43 @@ describe("listTasks", () => {
     expect(t.latest_session?.agent_label).toBe("alice");
   });
 
-  it("translates lifecycle filter into a status array param", async () => {
+  // The six lanes are the board's lanes (`@beevibe/core`'s
+  // TASK_LIFECYCLE_OF), not the four this file used to mirror — `blocked`
+  // and `archived` are their own lanes now, so `?lifecycle=blocked`
+  // filters instead of being dropped as an unknown value.
+  it.each([
+    ["pending", ["pending", "assigned"]],
+    ["in_progress", ["in_progress", "needs_revision", "revision"]],
+    ["blocked", ["blocked"]],
+    ["in_review", ["review"]],
+    ["done", ["done"]],
+    ["archived", ["failed", "cancelled"]],
+  ] as const)(
+    "translates the %s lifecycle filter into its status array param",
+    async (lifecycle, statuses) => {
+      const pool = makeMockPool([[]]);
+      const queryMock = pool._spy;
+      await listTasks(pool, { lifecycle, bypassOwnerScope: true });
+      expect(queryMock).toHaveBeenCalledWith(expect.any(String), [
+        statuses,
+        null,
+        null,
+      ]);
+    },
+  );
+
+  // `sprint` and `timeline` predate the lane split and must keep covering
+  // the same statuses they always did — every unfinished task, and every
+  // task, respectively.
+  it.each([
+    ["sprint", ["pending", "assigned", "in_progress", "needs_revision", "revision", "review", "blocked"]],
+    ["timeline", TASK_STATUSES],
+  ] as const)("keeps the %s view's status set", async (view, statuses) => {
     const pool = makeMockPool([[]]);
     const queryMock = pool._spy;
-    await listTasks(pool, { lifecycle: "in_review", bypassOwnerScope: true });
-    expect(queryMock).toHaveBeenCalledWith(
-      expect.any(String),
-      [["review", "blocked"], null, null],
-    );
+    await listTasks(pool, { view, bypassOwnerScope: true });
+    const passed = queryMock.mock.calls[0]![1]![0] as string[];
+    expect([...passed].sort()).toEqual([...statuses].sort());
   });
 
   it("forwards assignee_id when set", async () => {

@@ -19,6 +19,11 @@ import {
   type RuntimesListResponse,
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  apiNotConfiguredDescription,
+  couldNotLoadTitle,
+} from "@/lib/api/messages";
 import { describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
@@ -82,8 +87,8 @@ function Body({
       <div className="rounded-lg border border-dashed border-border">
         <EmptyState
           icon={Terminal}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the API server to load this page."
+          title={API_NOT_CONFIGURED_TITLE}
+          description={apiNotConfiguredDescription("your runtimes")}
         />
       </div>
     );
@@ -101,7 +106,7 @@ function Body({
       <div className="rounded-lg border border-dashed border-border">
         <EmptyState
           icon={AlertTriangle}
-          title="Couldn't load runtimes"
+          title={couldNotLoadTitle("runtimes")}
           description={describeError(error)}
         />
       </div>

@@ -206,6 +206,7 @@ table before deleting anything a tool reports as unused.
 | `scripts/seed-session-search-demo.ts`, `test-session-search.ts`, `packages/sandbox/src/scripts/*` | Documented manual dev/ops utilities, run by hand via `pnpm tsx …`. |
 | `OwnerLookup.singleOwnerSet` / `.meshOwners` | Called by the module-level `RESOLVERS` table, so they must stay public. Knip only checks cross-module use. |
 | `@beevibe/core/{domain,adapters/codex,adapters/opencode,services/skills,auth/constants}` subpath exports | Deliberate library surface. The codex/opencode runtimes are wired through `runtime-registry.ts`, which imports `./codex/runtime.js` directly rather than the barrel. |
+| `@beevibe/core/domain/{format,task}` subpath exports | The only two core modules the **web** imports as runtime *values*. They must NOT be reached via the root barrel — it re-exports `./auth`, which pulls `node:crypto` into the client bundle and fails `next build` with `UnhandledSchemeError`. Both files are pure and dependency-free so they're safe in the browser; that's the whole reason the dedicated subpaths exist. |
 
 Most "unused export" hits are symbols used *within their own file* — the
 `export` is redundant, not dead. Leave them alone unless you're already

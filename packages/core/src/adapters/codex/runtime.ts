@@ -8,15 +8,11 @@ import type {
   RuntimeWorkspaceContext,
   Workspace,
 } from "../../ports/runtime.js";
-import { runCliProcess } from "../claude-code/spawn.js";
 import { MCP_TOOL_TIMEOUT_MS } from "../local-workspace/manager.js";
 import {
-  cancelledResult,
   cliVersionHealthCheck,
   composePrompt,
-  createStdoutLineReader,
-  finalizeCliResult,
-  warnIfTruncated,
+  runCliSession,
 } from "../runtime-common.js";
 import {
   extractCodexStepEvents,
@@ -120,44 +116,22 @@ export class CodexRuntime implements AgentRuntime {
     if (context.env) Object.assign(env, context.env);
     if (prepared) env.BEEVIBE_AGENT_API_KEY = prepared.agentApiKey;
 
-    const events: CodexEvent[] = [];
-    const handleLine = (line: string): void => {
-      const evt = parseCodexEventLine(line);
-      if (!evt) return;
-      events.push(evt);
-      if (!context.onStep) return;
-      for (const step of extractCodexStepEvents(evt)) {
-        context.onStep(step);
-      }
-    };
-    const stdout = createStdoutLineReader(handleLine);
-
-    const result = await runCliProcess({
+    return runCliSession<CodexEvent>({
+      runtimeTag: "CodexRuntime",
       command: this.config.command ?? "codex",
       args,
       cwd: context.workspace.path,
       env,
-      abortSignal: context.abort_signal,
-      onSpawn: ({ pid, process_group_id }) => {
-        context.onSpawn?.({ process_pid: pid, process_group_id });
-      },
-      onLog: stdout.onLog,
+      context,
+      parseLine: parseCodexEventLine,
+      extractSteps: extractCodexStepEvents,
+      // Codex writes its final assistant message to a side-channel file
+      // rather than the event stream, so the parse reads it — which is why
+      // `cleanup` deletes the file after the parse rather than before.
+      parseResult: (events, exitCode) =>
+        parseCodexEvents(events, exitCode, readIfExists(lastMessagePath)),
+      cleanup: () => removeIfExists(lastMessagePath),
     });
-    stdout.flush();
-
-    warnIfTruncated("CodexRuntime", result);
-
-    if (result.aborted) {
-      removeIfExists(lastMessagePath);
-      return cancelledResult(result);
-    }
-
-    const lastMessage = readIfExists(lastMessagePath);
-    removeIfExists(lastMessagePath);
-    return finalizeCliResult(
-      parseCodexEvents(events, result.exitCode, lastMessage),
-      result,
-    );
   }
 
   async healthCheck(): Promise<RuntimeHealth> {

@@ -5,6 +5,12 @@ import Link from "next/link";
 import { AlertTriangle, ArrowLeft, BarChart3 } from "lucide-react";
 import { useMemoryActivity } from "@/lib/hooks/use-memory-activity";
 import { isApiConfigured } from "@/lib/api/config";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  API_UNREACHABLE_DESCRIPTION,
+  apiNotConfiguredDescription,
+  couldNotLoadTitle,
+} from "@/lib/api/messages";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { DatePicker, todayIso } from "@/components/date-picker";
@@ -50,8 +56,8 @@ export function MemoryEvalClient() {
     return (
       <EmptyState
         icon={BarChart3}
-        title="Memory eval not connected"
-        description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load Layer A activity telemetry."
+        title={API_NOT_CONFIGURED_TITLE}
+        description={apiNotConfiguredDescription("Layer A activity telemetry")}
       />
     );
   }
@@ -59,8 +65,8 @@ export function MemoryEvalClient() {
     return (
       <EmptyState
         icon={AlertTriangle}
-        title="Couldn't load memory activity"
-        description="Check that the api server is reachable."
+        title={couldNotLoadTitle("memory activity")}
+        description={API_UNREACHABLE_DESCRIPTION}
       />
     );
   }

@@ -6,6 +6,12 @@ import { PromotionEventSkeleton } from "@/components/skeletons";
 import { PromotionEventRow } from "@/components/promotions/event-row";
 import { usePromotions } from "@/lib/hooks/use-promotions";
 import { isApiConfigured } from "@/lib/api/config";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  API_UNREACHABLE_DESCRIPTION,
+  apiNotConfiguredDescription,
+  couldNotLoadTitle,
+} from "@/lib/api/messages";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
 
 export function PromotionsClient() {
@@ -55,14 +61,20 @@ function Body({
     return (
       <EmptyWrapper
         icon={TrendingUp}
-        title="No promotions yet"
-        description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load promotion events."
+        title={API_NOT_CONFIGURED_TITLE}
+        description={apiNotConfiguredDescription("promotion events")}
       />
     );
   }
 
   if (isError) {
-    return <EmptyWrapper icon={AlertTriangle} title="Couldn't load promotions" />;
+    return (
+      <EmptyWrapper
+        icon={AlertTriangle}
+        title={couldNotLoadTitle("promotions")}
+        description={API_UNREACHABLE_DESCRIPTION}
+      />
+    );
   }
 
   if (isLoading) {
