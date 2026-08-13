@@ -6,14 +6,7 @@ import type {
   RuntimeResult,
   Workspace,
 } from "../../ports/runtime.js";
-import {
-  cancelledResult,
-  cliVersionHealthCheck,
-  createStdoutLineReader,
-  finalizeCliResult,
-  warnIfTruncated,
-} from "../runtime-common.js";
-import { runCliProcess } from "./spawn.js";
+import { cliVersionHealthCheck, runCliSession } from "../runtime-common.js";
 import {
   extractStepEvents,
   parseClaudeMessages,
@@ -103,43 +96,23 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     for (const key of ANTHROPIC_AUTH_VARS) delete env[key];
     if (context.env) Object.assign(env, context.env);
 
-    // Parse messages incrementally during streaming so we don't re-parse
-    // the entire stdout after close. A line buffer handles chunk boundaries
-    // (a single JSON message can arrive split across multiple chunks).
-    const messages: StreamJsonMessage[] = [];
-    const handleLine = (line: string): void => {
-      const msg = parseStreamJsonLine(line);
-      if (!msg) return;
-      messages.push(msg);
-      if (context.onStep) {
-        for (const step of extractStepEvents(msg)) {
-          context.onStep(step);
-        }
-      }
-    };
-    const stdout = createStdoutLineReader(handleLine);
-
-    const result = await runCliProcess({
+    // Messages are parsed incrementally during streaming so we don't
+    // re-parse the entire stdout after close; `runCliSession` owns the line
+    // buffering that makes that safe across chunk boundaries.
+    return runCliSession<StreamJsonMessage>({
+      runtimeTag: "ClaudeCodeRuntime",
       command: this.config.command ?? "claude",
       args,
       cwd,
       env,
+      // Claude Code takes the intent on stdin (`--print -`); the other two
+      // runtimes pass it on argv via `composePrompt`.
       stdin: context.intent,
-      abortSignal: context.abort_signal,
-      onSpawn: ({ pid, process_group_id }) => {
-        context.onSpawn?.({ process_pid: pid, process_group_id });
-      },
-      onLog: stdout.onLog,
+      context,
+      parseLine: parseStreamJsonLine,
+      extractSteps: extractStepEvents,
+      parseResult: parseClaudeMessages,
     });
-
-    // Flush any final partial line (stream without trailing \n)
-    stdout.flush();
-
-    warnIfTruncated("ClaudeCodeRuntime", result);
-
-    if (result.aborted) return cancelledResult(result);
-
-    return finalizeCliResult(parseClaudeMessages(messages, result.exitCode), result);
   }
 
   async healthCheck(): Promise<RuntimeHealth> {

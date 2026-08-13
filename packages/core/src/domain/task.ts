@@ -39,6 +39,88 @@ export const TERMINAL_TASK_STATUSES: readonly TaskStatus[] = [
   "cancelled",
 ] as const;
 
+/**
+ * The board lane a task's status belongs to.
+ *
+ * This vocabulary existed twice — `packages/web/lib/tasks-grouping.ts`
+ * (six lanes, drives the kanban board) and
+ * `packages/api/src/views/tasks-grouping.ts` (four lanes, filters the
+ * `GET /task` SQL), the latter labelled "server-side mirror" of the
+ * former. The two had already drifted: the api folded `blocked` into
+ * `in_review` and `failed`/`cancelled` into `done`, so the six lanes the
+ * user sees on the board were not the lanes the api could filter by.
+ * `TaskListFilter.lifecycle` on the web is typed from the six-lane union,
+ * and `GET /task` silently drops any value it doesn't recognize — so
+ * `?lifecycle=blocked` returned every task rather than the blocked ones.
+ *
+ * One declaration, here, because it is one concept: the api filters on
+ * the same lanes the board renders.
+ */
+export type TaskLifecycle =
+  | "pending"
+  | "in_progress"
+  | "blocked"
+  | "in_review"
+  | "done"
+  | "archived";
+
+/**
+ * Workflow order, left-to-right — the order the board renders lanes in,
+ * and the order {@link TASK_STATUSES_BY_LIFECYCLE} is keyed in. `blocked`
+ * sits between `in_progress` and `in_review` because that is where
+ * blockers arise: work started, hit an impasse, needs unblocking before
+ * it can land in review.
+ */
+export const TASK_LIFECYCLES: readonly TaskLifecycle[] = [
+  "pending",
+  "in_progress",
+  "blocked",
+  "in_review",
+  "done",
+  "archived",
+] as const;
+
+/**
+ * Status → lane. Exhaustive over {@link TaskStatus} by its `Record` type,
+ * so a new status is a compile error here rather than a task that
+ * silently vanishes from the board.
+ *
+ * - `blocked` gets its own lane rather than folding into `in_review`:
+ *   blocked means waiting on an external dependency, which asks something
+ *   different of the human reading the board than "waiting on a verdict".
+ * - `failed` and `cancelled` are terminal-but-not-success, so they go to
+ *   `archived` (hidden behind a toggle) — `done` should read as "this
+ *   shipped".
+ */
+export const TASK_LIFECYCLE_OF: Record<TaskStatus, TaskLifecycle> = {
+  pending: "pending",
+  assigned: "pending",
+  in_progress: "in_progress",
+  revision: "in_progress",
+  needs_revision: "in_progress",
+  review: "in_review",
+  blocked: "blocked",
+  done: "done",
+  failed: "archived",
+  cancelled: "archived",
+};
+
+/**
+ * {@link TASK_LIFECYCLE_OF} inverted — the statuses in each lane, for the
+ * `WHERE status = ANY($1)` side of the api's task list. Derived rather
+ * than written out so the two directions cannot disagree.
+ */
+export const TASK_STATUSES_BY_LIFECYCLE: Record<TaskLifecycle, readonly TaskStatus[]> =
+  TASK_LIFECYCLES.reduce(
+    (acc, lifecycle) => {
+      acc[lifecycle] = TASK_STATUSES.filter(
+        (status) => TASK_LIFECYCLE_OF[status] === lifecycle,
+      );
+      return acc;
+    },
+    {} as Record<TaskLifecycle, TaskStatus[]>,
+  );
+
 export type TaskPriority = "low" | "medium" | "high" | "critical";
 
 export const TASK_PRIORITIES: readonly TaskPriority[] = ["low", "medium", "high", "critical"] as const;

@@ -3,6 +3,12 @@
 import type { ReactNode } from "react";
 import { AlertTriangle, type LucideIcon } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  API_UNREACHABLE_DESCRIPTION,
+  apiNotConfiguredDescription,
+  couldNotLoadTitle,
+} from "@/lib/api/messages";
 import { DetailShell } from "./detail-shell";
 import { EmptyState } from "@/components/empty-state";
 
@@ -48,8 +54,8 @@ export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }
       <DetailShell nav={nav}>
         <EmptyState
           icon={icon}
-          title="API not configured"
-          description={`Set NEXT_PUBLIC_BV_API_URL and run the API server to load this ${noun}.`}
+          title={API_NOT_CONFIGURED_TITLE}
+          description={apiNotConfiguredDescription(`this ${noun}`)}
         />
       </DetailShell>
     );
@@ -60,13 +66,12 @@ export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }
   }
 
   if (query.isError || !query.data) {
-    const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
     return (
       <DetailShell nav={nav}>
         <EmptyState
           icon={AlertTriangle}
-          title={`Couldn't load ${noun}`}
-          description={`${Noun} ${id} could not be fetched. Check the API server logs.`}
+          title={couldNotLoadTitle(noun)}
+          description={`${API_UNREACHABLE_DESCRIPTION} (${id})`}
         />
       </DetailShell>
     );

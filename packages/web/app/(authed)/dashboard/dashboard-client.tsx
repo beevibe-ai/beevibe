@@ -3,6 +3,12 @@
 import { AlertTriangle, LayoutDashboard } from "lucide-react";
 import { useDashboard } from "@/lib/hooks/use-dashboard";
 import { isApiConfigured } from "@/lib/api/config";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  API_UNREACHABLE_DESCRIPTION,
+  apiNotConfiguredDescription,
+  couldNotLoadTitle,
+} from "@/lib/api/messages";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { KpiTileSkeleton } from "@/components/skeletons";
@@ -39,8 +45,8 @@ function Body({
       <div className="rounded-lg border border-dashed border-border">
         <EmptyState
           icon={LayoutDashboard}
-          title="Dashboard not connected"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load KPIs and fleet status."
+          title={API_NOT_CONFIGURED_TITLE}
+          description={apiNotConfiguredDescription("KPIs and fleet status")}
         />
       </div>
     );
@@ -51,8 +57,8 @@ function Body({
       <div className="rounded-lg border border-dashed border-border">
         <EmptyState
           icon={AlertTriangle}
-          title="Couldn't load dashboard"
-          description="Check that the MCP server is reachable."
+          title={couldNotLoadTitle("dashboard")}
+          description={API_UNREACHABLE_DESCRIPTION}
         />
       </div>
     );

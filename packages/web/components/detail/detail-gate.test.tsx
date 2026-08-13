@@ -69,7 +69,7 @@ describe("DetailGate", () => {
   it("echoes the id in the fetch-error message", () => {
     renderGate({ data: undefined, isLoading: false, isError: true });
     expect(screen.getByText("Couldn't load work product")).toBeInTheDocument();
-    expect(screen.getByText(/Work product wp_42 could not be fetched\./)).toBeInTheDocument();
+    expect(screen.getByText(/\(wp_42\)/)).toBeInTheDocument();
   });
 
   // A query can settle without erroring and still hand back nothing (a 404

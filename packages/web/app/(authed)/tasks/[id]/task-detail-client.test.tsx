@@ -67,7 +67,7 @@ describe("TaskDetailClient", () => {
     renderDetail("t_abc");
 
     expect(await screen.findByText("Couldn't load task")).toBeInTheDocument();
-    expect(screen.getByText(/Task t_abc could not be fetched/)).toBeInTheDocument();
+    expect(screen.getByText(/\(t_abc\)/)).toBeInTheDocument();
   });
 
   it("renders the loaded task with title, status, and footer fields", async () => {
