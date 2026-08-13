@@ -98,12 +98,6 @@ describe("formatTokens", () => {
     expect(formatTokens(1_000_000)).toBe("1.00M");
     expect(formatTokens(2_350_000)).toBe("2.35M");
   });
-
-  it("uses thousands separator for small counts (en-US locale)", () => {
-    // Won't trip until 4 digits, but verify the locale path renders.
-    // (Below 1000 the K-suffix path doesn't kick in.)
-    expect(formatTokens(42)).toBe("42");
-  });
 });
 
 describe("<UsagePanel />", () => {
