@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { useMe } from "@/lib/hooks/use-me";
 import { useDismissOnOutside } from "@/lib/hooks/use-dismiss";
-import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
+import { ShareLinkBox, TextInput } from "@/components/form/field";
 import { ModalOverlay } from "@/components/modal-overlay";
 import { clearUserKey } from "@/lib/api/config";
 import { cn } from "@/lib/utils";
@@ -148,7 +148,6 @@ function MenuItem({
 
 function InviteTeammateDialog({ onClose }: { onClose: () => void }) {
   const [email, setEmail] = useState("");
-  const { copied, copy } = useCopyToClipboard();
   const trimmed = email.trim().toLowerCase();
   const valid = EMAIL_RE.test(trimmed);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
@@ -164,35 +163,15 @@ function InviteTeammateDialog({ onClose }: { onClose: () => void }) {
           Share a sign-up link. When they sign up, they get their own team
           agent — then you can pull them into rooms with you.
         </p>
-        <input
+        <TextInput
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           autoFocus
           placeholder="alice@example.com"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
         />
         {shareLink ? (
-          <div className="mt-3 rounded border border-border bg-muted/40 p-3">
-            <div className="text-[11px] text-muted-foreground mb-1.5">
-              Send them this link:
-            </div>
-            <div className="flex items-center gap-1.5">
-              <input
-                readOnly
-                value={shareLink}
-                className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-[11px] font-mono"
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <button
-                type="button"
-                onClick={() => void copy(shareLink)}
-                className="h-7 px-2.5 rounded text-[11px] font-medium border border-border hover:bg-secondary transition-colors cursor-pointer shrink-0"
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-          </div>
+          <ShareLinkBox className="mt-3" hint="Send them this link:" link={shareLink} />
         ) : null}
         <div className="mt-4 flex items-center justify-end gap-2">
           <button
