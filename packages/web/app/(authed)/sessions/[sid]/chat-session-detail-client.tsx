@@ -5,13 +5,12 @@ import { ArrowLeft, ChevronRight, Terminal, Wrench } from "lucide-react";
 import { useConversation } from "@/lib/hooks/use-sessions";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { EmptyState } from "@/components/empty-state";
-import { Skeleton } from "@/components/skeleton";
-import { SessionStatusPill } from "@/components/detail/status-pill";
-import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
-import { FooterField } from "@/components/detail/footer-field";
 import { ChatMarkdown } from "@/components/chat/markdown";
-import { HierChip } from "@/components/hier-chip";
-import { Avatar } from "@/components/avatar";
+import {
+  SessionDetailSkeleton,
+  SessionIdentityHeader,
+  SessionMetaFooter,
+} from "@/components/sessions/session-detail-chrome";
 import { UsagePanel } from "@/components/sessions/usage-panel";
 import type {
   ConversationDisplay,
@@ -41,13 +40,7 @@ export function ChatSessionDetailClient({ sessionShortId }: { sessionShortId: st
       noun="session"
       id={sessionShortId}
       query={query}
-      skeleton={
-        <>
-          <Skeleton className="h-14 w-full mb-6" />
-          <Skeleton className="h-32 w-full mb-5 rounded-lg" />
-          <Skeleton className="h-64 w-full rounded-lg" />
-        </>
-      }
+      skeleton={<SessionDetailSkeleton />}
     >
       {(conversation) =>
         // Task-typed sessions belong on the task-scoped detail page; redirect
@@ -91,37 +84,22 @@ function ConversationBody({ conversation }: { conversation: ConversationDisplay 
 
   return (
     <>
-      <header className="mb-6">
-        <div className="flex items-start gap-3">
-          <Avatar
-            initial={conversation.agent_label.charAt(0).toUpperCase()}
-            kind={conversation.agent_hierarchy}
-            label={conversation.agent_label}
-            size={40}
-            presence={conversation.status === "running" ? "running" : "idle"}
-          />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-base font-semibold tracking-tight leading-tight">
-                {multiTurn ? "Conversation" : "One turn"}
-              </h1>
-              <SessionStatusPill status={conversation.status} />
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="text-foreground/85">{conversation.agent_label}</span>
-              <HierChip hier={conversation.agent_hierarchy} />
-              {multiTurn ? (
-                <>
-                  <span className="text-muted-foreground/50">·</span>
-                  <span className="tabular-nums">{turns.length} turns</span>
-                </>
-              ) : null}
-              <span className="text-muted-foreground/50">·</span>
-              <span className="text-foreground/70">{conversation.type}</span>
-            </div>
-          </div>
-        </div>
-      </header>
+      <SessionIdentityHeader
+        agentLabel={conversation.agent_label}
+        agentHierarchy={conversation.agent_hierarchy}
+        status={conversation.status}
+        title={multiTurn ? "Conversation" : "One turn"}
+        meta={[
+          multiTurn ? (
+            <span key="turns" className="tabular-nums">
+              {turns.length} turns
+            </span>
+          ) : null,
+          <span key="type" className="text-foreground/70">
+            {conversation.type}
+          </span>,
+        ]}
+      />
 
       <div className="space-y-6">
         {turns.map((turn) => (
@@ -131,22 +109,13 @@ function ConversationBody({ conversation }: { conversation: ConversationDisplay 
 
       {usage ? <UsagePanel usage={usage} /> : null}
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
-        <FooterField label="Conversation ID">
-          <ClickToCopyId id={conversation.conversation_id} />
-        </FooterField>
-        {lastTurn?.cli_session ? (
-          <FooterField label="CLI session" truncate>
-            <span className="font-mono">{lastTurn.cli_session}</span>
-          </FooterField>
-        ) : null}
-        {lastTurn?.worktree ? (
-          <FooterField label="Worktree" truncate>
-            <span className="font-mono">{lastTurn.worktree}</span>
-          </FooterField>
-        ) : null}
-        <FooterField label="Type">{conversation.type}</FooterField>
-      </footer>
+      <SessionMetaFooter
+        idLabel="Conversation ID"
+        id={conversation.conversation_id}
+        cliSession={lastTurn?.cli_session}
+        worktree={lastTurn?.worktree}
+        type={conversation.type}
+      />
     </>
   );
 }

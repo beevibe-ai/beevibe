@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Loader2, Sparkles, UserPlus } from "lucide-react";
+import { Loader2, Sparkles, UserPlus } from "lucide-react";
 import { PASSWORD_MIN_LENGTH } from "@beevibe/core/auth/constants";
+import { InlineError, TextField } from "@/components/form/field";
 import { api } from "@/lib/api/client";
 import { asApiError } from "@/lib/api/http";
 import { getUserKey, isApiConfigured, setUserKey } from "@/lib/api/config";
@@ -104,57 +105,45 @@ export function SignUpClient() {
           </p>
         </header>
 
-        <label className="block text-xs font-medium text-foreground mb-1.5" htmlFor="name">
-          Name
-        </label>
-        <input
+        <TextField
           id="name"
+          label="Name"
           type="text"
           autoComplete="name"
           autoFocus
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Alice"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           disabled={submitting}
         />
 
-        <label className="block text-xs font-medium text-foreground mb-1.5 mt-3" htmlFor="email">
-          Email
-        </label>
-        <input
+        <TextField
           id="email"
+          label="Email"
+          labelClassName="mt-3"
           type="email"
           autoComplete="email"
           inputMode="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="alice@example.com"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           disabled={submitting}
         />
 
-        <label className="block text-xs font-medium text-foreground mb-1.5 mt-3" htmlFor="password">
-          Password
-        </label>
-        <input
+        <TextField
           id="password"
+          label="Password"
+          labelClassName="mt-3"
           type="password"
           autoComplete="new-password"
           minLength={PASSWORD_MIN_LENGTH}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder={`at least ${PASSWORD_MIN_LENGTH} characters`}
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           disabled={submitting}
         />
 
-        {error ? (
-          <div className="mt-3 flex items-start gap-1.5 text-xs text-status-failed">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
+        <InlineError message={error} className="mt-3" />
 
         <button
           type="submit"

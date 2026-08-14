@@ -8,6 +8,7 @@ import { AlertTriangle, Loader2, MessageCircleMore, Plus, Users } from "lucide-r
 import { api, type Room } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
+import { InlineError, TextField } from "@/components/form/field";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { formatRelativeTime, shortId } from "@/lib/format";
@@ -70,16 +71,13 @@ export function RoomsListClient() {
           className="mb-6 flex items-end gap-2 bg-card border border-border rounded-lg p-3"
         >
           <div className="flex-1">
-            <label htmlFor="room-name" className="block text-xs font-medium text-foreground mb-1.5">
-              Create a new room
-            </label>
-            <input
+            <TextField
               id="room-name"
+              label="Create a new room"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Plan the M9 launch"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
               disabled={create.isPending}
             />
           </div>
@@ -92,12 +90,7 @@ export function RoomsListClient() {
             Create
           </button>
         </form>
-        {error ? (
-          <div className="mb-4 flex items-start gap-1.5 text-xs text-status-failed">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
+        <InlineError message={error} className="mb-4" />
 
         <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
           Your rooms
