@@ -1,21 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { AlertTriangle, Info, Network } from "lucide-react";
-import { EmptyState } from "@/components/empty-state";
+import { Info, Network } from "lucide-react";
 import { Skeleton } from "@/components/skeleton";
 import { MeshAskSkeleton } from "@/components/skeletons";
+import { ListGate } from "@/components/list-gate";
 import { MeshActivityFeed } from "@/components/mesh/activity-feed";
 import { MeshGraphStatic } from "@/components/mesh/graph-static";
 import { ChainBudget } from "@/components/mesh/chain-budget";
 import { MeshWindowPills } from "@/components/mesh/window-pills";
 import { useMeshOverview } from "@/lib/hooks/use-mesh";
-import { isApiConfigured } from "@/lib/api/config";
 import type { MeshDisplay, MeshHover, MeshWindow } from "@/lib/types/mesh";
 
 export function MeshClient() {
   const [meshWindow, setMeshWindow] = useState<MeshWindow>("24h");
-  const { data, isLoading, isError } = useMeshOverview({ window: meshWindow });
+  const query = useMeshOverview({ window: meshWindow });
 
   return (
     <div className="flex-1 overflow-auto">
@@ -32,7 +31,25 @@ export function MeshClient() {
           <MeshWindowPills value={meshWindow} onChange={setMeshWindow} />
         </div>
 
-        <Body data={data} isLoading={isLoading} isError={isError} />
+        <ListGate
+          query={query}
+          noun="mesh activity"
+          icon={Network}
+          skeleton={
+            <div className="grid grid-cols-5 gap-6">
+              <div className="col-span-3 space-y-2">
+                {[0, 1, 2].map((i) => (
+                  <MeshAskSkeleton key={i} />
+                ))}
+              </div>
+              <div className="col-span-2">
+                <Skeleton className="h-[480px] rounded-lg" />
+              </div>
+            </div>
+          }
+        >
+          {(data) => <MeshContent data={data} />}
+        </ListGate>
 
         <div className="mt-10 text-xs text-muted-foreground flex items-start gap-2 max-w-2xl">
           <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
@@ -45,54 +62,6 @@ export function MeshClient() {
       </div>
     </div>
   );
-}
-
-function Body({
-  data,
-  isLoading,
-  isError,
-}: {
-  data: MeshDisplay | undefined;
-  isLoading: boolean;
-  isError: boolean;
-}) {
-  if (!isApiConfigured) {
-    return (
-      <div className="rounded-lg border border-dashed border-border">
-        <EmptyState
-          icon={Network}
-          title="No mesh asks yet"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load mesh activity."
-        />
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="rounded-lg border border-dashed border-border">
-        <EmptyState icon={AlertTriangle} title="Couldn't load mesh activity" />
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="grid grid-cols-5 gap-6">
-        <div className="col-span-3 space-y-2">
-          {[0, 1, 2].map((i) => (
-            <MeshAskSkeleton key={i} />
-          ))}
-        </div>
-        <div className="col-span-2">
-          <Skeleton className="h-[480px] rounded-lg" />
-        </div>
-      </div>
-    );
-  }
-
-  if (!data) return null;
-  return <MeshContent data={data} />;
 }
 
 function MeshContent({ data }: { data: MeshDisplay }) {

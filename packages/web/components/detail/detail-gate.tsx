@@ -5,6 +5,7 @@ import { AlertTriangle, type LucideIcon } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
 import { DetailShell } from "./detail-shell";
 import { EmptyState } from "@/components/empty-state";
+import { apiNotConfiguredState, fetchFailedTitle } from "@/lib/api-state-copy";
 
 interface Props<T> {
   /**
@@ -44,13 +45,10 @@ interface Props<T> {
  */
 export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }: Props<T>) {
   if (!isApiConfigured) {
+    const copy = apiNotConfiguredState(`this ${noun}`);
     return (
       <DetailShell nav={nav}>
-        <EmptyState
-          icon={icon}
-          title="API not configured"
-          description={`Set NEXT_PUBLIC_BV_API_URL and run the API server to load this ${noun}.`}
-        />
+        <EmptyState icon={icon} title={copy.title} description={copy.description} />
       </DetailShell>
     );
   }
@@ -65,7 +63,10 @@ export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }
       <DetailShell nav={nav}>
         <EmptyState
           icon={AlertTriangle}
-          title={`Couldn't load ${noun}`}
+          title={fetchFailedTitle(noun)}
+          // Bespoke rather than the shared hint: a detail page knows which
+          // row it failed on, and echoing the id makes the failure
+          // identifiable in a way "check the server" isn't.
           description={`${Noun} ${id} could not be fetched. Check the API server logs.`}
         />
       </DetailShell>
