@@ -53,9 +53,10 @@ const PLATFORM_ASSETS: Record<string, string> = {
   "linux-arm64": "beevibe-daemon-linux-arm64",
 };
 
+// Only `tag_name` is read: the download URL is built by convention from
+// PLATFORM_ASSETS + the tag, not from the response's `assets` array.
 interface GitHubRelease {
   tag_name: string;
-  assets: Array<{ name: string; browser_download_url: string }>;
 }
 
 function currentVersion(): string | undefined {

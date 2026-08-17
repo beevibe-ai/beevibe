@@ -96,7 +96,6 @@ export interface AgentDisplay
   /** Reserved for future memory-merge telemetry. */
   merge_events?: number;
   specialization?: string;
-  themes?: string[];
   /** CLI tool the agent uses — derived from `runtime_config.type`. */
   runtime?: string;
   /**
