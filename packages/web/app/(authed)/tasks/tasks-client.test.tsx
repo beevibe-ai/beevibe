@@ -72,9 +72,12 @@ describe("TasksClient — empty-state branches", () => {
     apiState.isApiConfigured = false;
     renderClient();
 
-    expect(await screen.findByText("No tasks yet")).toBeInTheDocument();
+    // Copy now comes from the shared `apiNotConfiguredState` helper, so this
+    // branch says "API not configured" / "run the API server" like every
+    // other page rather than this page's old "No tasks yet" / "MCP server".
+    expect(await screen.findByText("API not configured")).toBeInTheDocument();
     expect(
-      screen.getByText(/Set NEXT_PUBLIC_BV_API_URL and run the MCP server/i),
+      screen.getByText(/Set NEXT_PUBLIC_BV_API_URL and run the API server/i),
     ).toBeInTheDocument();
     expect(listMock).not.toHaveBeenCalled();
   });

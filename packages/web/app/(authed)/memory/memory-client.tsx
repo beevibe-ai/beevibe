@@ -27,6 +27,11 @@ import { RichTextRender } from "@/components/rich-text";
 import { useMemoryFactCounts, useMemoryFacts } from "@/lib/hooks/use-memory";
 import { useSlashFocus } from "@/lib/hooks/use-slash-focus";
 import { isApiConfigured } from "@/lib/api/config";
+import {
+  apiNotConfiguredState,
+  fetchFailedTitle,
+  FETCH_FAILED_HINT,
+} from "@/lib/api-state-copy";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
@@ -136,15 +141,14 @@ function Body({
   isError: boolean;
   hasQuery: boolean;
 }) {
+  // Copy comes from the shared helpers (the same two `ListGate` and
+  // `DetailGate` use); only the table-row container is this page's own.
   if (!isApiConfigured) {
+    const copy = apiNotConfiguredState("memory");
     return (
       <tr>
         <td colSpan={6}>
-          <EmptyState
-            icon={Sparkles}
-            title="No facts learned yet"
-            description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load memory."
-          />
+          <EmptyState icon={Sparkles} title={copy.title} description={copy.description} />
         </td>
       </tr>
     );
@@ -154,7 +158,11 @@ function Body({
     return (
       <tr>
         <td colSpan={6}>
-          <EmptyState icon={AlertTriangle} title="Couldn't load memory" />
+          <EmptyState
+            icon={AlertTriangle}
+            title={fetchFailedTitle("memory")}
+            description={FETCH_FAILED_HINT}
+          />
         </td>
       </tr>
     );

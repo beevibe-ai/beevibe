@@ -1,9 +1,8 @@
 "use client";
 
-import { AlertTriangle, LayoutDashboard } from "lucide-react";
+import { LayoutDashboard } from "lucide-react";
 import { useDashboard } from "@/lib/hooks/use-dashboard";
-import { isApiConfigured } from "@/lib/api/config";
-import { EmptyState } from "@/components/empty-state";
+import { ListGate } from "@/components/list-gate";
 import { Skeleton } from "@/components/skeleton";
 import { KpiTileSkeleton } from "@/components/skeletons";
 import { KpiTile } from "@/components/home/kpi-tile";
@@ -14,64 +13,35 @@ import { DashboardUsageSection } from "@/components/home/usage-section";
 import type { DashboardDisplay } from "@/lib/types/dashboard";
 
 export function DashboardClient() {
-  const { data, isLoading, isError } = useDashboard();
+  const query = useDashboard();
 
   return (
     <div className="flex-1 overflow-auto">
       <div className="max-w-6xl mx-auto pt-8 pb-12 px-6">
-        <Body data={data} isLoading={isLoading} isError={isError} />
+        <ListGate
+          query={query}
+          noun="the dashboard"
+          icon={LayoutDashboard}
+          skeleton={
+            <div className="space-y-6">
+              <div className="grid grid-cols-4 gap-6">
+                {[0, 1, 2, 3].map((i) => (
+                  <KpiTileSkeleton key={i} />
+                ))}
+              </div>
+              <Skeleton className="h-32 rounded-lg" />
+              <Skeleton className="h-48 rounded-lg" />
+            </div>
+          }
+        >
+          {(data) => <DashboardContent data={data} />}
+        </ListGate>
       </div>
     </div>
   );
 }
 
-function Body({
-  data,
-  isLoading,
-  isError,
-}: {
-  data: DashboardDisplay | undefined;
-  isLoading: boolean;
-  isError: boolean;
-}) {
-  if (!isApiConfigured) {
-    return (
-      <div className="rounded-lg border border-dashed border-border">
-        <EmptyState
-          icon={LayoutDashboard}
-          title="Dashboard not connected"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load KPIs and fleet status."
-        />
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="rounded-lg border border-dashed border-border">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load dashboard"
-          description="Check that the MCP server is reachable."
-        />
-      </div>
-    );
-  }
-
-  if (isLoading || !data) {
-    return (
-      <div className="space-y-6">
-        <div className="grid grid-cols-4 gap-6">
-          {[0, 1, 2, 3].map((i) => (
-            <KpiTileSkeleton key={i} />
-          ))}
-        </div>
-        <Skeleton className="h-32 rounded-lg" />
-        <Skeleton className="h-48 rounded-lg" />
-      </div>
-    );
-  }
-
+function DashboardContent({ data }: { data: DashboardDisplay }) {
   // /agents (the Home tab) is the front door now — that's where the
   // orbit lives. /dashboard is the "Metrics" sub-page under
   // Observability: KPIs, status, fleet, trend. Items needing decisions
