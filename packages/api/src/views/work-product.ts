@@ -12,31 +12,14 @@ import { fileURLToPath } from "node:url";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { WorkProductType } from "@beevibe/core";
 import { deriveShortId } from "./format.js";
+import type { WorkProductDetail } from "./types.js";
 
-export interface WorkProductDetail {
-  id: string;
-  task_id: string;
-  task_short_id: string;
-  task_title: string;
-  agent_id: string;
-  agent_label: string;
-  type: WorkProductType;
-  title: string;
-  summary?: string;
-  url?: string;
-  provider?: string;
-  external_id?: string;
-  /**
-   * Full deliverable content. Sourced from `work_product.body` when set;
-   * otherwise falls back to reading a `file://` URL from disk. Truncated
-   * to 256 KB.
-   */
-  body?: string;
-  /** True when `url` is file:// — UI uses this to suppress an unclickable link. */
-  url_is_local: boolean;
-  created_at: string;
-  updated_at: string;
-}
+/**
+ * Declared in `./types.js` alongside the other read-side DTOs — that's the
+ * module web imports (`@beevibe/api/views/types`), so the loader below and
+ * the detail page read one declaration. Re-exported for existing importers.
+ */
+export type { WorkProductDetail };
 
 const SQL = /* sql */ `
 SELECT

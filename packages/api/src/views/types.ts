@@ -26,6 +26,7 @@ import type {
   SessionEventKind,
   SessionStatus,
   SessionType,
+  WorkProductType,
 } from "@beevibe/core";
 
 /**
@@ -791,6 +792,99 @@ export interface AgentNetwork {
   self: AgentDisplay[];
   /** Other people's agents the caller co-exists with via shared rooms. */
   peers: AgentPeerOwner[];
+}
+
+// ── Runtimes panel — daemons and their CLIs ─────────────────────────────────
+//
+// Emitted by `GET /runtimes` (`routes/runtimes.ts`, which projects rows with
+// `satisfies RuntimesListResponse`). Absent values are sent as explicit
+// `null`, not omitted — the projection normalizes `undefined` away — so these
+// fields are nullable rather than optional.
+
+export interface RuntimePanelEntry {
+  id: string;
+  cli: string;
+  cli_version: string | null;
+  /** ISO last_heartbeat, or null when the runtime has never beat. */
+  last_heartbeat: string | null;
+  /** True iff a daemon WS client subscribed to this runtime is connected. */
+  online: boolean;
+  capabilities: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface DaemonPanelEntry {
+  id: string;
+  device_name: string;
+  external_id: string;
+  /** ISO last_seen_at — when the daemon last hit /runtime/heartbeat. */
+  last_seen_at: string | null;
+  created_at: string;
+  runtimes: RuntimePanelEntry[];
+}
+
+export interface RuntimesListResponse {
+  ok: true;
+  daemons: DaemonPanelEntry[];
+}
+
+// ── Work products — single deliverable detail ───────────────────────────────
+
+export interface WorkProductDetail {
+  id: string;
+  task_id: string;
+  task_short_id: string;
+  task_title: string;
+  agent_id: string;
+  agent_label: string;
+  type: WorkProductType;
+  title: string;
+  summary?: string;
+  url?: string;
+  provider?: string;
+  external_id?: string;
+  /**
+   * Full deliverable content. Sourced from `work_product.body` when set;
+   * otherwise falls back to reading a `file://` URL from disk. Truncated
+   * to 256 KB.
+   */
+  body?: string;
+  /** True when `url` is file:// — UI uses this to suppress an unclickable link. */
+  url_is_local: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── find_repo — candidate repos the discovery tool ranks ────────────────────
+//
+// Returned inside the `find_repo` tool envelope and surfaced verbatim by the
+// capabilities page. Declared here rather than in `tools/find-repo.ts` so the
+// server that scores candidates and the UI that renders them share one shape.
+
+export type FindRepoSource = "learned" | "community" | "trending" | "github";
+
+export interface FindRepoCandidate {
+  repo_url: string;
+  score: number;
+  /** Highest-precedence source (learned > community > trending > github). */
+  source: FindRepoSource;
+  /** Every source that contributed to the score. Useful for debugging. */
+  sources: FindRepoSource[];
+  /** Human-readable explanation of why this candidate scored. */
+  reason: string;
+  /** GitHub stars when available (best-effort enrich). */
+  stars?: number;
+  /** GitHub description when available. */
+  description?: string;
+  /** Programming language inferred from GitHub. */
+  language?: string;
+  /** Hydrated learned_skill row when source includes "learned". */
+  learned_skill?: {
+    id: string;
+    name: string;
+    goal_pattern: string;
+    invocation: string;
+  };
 }
 
 // ── Re-exports of ambient types that web imports alongside the DTOs ─────────

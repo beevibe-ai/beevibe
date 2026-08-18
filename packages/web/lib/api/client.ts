@@ -42,6 +42,30 @@ import type { InboxItem } from "@/lib/types/inbox";
 import type { EscalationReviewDetail } from "@/lib/types/escalations";
 import type { NegotiationReviewDetail } from "@/lib/types/negotiations";
 import type { Lifecycle } from "@/lib/tasks-grouping";
+import type {
+  DaemonPanelEntry,
+  RuntimePanelEntry,
+  RuntimesListResponse,
+} from "@/lib/types/runtimes";
+import type { WorkProductDetail } from "@/lib/types/work-products";
+import type { FindRepoCandidate, FindRepoSource } from "@/lib/types/find-repo";
+import type { ReferencedRepo } from "@/lib/types/referenced-repos";
+/**
+ * Response shapes owned by the server. `@beevibe/api/views/types` (and, for
+ * `ReferencedRepo`, the core service that computes it) is the single
+ * declaration; these are type-only re-exports, erased at build, so nothing
+ * from those packages reaches the browser bundle. Re-exported here because
+ * the pages below import their types from the api client.
+ */
+export type {
+  DaemonPanelEntry,
+  FindRepoCandidate,
+  FindRepoSource,
+  ReferencedRepo,
+  RuntimePanelEntry,
+  RuntimesListResponse,
+  WorkProductDetail,
+};
 
 export type TaskView = "all" | "mine";
 
@@ -185,61 +209,6 @@ export interface RoomDetail {
   messages: RoomMessage[];
   /** Agents currently working on a turn for this room. May be omitted by older server builds. */
   typing?: RoomTypingIndicator[];
-}
-
-export interface WorkProductDetail {
-  id: string;
-  task_id: string;
-  task_short_id: string;
-  task_title: string;
-  agent_id: string;
-  agent_label: string;
-  type:
-    | "pull_request"
-    | "branch"
-    | "commit"
-    | "document"
-    | "analysis"
-    | "report"
-    | "design"
-    | "artifact"
-    | "preview";
-  title: string;
-  summary?: string;
-  url?: string;
-  provider?: string;
-  external_id?: string;
-  /** Inlined file contents when url is file://. Render as markdown. */
-  body?: string;
-  url_is_local: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface RuntimePanelEntry {
-  id: string;
-  cli: string;
-  cli_version?: string;
-  /** True when a live WebSocket from this runtime is connected. */
-  online: boolean;
-  /** ISO last_heartbeat timestamp; absent when the runtime has never beat. */
-  last_heartbeat?: string;
-}
-
-export interface DaemonPanelEntry {
-  id: string;
-  device_name?: string;
-  external_id: string;
-  /** ISO created_at. */
-  created_at: string;
-  /** ISO last_seen_at — when the daemon last hit /runtime/heartbeat. */
-  last_seen_at?: string;
-  runtimes: RuntimePanelEntry[];
-}
-
-export interface RuntimesListResponse {
-  ok: true;
-  daemons: DaemonPanelEntry[];
 }
 
 export interface SignupInput {
@@ -693,39 +662,5 @@ export const api = {
       }>("/capabilities/use", { method: "POST", body: input }),
   },
 } as const;
-
-export interface ReferencedRepo {
-  owner: string;
-  name: string;
-  url: string;
-  occurrences: number;
-  already_saved: boolean;
-}
-
-/**
- * Mirrors the candidate shape that `packages/api/src/tools/find-repo.ts`
- * returns. Duplicating the type rather than importing it avoids
- * pulling the whole api package into the web bundle — the shape is
- * small + stable enough that a UI-side copy is cheaper than the
- * cross-package coupling.
- */
-export type FindRepoSource = "learned" | "community" | "trending" | "github";
-
-export interface FindRepoCandidate {
-  repo_url: string;
-  score: number;
-  source: FindRepoSource;
-  sources: FindRepoSource[];
-  reason: string;
-  stars?: number;
-  description?: string;
-  language?: string;
-  learned_skill?: {
-    id: string;
-    name: string;
-    goal_pattern: string;
-    invocation: string;
-  };
-}
 
 export type Api = typeof api;
