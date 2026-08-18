@@ -254,27 +254,35 @@ describe("getDashboardSummary", () => {
     });
   });
 
-  it("fires all 7 queries in parallel (single Promise.all)", async () => {
-    const calls: number[] = [];
-    let next = 0;
+  it("issues every query before awaiting any (Promise.all, not sequential awaits)", async () => {
+    // Hold every query open on one gate, then count how many were issued
+    // while all of them were still unresolved. Under Promise.all that is
+    // the full fan-out; under sequential awaits it is 1, because query
+    // N+1 is not issued until query N settles.
+    let release: () => void = () => {};
+    const gate = new Promise<void>((r) => {
+      release = r;
+    });
     const query = vi.fn(async (sql: unknown) => {
-      const i = next++;
-      calls.push(i);
-      // First-issued query resolves last to prove they were issued together,
-      // not awaited sequentially.
-      await new Promise((r) => setTimeout(r, i === 0 ? 10 : 0));
+      await gate;
       const sqlText = String(sql);
       if (sqlText.includes("FROM days") && sqlText.includes("active_sessions")) return { rows: makeKpiTrendRows() };
       if (sqlText.includes("FROM days")) return { rows: makeTrendRows() };
-      if (sqlText.includes("FROM agent")) return { rows: [] };
-      if (sqlText.includes("blocked', 'failed'")) return { rows: [] };
-      if (sqlText.includes("usage IS NOT NULL")) return { rows: [] };
       return { rows: [] };
     });
     const pool = { query } as unknown as Pool;
-    await getDashboardSummary(pool);
-    expect(calls).toEqual([0, 1, 2, 3, 4, 5, 6]);
-    expect(query).toHaveBeenCalledTimes(7);
+
+    const pending = getDashboardSummary(pool);
+    await Promise.resolve(); // let the synchronous fan-out run
+    const issuedBeforeAnySettled = query.mock.calls.length;
+    release();
+    await pending;
+
+    // Not hard-coded to today's 7: adding a query is fine, awaiting one
+    // sequentially is not. The lower bound keeps a future single-query
+    // rewrite from passing vacuously.
+    expect(issuedBeforeAnySettled).toBe(query.mock.calls.length);
+    expect(issuedBeforeAnySettled).toBeGreaterThan(1);
   });
 });
 
