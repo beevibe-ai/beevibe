@@ -21,6 +21,7 @@ import { api, type RuntimesListResponse } from "@/lib/api/client";
 import { DaemonInstallInstructions } from "@/components/daemon-install";
 import { queryKeys } from "@/lib/hooks/keys";
 import { useMe } from "@/lib/hooks/use-me";
+import { toRuntimeOptions, type RuntimeOption } from "@/lib/runtime-options";
 import { cn } from "@/lib/utils";
 
 type Step = "intro" | "install" | "pick" | "ready";
@@ -262,19 +263,7 @@ function PickRuntimeStep({
     refetchInterval: 3_000,
   });
 
-  const allRuntimes = useMemo(
-    () =>
-      (query.data?.daemons ?? []).flatMap((d) =>
-        d.runtimes.map((r) => ({
-          id: r.id,
-          cli: r.cli,
-          cli_version: r.cli_version,
-          online: r.online,
-          device: d.device_name ?? d.external_id,
-        })),
-      ),
-    [query.data],
-  );
+  const allRuntimes = useMemo(() => toRuntimeOptions(query.data), [query.data]);
 
   const [selected, setSelected] = useState<string | null>(null);
   // Auto-select the first online runtime to make the happy path one-click.
@@ -359,13 +348,7 @@ function RuntimeCard({
   selected,
   onSelect,
 }: {
-  runtime: {
-    id: string;
-    cli: string;
-    cli_version?: string;
-    online: boolean;
-    device: string;
-  };
+  runtime: RuntimeOption;
   selected: boolean;
   onSelect: () => void;
 }) {
