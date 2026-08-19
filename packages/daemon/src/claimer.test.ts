@@ -141,6 +141,50 @@ describe("Claimer ws ping watchdog", () => {
       vi.useRealTimers();
     }
   });
+
+  it("terminates when ping() itself throws on a dead socket", async () => {
+    vi.useFakeTimers();
+    const { claimer, sockets } = startClaimerWithFakeWs();
+    try {
+      sockets[0]!.fire("open");
+      // `ws.ping()` on an already-destroyed socket throws synchronously;
+      // the watchdog has to fall through to terminate or the daemon is
+      // left phantom-connected with no `close` ever arriving.
+      sockets[0]!.ping.mockImplementation(() => {
+        throw new Error("WebSocket is not open: readyState 3 (CLOSED)");
+      });
+
+      vi.advanceTimersByTime(1_000);
+
+      expect(sockets[0]!.ping).toHaveBeenCalledTimes(1);
+      expect(sockets[0]!.terminate).toHaveBeenCalledTimes(1);
+
+      // The synthetic close from terminate() still drives the reconnect.
+      vi.advanceTimersByTime(20);
+      expect(sockets).toHaveLength(2);
+    } finally {
+      await claimer.stop();
+      vi.useRealTimers();
+    }
+  });
+
+  it("stop() cancels a reconnect that was already scheduled", async () => {
+    vi.useFakeTimers();
+    const { claimer, sockets } = startClaimerWithFakeWs();
+    try {
+      sockets[0]!.fire("open");
+      // Drop the socket so a backoff timer is armed, then stop before it
+      // fires: the pending timer must be cleared, not merely ignored.
+      sockets[0]!.fire("close");
+
+      await claimer.stop();
+      vi.advanceTimersByTime(1_000);
+
+      expect(sockets).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
 });
 
 describe("Claimer.pollRuntime resilience", () => {
