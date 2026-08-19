@@ -1,5 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { Supervisor } from "./supervisor.js";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { DEFAULT_MAX_CONCURRENT, Supervisor } from "./supervisor.js";
+
+const ENV = "BEEVIBE_DAEMON_MAX_CONCURRENT";
 
 describe("Supervisor", () => {
   it("respects maxConcurrent: hasCapacity flips to false at the cap", () => {
@@ -47,4 +49,56 @@ describe("Supervisor", () => {
     expect(abortCount).toBe(3);
     expect(s.inFlight()).toBe(0);
   });
+});
+
+describe("Supervisor default cap from the environment", () => {
+  let previous: string | undefined;
+
+  /** Fill the supervisor and report the cap it actually enforced. */
+  function effectiveCap(): number {
+    const s = new Supervisor();
+    let n = 0;
+    while (s.hasCapacity()) {
+      s.start(`sess_${n}`);
+      n += 1;
+      if (n > DEFAULT_MAX_CONCURRENT * 2) throw new Error("cap never reached");
+    }
+    return n;
+  }
+
+  beforeEach(() => {
+    previous = process.env[ENV];
+  });
+
+  afterEach(() => {
+    if (previous === undefined) delete process.env[ENV];
+    else process.env[ENV] = previous;
+  });
+
+  it("defaults to DEFAULT_MAX_CONCURRENT when the env var is unset", () => {
+    delete process.env[ENV];
+
+    expect(effectiveCap()).toBe(DEFAULT_MAX_CONCURRENT);
+  });
+
+  it("honors a valid override", () => {
+    process.env[ENV] = "3";
+
+    expect(effectiveCap()).toBe(3);
+  });
+
+  it("parses a trailing-garbage value down to its leading integer", () => {
+    process.env[ENV] = "4 workers";
+
+    expect(effectiveCap()).toBe(4);
+  });
+
+  it.each(["", "many", "0", "-2", "NaN"])(
+    "falls back to the default for the unusable value %j",
+    (raw) => {
+      process.env[ENV] = raw;
+
+      expect(effectiveCap()).toBe(DEFAULT_MAX_CONCURRENT);
+    },
+  );
 });
