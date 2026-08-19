@@ -184,10 +184,10 @@ marks. Forks and derivative works are welcome under names that are not
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=beevibe-ai%2Fbeevibe&type=date&legend=bottom-right">
+<a href="https://star-history.dera.page/#beevibe-ai/beevibe&type=date&legend=bottom-right">
  <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=beevibe-ai/beevibe&type=date&theme=dark&legend=top-left" />
-   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=beevibe-ai/beevibe&type=date&legend=top-left" />
-   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=beevibe-ai/beevibe&type=date&legend=top-left" />
+   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=beevibe-ai/beevibe&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://star-history.dera.page/svg?repos=beevibe-ai/beevibe&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=beevibe-ai/beevibe&type=date&legend=top-left" />
  </picture>
 </a>
