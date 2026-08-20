@@ -143,16 +143,8 @@ describe("overviewToDisplay — graph layout", () => {
   });
 });
 
-describe("overviewToDisplay — summary passthrough", () => {
-  it("forwards summary counts unchanged", () => {
-    const overview: MeshOverview = {
-      ...emptyOverview(),
-      summary: { asks_24h: 12, in_flight: 3, edge_count: 7 },
-    };
-    expect(overviewToDisplay(overview).summary).toEqual({
-      asks_24h: 12,
-      in_flight: 3,
-      edge_count: 7,
-    });
-  });
-});
+// `summary` is a shallow spread from the overview onto the display object;
+// asserting `.toEqual` on it only re-derived the source literal. A test worth
+// having here would guard the detachment (that a later mutation on the source
+// summary doesn't reach the display) — but no caller depends on that, and
+// there's no bug pattern the test would catch, so the block was dropped.

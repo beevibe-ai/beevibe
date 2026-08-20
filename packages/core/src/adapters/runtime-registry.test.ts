@@ -6,27 +6,16 @@ import {
 } from "./runtime-registry.js";
 
 describe("createDefaultRuntimeRegistry", () => {
-  it("registers claude-code", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["claude"]).toBeDefined();
-    expect(registry["claude"]!.type).toBe("claude");
-  });
-
-  it("registers opencode", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["opencode"]).toBeDefined();
-    expect(registry["opencode"]!.type).toBe("opencode");
-  });
-
-  it("registers codex", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["codex"]).toBeDefined();
-    expect(registry["codex"]!.type).toBe("codex");
-  });
-
+  // The exact key set is asserted from the composition root
+  // (`composition.test.ts` — "registers the three CLI runtimes"); this file
+  // only guards the per-entry `type === key` invariant, which is what a typo
+  // in a new runtime adapter would silently break.
   it("every registry value's .type matches its registry key (sanity check against typos)", () => {
     const registry = createDefaultRuntimeRegistry();
-    for (const [key, runtime] of Object.entries(registry)) {
+    const entries = Object.entries(registry);
+    // Guard against an empty registry masquerading as "all types match".
+    expect(entries.length).toBeGreaterThan(0);
+    for (const [key, runtime] of entries) {
       expect(runtime.type).toBe(key);
     }
   });
