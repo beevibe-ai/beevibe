@@ -8,7 +8,7 @@
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { HierarchyLevel, TaskStatus } from "@beevibe/core";
-import { computeCacheHitRatio } from "./format.js";
+import { computeCacheHitRatio, percentChange } from "./format.js";
 import type {
   DashboardSummary,
   KpiData,
@@ -328,12 +328,7 @@ export async function getDashboardSummary(pool: Pool): Promise<DashboardSummary>
   }));
   const trend_total = recent.reduce((s, r) => s + r.value, 0);
   const priorTotal = prior.reduce((s, r) => s + r.value, 0);
-  const trend_change_percent =
-    priorTotal === 0
-      ? trend_total === 0
-        ? 0
-        : 100
-      : Math.round(((trend_total - priorTotal) / priorTotal) * 100);
+  const trend_change_percent = percentChange(trend_total, priorTotal);
 
   const attention: AttentionData[] = attentionResult.rows.map((r) => ({
     task_id: r.id,
@@ -464,14 +459,7 @@ export function buildUsageSummary(
     cacheRead: total_cache_read_tokens,
   });
 
-  const cost_change_percent =
-    prior_cost_usd === 0
-      ? total_cost_usd === 0
-        ? 0
-        : 100
-      : Math.round(
-          ((total_cost_usd - prior_cost_usd) / prior_cost_usd) * 100,
-        );
+  const cost_change_percent = percentChange(total_cost_usd, prior_cost_usd);
 
   return {
     window_days: windowDays,
