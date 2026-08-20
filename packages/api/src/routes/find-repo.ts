@@ -16,6 +16,7 @@ import type {
   LearnedSkillRepository,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
+import { parseIntQuery } from "./http-errors.js";
 import { createFindRepoTool } from "../tools/find-repo.js";
 
 export interface FindRepoRouterDeps {
@@ -37,8 +38,12 @@ export function createFindRepoRouter(deps: FindRepoRouterDeps): Router {
       res.status(400).json({ error: "missing_goal" });
       return;
     }
-    const limitParam = typeof req.query.limit === "string" ? Number(req.query.limit) : 5;
-    const limit = Number.isFinite(limitParam) ? Math.min(10, Math.max(1, Math.floor(limitParam))) : 5;
+    const limit = parseIntQuery(req.query.limit, {
+      defaultValue: 5,
+      min: 1,
+      max: 10,
+      outOfRange: "clamp",
+    })!;
 
     try {
       // The ranker scopes learned_skill lookups to the calling agent's

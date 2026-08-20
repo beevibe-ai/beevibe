@@ -2,12 +2,14 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "./keys";
+import { useDetailQuery } from "./use-detail-query";
 
 export function useSession(shortId: string | undefined) {
-  return useQuery({
-    queryKey: shortId ? queryKeys.sessions.detail(shortId) : queryKeys.sessions.all,
-    queryFn: ({ signal }) => api.sessions.get(shortId as string, { signal }),
-    enabled: isApiConfigured && !!shortId,
+  return useDetailQuery({
+    id: shortId,
+    detailKey: queryKeys.sessions.detail,
+    allKey: queryKeys.sessions.all,
+    fetcher: (id, ctx) => api.sessions.get(id, ctx),
   });
 }
 

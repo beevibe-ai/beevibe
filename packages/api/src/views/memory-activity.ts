@@ -25,6 +25,7 @@ import type {
   ScopeTypeRow,
   WeeklyArchivalRow,
 } from "./types.js";
+import { ratioOrNull } from "./format.js";
 
 export interface MemoryActivityOptions {
   /** Window for weekly trend + scope×type breakdown. Clamped 1..52. */
@@ -290,7 +291,7 @@ async function queryArchivalToCoreRatio(pool: Pool): Promise<AgentRatioRow[]> {
       archival_30d: archival,
       core_touched_30d: core,
       // null when no core touches — caller renders as "—" rather than ∞.
-      ratio: core > 0 ? Math.round((archival / core) * 10) / 10 : null,
+      ratio: ratioOrNull(archival, core, 1),
     };
   });
 }
@@ -319,8 +320,7 @@ async function queryKpis(pool: Pool): Promise<MemoryActivityKpis> {
     archival_writes_30d: archival,
     core_touched_30d: core,
     active_agents_30d: Number(r.active_agents_30d),
-    archival_to_core_ratio:
-      core > 0 ? Math.round((archival / core) * 10) / 10 : null,
+    archival_to_core_ratio: ratioOrNull(archival, core, 1),
   };
 }
 

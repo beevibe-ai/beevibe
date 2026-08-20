@@ -40,3 +40,31 @@ export function computeCacheHitRatio(parts: {
   const total = parts.input + parts.cacheCreation + parts.cacheRead;
   return total > 0 ? parts.cacheRead / total : 0;
 }
+
+/**
+ * Whole-percent change between two windows, rounded — used across the
+ * dashboard's trend and cost cards. Divide-by-zero collapses to 100
+ * when the current window has any activity ("appeared from nothing")
+ * or 0 when both windows are empty, so the wire type is always a
+ * plain number rather than nullable.
+ */
+export function percentChange(current: number, prior: number): number {
+  if (prior === 0) return current === 0 ? 0 : 100;
+  return Math.round(((current - prior) / prior) * 100);
+}
+
+/**
+ * Numerator / denominator rounded to `decimals` places, or `null` when
+ * the denominator is zero — caller renders `null` as "—" rather than
+ * ∞ or NaN. Used by memory-activity's archival-to-core ratio and the
+ * per-agent tier list.
+ */
+export function ratioOrNull(
+  numer: number,
+  denom: number,
+  decimals: number,
+): number | null {
+  if (denom === 0) return null;
+  const factor = 10 ** decimals;
+  return Math.round((numer / denom) * factor) / factor;
+}

@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  parseIntQuery,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +218,53 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("parseIntQuery", () => {
+  it("returns undefined when the value is absent so the service default wins", () => {
+    // Matches the promotion/memory-fact shape — the service layer owns
+    // the fallback and this helper doesn't second-guess it.
+    expect(parseIntQuery(undefined)).toBeUndefined();
+  });
+
+  it("returns undefined when the value isn't a numeric string", () => {
+    expect(parseIntQuery("banana")).toBeUndefined();
+    expect(parseIntQuery(["1"])).toBeUndefined();
+  });
+
+  it("returns the parsed integer for a well-formed numeric string", () => {
+    expect(parseIntQuery("42")).toBe(42);
+  });
+
+  it("floors fractional inputs so a downstream LIMIT is always an integer", () => {
+    expect(parseIntQuery("5.9")).toBe(5);
+  });
+
+  it("falls back to defaultValue when the input is missing or invalid", () => {
+    expect(parseIntQuery(undefined, { defaultValue: 20 })).toBe(20);
+    expect(parseIntQuery("banana", { defaultValue: 20 })).toBe(20);
+  });
+
+  it("falls back to defaultValue when the value is out of range (reject mode)", () => {
+    // Inbox/activity shape: out-of-range collapses to the default rather
+    // than being silently clamped.
+    expect(parseIntQuery("500", { defaultValue: 50, min: 1, max: 200 })).toBe(50);
+    expect(parseIntQuery("0", { defaultValue: 50, min: 1, max: 200 })).toBe(50);
+  });
+
+  it("clamps to the nearest bound when outOfRange is 'clamp'", () => {
+    // find-repo shape: clip into [1, 10] rather than dropping the caller
+    // back to the default.
+    expect(
+      parseIntQuery("50", { defaultValue: 5, min: 1, max: 10, outOfRange: "clamp" }),
+    ).toBe(10);
+    expect(
+      parseIntQuery("0", { defaultValue: 5, min: 1, max: 10, outOfRange: "clamp" }),
+    ).toBe(1);
+  });
+
+  it("returns the value unchanged when it's inside the range", () => {
+    expect(parseIntQuery("7", { defaultValue: 5, min: 1, max: 10 })).toBe(7);
   });
 });

@@ -1,5 +1,10 @@
 import { describe, it, expect } from "vitest";
-import { computeCacheHitRatio, formatRelativeShort } from "./format.js";
+import {
+  computeCacheHitRatio,
+  formatRelativeShort,
+  percentChange,
+  ratioOrNull,
+} from "./format.js";
 
 // `deriveShortId`, `formatDurationLabel`, `firstNonEmptyLine` and
 // `truncate` are re-exported here verbatim from
@@ -58,5 +63,47 @@ describe("computeCacheHitRatio", () => {
 
   it("returns 0 rather than NaN when there is no input to score against", () => {
     expect(computeCacheHitRatio({ input: 0, cacheCreation: 0, cacheRead: 0 })).toBe(0);
+  });
+});
+
+describe("percentChange", () => {
+  it("computes a whole-percent delta between two windows", () => {
+    expect(percentChange(150, 100)).toBe(50);
+    expect(percentChange(75, 100)).toBe(-25);
+  });
+
+  it("rounds to the nearest whole percent", () => {
+    // (110 - 90) / 90 = 22.22…%
+    expect(percentChange(110, 90)).toBe(22);
+  });
+
+  // A missing prior window plus new activity reads as "appeared from
+  // nothing", which the dashboard renders as a +100% call-out; two
+  // empty windows collapse to 0 rather than NaN so the badge is
+  // suppressed.
+  it("returns 100 when the prior window is empty but the current is not", () => {
+    expect(percentChange(5, 0)).toBe(100);
+  });
+
+  it("returns 0 when both windows are empty", () => {
+    expect(percentChange(0, 0)).toBe(0);
+  });
+});
+
+describe("ratioOrNull", () => {
+  it("rounds to the requested decimal places", () => {
+    // 7 / 3 = 2.333… → 2.3 at one decimal.
+    expect(ratioOrNull(7, 3, 1)).toBe(2.3);
+    expect(ratioOrNull(7, 3, 2)).toBe(2.33);
+  });
+
+  // Zero denominator returns null so the caller can render "—" instead
+  // of ∞ / NaN — the archival-to-core panel does exactly this.
+  it("returns null when the denominator is zero", () => {
+    expect(ratioOrNull(5, 0, 1)).toBeNull();
+  });
+
+  it("returns 0 when the numerator is zero", () => {
+    expect(ratioOrNull(0, 10, 1)).toBe(0);
   });
 });

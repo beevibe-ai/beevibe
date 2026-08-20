@@ -139,6 +139,51 @@ export async function loadOwned<T>(
  * copy-paste, so chat keeps its own handler and this factory preserves the
  * existing behavior of the other four rather than quietly changing it.
  */
+/**
+ * Parse an Express query-param as a positive integer, with an optional
+ * range check.
+ *
+ * Every `?limit=…` handler across the api spelled the same three
+ * incantations out inline — `typeof x === "string" ? Number(x) : NaN`,
+ * `Number.isFinite`, an optional range check, fall back to a default.
+ * The five existing call sites split into two shapes: out-of-range
+ * either collapses to the default (inbox / activity / promotion /
+ * memory-fact) or is clamped to the bounds (find-repo). Both are
+ * expressible here without either call site drifting further from the
+ * other.
+ *
+ * When `defaultValue` is omitted and the input is missing or invalid,
+ * returns `undefined` so the service layer's own default wins — that's
+ * the promotion / memory-fact behavior.
+ */
+export function parseIntQuery(
+  raw: unknown,
+  opts: {
+    defaultValue?: number;
+    min?: number;
+    max?: number;
+    /**
+     * `"reject"` (default) — an out-of-range value falls back to
+     * `defaultValue`.  `"clamp"` — an out-of-range value is snapped to
+     * the nearest bound.  Ignored when neither `min` nor `max` is set.
+     */
+    outOfRange?: "reject" | "clamp";
+  } = {},
+): number | undefined {
+  const parsed = typeof raw === "string" ? Number(raw) : NaN;
+  if (!Number.isFinite(parsed)) return opts.defaultValue;
+  const value = Math.floor(parsed);
+  const min = opts.min;
+  const max = opts.max;
+  if (min !== undefined && value < min) {
+    return opts.outOfRange === "clamp" ? min : opts.defaultValue;
+  }
+  if (max !== undefined && value > max) {
+    return opts.outOfRange === "clamp" ? max : opts.defaultValue;
+  }
+  return value;
+}
+
 export function makeErrorHandler(
   tag: string,
 ): (err: unknown, res: Response, context?: string) => void {

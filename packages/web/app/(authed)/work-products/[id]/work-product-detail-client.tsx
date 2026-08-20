@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ChevronRight,
@@ -9,9 +8,10 @@ import {
   FileText,
 } from "lucide-react";
 import { api, type WorkProductDetail } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
+import { useDetailQuery } from "@/lib/hooks/use-detail-query";
 import { DetailGate } from "@/components/detail/detail-gate";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { ChatMarkdown } from "@/components/chat/markdown";
@@ -20,10 +20,11 @@ import { FooterField } from "@/components/detail/footer-field";
 import { formatRelativeTime, shortId } from "@/lib/format";
 
 export function WorkProductDetailClient({ workProductId }: { workProductId: string }) {
-  const query = useQuery<WorkProductDetail>({
-    queryKey: queryKeys.workProducts.detail(workProductId),
-    queryFn: ({ signal }) => api.workProducts.get(workProductId, { signal }),
-    enabled: isApiConfigured && !!workProductId,
+  const query = useDetailQuery<WorkProductDetail>({
+    id: workProductId,
+    detailKey: queryKeys.workProducts.detail,
+    allKey: queryKeys.workProducts.all,
+    fetcher: (id, ctx) => api.workProducts.get(id, ctx),
     staleTime: 30_000,
   });
 
@@ -125,7 +126,7 @@ function Body({ wp }: { wp: WorkProductDetail }) {
         />
       )}
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="ID">
           <ClickToCopyId id={wp.id} />
         </FooterField>
@@ -143,7 +144,7 @@ function Body({ wp }: { wp: WorkProductDetail }) {
           </FooterField>
         ) : null}
         {wp.provider ? <FooterField label="Provider">{wp.provider}</FooterField> : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }
