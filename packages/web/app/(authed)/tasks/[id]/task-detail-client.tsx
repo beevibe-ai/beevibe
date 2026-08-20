@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   AlertTriangle,
   FileText,
   ListChecks,
@@ -23,7 +22,9 @@ import { TaskLifecycleActions } from "@/components/tasks/task-lifecycle-actions"
 import { isTerminalTaskStatus } from "@/lib/task-status";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
 import { ChatMarkdown } from "@/components/chat/markdown";
+import { BackLink } from "@/components/detail/back-link";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
 import { HierChip } from "@/components/hier-chip";
@@ -35,22 +36,12 @@ import type { TaskDetail, TaskDetailSessionRow } from "@/lib/api/types";
 import type { ReferencedRepo } from "@/lib/api/client";
 import type { WorkProduct } from "@beevibe/core";
 
-const TasksBackLink = () => (
-  <Link
-    href="/tasks"
-    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-3"
-  >
-    <ArrowLeft className="h-3 w-3" />
-    Tasks
-  </Link>
-);
-
 export function TaskDetailClient({ taskId }: { taskId: string }) {
   const query = useTask(taskId);
 
   return (
     <DetailGate
-      nav={<TasksBackLink />}
+      nav={<BackLink href="/tasks" label="Tasks" />}
       icon={ListChecks}
       noun="task"
       id={taskId}
@@ -293,7 +284,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         </aside>
       </div>
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="ID">
           <ClickToCopyId id={task.id} />
         </FooterField>
@@ -316,7 +307,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
             </Link>
           </FooterField>
         ) : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }

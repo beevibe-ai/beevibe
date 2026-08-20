@@ -1,10 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowLeft, Bot, Archive } from "lucide-react";
+import { Bot, Archive } from "lucide-react";
 import { useAgent } from "@/lib/hooks/use-agents";
 import { useIsOwner, useMe } from "@/lib/hooks/use-me";
 import { formatReviewPolicy } from "@/lib/format";
@@ -20,29 +19,21 @@ import { RuntimePicker } from "@/components/agents/pickers/runtime-picker";
 import { ModelPicker } from "@/components/agents/pickers/model-picker";
 import { ReviewPolicyPicker } from "@/components/agents/pickers/review-policy-picker";
 import { Skeleton } from "@/components/skeleton";
+import { BackLink } from "@/components/detail/back-link";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
 import { Metric } from "@/components/detail/metric";
 import { cn } from "@/lib/utils";
 import type { AgentDetail } from "@/lib/api/types";
 
-const AgentsBackLink = () => (
-  <Link
-    href="/agents"
-    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-3"
-  >
-    <ArrowLeft className="h-3 w-3" />
-    Agents
-  </Link>
-);
-
 export function AgentDetailClient({ agentId }: { agentId: string }) {
   const query = useAgent(agentId);
 
   return (
     <DetailGate
-      nav={<AgentsBackLink />}
+      nav={<BackLink href="/agents" label="Agents" />}
       icon={Bot}
       noun="agent"
       id={agentId}
@@ -278,7 +269,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         ) : null}
       </div>
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="ID">
           <ClickToCopyId id={agent.id} />
         </FooterField>
@@ -294,7 +285,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
             {new Date(agent.archived_at).toLocaleString()}
           </FooterField>
         ) : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }
