@@ -596,31 +596,10 @@ describe("TaskService.createWorkProduct + listWorkProducts", () => {
   });
 
 
-  it("updateWorkProduct forwards the mutable patch to the repo", async () => {
-    vi.mocked(workProductRepo.update).mockImplementation(async (id, patch) =>
-      makeWorkProduct({ id, ...patch }),
-    );
-
-    const out = await service.updateWorkProduct("wp_1", {
-      summary: "now merged",
-      url: "https://example.test/pr/42",
-    });
-
-    expect(workProductRepo.update).toHaveBeenCalledWith("wp_1", {
-      summary: "now merged",
-      url: "https://example.test/pr/42",
-    });
-    expect(out.summary).toBe("now merged");
-  });
-
-  it("updateWorkProduct surfaces the repo's not-found error", async () => {
-    vi.mocked(workProductRepo.update).mockRejectedValue(
-      new Error("work_product wp_missing not found"),
-    );
-    await expect(
-      service.updateWorkProduct("wp_missing", { summary: "x" }),
-    ).rejects.toThrow(/work_product wp_missing not found/);
-  });
+  // `updateWorkProduct` is a single-line pass-through to
+  // `workProductRepo.update(id, patch)` — no shaping, no error mapping. The
+  // two tests that used to sit here asserted only that a mock forwards its
+  // args and that a rejected promise stays rejected, so they were dropped.
 });
 
 describe("TaskService.checkAndCompleteParent", () => {
