@@ -11,24 +11,11 @@ import { computeCacheHitRatio, formatRelativeShort } from "./format.js";
 describe("formatRelativeShort", () => {
   const now = new Date("2026-04-30T12:00:00Z");
 
-  it("returns 'just now' under 60s", () => {
-    expect(formatRelativeShort(new Date(now.getTime() - 30_000), now)).toBe("just now");
-  });
-
-  it("uses minute granularity under an hour", () => {
-    expect(formatRelativeShort(new Date(now.getTime() - 5 * 60_000), now)).toBe("5m");
-  });
-
-  it("uses hour granularity under a day", () => {
-    expect(formatRelativeShort(new Date(now.getTime() - 3 * 3600_000), now)).toBe("3h");
-  });
-
-  it("uses day granularity under a month", () => {
-    expect(formatRelativeShort(new Date(now.getTime() - 4 * 86400_000), now)).toBe("4d");
-  });
-
-  // The whole point of the api-local wrapper: the web renders "2m ago",
-  // the wire carries the bare "2m". Same ladder, no suffix.
+  // `formatRelativeShort` is a one-line delegation to core's
+  // `formatRelative`, whose own suite already walks every threshold in
+  // the ladder. The only thing this wrapper adds — and so the only
+  // thing worth asserting here — is that it passes no suffix: the web
+  // renders "2m ago", the wire carries the bare "2m".
   it("emits the bare label with no ' ago' suffix", () => {
     expect(formatRelativeShort(new Date(now.getTime() - 2 * 60_000), now)).toBe("2m");
   });

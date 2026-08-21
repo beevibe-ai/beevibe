@@ -6,22 +6,16 @@ import {
 } from "./runtime-registry.js";
 
 describe("createDefaultRuntimeRegistry", () => {
-  it("registers claude-code", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["claude"]).toBeDefined();
-    expect(registry["claude"]!.type).toBe("claude");
-  });
-
-  it("registers opencode", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["opencode"]).toBeDefined();
-    expect(registry["opencode"]!.type).toBe("opencode");
-  });
-
-  it("registers codex", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["codex"]).toBeDefined();
-    expect(registry["codex"]!.type).toBe("codex");
+  // Asserting the whole key set at once, rather than one `it` per CLI,
+  // is what actually pins the registry: a per-CLI test can't fail on a
+  // *missing* fourth runtime, and the typo check below passes on an
+  // empty registry.
+  it("registers exactly the three supported CLIs", () => {
+    expect(Object.keys(createDefaultRuntimeRegistry()).sort()).toEqual([
+      "claude",
+      "codex",
+      "opencode",
+    ]);
   });
 
   it("every registry value's .type matches its registry key (sanity check against typos)", () => {

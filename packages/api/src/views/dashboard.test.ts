@@ -255,14 +255,18 @@ describe("getDashboardSummary", () => {
   });
 
   it("fires all 7 queries in parallel (single Promise.all)", async () => {
-    const calls: number[] = [];
-    let next = 0;
+    // Peak concurrency is the only observable that separates the two
+    // shapes: `Promise.all` issues all 7 before any resolves (peak 7),
+    // a sequential `await` chain never has more than 1 outstanding.
+    // Issue *order* does not — it's 0..6 either way — so asserting on
+    // it would pass on a sequentialised implementation.
+    let inFlight = 0;
+    let peakInFlight = 0;
     const query = vi.fn(async (sql: unknown) => {
-      const i = next++;
-      calls.push(i);
-      // First-issued query resolves last to prove they were issued together,
-      // not awaited sequentially.
-      await new Promise((r) => setTimeout(r, i === 0 ? 10 : 0));
+      inFlight += 1;
+      peakInFlight = Math.max(peakInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 0));
+      inFlight -= 1;
       const sqlText = String(sql);
       if (sqlText.includes("FROM days") && sqlText.includes("active_sessions")) return { rows: makeKpiTrendRows() };
       if (sqlText.includes("FROM days")) return { rows: makeTrendRows() };
@@ -273,7 +277,7 @@ describe("getDashboardSummary", () => {
     });
     const pool = { query } as unknown as Pool;
     await getDashboardSummary(pool);
-    expect(calls).toEqual([0, 1, 2, 3, 4, 5, 6]);
+    expect(peakInFlight).toBe(7);
     expect(query).toHaveBeenCalledTimes(7);
   });
 });
