@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  operationFailed,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +218,28 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("operationFailed", () => {
+  it("logs the raw error under the router/operation tag", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const err = new Error("ENOENT: /var/artifacts/secret.txt");
+
+    operationFailed(fakeRes(), err, "repo-runs/artifact", "artifact_failed");
+
+    expect(spy).toHaveBeenCalledWith("[repo-runs/artifact]", err);
+    spy.mockRestore();
+  });
+
+  it("answers 500 with the code alone — never the error's own message", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+
+    operationFailed(res, new Error("ENOENT: /var/artifacts/secret.txt"), "x/y", "get_failed");
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "get_failed" });
+    spy.mockRestore();
   });
 });

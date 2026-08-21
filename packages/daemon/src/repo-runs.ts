@@ -18,11 +18,11 @@ import type {
   SessionEventKind,
   TerminalSessionStatus,
 } from "@beevibe/core";
-import { errorMessage } from "@beevibe/core";
 import { runRepoAgent, type TranscriptEvent } from "@beevibe/sandbox/orchestrator";
 import type { ApiClient } from "./api-client.js";
 import { createEventBatcher } from "./event-batcher.js";
-import { error, log } from "./logger.js";
+import { reportDone } from "./runtime-done.js";
+import { log } from "./logger.js";
 import type { DispatchPayload, RunRepoArtifact } from "./spawner.js";
 
 export interface RunRepoDeps {
@@ -158,22 +158,11 @@ export async function runRepoDispatch(
     },
   };
 
-  if (status === "succeeded") {
-    log(
-      `[daemon/repo-run] sess=${payload.session_id} succeeded artifacts=${artifacts.length}`,
-    );
-  } else {
-    error(
-      `[daemon/repo-run] sess=${payload.session_id} status=${status}` +
-        (result.error ? `\n  error:\n    ${result.error.split("\n").join("\n    ")}` : ""),
-    );
-  }
-
-  try {
-    await deps.api.post("/runtime/done", done);
-  } catch (err) {
-    error("[daemon/repo-run] /runtime/done POST failed:", errorMessage(err));
-  }
+  await reportDone(deps.api, done, {
+    tag: "daemon/repo-run",
+    succeeded: `succeeded artifacts=${artifacts.length}`,
+    errorDetail: result.error,
+  });
 }
 
 /**

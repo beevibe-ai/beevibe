@@ -151,3 +151,33 @@ export function makeErrorHandler(
     });
   };
 }
+
+/**
+ * The *other* 500 — the one that names the operation that failed instead
+ * of reflecting the error's own message.
+ *
+ * `capabilities`, `find-repo`, `learned-skills` and `repo-runs` end ten
+ * handlers with the identical three lines: log the raw error with a
+ * `[router/operation]` tag, then answer `{ error: "<verb>_failed" }` and
+ * nothing else. That envelope is deliberately terser than
+ * {@link makeErrorHandler}'s — these endpoints reach GitHub, the
+ * filesystem and the capability registry, so an `err.message` reflected
+ * to the client can carry a path or a token-bearing URL. Keeping both
+ * builders side by side is the point: a handler author picks the
+ * disclosure they want rather than rediscovering the terse shape by
+ * copying whichever neighbour they happened to read.
+ *
+ * `tag` is the `router/operation` pair without brackets; `code` is the
+ * wire-visible failure code, which stays per-call-site because the
+ * existing codes are already per-operation (`scan_failed`, `get_failed`,
+ * `cancel_failed`, …) and clients may branch on them.
+ */
+export function operationFailed(
+  res: Response,
+  err: unknown,
+  tag: string,
+  code: string,
+): void {
+  console.error(`[${tag}]`, err);
+  res.status(500).json({ error: code });
+}
