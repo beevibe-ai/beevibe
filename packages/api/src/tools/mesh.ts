@@ -15,7 +15,8 @@ import type {
   CreateEscalationInput,
 } from "@beevibe/core/services/escalation-service";
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import { toolErrorFromThrown } from "./errors.js";
+import { toolError, toolErrorFromThrown, toolFailure } from "./errors.js";
+import { coerceString, enumArg, nonEmptyString, oneOfMessage, optionalString } from "./input.js";
 import type { AgentTool } from "./types.js";
 import type { McpCaller } from "./assemble.js";
 import type { MeshServer } from "../mesh/server.js";
@@ -95,10 +96,10 @@ function askTool(ctx: MeshToolContext, services: MeshToolServices): AgentTool {
     },
     handler: async (input) => {
       try {
-        const target = String(input.target_agent_id ?? "");
-        const question = String(input.question ?? "");
+        const target = coerceString(input, "target_agent_id");
+        const question = coerceString(input, "question");
         if (!target || !question) {
-          return { content: { error: "target_agent_id and question required" }, isError: true };
+          return toolFailure("target_agent_id and question required");
         }
         const requestId = randomUUID();
         const response = await services.mesh.sendAsk(
@@ -133,10 +134,10 @@ function respondAskTool(ctx: MeshToolContext, services: MeshToolServices): Agent
     },
     handler: async (input) => {
       try {
-        const requestId = String(input.request_id ?? "");
-        const answer = String(input.answer ?? "");
+        const requestId = coerceString(input, "request_id");
+        const answer = coerceString(input, "answer");
         if (!requestId || !answer) {
-          return { content: { error: "request_id and answer required" }, isError: true };
+          return toolFailure("request_id and answer required");
         }
         services.mesh.respondAsk(requestId, {
           request_id: requestId,
@@ -178,12 +179,12 @@ function negotiateTool(ctx: MeshToolContext, services: MeshToolServices): AgentT
     },
     handler: async (input) => {
       try {
-        const peerId = String(input.peer_id ?? "");
-        const proposal = String(input.proposal ?? "");
+        const peerId = coerceString(input, "peer_id");
+        const proposal = coerceString(input, "proposal");
         const taskId =
-          typeof input.task_id === "string" && input.task_id ? input.task_id : undefined;
+          nonEmptyString(input, "task_id");
         if (!peerId || !proposal) {
-          return { content: { error: "peer_id and proposal required" }, isError: true };
+          return toolFailure("peer_id and proposal required");
         }
 
         const response = await services.mesh.sendNegotiate(
@@ -228,26 +229,19 @@ function respondNegotiateTool(ctx: MeshToolContext, services: MeshToolServices):
     },
     handler: async (input) => {
       try {
-        const negId = String(input.negotiation_id ?? "");
-        const decision = input.decision as (typeof NEGOTIATE_DECISIONS)[number];
-        const message = String(input.message ?? "");
-        const counter =
-          typeof input.counter_proposal === "string" ? input.counter_proposal : undefined;
+        const negId = coerceString(input, "negotiation_id");
+        const decision = enumArg(input, "decision", NEGOTIATE_DECISIONS);
+        const message = coerceString(input, "message");
+        const counter = optionalString(input, "counter_proposal");
 
         if (!negId || !message) {
-          return { content: { error: "negotiation_id and message required" }, isError: true };
+          return toolFailure("negotiation_id and message required");
         }
-        if (!NEGOTIATE_DECISIONS.includes(decision)) {
-          return {
-            content: { error: `decision must be one of: ${NEGOTIATE_DECISIONS.join(", ")}` },
-            isError: true,
-          };
+        if (!decision) {
+          return toolFailure(oneOfMessage("decision", NEGOTIATE_DECISIONS));
         }
         if (decision === "counter" && !counter) {
-          return {
-            content: { error: "counter_proposal required when decision='counter'" },
-            isError: true,
-          };
+          return toolFailure("counter_proposal required when decision='counter'");
         }
 
         // The server computes the round number internally from
@@ -299,26 +293,20 @@ function reportBlockerTool(ctx: MeshToolContext, services: MeshToolServices): Ag
     },
     handler: async (input) => {
       try {
-        const taskId = String(input.task_id ?? "");
-        const description = String(input.description ?? "");
+        const taskId = coerceString(input, "task_id");
+        const description = coerceString(input, "description");
         if (!taskId || !description) {
-          return {
-            content: { error: "task_id and description required" },
-            isError: true,
-          };
+          return toolFailure("task_id and description required");
         }
 
         // Server derives parent from caller's hierarchy. Direct parent only.
         const parent = await services.agentRepo.findParent(ctx.caller.agentId);
         if (!parent) {
-          return {
-            content: {
-              error: "no_parent_to_block",
-              message:
-                "Top-level agents have no parent to report blockers to. Use escalate_to_humans or update_progress('failed') instead.",
-            },
-            isError: true,
-          };
+          return toolError(
+            "no_parent_to_block",
+            "Top-level agents have no parent to report blockers to. Use " +
+              "escalate_to_humans or update_progress('failed') instead.",
+          );
         }
 
         // Mark the task blocked + record the blocker_agent_id + reason.
@@ -392,10 +380,10 @@ function escalateToHumansTool(
     },
     handler: async (input) => {
       try {
-        const negotiationId = String(input.negotiation_id ?? "");
-        const summary = String(input.summary ?? "");
+        const negotiationId = coerceString(input, "negotiation_id");
+        const summary = coerceString(input, "summary");
         if (!negotiationId || !summary) {
-          return { content: { error: "negotiation_id and summary required" }, isError: true };
+          return toolFailure("negotiation_id and summary required");
         }
 
         const proposals = Array.isArray(input.proposals)

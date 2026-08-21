@@ -4,6 +4,8 @@ import {
   SessionSearchService,
 } from "@beevibe/core/services/session-search";
 import { errorMessage, SESSION_TYPES, SESSION_STATUSES } from "@beevibe/core";
+import { toolError } from "./errors.js";
+import { nonEmptyString, optionalNumber } from "./input.js";
 import type { AgentTool } from "./types.js";
 
 /**
@@ -192,23 +194,16 @@ function inferRequest(input: Record<string, unknown>): SessionSearchRequest {
       ? (input.filters as SessionSearchRequest extends { filters?: infer F } ? F : never)
       : undefined;
 
-  const sessionId =
-    typeof input.session_id === "string" && input.session_id.trim()
-      ? input.session_id.trim()
-      : null;
-  const anchor =
-    typeof input.around_message_id === "string" && input.around_message_id.trim()
-      ? input.around_message_id.trim()
-      : null;
-  const query =
-    typeof input.query === "string" && input.query.trim() ? input.query.trim() : null;
+  const sessionId = nonEmptyString(input, "session_id", { trim: true }) ?? null;
+  const anchor = nonEmptyString(input, "around_message_id", { trim: true }) ?? null;
+  const query = nonEmptyString(input, "query", { trim: true }) ?? null;
 
   if (sessionId && anchor) {
     return {
       kind: "scroll",
       session_id: sessionId,
       around_message_id: anchor,
-      window: typeof input.window === "number" ? input.window : undefined,
+      window: optionalNumber(input, "window"),
     };
   }
   if (sessionId) {
@@ -218,7 +213,7 @@ function inferRequest(input: Record<string, unknown>): SessionSearchRequest {
     return {
       kind: "discover",
       query,
-      limit: typeof input.limit === "number" ? input.limit : undefined,
+      limit: optionalNumber(input, "limit"),
       sort:
         input.sort === "newest" || input.sort === "oldest"
           ? input.sort
@@ -228,7 +223,7 @@ function inferRequest(input: Record<string, unknown>): SessionSearchRequest {
   }
   return {
     kind: "browse",
-    limit: typeof input.limit === "number" ? input.limit : undefined,
+    limit: optionalNumber(input, "limit"),
     filters,
   };
 }
@@ -250,15 +245,11 @@ export function createSessionSearchTool(
           currentSessionId: ctx.sessionId,
         });
         if (result === null) {
-          return {
-            content: {
-              error: "not_found_or_forbidden",
-              message:
-                "session_id is not in your scope, the anchor message id does not " +
-                "exist, or the anchor lives in your active conversation.",
-            },
-            isError: true,
-          };
+          return toolError(
+            "not_found_or_forbidden",
+            "session_id is not in your scope, the anchor message id does not " +
+              "exist, or the anchor lives in your active conversation.",
+          );
         }
         return { content: result as unknown as Record<string, unknown> };
       } catch (err) {
@@ -270,18 +261,9 @@ export function createSessionSearchTool(
           (err instanceof Error && err.name === "SessionSearchError");
         if (isSessionSearchError) {
           const e = err as SessionSearchError;
-          return {
-            content: { error: e.code, message: e.message },
-            isError: true,
-          };
+          return toolError(e.code, e.message);
         }
-        return {
-          content: {
-            error: "internal_error",
-            message: errorMessage(err),
-          },
-          isError: true,
-        };
+        return toolError("internal_error", errorMessage(err));
       }
     },
   };

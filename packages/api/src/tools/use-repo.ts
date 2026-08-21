@@ -28,6 +28,8 @@ import {
   type TaskRepository,
 } from "@beevibe/core";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
+import { toolError } from "./errors.js";
+import { optionalString } from "./input.js";
 import type { AgentTool } from "./types.js";
 
 const USE_REPO_SCHEMA = {
@@ -123,41 +125,24 @@ export function createUseRepoTool(
       "the UI, or read repo_run.status for completion.",
     schema: USE_REPO_SCHEMA as Record<string, unknown>,
     handler: async (input) => {
-      const goal = typeof input.goal === "string" ? input.goal.trim() : "";
-      const repoUrl =
-        typeof input.repo_url === "string" ? input.repo_url.trim() : "";
+      const goal = optionalString(input, "goal", { trim: true }) ?? "";
+      const repoUrl = optionalString(input, "repo_url", { trim: true }) ?? "";
       if (!goal) {
-        return {
-          content: { error: "invalid_goal", message: "goal must be a non-empty string" },
-          isError: true,
-        };
+        return toolError("invalid_goal", "goal must be a non-empty string");
       }
       if (!repoUrl || !isLikelyGithubUrl(repoUrl)) {
-        return {
-          content: {
-            error: "invalid_repo_url",
-            message: "repo_url must be a GitHub HTTPS URL",
-          },
-          isError: true,
-        };
+        return toolError("invalid_repo_url", "repo_url must be a GitHub HTTPS URL");
       }
 
-      const inputUrl =
-        typeof input.input_url === "string" ? input.input_url.trim() : undefined;
-      const inputFilename =
-        typeof input.input_filename === "string"
-          ? input.input_filename.trim()
-          : undefined;
+      const inputUrl = optionalString(input, "input_url", { trim: true });
+      const inputFilename = optionalString(input, "input_filename", { trim: true });
       const limits = parseLimits(input.limits);
 
       // Look the agent up so we can pin the container task's creator
       // to the actual agent id and confirm the caller exists.
       const agent = await services.agentRepo.findById(ctx.agentId);
       if (!agent) {
-        return {
-          content: { error: "agent_not_found", message: "calling agent not found" },
-          isError: true,
-        };
+        return toolError("agent_not_found", "calling agent not found");
       }
 
       // Container task — the artifact has to live somewhere, and
@@ -196,13 +181,7 @@ export function createUseRepoTool(
           sessionIdOverride: sessionIdValue,
         });
       } catch (err) {
-        return {
-          content: {
-            error: "dispatch_failed",
-            message: errorMessage(err),
-          },
-          isError: true,
-        };
+        return toolError("dispatch_failed", errorMessage(err));
       }
 
       try {
@@ -220,13 +199,7 @@ export function createUseRepoTool(
         // session. composeDispatchPayload will find no repo_run and
         // return null, marking the session failed. Self-recovers, but
         // surface the error so the agent doesn't silently wait.
-        return {
-          content: {
-            error: "repo_run_create_failed",
-            message: errorMessage(err),
-          },
-          isError: true,
-        };
+        return toolError("repo_run_create_failed", errorMessage(err));
       }
 
       return {

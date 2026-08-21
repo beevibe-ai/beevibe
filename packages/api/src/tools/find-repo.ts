@@ -40,6 +40,8 @@ import type {
   LearnedSkillRepository,
 } from "@beevibe/core";
 import { errorMessage } from "@beevibe/core";
+import { toolError } from "./errors.js";
+import { optionalNumber, optionalString } from "./input.js";
 import type { AgentTool, AgentToolResult } from "./types.js";
 
 /**
@@ -311,23 +313,17 @@ async function findRepoHandler(
   trending: TrendingClient,
   githubToken: string | undefined,
 ): Promise<AgentToolResult> {
-  const goal = typeof input.goal === "string" ? input.goal.trim() : "";
+  const goal = optionalString(input, "goal", { trim: true }) ?? "";
   if (!goal) {
-    return {
-      content: { error: "invalid_goal", message: "goal must be a non-empty string" },
-      isError: true,
-    };
+    return toolError("invalid_goal", "goal must be a non-empty string");
   }
-  const limitRaw = typeof input.limit === "number" ? input.limit : 5;
+  const limitRaw = optionalNumber(input, "limit", 5);
   const limit = Math.min(10, Math.max(1, Math.floor(limitRaw)));
 
   // Resolve the agent's owner so we can scope learned-skill lookups.
   const agent = await services.agentRepo.findById(ctx.agentId);
   if (!agent) {
-    return {
-      content: { error: "agent_not_found", message: "calling agent not found" },
-      isError: true,
-    };
+    return toolError("agent_not_found", "calling agent not found");
   }
 
   const notes: string[] = [];
