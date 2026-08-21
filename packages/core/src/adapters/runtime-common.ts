@@ -39,7 +39,7 @@ export function parseNdjsonLine<T>(line: string): T | null {
  * richer superset — extra `name`/`persona` and single-key branches — and
  * intentionally keeps its own implementation.)
  */
-export const PREFERRED_TOOL_INPUT_FIELDS = [
+const PREFERRED_TOOL_INPUT_FIELDS = [
   "file_path",
   "path",
   "command",
@@ -53,16 +53,13 @@ export const PREFERRED_TOOL_INPUT_FIELDS = [
 /**
  * Pull the most informative string field out of a tool-call input payload,
  * truncated to 200 chars. Falls back to the raw JSON when no preferred field
- * is present. `fields` defaults to {@link PREFERRED_TOOL_INPUT_FIELDS}.
+ * is present. Probes {@link PREFERRED_TOOL_INPUT_FIELDS} in order.
  */
-export function describeToolInput(
-  input: unknown,
-  fields: readonly string[] = PREFERRED_TOOL_INPUT_FIELDS,
-): string {
+export function describeToolInput(input: unknown): string {
   if (typeof input === "string") return input.slice(0, 200);
   if (!input || typeof input !== "object" || Array.isArray(input)) return "";
   const obj = input as Record<string, unknown>;
-  for (const key of fields) {
+  for (const key of PREFERRED_TOOL_INPUT_FIELDS) {
     const v = obj[key];
     if (typeof v === "string" && v.length > 0) return v.slice(0, 200);
   }
