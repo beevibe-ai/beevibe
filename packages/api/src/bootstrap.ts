@@ -36,6 +36,7 @@ import { SessionSearchService } from "@beevibe/core/services/session-search";
 import { DaemonOrphanReaper } from "@beevibe/core/services/orphan-reaper";
 import { buildPostDispatchHook } from "@beevibe/core/services/post-dispatch";
 import type { Session } from "@beevibe/core";
+import { errorMessage } from "@beevibe/core";
 import { MeshServer } from "./mesh/server.js";
 import { BeevibeApiServer } from "./server.js";
 import { SessionCache } from "./session-cache.js";
@@ -443,10 +444,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
         try {
           await taskRepo.update(session.task_id, { status: "review" });
         } catch (err) {
-          console.warn(
-            "[onSessionComplete] run_repo task→review failed:",
-            err instanceof Error ? err.message : String(err),
-          );
+          console.warn("[onSessionComplete] run_repo task→review failed:", errorMessage(err));
         }
       }
       // Auto-retry-then-fail for task sessions whose agent exited

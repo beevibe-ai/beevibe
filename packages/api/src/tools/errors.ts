@@ -17,6 +17,7 @@
  * branch on `error` for the coded tools.
  */
 
+import { errorMessage } from "@beevibe/core";
 import { CodedMeshError } from "../mesh/types.js";
 import type { AgentToolResult } from "./types.js";
 
@@ -53,7 +54,7 @@ export function toolErrorFromThrown(
   }
   return {
     content: {
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMessage(err),
       ...extra,
     },
     isError: true,

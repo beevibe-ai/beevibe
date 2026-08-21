@@ -19,6 +19,7 @@
  */
 
 import {
+  errorMessage,
   repoRunId as newRepoRunId,
   sessionId as newSessionId,
   taskId as newTaskId,
@@ -198,7 +199,7 @@ export function createUseRepoTool(
         return {
           content: {
             error: "dispatch_failed",
-            message: err instanceof Error ? err.message : String(err),
+            message: errorMessage(err),
           },
           isError: true,
         };
@@ -222,7 +223,7 @@ export function createUseRepoTool(
         return {
           content: {
             error: "repo_run_create_failed",
-            message: err instanceof Error ? err.message : String(err),
+            message: errorMessage(err),
           },
           isError: true,
         };

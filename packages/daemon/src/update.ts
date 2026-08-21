@@ -27,6 +27,7 @@ import { join } from "node:path";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 import { createInterface } from "node:readline/promises";
+import { errorMessage } from "@beevibe/core";
 import { error, log } from "./logger.js";
 
 // Baked in by `bun build --compile --define BEEVIBE_DAEMON_VERSION="…"`
@@ -220,7 +221,7 @@ export async function runUpdate(opts: { skipPrompt?: boolean } = {}): Promise<vo
     try {
       renameSync(stagingPath, process.execPath);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       error(`Failed to replace ${process.execPath}: ${msg}`);
       error(`The new binary is at ${stagingPath} — install manually if needed.`);
       // Don't clean up the stagingDir if we leave the new binary behind

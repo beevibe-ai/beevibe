@@ -26,6 +26,7 @@ import type {
   RuntimeResult,
   TerminalSessionStatus,
 } from "@beevibe/core";
+import { errorMessage } from "@beevibe/core";
 import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
 import { createEventBatcher } from "./event-batcher.js";
@@ -170,9 +171,6 @@ export async function runDispatch(
   try {
     await deps.api.post("/runtime/done", done);
   } catch (err) {
-    error(
-      "[daemon/spawner] /runtime/done POST failed:",
-      err instanceof Error ? err.message : String(err),
-    );
+    error("[daemon/spawner] /runtime/done POST failed:", errorMessage(err));
   }
 }

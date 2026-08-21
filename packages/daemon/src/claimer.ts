@@ -12,7 +12,7 @@
  */
 
 import WebSocket from "ws";
-import { RUNTIME_HEARTBEAT_INTERVAL_MS, type RuntimeRegistry } from "@beevibe/core";
+import { errorMessage, RUNTIME_HEARTBEAT_INTERVAL_MS, type RuntimeRegistry } from "@beevibe/core";
 import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
 import { error, log, warn } from "./logger.js";
@@ -205,10 +205,7 @@ export class Claimer {
         runtime_ids: this.cfg.runtimeIds,
       });
     } catch (err) {
-      warn(
-        "[daemon] heartbeat failed:",
-        err instanceof Error ? err.message : String(err),
-      );
+      warn("[daemon] heartbeat failed:", errorMessage(err));
     }
   }
 
@@ -234,10 +231,7 @@ export class Claimer {
       try {
         payload = await this.cfg.api.claim<DispatchPayload>(runtimeId);
       } catch (err) {
-        warn(
-          `[daemon] claim failed for runtime=${runtimeId}:`,
-          err instanceof Error ? err.message : String(err),
-        );
+        warn(`[daemon] claim failed for runtime=${runtimeId}:`, errorMessage(err));
         return;
       }
       if (!payload) return;
@@ -258,10 +252,7 @@ export class Claimer {
         ctrl.signal,
       )
         .catch((err: unknown) =>
-          error(
-            `[daemon] dispatch ${payload.session_id} failed:`,
-            err instanceof Error ? err.message : String(err),
-          ),
+          error(`[daemon] dispatch ${payload.session_id} failed:`, errorMessage(err)),
         )
         .finally(() => this.cfg.supervisor.finish(payload.session_id));
     }

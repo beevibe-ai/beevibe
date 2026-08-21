@@ -4,6 +4,7 @@
  */
 
 import { join } from "node:path";
+import { errorMessage } from "@beevibe/core";
 import { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import { createDefaultRuntimeRegistry } from "@beevibe/core/adapters/runtime-registry";
 import { ApiClient } from "./api-client.js";
@@ -36,10 +37,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
   // LocalWorkspaceManager.ensureWorkspace.
   const skillsSourceDir = await syncSkillsCache(api, options.configRoot).catch(
     (err: unknown) => {
-      warn(
-        "[daemon] skills sync failed; continuing without skills:",
-        err instanceof Error ? err.message : String(err),
-      );
+      warn("[daemon] skills sync failed; continuing without skills:", errorMessage(err));
       return undefined;
     },
   );
@@ -87,10 +85,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
   // self-healing, so logging and continuing is the right behavior under
   // Node 20+'s default `--unhandled-rejections=throw`.
   process.on("unhandledRejection", (reason) => {
-    warn(
-      "[daemon] unhandledRejection (continuing):",
-      reason instanceof Error ? reason.message : String(reason),
-    );
+    warn("[daemon] unhandledRejection (continuing):", errorMessage(reason));
   });
 
   // Hold the process open. The `setInterval` in claimer keeps the event

@@ -16,7 +16,7 @@
  *     10 concern (pg_notify('runtime_wakeup', json) + per-instance hubs).
  */
 
-import { RUNTIME_HEARTBEAT_INTERVAL_MS } from "@beevibe/core";
+import { errorMessage, RUNTIME_HEARTBEAT_INTERVAL_MS } from "@beevibe/core";
 
 export type DaemonPushPayload =
   | { type: "task_available"; runtime_id: string; session_id: string }
@@ -187,7 +187,7 @@ export class DaemonHub {
     } catch (err) {
       console.warn("[hub] send failed; unregistering client", {
         daemonId: client.daemonId,
-        err: err instanceof Error ? err.message : String(err),
+        err: errorMessage(err),
       });
       this.unregister(client);
     }

@@ -3,7 +3,7 @@ import {
   SessionSearchError,
   SessionSearchService,
 } from "@beevibe/core/services/session-search";
-import { SESSION_TYPES, SESSION_STATUSES } from "@beevibe/core";
+import { errorMessage, SESSION_TYPES, SESSION_STATUSES } from "@beevibe/core";
 import type { AgentTool } from "./types.js";
 
 /**
@@ -278,7 +278,7 @@ export function createSessionSearchTool(
         return {
           content: {
             error: "internal_error",
-            message: err instanceof Error ? err.message : String(err),
+            message: errorMessage(err),
           },
           isError: true,
         };

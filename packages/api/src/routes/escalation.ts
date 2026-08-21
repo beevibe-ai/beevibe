@@ -18,6 +18,7 @@
  */
 
 import { Router, type RequestHandler, type Response } from "express";
+import { errorMessage } from "@beevibe/core";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   type EscalationService,
@@ -104,7 +105,7 @@ function handleEscalationError(err: unknown, res: Response): void {
   console.error("[escalation route]", err);
   res.status(500).json({
     error: "internal_error",
-    message: err instanceof Error ? err.message : String(err),
+    message: errorMessage(err),
   });
 }
 

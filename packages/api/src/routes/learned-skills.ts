@@ -11,6 +11,7 @@ import { writeFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { Router, type RequestHandler, type Response } from "express";
 import {
+  errorMessage,
   learnedSkillId as newLearnedSkillId,
   type LearnedSkillRepository,
   type RepoRun,
@@ -233,7 +234,7 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
       console.error("[learned-skills/publish]", err);
       res.status(500).json({
         error: "publish_failed",
-        message: err instanceof Error ? err.message : String(err),
+        message: errorMessage(err),
       });
     }
   });

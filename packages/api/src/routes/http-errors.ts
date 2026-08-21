@@ -1,4 +1,5 @@
 import type { Request, Response } from "express";
+import { errorMessage } from "@beevibe/core";
 
 /**
  * Read a required route param, 400-ing when Express hands back an empty
@@ -146,7 +147,7 @@ export function makeErrorHandler(
     console.error(context ? `[${tag}: ${context}]` : `[${tag}]`, err);
     res.status(500).json({
       error: "internal_error",
-      message: err instanceof Error ? err.message : String(err),
+      message: errorMessage(err),
     });
   };
 }

@@ -39,6 +39,7 @@ import type {
   EmbeddingService,
   LearnedSkillRepository,
 } from "@beevibe/core";
+import { errorMessage } from "@beevibe/core";
 import type { AgentTool, AgentToolResult } from "./types.js";
 
 /**
@@ -340,7 +341,7 @@ async function findRepoHandler(
   try {
     goalVec = await services.embeddings.embed(goal);
   } catch (err) {
-    notes.push(`embedding goal failed (semantic tiers skipped): ${errMsg(err)}`);
+    notes.push(`embedding goal failed (semantic tiers skipped): ${errorMessage(err)}`);
   }
 
   // ── Tier 2: Local learned skills (highest priority signal) ────────
@@ -364,7 +365,7 @@ async function findRepoHandler(
       };
     }
   } catch (err) {
-    notes.push(`learned skill lookup failed: ${errMsg(err)}`);
+    notes.push(`learned skill lookup failed: ${errorMessage(err)}`);
   }
 
   // ── Tier 1: Community registry (best-effort, may 404) ─────────────
@@ -390,7 +391,7 @@ async function findRepoHandler(
         notes.push("community registry unavailable (proceeding without Tier 1)");
       }
     } catch (err) {
-      notes.push(`community registry error: ${errMsg(err)}`);
+      notes.push(`community registry error: ${errorMessage(err)}`);
     }
   }
 
@@ -423,7 +424,7 @@ async function findRepoHandler(
       }
     }
   } catch (err) {
-    notes.push(`GitHub search failed: ${errMsg(err)}`);
+    notes.push(`GitHub search failed: ${errorMessage(err)}`);
   }
 
   // ── Tier 5: GitHub trending (snapshot lookup, no per-candidate I/O) ─
@@ -480,7 +481,7 @@ async function findRepoHandler(
         if (entry.language) c.language = entry.language;
       }
     } catch (err) {
-      notes.push(`trending lookup failed: ${errMsg(err)}`);
+      notes.push(`trending lookup failed: ${errorMessage(err)}`);
     }
   }
 
@@ -698,10 +699,6 @@ function formatReason(c: FindRepoCandidate): string {
     parts.push(`${c.stars.toLocaleString()} stars on GitHub`);
   }
   return parts.join("; ") || "no signal";
-}
-
-function errMsg(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 /* ─── GitHub search ──────────────────────────────────────────────── */
