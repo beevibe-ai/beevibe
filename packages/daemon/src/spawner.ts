@@ -29,7 +29,8 @@ import type {
 import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
 import { createEventBatcher } from "./event-batcher.js";
-import { error, log } from "./logger.js";
+import { reportDone } from "./runtime-done.js";
+import { log } from "./logger.js";
 import { runRepoDispatch } from "./repo-runs.js";
 
 export type {
@@ -158,21 +159,10 @@ export async function runDispatch(
     usage: result?.usage,
   };
 
-  if (status === "succeeded") {
-    log(`[daemon/spawn] sess=${payload.session_id} exit=0`);
-  } else {
-    error(
-      `[daemon/spawn] sess=${payload.session_id} status=${status} exit=${done.exit_code}` +
-        (errorDetail ? `\n  error:\n    ${errorDetail.split("\n").join("\n    ")}` : ""),
-    );
-  }
-
-  try {
-    await deps.api.post("/runtime/done", done);
-  } catch (err) {
-    error(
-      "[daemon/spawner] /runtime/done POST failed:",
-      err instanceof Error ? err.message : String(err),
-    );
-  }
+  await reportDone(deps.api, done, {
+    tag: "daemon/spawn",
+    succeeded: "exit=0",
+    failed: `exit=${done.exit_code}`,
+    errorDetail,
+  });
 }

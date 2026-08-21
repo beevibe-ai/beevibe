@@ -11,6 +11,7 @@ import { writeFile, mkdir } from "node:fs/promises";
 import { join, resolve } from "node:path";
 import { Router, type RequestHandler, type Response } from "express";
 import {
+  errorMessage,
   learnedSkillId as newLearnedSkillId,
   type LearnedSkillRepository,
   type RepoRun,
@@ -19,7 +20,7 @@ import {
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { readArtifactBody } from "../views/work-product.js";
-import { invalidBody, loadOwned, requireParam } from "./http-errors.js";
+import { invalidBody, loadOwned, operationFailed, requireParam } from "./http-errors.js";
 
 export interface LearnedSkillsRouterDeps {
   authMiddleware: RequestHandler;
@@ -63,8 +64,7 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
       const skills = await deps.learnedSkillRepo.listByOwner(req.caller!.personId);
       res.status(200).json({ skills });
     } catch (err) {
-      console.error("[learned-skills/list]", err);
-      res.status(500).json({ error: "list_failed" });
+      operationFailed(res, err, "learned-skills/list", "list_failed");
     }
   });
 
@@ -141,8 +141,7 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
 
       res.status(201).json({ skill });
     } catch (err) {
-      console.error("[learned-skills/create]", err);
-      res.status(500).json({ error: "create_failed" });
+      operationFailed(res, err, "learned-skills/create", "create_failed");
     }
   });
 
@@ -157,8 +156,7 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
       await deps.learnedSkillRepo.delete(id);
       res.status(204).send();
     } catch (err) {
-      console.error("[learned-skills/delete]", err);
-      res.status(500).json({ error: "delete_failed" });
+      operationFailed(res, err, "learned-skills/delete", "delete_failed");
     }
   });
 
@@ -233,7 +231,7 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
       console.error("[learned-skills/publish]", err);
       res.status(500).json({
         error: "publish_failed",
-        message: err instanceof Error ? err.message : String(err),
+        message: errorMessage(err),
       });
     }
   });

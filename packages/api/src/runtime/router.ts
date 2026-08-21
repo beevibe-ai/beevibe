@@ -3,6 +3,7 @@ import { promises as fs } from "node:fs";
 import { join, relative } from "node:path";
 import { Router, type RequestHandler } from "express";
 import {
+  errorMessage,
   daemonId as newDaemonId,
   runtimeId as newRuntimeId,
   sessionEventId as newSessionEventId,
@@ -315,10 +316,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
             ended_at: new Date(),
           });
         } catch (err) {
-          console.warn(
-            "[runtime/done] repo_run update failed:",
-            err instanceof Error ? err.message : String(err),
-          );
+          console.warn("[runtime/done] repo_run update failed:", errorMessage(err));
         }
 
         // Write one work_product per exported artifact, attached to the
@@ -346,7 +344,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
             } catch (err) {
               console.warn(
                 `[runtime/done] work_product create failed for ${artifact.filename}:`,
-                err instanceof Error ? err.message : String(err),
+                errorMessage(err),
               );
             }
           }
@@ -360,10 +358,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
         // Fire-and-forget; resolver/post-dispatch errors must not fail the
         // daemon's request.
         Promise.resolve(deps.onSessionComplete(updated)).catch((err: unknown) =>
-          console.warn(
-            "[runtime/done] onSessionComplete failed:",
-            err instanceof Error ? err.message : String(err),
-          ),
+          console.warn("[runtime/done] onSessionComplete failed:", errorMessage(err)),
         );
       }
       res.status(204).send();
@@ -565,10 +560,7 @@ async function composeDispatchPayload(
   try {
     await deps.sessionRepo.update(session.id, { briefing: briefing.snapshot });
   } catch (err) {
-    console.warn(
-      "[runtime/claim] briefing snapshot persist failed:",
-      err instanceof Error ? err.message : String(err),
-    );
+    console.warn("[runtime/claim] briefing snapshot persist failed:", errorMessage(err));
   }
 
   // Capability Network: run_repo dispatches carry the orchestrator
@@ -595,10 +587,7 @@ async function composeDispatchPayload(
     try {
       await deps.repoRunRepo.update(repoRun.id, { status: "running" });
     } catch (err) {
-      console.warn(
-        "[runtime/claim] repo_run status flip failed:",
-        err instanceof Error ? err.message : String(err),
-      );
+      console.warn("[runtime/claim] repo_run status flip failed:", errorMessage(err));
     }
   }
 

@@ -9,6 +9,7 @@
  */
 
 import { Router, type RequestHandler } from "express";
+import { errorMessage } from "@beevibe/core";
 import {
   type NegotiationService,
   NegotiationNotFoundError,
@@ -40,7 +41,7 @@ export function createNegotiationRouter(deps: NegotiationRoutesDeps): Router {
       console.error("[negotiation route]", err);
       res.status(500).json({
         error: "internal_error",
-        message: err instanceof Error ? err.message : String(err),
+        message: errorMessage(err),
       });
     }
   });

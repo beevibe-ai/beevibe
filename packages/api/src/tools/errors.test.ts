@@ -4,7 +4,7 @@ import {
   MeshCapacityError,
   MeshMaxRoundsError,
 } from "../mesh/types.js";
-import { toolError, toolErrorFromThrown } from "./errors.js";
+import { toolError, toolErrorFromThrown, toolFailure } from "./errors.js";
 
 describe("toolError", () => {
   it("puts the code in `error` and the human text in `message`", () => {
@@ -17,6 +17,22 @@ describe("toolError", () => {
   it("merges structured context alongside code and message", () => {
     expect(toolError("watch_validation", "bad mode", { mode: "nope" })).toEqual({
       content: { error: "watch_validation", message: "bad mode", mode: "nope" },
+      isError: true,
+    });
+  });
+});
+
+describe("toolFailure", () => {
+  it("puts the whole string in `error`, with no `message` alongside", () => {
+    expect(toolFailure("task_id and title required")).toEqual({
+      content: { error: "task_id and title required" },
+      isError: true,
+    });
+  });
+
+  it("merges structured context alongside it", () => {
+    expect(toolFailure("task_not_found", { task_id: "task_1" })).toEqual({
+      content: { error: "task_not_found", task_id: "task_1" },
       isError: true,
     });
   });

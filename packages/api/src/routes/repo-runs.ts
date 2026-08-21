@@ -19,7 +19,7 @@ import type {
   SessionEventRepository,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
-import { requireParam } from "./http-errors.js";
+import { operationFailed, requireParam } from "./http-errors.js";
 
 export interface RepoRunsRouterDeps {
   authMiddleware: RequestHandler;
@@ -67,8 +67,7 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
       const runs = await deps.repoRunRepo.listRecent({ limit: 50 });
       res.status(200).json({ runs });
     } catch (err) {
-      console.error("[repo-runs/list]", err);
-      res.status(500).json({ error: "list_failed" });
+      operationFailed(res, err, "repo-runs/list", "list_failed");
     }
   });
 
@@ -101,8 +100,7 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
       }
       res.status(200).json({ run: { ...run, transcript } });
     } catch (err) {
-      console.error("[repo-runs/get]", err);
-      res.status(500).json({ error: "get_failed" });
+      operationFailed(res, err, "repo-runs/get", "get_failed");
     }
   });
 
@@ -133,8 +131,7 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
       });
       res.status(200).json({ run: updated });
     } catch (err) {
-      console.error("[repo-runs/cancel]", err);
-      res.status(500).json({ error: "cancel_failed" });
+      operationFailed(res, err, "repo-runs/cancel", "cancel_failed");
     }
   });
 
@@ -187,8 +184,7 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
         task_id: run.task_id,
       });
     } catch (err) {
-      console.error("[repo-runs/artifact]", err);
-      res.status(500).json({ error: "artifact_failed" });
+      operationFailed(res, err, "repo-runs/artifact", "artifact_failed");
     }
   });
 

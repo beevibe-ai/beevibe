@@ -19,6 +19,7 @@
 import { Router, type RequestHandler, type Response } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
+  errorMessage,
   TASK_PRIORITIES,
   isInFlightSessionStatus,
   taskId,
@@ -111,7 +112,7 @@ async function recordCapabilityOutcome(
     }
   } catch (err) {
     // Outcome recording is best-effort — don't fail the review action.
-    console.warn("[task route] capability outcome recording failed:", err instanceof Error ? err.message : String(err));
+    console.warn("[task route] capability outcome recording failed:", errorMessage(err));
   }
 }
 
@@ -127,7 +128,7 @@ function handleServiceError(err: unknown, res: Response): void {
   console.error("[task route]", err);
   res.status(500).json({
     error: "internal_error",
-    message: err instanceof Error ? err.message : String(err),
+    message: errorMessage(err),
   });
 }
 

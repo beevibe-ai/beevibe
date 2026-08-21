@@ -8,6 +8,7 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
+import { errorMessage } from "@beevibe/core";
 
 export interface DaemonConfig {
   /** Beevibe API base URL (e.g. http://localhost:3000). */
@@ -63,11 +64,7 @@ export function loadConfig(configRoot?: string): DaemonConfig | undefined {
   try {
     return JSON.parse(readFileSync(path, "utf8")) as DaemonConfig;
   } catch (err) {
-    throw new Error(
-      `Daemon config at ${path} is malformed: ${
-        err instanceof Error ? err.message : String(err)
-      }`,
-    );
+    throw new Error(`Daemon config at ${path} is malformed: ${errorMessage(err)}`);
   }
 }
 

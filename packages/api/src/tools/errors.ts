@@ -8,15 +8,24 @@
  *   - `{ error: <code>, message: <human text> }` — a known, named
  *     failure the calling agent can branch on. `watch.ts` had this as a
  *     private `errResult`; most other modules wrote the literal inline.
- *   - `{ error: <message> }` — the catch-all for an unexpected throw.
+ *     {@link toolError}.
+ *   - `{ error: <message> }` — the catch-all for an unexpected throw,
+ *     and the shape the argument guards answer with.
  *     `mesh.ts` and `hierarchy.ts` each had a private `asError` for it.
+ *     {@link toolFailure} / {@link toolErrorFromThrown}.
  *
  * Note the catch-all puts the human message in `error`, where the coded
  * shape puts a stable code there. That is the existing wire contract on
  * both paths, preserved here rather than harmonized — agents already
  * branch on `error` for the coded tools.
+ *
+ * These two builders are the only way the tool modules should construct
+ * a failure. Fifty-six inline copies of the literal came before them,
+ * and an inline copy is one `isError: true` away from an MCP result that
+ * reads as success.
  */
 
+import { errorMessage } from "@beevibe/core";
 import { CodedMeshError } from "../mesh/types.js";
 import type { AgentToolResult } from "./types.js";
 
@@ -31,6 +40,28 @@ export function toolError(
   extra: Record<string, unknown> = {},
 ): AgentToolResult {
   return { content: { error: code, message, ...extra }, isError: true };
+}
+
+/**
+ * The single-field failure: whatever string you pass lands in `error`,
+ * with no `message` alongside it. Same wire shape
+ * {@link toolErrorFromThrown} produces for an unexpected throw.
+ *
+ * This is the envelope the argument-validation guards in `hierarchy.ts`
+ * and `mesh.ts` use — about thirty copies of the same four-line object
+ * literal, written inline. What goes in that one field is not uniform
+ * (most sites pass prose like `"task_id and title required"`, a couple
+ * pass a bare code like `"task_not_found"`), and both are already on the
+ * wire, so this factors out the shape and leaves the convention alone.
+ *
+ * Prefer {@link toolError} for anything new that a caller might branch
+ * on. Reach for this one to match a call site that is already uncoded.
+ */
+export function toolFailure(
+  message: string,
+  extra: Record<string, unknown> = {},
+): AgentToolResult {
+  return { content: { error: message, ...extra }, isError: true };
 }
 
 /**
@@ -53,7 +84,7 @@ export function toolErrorFromThrown(
   }
   return {
     content: {
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMessage(err),
       ...extra,
     },
     isError: true,

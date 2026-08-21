@@ -18,6 +18,7 @@
  */
 
 import type { SessionEventKind } from "@beevibe/core";
+import { errorMessage } from "@beevibe/core";
 import type { ApiClient } from "./api-client.js";
 import { warn } from "./logger.js";
 
@@ -69,10 +70,7 @@ export function createEventBatcher(opts: {
     try {
       await opts.api.post("/runtime/events", { events });
     } catch (err) {
-      warn(
-        `${opts.tag} /runtime/events POST failed; events dropped:`,
-        err instanceof Error ? err.message : String(err),
-      );
+      warn(`${opts.tag} /runtime/events POST failed; events dropped:`, errorMessage(err));
     }
   };
 
