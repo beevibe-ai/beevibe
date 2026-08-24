@@ -105,8 +105,12 @@ DATABASE_URL=postgresql://beevibe:beevibe@localhost:5433/beevibe
 ## Running tests
 
 `pnpm test` is **not** hermetic — integration tests need a real Postgres
-and the adapter tests make live provider calls. There is no
-`describe.skipIf`: missing prerequisites fail loudly by design.
+and the adapter tests make live provider calls. Missing prerequisites
+fail loudly by design rather than silently skipping. The one exception is
+`packages/api/src/routes/mcp.test.ts`, which is `describe.skipIf`-gated on
+both provider keys — CI supplies them, so it runs there, but a keyless
+local run skips it silently. (The opt-in e2e/smoke suites and the
+`it.skipIf(win32)` platform gates skip by design; see below.)
 
 ```bash
 docker compose up -d --wait postgres

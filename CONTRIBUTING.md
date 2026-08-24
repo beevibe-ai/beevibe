@@ -83,8 +83,16 @@ pnpm sync-core-memory   # re-sync core memory block descriptions
 
 `pnpm test` is **not** hermetic. The integration tests talk to a real
 Postgres, and the embedding/LLM adapter tests make live provider calls —
-by design, there is no `describe.skipIf`, so missing prerequisites fail
-the suite loudly rather than silently skipping.
+by design, missing prerequisites fail the suite loudly rather than
+silently skipping. One suite is deliberately gated instead:
+`packages/api/src/routes/mcp.test.ts` is `describe.skipIf`'d on both
+provider keys, so it runs in CI (which supplies them) but skips on a
+keyless local run.
+
+Separately, the opt-in e2e/smoke suites (`BEEVIBE_E2E_DOCKER`,
+`BEEVIBE_E2E_MULTI_INSTANCE`, `RUN_CLAUDE_SMOKE`) and the
+`it.skipIf(process.platform === "win32")` gates skip unless you enable
+them — each carries its enable instructions in its own file header.
 
 Prerequisites:
 

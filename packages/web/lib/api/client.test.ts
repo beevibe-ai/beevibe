@@ -92,7 +92,10 @@ describe("api client (reads)", () => {
     });
   });
 
-  describe("deferred surfaces (paths set; backend not yet shipped)", () => {
+  // All three shipped: `view.ts` serves GET /promotion, /mesh and
+  // /dashboard, and use-promotions / use-mesh / use-dashboard consume
+  // them. These stay to pin the paths and query shapes the hooks rely on.
+  describe("dashboard, mesh and promotion surfaces", () => {
     it("promotions.list() hits /promotion", async () => {
       await api.promotions.list();
       expect(fetchJsonMock).toHaveBeenCalledWith("/promotion", { signal: undefined });
