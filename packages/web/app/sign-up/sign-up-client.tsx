@@ -3,11 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Loader2, Sparkles, UserPlus } from "lucide-react";
+import { Sparkles, UserPlus } from "lucide-react";
 import { PASSWORD_MIN_LENGTH } from "@beevibe/core/auth/constants";
 import { api } from "@/lib/api/client";
 import { asApiError } from "@/lib/api/http";
 import { getUserKey, isApiConfigured, setUserKey } from "@/lib/api/config";
+import { AuthCard, AuthError, AuthField, AuthSubmitButton } from "@/components/auth/auth-form";
 
 /**
  * Self-serve signup. Visitor enters name + email; the api mints them a
@@ -88,105 +89,77 @@ export function SignUpClient() {
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-6 bg-background">
-      <form
-        onSubmit={submit}
-        className="w-full max-w-sm bg-card border border-border rounded-lg p-6 shadow-sm"
-      >
-        <header className="mb-5">
-          <div className="inline-flex items-center justify-center h-10 w-10 rounded-md bg-primary text-primary-foreground mb-3">
-            <UserPlus className="h-5 w-5" />
-          </div>
-          <h1 className="text-lg font-semibold tracking-tight">Sign up for beevibe</h1>
-          <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-            We&apos;ll mint you a personal team agent. Your key stays in your browser only — you
-            can come back and sign in with the same email later.
-          </p>
-        </header>
-
-        <label className="block text-xs font-medium text-foreground mb-1.5" htmlFor="name">
-          Name
-        </label>
-        <input
-          id="name"
-          type="text"
-          autoComplete="name"
-          autoFocus
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          placeholder="Alice"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          disabled={submitting}
-        />
-
-        <label className="block text-xs font-medium text-foreground mb-1.5 mt-3" htmlFor="email">
-          Email
-        </label>
-        <input
-          id="email"
-          type="email"
-          autoComplete="email"
-          inputMode="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          placeholder="alice@example.com"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          disabled={submitting}
-        />
-
-        <label className="block text-xs font-medium text-foreground mb-1.5 mt-3" htmlFor="password">
-          Password
-        </label>
-        <input
-          id="password"
-          type="password"
-          autoComplete="new-password"
-          minLength={PASSWORD_MIN_LENGTH}
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          placeholder={`at least ${PASSWORD_MIN_LENGTH} characters`}
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-          disabled={submitting}
-        />
-
-        {error ? (
-          <div className="mt-3 flex items-start gap-1.5 text-xs text-status-failed">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
-
-        <button
-          type="submit"
-          disabled={
-            submitting ||
-            name.trim().length === 0 ||
-            email.trim().length === 0 ||
-            password.length < PASSWORD_MIN_LENGTH
-          }
-          className="mt-5 w-full inline-flex items-center justify-center gap-1.5 h-9 rounded text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {submitting ? (
-            <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Provisioning…
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-3.5 w-3.5" />
-              Create my team agent
-            </>
-          )}
-        </button>
-
-        <footer className="mt-5 pt-4 border-t border-border/60 text-[11px] text-muted-foreground leading-relaxed">
+    <AuthCard
+      icon={UserPlus}
+      title="Sign up for beevibe"
+      description={
+        <>
+          We&apos;ll mint you a personal team agent. Your key stays in your browser only — you
+          can come back and sign in with the same email later.
+        </>
+      }
+      onSubmit={submit}
+      footer={
+        <>
           Already have a key?{" "}
           <Link href="/sign-in" className="text-foreground/80 hover:underline">
             Sign in
           </Link>{" "}
           instead.
-        </footer>
-      </form>
-    </main>
+        </>
+      }
+    >
+      <AuthField
+        first
+        id="name"
+        label="Name"
+        type="text"
+        autoComplete="name"
+        autoFocus
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Alice"
+        disabled={submitting}
+      />
+
+      <AuthField
+        id="email"
+        label="Email"
+        type="email"
+        autoComplete="email"
+        inputMode="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="alice@example.com"
+        disabled={submitting}
+      />
+
+      <AuthField
+        id="password"
+        label="Password"
+        type="password"
+        autoComplete="new-password"
+        minLength={PASSWORD_MIN_LENGTH}
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder={`at least ${PASSWORD_MIN_LENGTH} characters`}
+        disabled={submitting}
+      />
+
+      <AuthError message={error} />
+
+      <AuthSubmitButton
+        icon={Sparkles}
+        label="Create my team agent"
+        pendingLabel="Provisioning…"
+        pending={submitting}
+        disabled={
+          submitting ||
+          name.trim().length === 0 ||
+          email.trim().length === 0 ||
+          password.length < PASSWORD_MIN_LENGTH
+        }
+      />
+    </AuthCard>
   );
 }

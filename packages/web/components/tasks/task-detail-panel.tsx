@@ -7,6 +7,7 @@ import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { PanelFooterField, PeekPanel } from "@/components/detail/peek-panel";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
+import { MonoLink } from "@/components/detail/mono-link";
 import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
@@ -209,12 +210,9 @@ function PanelLoaded({ task }: { task: TaskDetail }) {
         ) : null}
         {task.parent_task_id ? (
           <PanelFooterField label="Parent">
-            <Link
-              href={`/tasks/${task.parent_task_id}`}
-              className="font-mono hover:text-foreground transition-colors"
-            >
+            <MonoLink href={`/tasks/${task.parent_task_id}`}>
               {shortId(task.parent_task_id)}
-            </Link>
+            </MonoLink>
           </PanelFooterField>
         ) : null}
       </footer>

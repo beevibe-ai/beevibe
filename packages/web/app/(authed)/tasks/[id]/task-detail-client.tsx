@@ -25,7 +25,9 @@ import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pi
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { DetailGate } from "@/components/detail/detail-gate";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { FooterField } from "@/components/detail/footer-field";
+import { MonoLink } from "@/components/detail/mono-link";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
 import { richTextToMarkdown } from "@/components/rich-text";
@@ -293,7 +295,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         </aside>
       </div>
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="ID">
           <ClickToCopyId id={task.id} />
         </FooterField>
@@ -308,15 +310,12 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         ) : null}
         {task.parent_task_id ? (
           <FooterField label="Parent">
-            <Link
-              href={`/tasks/${task.parent_task_id}`}
-              className="font-mono hover:text-foreground transition-colors"
-            >
+            <MonoLink href={`/tasks/${task.parent_task_id}`}>
               {shortId(task.parent_task_id)}
-            </Link>
+            </MonoLink>
           </FooterField>
         ) : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }

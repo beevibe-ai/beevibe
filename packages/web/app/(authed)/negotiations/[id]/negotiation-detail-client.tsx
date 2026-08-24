@@ -7,8 +7,10 @@ import { useNegotiation } from "@/lib/hooks/use-negotiations";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { DetailGate } from "@/components/detail/detail-gate";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { FooterField } from "@/components/detail/footer-field";
 import { NegotiationStatusPill } from "@/components/detail/status-pill";
+import { MonoLink } from "@/components/detail/mono-link";
 import { Skeleton } from "@/components/skeleton";
 import { formatRelativeTime } from "@/lib/format";
 import type {
@@ -120,18 +122,13 @@ function NegotiationDetailLoaded({ neg }: { neg: NegotiationReviewDetail }) {
         )}
       </section>
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="ID">
           <ClickToCopyId id={neg.id} />
         </FooterField>
         {neg.task_id ? (
           <FooterField label="Task">
-            <Link
-              href={`/tasks/${neg.task_id}`}
-              className="font-mono hover:text-foreground transition-colors"
-            >
-              {neg.task_id}
-            </Link>
+            <MonoLink href={`/tasks/${neg.task_id}`}>{neg.task_id}</MonoLink>
           </FooterField>
         ) : null}
         <FooterField label="Rounds">
@@ -141,7 +138,7 @@ function NegotiationDetailLoaded({ neg }: { neg: NegotiationReviewDetail }) {
         {neg.updated_at !== neg.created_at ? (
           <FooterField label="Updated">{formatRelativeTime(neg.updated_at)}</FooterField>
         ) : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }
