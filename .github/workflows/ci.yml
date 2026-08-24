@@ -44,8 +44,10 @@ jobs:
 
     # Bind to the `production` GitHub Environment so the step below can
     # read `OPENAI_API_KEY` and `ANTHROPIC_API_KEY` from environment
-    # secrets. These keys gate the live embedding + LLM integration tests
-    # (no describe.skipIf — missing keys fail the suite loudly, per design).
+    # secrets. These keys gate the live embedding + LLM integration tests,
+    # which fail loudly rather than skip when a key is missing. They also
+    # gate routes/mcp.test.ts, the one describe.skipIf'd suite — supplying
+    # them here is what makes it run in CI at all.
     environment: production
 
     # Postgres 16 with the pgvector extension preinstalled. Matches the
