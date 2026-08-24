@@ -16,7 +16,9 @@ import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { FooterField } from "@/components/detail/footer-field";
+import { MonoLink } from "@/components/detail/mono-link";
 import { formatRelativeTime, shortId } from "@/lib/format";
 
 export function WorkProductDetailClient({ workProductId }: { workProductId: string }) {
@@ -125,17 +127,12 @@ function Body({ wp }: { wp: WorkProductDetail }) {
         />
       )}
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="ID">
           <ClickToCopyId id={wp.id} />
         </FooterField>
         <FooterField label="Task" truncate>
-          <Link
-            href={`/tasks/${wp.task_id}`}
-            className="font-mono hover:text-foreground transition-colors"
-          >
-            {shortId(wp.task_id)}
-          </Link>
+          <MonoLink href={`/tasks/${wp.task_id}`}>{shortId(wp.task_id)}</MonoLink>
         </FooterField>
         {wp.url ? (
           <FooterField label={wp.url_is_local ? "Stored at (host)" : "URL"} truncate>
@@ -143,7 +140,7 @@ function Body({ wp }: { wp: WorkProductDetail }) {
           </FooterField>
         ) : null}
         {wp.provider ? <FooterField label="Provider">{wp.provider}</FooterField> : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Info, Scale } from "lucide-react";
 import { MeshBackLink } from "@/components/detail/mesh-back-link";
@@ -9,9 +8,11 @@ import { useResolveEscalation } from "@/lib/hooks/use-escalation-mutations";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { DetailGate } from "@/components/detail/detail-gate";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { FooterField } from "@/components/detail/footer-field";
 import { Skeleton } from "@/components/skeleton";
 import { EscalationStatusPill } from "@/components/detail/status-pill";
+import { MonoLink } from "@/components/detail/mono-link";
 import { MutationError } from "@/components/mutation-error";
 import { formatRelativeTime } from "@/lib/format";
 import type { EscalationResolveInput } from "@/lib/api/client";
@@ -110,21 +111,19 @@ function EscalationDetailLoaded({ esc }: { esc: EscalationReviewDetail }) {
 
       {esc.status === "pending" ? <ResolveForm esc={esc} /> : <ResolvedView esc={esc} />}
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="ID">
           <ClickToCopyId id={esc.id} />
         </FooterField>
         <FooterField label="Negotiation">
-          <Link href="/mesh" className="font-mono hover:text-foreground transition-colors">
-            {esc.negotiation_id}
-          </Link>
+          <MonoLink href="/mesh">{esc.negotiation_id}</MonoLink>
         </FooterField>
         <FooterField label="Escalated by">{esc.escalated_by_role}</FooterField>
         <FooterField label="Created">{formatRelativeTime(esc.created_at)}</FooterField>
         {esc.resolved_at ? (
           <FooterField label="Resolved">{formatRelativeTime(esc.resolved_at)}</FooterField>
         ) : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }

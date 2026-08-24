@@ -8,6 +8,7 @@ import { HierChip } from "@/components/hier-chip";
 import { SessionStatusPill } from "@/components/detail/status-pill";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { DetailGate } from "@/components/detail/detail-gate";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { FooterField } from "@/components/detail/footer-field";
 import { BriefingComposer } from "@/components/sessions/briefing-composer";
 import { Transcript } from "@/components/sessions/transcript";
@@ -115,7 +116,7 @@ function SessionDetailBody({ session, taskId: _taskId }: { session: SessionDispl
 
       <Transcript entries={session.transcript} ask_threads={session.ask_threads} />
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="Session ID">
           <ClickToCopyId id={session.id} />
         </FooterField>
@@ -130,7 +131,7 @@ function SessionDetailBody({ session, taskId: _taskId }: { session: SessionDispl
           </FooterField>
         ) : null}
         <FooterField label="Type">{session.type}</FooterField>
-      </footer>
+      </DetailFooter>
     </>
   );
 }

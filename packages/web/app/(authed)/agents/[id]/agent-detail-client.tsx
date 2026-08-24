@@ -22,6 +22,7 @@ import { ReviewPolicyPicker } from "@/components/agents/pickers/review-policy-pi
 import { Skeleton } from "@/components/skeleton";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { DetailGate } from "@/components/detail/detail-gate";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { FooterField } from "@/components/detail/footer-field";
 import { Metric } from "@/components/detail/metric";
 import { cn } from "@/lib/utils";
@@ -278,7 +279,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
         ) : null}
       </div>
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="ID">
           <ClickToCopyId id={agent.id} />
         </FooterField>
@@ -294,7 +295,7 @@ function AgentDetailLoaded({ agent }: { agent: AgentDetail }) {
             {new Date(agent.archived_at).toLocaleString()}
           </FooterField>
         ) : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }

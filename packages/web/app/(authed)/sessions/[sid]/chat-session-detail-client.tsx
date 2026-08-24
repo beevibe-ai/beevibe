@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { SessionStatusPill } from "@/components/detail/status-pill";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { FooterField } from "@/components/detail/footer-field";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { HierChip } from "@/components/hier-chip";
@@ -131,7 +132,7 @@ function ConversationBody({ conversation }: { conversation: ConversationDisplay 
 
       {usage ? <UsagePanel usage={usage} /> : null}
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="Conversation ID">
           <ClickToCopyId id={conversation.conversation_id} />
         </FooterField>
@@ -146,7 +147,7 @@ function ConversationBody({ conversation }: { conversation: ConversationDisplay 
           </FooterField>
         ) : null}
         <FooterField label="Type">{conversation.type}</FooterField>
-      </footer>
+      </DetailFooter>
     </>
   );
 }
