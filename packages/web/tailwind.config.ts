@@ -79,9 +79,6 @@ const config: Config = {
           "0%, 100%": { opacity: "1", transform: "scale(1)" },
           "50%": { opacity: "0.55", transform: "scale(0.92)" },
         },
-        "spin-slow": {
-          to: { transform: "rotate(360deg)" },
-        },
         "row-flash": {
           "0%": { backgroundColor: "hsl(48 96% 53% / 0.16)" },
           "100%": { backgroundColor: "transparent" },
@@ -96,7 +93,6 @@ const config: Config = {
       },
       animation: {
         "pulse-breathe": "pulse-breathe 2s ease-in-out infinite",
-        "spin-slow": "spin-slow 2.5s linear infinite",
         "row-flash": "row-flash 1200ms ease-out",
         "step-pop": "step-pop 260ms ease-out",
       },

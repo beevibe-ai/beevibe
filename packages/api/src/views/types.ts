@@ -404,7 +404,6 @@ export interface MemoryFactDisplay {
   source_session_count: number;
   created_at: Date;
   merge_origin?: MergeOrigin;
-  promotion_origin_scope?: MemoryScope;
 }
 
 /**
