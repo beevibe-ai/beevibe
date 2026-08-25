@@ -1,10 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import type { CliProcessOptions, CliProcessResult } from "./claude-code/spawn.js";
+import * as spawnModule from "./claude-code/spawn.js";
+import type { RuntimeContext, RuntimeResult, RuntimeStep } from "../ports/runtime.js";
 import {
+  assistantLine,
   cancelledResult,
   createStdoutLineReader,
+  errorLine,
   finalizeCliResult,
+  inlineSnippet,
+  runCliStream,
+  toolCallLine,
+  toolResultLine,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -145,5 +152,170 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+describe("runCliStream", () => {
+  interface Evt {
+    n: number;
+  }
+
+  function ctx(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
+    return {
+      intent: "do a thing",
+      workspace: { path: "/tmp/beevibe-stream-test" },
+      system_prompt_append: "",
+      ...overrides,
+    };
+  }
+
+  function stream(
+    context: RuntimeContext,
+    opts: { extractSteps?: (e: Evt) => RuntimeStep[] } = {},
+  ) {
+    return runCliStream<Evt>({
+      runtimeTag: "TestRuntime",
+      command: "fake-cli",
+      args: ["--json"],
+      cwd: context.workspace.path,
+      context,
+      parseLine: (line) => {
+        const trimmed = line.trim();
+        if (!trimmed.startsWith("{")) return null;
+        return JSON.parse(trimmed) as Evt;
+      },
+      extractSteps: opts.extractSteps ?? (() => []),
+    });
+  }
+
+  /** Mock `runCliProcess`, replaying `stdout` through `onLog` in `chunks`. */
+  function mockCli(chunks: string[], overrides: Partial<CliProcessResult> = {}) {
+    let seen: CliProcessOptions | undefined;
+    const spy = vi.spyOn(spawnModule, "runCliProcess").mockImplementation(async (options) => {
+      seen = options;
+      const result = cliResult(overrides);
+      if (result.pid !== null) {
+        options.onSpawn?.({
+          pid: result.pid,
+          process_group_id: result.process_group_id ?? result.pid,
+        });
+      }
+      for (const chunk of chunks) options.onLog?.("stdout", chunk);
+      return result;
+    });
+    return { spy, options: () => seen };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("collects parsed events in arrival order and skips unparseable lines", async () => {
+    mockCli(['{"n":1}\nnot json\n{"n":2}\n']);
+    const { events, result } = await stream(ctx());
+    expect(events).toEqual([{ n: 1 }, { n: 2 }]);
+    expect(result.exitCode).toBe(0);
+  });
+
+  it("reassembles an event split across stdout chunks", async () => {
+    mockCli(['{"n', '":7}\n']);
+    const { events } = await stream(ctx());
+    expect(events).toEqual([{ n: 7 }]);
+  });
+
+  it("flushes a trailing line the stream never terminated with a newline", async () => {
+    mockCli(['{"n":1}\n{"n":2}']);
+    const { events } = await stream(ctx());
+    expect(events).toEqual([{ n: 1 }, { n: 2 }]);
+  });
+
+  it("forwards each event's steps to context.onStep", async () => {
+    mockCli(['{"n":1}\n{"n":2}\n']);
+    const steps: RuntimeStep[] = [];
+    await stream(ctx({ onStep: (s) => steps.push(s) }), {
+      extractSteps: (e) => [{ kind: "agent", description: `step ${e.n}`, timestamp: "t" }],
+    });
+    expect(steps.map((s) => s.description)).toEqual(["step 1", "step 2"]);
+  });
+
+  it("skips step extraction entirely when the caller wants no live steps", async () => {
+    mockCli(['{"n":1}\n']);
+    const extractSteps = vi.fn(() => []);
+    const { events } = await stream(ctx(), { extractSteps });
+    expect(events).toHaveLength(1);
+    expect(extractSteps).not.toHaveBeenCalled();
+  });
+
+  it("relays spawn metadata through context.onSpawn", async () => {
+    mockCli([]);
+    const onSpawn = vi.fn();
+    await stream(ctx({ onSpawn }));
+    expect(onSpawn).toHaveBeenCalledWith({ process_pid: 4242, process_group_id: 4242 });
+  });
+
+  it("passes command, args, cwd, env, stdin and the abort signal to the spawner", async () => {
+    const { options } = mockCli([]);
+    const controller = new AbortController();
+    await runCliStream<Evt>({
+      runtimeTag: "TestRuntime",
+      command: "fake-cli",
+      args: ["--json"],
+      cwd: "/ws",
+      env: { FOO: "bar" },
+      stdin: "the intent",
+      context: ctx({ abort_signal: controller.signal }),
+      parseLine: () => null,
+      extractSteps: () => [],
+    });
+    expect(options()).toMatchObject({
+      command: "fake-cli",
+      args: ["--json"],
+      cwd: "/ws",
+      env: { FOO: "bar" },
+      stdin: "the intent",
+      abortSignal: controller.signal,
+    });
+  });
+
+  it("warns with the runtime tag when stdout was capped", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockCli(['{"n":1}\n'], { truncated: true });
+    await stream(ctx());
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[TestRuntime]"));
+  });
+});
+
+describe("transcript line builders", () => {
+  it("truncates and flattens a payload onto one line", () => {
+    expect(inlineSnippet("line one\nline two")).toBe("line one line two");
+    expect(inlineSnippet("x".repeat(500))).toHaveLength(200);
+    expect(inlineSnippet("abcdef", 3)).toBe("abc");
+  });
+
+  it("tags assistant text", () => {
+    expect(assistantLine("hello")).toBe("[assistant] hello\n");
+  });
+
+  it("renders a tool call with and without an argument summary", () => {
+    expect(toolCallLine("Read")).toBe("[tool_call] Read\n");
+    expect(toolCallLine("shell", "pnpm test")).toBe("[tool_call] shell pnpm test\n");
+    // An empty detail collapses to the bare form rather than leaving a
+    // trailing space.
+    expect(toolCallLine("shell", "")).toBe("[tool_call] shell\n");
+  });
+
+  it("attributes a tool result to its tool", () => {
+    expect(toolResultLine("Read", "file contents")).toBe("[tool_result from Read] file contents\n");
+    expect(toolResultLine("Read")).toBe("[tool_result from Read]\n");
+    expect(toolResultLine("Read", "")).toBe("[tool_result from Read]\n");
+  });
+
+  it("degrades to the opaque form — dropping detail — when the tool is unknown", () => {
+    expect(toolResultLine(undefined)).toBe("[tool_result]\n");
+    expect(toolResultLine(undefined, "orphaned payload")).toBe("[tool_result]\n");
+  });
+
+  it("tags a run-level error", () => {
+    expect(errorLine("rate limited")).toBe("[error] rate limited\n");
   });
 });
