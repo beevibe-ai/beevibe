@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -67,6 +72,64 @@ export function describeToolInput(
     if (typeof v === "string" && v.length > 0) return v.slice(0, 200);
   }
   return JSON.stringify(input).slice(0, 200);
+}
+
+/**
+ * How much of a tool's input or output a transcript line carries. Long
+ * enough to identify the call, short enough that a chatty session doesn't
+ * blow up the persisted transcript (or the summarizer's context).
+ */
+export const TRANSCRIPT_SNIPPET_CHARS = 200;
+
+/**
+ * Collapse a tool payload onto one transcript line: truncate, then flatten
+ * newlines to spaces so a multi-line command output can't fake extra
+ * transcript entries.
+ */
+export function inlineSnippet(text: string, max = TRANSCRIPT_SNIPPET_CHARS): string {
+  return text.slice(0, max).replace(/\n/g, " ");
+}
+
+/*
+ * The persisted-transcript line format.
+ *
+ * `[assistant] …` / `[tool_call] …` / `[tool_result from X] …` / `[error] …`
+ * is a cross-provider contract, not per-adapter cosmetics: the transcript
+ * summarizer and downstream LLM consumers key off these tags, and the web
+ * transcript view renders them. All three parsers had spelled the same
+ * template literals out by hand, which is three places to drift. The
+ * builders below are the single definition.
+ */
+
+/** One assistant text block. */
+export function assistantLine(text: string): string {
+  return `[assistant] ${text}\n`;
+}
+
+/**
+ * One tool invocation. `detail` is an optional already-snippeted argument
+ * summary (codex appends the shell command); omitted or empty renders the
+ * bare `[tool_call] <tool>` form.
+ */
+export function toolCallLine(tool: string, detail?: string): string {
+  return detail ? `[tool_call] ${tool} ${detail}\n` : `[tool_call] ${tool}\n`;
+}
+
+/**
+ * One tool result. An unknown `tool` degrades to the opaque `[tool_result]`
+ * form — and drops `detail` with it, since an unattributed payload is more
+ * confusing to a downstream reader than no payload at all. That case only
+ * arises for Claude Code results whose `tool_use_id` never appeared in an
+ * assistant block.
+ */
+export function toolResultLine(tool: string | undefined, detail?: string): string {
+  if (!tool) return "[tool_result]\n";
+  return detail ? `[tool_result from ${tool}] ${detail}\n` : `[tool_result from ${tool}]\n`;
+}
+
+/** A run-level error event (codex `error` / `turn.failed`, opencode `error`). */
+export function errorLine(message: string): string {
+  return `[error] ${message}\n`;
 }
 
 /**
@@ -166,6 +229,80 @@ export function createStdoutLineReader(handleLine: (line: string) => void): {
 export function warnIfTruncated(runtimeTag: string, result: CliProcessResult): void {
   if (!result.truncated) return;
   console.warn(`[${runtimeTag}] stdout truncated at 4MB — result parsing may be incomplete`);
+}
+
+export interface CliStreamOptions<Event> {
+  /** Log tag for the truncation warning — e.g. `"CodexRuntime"`. */
+  runtimeTag: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env?: Record<string, string | undefined>;
+  /** Piped to the child's stdin. Only Claude Code uses this (`--print -`). */
+  stdin?: string;
+  /** Supplies `abort_signal`, `onSpawn` and `onStep`. */
+  context: RuntimeContext;
+  /** Provider-specific NDJSON line parser; `null` skips the line. */
+  parseLine: (line: string) => Event | null;
+  /** Provider-specific event → live-transcript steps. */
+  extractSteps: (event: Event) => RuntimeStep[];
+}
+
+export interface CliStreamOutcome<Event> {
+  /** Every event parsed off stdout, in arrival order. */
+  events: Event[];
+  result: CliProcessResult;
+}
+
+/**
+ * Spawn a CLI runtime and collect its NDJSON event stream.
+ *
+ * All three CLI adapters run the identical sequence around their own parser:
+ * accumulate events off a line reader, forward each one's steps to
+ * `context.onStep`, spawn, flush the trailing partial line, then warn if
+ * stdout hit the capture cap. Only the event schema and what happens *after*
+ * the process settles differ, so this owns the streaming half and hands back
+ * the raw events — each adapter still decides how to turn them into a
+ * `RuntimeResult` (codex, for one, also has an `--output-last-message` file
+ * to read and clean up on both the aborted and the completed path).
+ *
+ * Steps are forwarded as they parse, so the live transcript keeps updating
+ * while the process runs; `events` is only used once it settles.
+ */
+export async function runCliStream<Event>(
+  opts: CliStreamOptions<Event>,
+): Promise<CliStreamOutcome<Event>> {
+  const { context } = opts;
+  const events: Event[] = [];
+
+  const stdout = createStdoutLineReader((line) => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of opts.extractSteps(event)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: opts.command,
+    args: opts.args,
+    cwd: opts.cwd,
+    env: opts.env,
+    stdin: opts.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Emit any final line the stream ended without a newline after.
+  stdout.flush();
+  warnIfTruncated(opts.runtimeTag, result);
+
+  return { events, result };
 }
 
 /**

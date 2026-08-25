@@ -1,5 +1,11 @@
 import type { RuntimeResult, RuntimeStep } from "../../ports/runtime.js";
-import { parseNdjsonLine } from "../runtime-common.js";
+import {
+  assistantLine,
+  inlineSnippet,
+  parseNdjsonLine,
+  toolCallLine,
+  toolResultLine,
+} from "../runtime-common.js";
 
 /**
  * Parser for Claude Code's `--output-format stream-json` output. Each line
@@ -214,36 +220,27 @@ export function parseClaudeMessages(
     if (msg.type === STREAM_TYPE.Assistant && msg.message) {
       const content = msg.message.content;
       if (typeof content === "string") {
-        transcriptParts.push(`[assistant] ${content}\n`);
+        transcriptParts.push(assistantLine(content));
         output = content;
       } else if (Array.isArray(content)) {
         const texts: string[] = [];
         for (const block of content) {
           if (block.type === BLOCK_TYPE.Text && typeof block.text === "string") {
-            transcriptParts.push(`[assistant] ${block.text}\n`);
+            transcriptParts.push(assistantLine(block.text));
             texts.push(block.text);
           } else if (block.type === BLOCK_TYPE.ToolUse) {
-            transcriptParts.push(`[tool_call] ${block.name ?? "unknown"}\n`);
+            transcriptParts.push(toolCallLine(block.name ?? "unknown"));
           }
           // Skip thinking blocks + signatures — they bloat the transcript.
         }
         if (texts.length > 0) output = texts.join("\n");
       }
     } else if (msg.type === STREAM_TYPE.ToolUse) {
-      transcriptParts.push(`[tool_call] ${msg.name ?? "unknown"}\n`);
+      transcriptParts.push(toolCallLine(msg.name ?? "unknown"));
     } else if (msg.type === STREAM_TYPE.ToolResult) {
       const toolName = msg.tool_use_id ? toolUseNames.get(msg.tool_use_id) : undefined;
-      const resultContent =
-        typeof msg.content === "string" ? msg.content.slice(0, 200).replace(/\n/g, " ") : "";
-      if (toolName) {
-        transcriptParts.push(
-          resultContent
-            ? `[tool_result from ${toolName}] ${resultContent}\n`
-            : `[tool_result from ${toolName}]\n`,
-        );
-      } else {
-        transcriptParts.push("[tool_result]\n");
-      }
+      const resultContent = typeof msg.content === "string" ? inlineSnippet(msg.content) : "";
+      transcriptParts.push(toolResultLine(toolName, resultContent));
     } else if (msg.type === STREAM_TYPE.Result) {
       sessionId = msg.session_id;
       costUsd = msg.total_cost_usd ?? msg.cost_usd;
