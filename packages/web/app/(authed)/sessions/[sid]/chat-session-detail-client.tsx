@@ -6,12 +6,14 @@ import { useConversation } from "@/lib/hooks/use-sessions";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
-import { SessionStatusPill } from "@/components/detail/status-pill";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { FooterField } from "@/components/detail/footer-field";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { ChatMarkdown } from "@/components/chat/markdown";
-import { HierChip } from "@/components/hier-chip";
-import { Avatar } from "@/components/avatar";
+import {
+  SessionHeader,
+  SessionHeaderDot,
+} from "@/components/sessions/session-header";
 import { UsagePanel } from "@/components/sessions/usage-panel";
 import type {
   ConversationDisplay,
@@ -91,37 +93,21 @@ function ConversationBody({ conversation }: { conversation: ConversationDisplay 
 
   return (
     <>
-      <header className="mb-6">
-        <div className="flex items-start gap-3">
-          <Avatar
-            initial={conversation.agent_label.charAt(0).toUpperCase()}
-            kind={conversation.agent_hierarchy}
-            label={conversation.agent_label}
-            size={40}
-            presence={conversation.status === "running" ? "running" : "idle"}
-          />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-base font-semibold tracking-tight leading-tight">
-                {multiTurn ? "Conversation" : "One turn"}
-              </h1>
-              <SessionStatusPill status={conversation.status} />
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="text-foreground/85">{conversation.agent_label}</span>
-              <HierChip hier={conversation.agent_hierarchy} />
-              {multiTurn ? (
-                <>
-                  <span className="text-muted-foreground/50">·</span>
-                  <span className="tabular-nums">{turns.length} turns</span>
-                </>
-              ) : null}
-              <span className="text-muted-foreground/50">·</span>
-              <span className="text-foreground/70">{conversation.type}</span>
-            </div>
-          </div>
-        </div>
-      </header>
+      <SessionHeader
+        agentLabel={conversation.agent_label}
+        agentHierarchy={conversation.agent_hierarchy}
+        status={conversation.status}
+        title={multiTurn ? "Conversation" : "One turn"}
+      >
+        {multiTurn ? (
+          <>
+            <SessionHeaderDot />
+            <span className="tabular-nums">{turns.length} turns</span>
+          </>
+        ) : null}
+        <SessionHeaderDot />
+        <span className="text-foreground/70">{conversation.type}</span>
+      </SessionHeader>
 
       <div className="space-y-6">
         {turns.map((turn) => (
@@ -131,7 +117,7 @@ function ConversationBody({ conversation }: { conversation: ConversationDisplay 
 
       {usage ? <UsagePanel usage={usage} /> : null}
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="Conversation ID">
           <ClickToCopyId id={conversation.conversation_id} />
         </FooterField>
@@ -146,7 +132,7 @@ function ConversationBody({ conversation }: { conversation: ConversationDisplay 
           </FooterField>
         ) : null}
         <FooterField label="Type">{conversation.type}</FooterField>
-      </footer>
+      </DetailFooter>
     </>
   );
 }

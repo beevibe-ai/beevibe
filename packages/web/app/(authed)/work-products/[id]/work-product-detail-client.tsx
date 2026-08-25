@@ -2,12 +2,7 @@
 
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
-import {
-  ArrowLeft,
-  ChevronRight,
-  ExternalLink,
-  FileText,
-} from "lucide-react";
+import { ArrowLeft, ExternalLink, FileText } from "lucide-react";
 import { api, type WorkProductDetail } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
@@ -17,6 +12,8 @@ import { Skeleton } from "@/components/skeleton";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { FooterField } from "@/components/detail/footer-field";
+import { DetailFooter } from "@/components/detail/detail-footer";
+import { TaskBreadcrumbs } from "@/components/detail/task-breadcrumbs";
 import { formatRelativeTime, shortId } from "@/lib/format";
 
 export function WorkProductDetailClient({ workProductId }: { workProductId: string }) {
@@ -31,7 +28,15 @@ export function WorkProductDetailClient({ workProductId }: { workProductId: stri
     <DetailGate
       // The breadcrumb names the parent task, so it can only be drawn once
       // the row is in hand — the pre-data states render without one.
-      nav={query.data ? <Breadcrumbs wp={query.data} /> : undefined}
+      nav={
+        query.data ? (
+          <TaskBreadcrumbs
+            taskId={query.data.task_id}
+            taskTitle={query.data.task_title}
+            leaf={query.data.title}
+          />
+        ) : undefined
+      }
       icon={FileText}
       noun="work product"
       id={workProductId}
@@ -45,25 +50,6 @@ export function WorkProductDetailClient({ workProductId }: { workProductId: stri
     >
       {(wp) => <Body wp={wp} />}
     </DetailGate>
-  );
-}
-
-function Breadcrumbs({ wp }: { wp: WorkProductDetail }) {
-  return (
-    <nav className="flex items-center gap-1.5 text-xs text-muted-foreground mb-4" aria-label="Breadcrumb">
-      <Link href="/tasks" className="hover:text-foreground transition-colors">
-        Tasks
-      </Link>
-      <ChevronRight className="h-3 w-3" />
-      <Link
-        href={`/tasks/${wp.task_id}`}
-        className="hover:text-foreground transition-colors max-w-[18rem] truncate"
-      >
-        {wp.task_title}
-      </Link>
-      <ChevronRight className="h-3 w-3" />
-      <span className="text-foreground/80 truncate max-w-[14rem]">{wp.title}</span>
-    </nav>
   );
 }
 
@@ -125,7 +111,7 @@ function Body({ wp }: { wp: WorkProductDetail }) {
         />
       )}
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="ID">
           <ClickToCopyId id={wp.id} />
         </FooterField>
@@ -143,7 +129,7 @@ function Body({ wp }: { wp: WorkProductDetail }) {
           </FooterField>
         ) : null}
         {wp.provider ? <FooterField label="Provider">{wp.provider}</FooterField> : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }
