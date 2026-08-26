@@ -1,5 +1,4 @@
 import type { CoreMemoryBlock } from "../../domain/core-memory.js";
-import type { HierarchyLevel } from "../../domain/agent.js";
 import type { CoreMemoryBlockRepository } from "../../ports/core-memory-repo.js";
 
 export type CoreMemoryOperation = "append" | "replace";
@@ -25,10 +24,6 @@ export class CoreMemory {
 
   async read(agentId: string): Promise<CoreMemoryBlock[]> {
     return this.deps.repo.findByAgent(agentId);
-  }
-
-  async initDefaults(agentId: string, level: HierarchyLevel): Promise<CoreMemoryBlock[]> {
-    return this.deps.repo.initDefaults(agentId, level);
   }
 
   async applyUpdate(

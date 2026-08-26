@@ -244,6 +244,32 @@ its own test — check whether it's a deliberate test seam (`clearCache()`
 in `api/src/sse/owner-lookup.ts` is marked `@internal Tests only`) before
 touching it.
 
+### The remaining seam: members, not modules
+
+Top-level exports are swept clean; what's left hides one level down, and
+**no tool in the repo looks there**. knip reports `classMembers` (that's
+how `CoreMemory.initDefaults` surfaced in #292) but has no equivalent for
+interface members or object-literal members, and `tsc` can't help because
+an unread optional field is still well-typed.
+
+Sweep those by name too. Two shapes are worth the pass:
+
+- **Interface members** — `export interface X { … }` in `views/types.ts`
+  and `web/lib/types/*.ts`. These are display DTOs, so a field that no
+  mapper writes can never arrive; check the single producer
+  (`toAgentDisplay`, `rowToMemoryFactDisplay`, `askToDisplay`) rather
+  than trusting a bare `git grep` — field names like `response`,
+  `arrow`, and `body` collide with half the codebase.
+- **Object-literal members** — `export const X = { … }`. Mostly false
+  positives: lookup tables read as `TABLE[key]` (`FACT_TYPE_DESCRIPTIONS`,
+  `RECENT_ROW_DOT`, `TASK_STATUSES_BY_VIEW`) never show a literal
+  `X.member` hit. Confirm the table isn't indexed dynamically before
+  calling a member dead.
+
+A grep for the bare member name is the wrong filter here and reports
+zero — match `\.member\b` and `member\s*:` instead, and exclude the type
+files themselves.
+
 ### Dead in-repo, but not ours to delete
 
 | Thing | Why it survived the sweep |
@@ -251,6 +277,10 @@ touching it.
 | `GET /activity` → `api/src/views/activity.ts` | No caller anywhere in the monorepo, but it's a **documented public endpoint** (`packages/api/README.md`). Retiring it is a product call. The web side is fully gone: the client stub (`api.activity.list`) went with #273, and `queryKeys.activity` + its no-op `lib/sse.ts` invalidations went with #283. |
 | `SkillOutcomeRepository.listBySkill` / `.statsForSkill`, `AgentProvisionEventRepository.listByParent` | Uncalled **read** halves of audit trails whose write side is live and accumulating rows (`skill_outcome` via `recordCapabilityOutcome`, `agent_provision_event` via `create_subordinate_agent`). Same call as the promotion repo below — the consumers (discovery-ranker feedback, agents-page audit panel) are unbuilt, not removed. Deleting the queries makes finishing them harder. |
 | `PostgresMemoryPromotionEventRepository` | Never constructed — `bootstrap.ts` builds the MemoryAgent without `promotionEventRepo`, so the M8.D promotion audit log never writes even though the port, the service branch, its tests and the read-side `views/promotions.ts` all exist. That's **unfinished wiring, not dead code**; deleting the adapter makes finishing it harder. |
+| `AgentDisplay.merge_events` | No producer and no reader, but carries an explicit `/** Reserved for future memory-merge telemetry. */`. The marker is the decision; #292 removed its unmarked neighbour `themes` and left this one. |
+| `queryKeys.workProducts.all` / `queryKeys.chat.all` | The only two `.all` prefixes in `web/lib/hooks/keys.ts` nothing invalidates. Every other group has one and uses it — the entry is **structural, not dead**, and dropping two of sixteen just invites someone to put them back. |
+| `ApiError.body` on `web/lib/api/http.ts` | Product code reads `errorCode` / `serverMessage` instead (#283 refactor), so only `http.test.ts` touches `body` — but it's the raw server payload on an error class, i.e. the field you want present when debugging a 500. |
+| `StreamJsonMessage.duration_ms` / `.num_turns` | Unread by the parser, but `StreamJsonMessage` documents Claude Code's `stream-json` **wire format**; the CLI does emit both on `result` messages. Trimming it to what we happen to parse makes the next field addition a guess. |
 
 ## Deploying
 
