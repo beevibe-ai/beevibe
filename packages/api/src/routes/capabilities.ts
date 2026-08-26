@@ -28,6 +28,7 @@ import type {
 import { getReferencedRepos } from "@beevibe/core/services/referenced-repos";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { requireHuman } from "../auth/middleware.js";
+import { readStringQuery } from "./http-errors.js";
 import { createUseRepoTool } from "../tools/use-repo.js";
 
 export interface CapabilitiesRouterDeps {
@@ -50,7 +51,7 @@ export function createCapabilitiesRouter(deps: CapabilitiesRouterDeps): Router {
   router.get("/referenced-repos", async (req, res) => {
     if (!requireHuman(req, res)) return;
 
-    const taskIdParam = typeof req.query.task_id === "string" ? req.query.task_id.trim() : "";
+    const taskIdParam = readStringQuery(req, "task_id");
     if (!taskIdParam) {
       res.status(400).json({ error: "missing_task_id" });
       return;

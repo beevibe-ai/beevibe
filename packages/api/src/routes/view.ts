@@ -64,6 +64,7 @@ import {
   invalidBody,
   loadOwned,
   makeErrorHandler,
+  readIntQuery,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -515,8 +516,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.get("/promotion", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : NaN;
-    const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+    const limit = readIntQuery(req, "limit");
     try {
       const events = await listPromotions(deps.pool, req.caller.personId, { limit });
       res.json(events);
@@ -532,8 +532,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       scopeParam && SCOPES.has(scopeParam as MemoryScope)
         ? (scopeParam as MemoryScope)
         : undefined;
-    const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : NaN;
-    const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+    const limit = readIntQuery(req, "limit");
 
     try {
       const facts = await listMemoryFacts(deps.pool, req.caller.personId, {
@@ -603,8 +602,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
   router.get("/inbox", async (req, res) => {
     if (!requireHuman(req, res)) return;
     try {
-      const limitParam = typeof req.query.limit === "string" ? Number(req.query.limit) : 50;
-      const limit = Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 200 ? limitParam : 50;
+      const limit = readIntQuery(req, "limit", { fallback: 50, min: 1, max: 200 });
       const items = await listInbox(deps.pool, req.caller.personId, { limit });
       res.json(items);
     } catch (err) {
@@ -615,12 +613,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
   router.get("/activity", async (req, res) => {
     if (!requireHuman(req, res)) return;
     try {
-      const limitParam =
-        typeof req.query.limit === "string" ? Number(req.query.limit) : 20;
-      const limit =
-        Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 100
-          ? limitParam
-          : 20;
+      const limit = readIntQuery(req, "limit", { fallback: 20, min: 1, max: 100 });
       const entries = await listActivity(deps.pool, req.caller.personId, limit);
       res.json(entries);
     } catch (err) {

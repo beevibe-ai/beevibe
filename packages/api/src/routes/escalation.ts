@@ -17,7 +17,7 @@
  * executor picks both up within ≤30s.
  */
 
-import { Router, type RequestHandler, type Response } from "express";
+import { Router, type RequestHandler } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   type EscalationService,
@@ -27,7 +27,7 @@ import {
 } from "@beevibe/core/services/escalation-service";
 import { NegotiationNotFoundError } from "@beevibe/core/services/negotiation-service";
 import { requireHuman } from "../auth/middleware.js";
-import { requireParam } from "./http-errors.js";
+import { makeServiceErrorHandler, requireParam } from "./http-errors.js";
 
 export interface EscalationRoutesDeps {
   authMiddleware: RequestHandler;
@@ -88,25 +88,11 @@ function buildSelector(body: unknown):
   };
 }
 
-function handleEscalationError(err: unknown, res: Response): void {
-  if (err instanceof EscalationNotFoundError) {
-    res.status(404).json({ error: "escalation_not_found", message: err.message });
-    return;
-  }
-  if (err instanceof NegotiationNotFoundError) {
-    res.status(404).json({ error: "negotiation_not_found", message: err.message });
-    return;
-  }
-  if (err instanceof EscalationStateError) {
-    res.status(409).json({ error: "invalid_state", message: err.message });
-    return;
-  }
-  console.error("[escalation route]", err);
-  res.status(500).json({
-    error: "internal_error",
-    message: err instanceof Error ? err.message : String(err),
-  });
-}
+const handleEscalationError = makeServiceErrorHandler("escalation route", [
+  { is: EscalationNotFoundError, status: 404, error: "escalation_not_found" },
+  { is: NegotiationNotFoundError, status: 404, error: "negotiation_not_found" },
+  { is: EscalationStateError, status: 409, error: "invalid_state" },
+]);
 
 export function createEscalationRouter(deps: EscalationRoutesDeps): Router {
   const router = Router();

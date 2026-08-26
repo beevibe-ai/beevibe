@@ -3,6 +3,9 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  makeServiceErrorHandler,
+  readIntQuery,
+  readStringQuery,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -29,6 +32,10 @@ function fakeReq(params: Record<string, unknown>): Request {
 
 function fakeBodyReq(body: unknown): Request {
   return { body } as unknown as Request;
+}
+
+function fakeQueryReq(query: Record<string, unknown>): Request {
+  return { query } as unknown as Request;
 }
 
 describe("requireParam", () => {
@@ -217,5 +224,115 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("makeServiceErrorHandler", () => {
+  class NotFound extends Error {}
+  class BadState extends Error {}
+  class Unrelated extends Error {}
+
+  const handle = makeServiceErrorHandler("test route", [
+    { is: NotFound, status: 404, error: "thing_not_found" },
+    { is: BadState, status: 409, error: "invalid_state" },
+  ]);
+
+  it("maps a listed error to its status and code, keeping the thrown message", () => {
+    const res = fakeRes();
+    handle(new NotFound("no such thing: t_1"), res);
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "thing_not_found", message: "no such thing: t_1" });
+  });
+
+  it("walks the whole table, not just the first row", () => {
+    const res = fakeRes();
+    handle(new BadState("already closed"), res);
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({ error: "invalid_state", message: "already closed" });
+  });
+
+  it("falls through to the shared 500 for an unlisted error", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    handle(new Unrelated("connection reset"), res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "connection reset" });
+    expect(spy.mock.calls[0]![0]).toBe("[test route]");
+    spy.mockRestore();
+  });
+
+  it("stringifies a non-Error throw on the fallback path", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    handle("just a string", res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "just a string" });
+    spy.mockRestore();
+  });
+
+  it("prefers the first matching row when an error subclasses another", () => {
+    // Ordering is the table's contract: escalation lists both of its
+    // not-found errors before the 409, and a subclass must not be
+    // swallowed by a base class listed above it.
+    class Specific extends NotFound {}
+    const ordered = makeServiceErrorHandler("test route", [
+      { is: Specific, status: 410, error: "gone" },
+      { is: NotFound, status: 404, error: "thing_not_found" },
+    ]);
+    const res = fakeRes();
+    ordered(new Specific("x"), res);
+    expect(res.statusCode).toBe(410);
+  });
+});
+
+describe("readIntQuery", () => {
+  it("returns undefined for an absent param when there is no fallback", () => {
+    expect(readIntQuery(fakeQueryReq({}), "limit")).toBeUndefined();
+  });
+
+  it("returns undefined for a non-numeric value when there is no fallback", () => {
+    expect(readIntQuery(fakeQueryReq({ limit: "abc" }), "limit")).toBeUndefined();
+  });
+
+  it("ignores a repeated param, which Express hands back as an array", () => {
+    expect(readIntQuery(fakeQueryReq({ limit: ["1", "2"] }), "limit", { fallback: 7 })).toBe(7);
+  });
+
+  it("uses the fallback when the value is out of range", () => {
+    const req = fakeQueryReq({ limit: "500" });
+    expect(readIntQuery(req, "limit", { fallback: 50, min: 1, max: 200 })).toBe(50);
+  });
+
+  it("passes an in-range value straight through", () => {
+    const req = fakeQueryReq({ limit: "120" });
+    expect(readIntQuery(req, "limit", { fallback: 50, min: 1, max: 200 })).toBe(120);
+  });
+
+  it("clamps to the nearest bound when asked to", () => {
+    const opts = { fallback: 5, min: 1, max: 10, onOutOfRange: "clamp" } as const;
+    expect(readIntQuery(fakeQueryReq({ limit: "50" }), "limit", opts)).toBe(10);
+    expect(readIntQuery(fakeQueryReq({ limit: "0" }), "limit", opts)).toBe(1);
+  });
+
+  it("floors a fractional value in clamp mode, as /find-repo always did", () => {
+    const opts = { fallback: 5, min: 1, max: 10, onOutOfRange: "clamp" } as const;
+    expect(readIntQuery(fakeQueryReq({ limit: "3.7" }), "limit", opts)).toBe(3);
+  });
+
+  it("falls back for a missing param even in clamp mode", () => {
+    const opts = { fallback: 5, min: 1, max: 10, onOutOfRange: "clamp" } as const;
+    expect(readIntQuery(fakeQueryReq({}), "limit", opts)).toBe(5);
+  });
+});
+
+describe("readStringQuery", () => {
+  it("trims the value", () => {
+    expect(readStringQuery(fakeQueryReq({ goal: "  ship it  " }), "goal")).toBe("ship it");
+  });
+
+  it("returns empty string for absent, blank, or repeated params", () => {
+    expect(readStringQuery(fakeQueryReq({}), "goal")).toBe("");
+    expect(readStringQuery(fakeQueryReq({ goal: "   " }), "goal")).toBe("");
+    expect(readStringQuery(fakeQueryReq({ goal: ["a", "b"] }), "goal")).toBe("");
   });
 });
