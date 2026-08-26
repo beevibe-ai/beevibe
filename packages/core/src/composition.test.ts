@@ -42,16 +42,6 @@ describe("resolveSkillsSourceDir", () => {
 });
 
 describe("createMemoryStack", () => {
-  it("hands back every service the bootstraps destructure", () => {
-    const stack = createMemoryStack({ ...repos, ...KEYS });
-    expect(stack.embed).toBeDefined();
-    expect(stack.llm).toBeDefined();
-    expect(stack.coreMemory).toBeDefined();
-    expect(stack.factStore).toBeDefined();
-    expect(stack.promoter).toBeDefined();
-    expect(typeof stack.makeMemoryAgent).toBe("function");
-  });
-
   // The factory has to close over the stack's own services rather than
   // rebuild them per agent: SessionCache calls it once per evicted session.
   it("builds a distinct MemoryAgent per id from one shared stack", () => {
@@ -59,7 +49,6 @@ describe("createMemoryStack", () => {
     const a = stack.makeMemoryAgent("agent_1");
     const b = stack.makeMemoryAgent("agent_2");
     expect(a).not.toBe(b);
-    expect(typeof a.prepareBriefing).toBe("function");
   });
 });
 

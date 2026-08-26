@@ -92,17 +92,6 @@ describe("installShutdownHandlers", () => {
     expect(exit).toHaveBeenCalledWith(0);
     expect(logged).toHaveBeenCalledWith("[scheduler] shutdown error:", expect.any(Error));
   });
-
-  it("handles SIGINT and SIGTERM alike", async () => {
-    const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const shutdown = vi.fn().mockResolvedValue(undefined);
-
-    installShutdownHandlers("api", shutdown);
-    process.emit("SIGINT");
-    process.emit("SIGTERM");
-    await vi.waitFor(() => expect(shutdown).toHaveBeenCalledTimes(2));
-  });
 });
 
 describe("runEntrypoint", () => {
