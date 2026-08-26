@@ -10,21 +10,12 @@ export interface MeshAsk {
   id: string;
   caller: string;
   target: string;
-  intermediate?: string;
-  arrow?: "right" | "up";
   type: "ask" | "negotiate" | "blocker";
-  type_label?: string;
   status: "in_flight" | "succeeded" | "blocked";
   duration_label: string;
   intent: RichText;
-  response?: { agent: string; content: RichText };
   chain_depth: string;
-  chain_depth_color?: "review";
-  source_session?: string;
   source_task_short_id?: string;
-  source_task_age?: string;
-  awaiting_label?: string;
-  awaiting_task_short_id?: string;
 }
 
 export interface ChainBudgetRow {
@@ -90,7 +81,6 @@ export type {
   MeshAskStatus,
   GraphNodeData,
   GraphEdgeData,
-  MeshSummaryData,
   MeshWindow,
 } from "@beevibe/api/views/types";
 
