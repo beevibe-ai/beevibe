@@ -150,3 +150,114 @@ export function makeErrorHandler(
     });
   };
 }
+
+/**
+ * One row of a service-error → HTTP-response table. `is` is the domain
+ * error class to match with `instanceof`; the response carries `error` as
+ * the stable code and the thrown error's own `message`.
+ */
+export interface ServiceErrorMapping {
+  is: abstract new (...args: never[]) => Error;
+  status: number;
+  error: string;
+}
+
+/**
+ * The catch-block every service-backed router grew its own copy of: walk a
+ * short `instanceof` chain of the domain errors that map to a 4xx, and fall
+ * through to {@link makeErrorHandler}'s 500 for anything unrecognized.
+ *
+ * `task`, `escalation` and `negotiation` each hand-rolled this — three
+ * chains that differed only in their rows, sharing a byte-identical 500
+ * tail. Splitting the table (data) from the walk (behavior) means a new
+ * mapped error is one row rather than another chain, and the unmapped case
+ * can't drift between routers.
+ *
+ * Deliberately NOT applied to `view`'s handlers: those mix domain-error
+ * mapping with per-endpoint 404s of their own and pass a `context` string
+ * through to the log tag, which this signature doesn't take.
+ */
+export function makeServiceErrorHandler(
+  tag: string,
+  mappings: readonly ServiceErrorMapping[],
+): (err: unknown, res: Response) => void {
+  const fallback = makeErrorHandler(tag);
+  return (err, res) => {
+    for (const mapping of mappings) {
+      if (err instanceof mapping.is) {
+        res.status(mapping.status).json({ error: mapping.error, message: err.message });
+        return;
+      }
+    }
+    fallback(err, res);
+  };
+}
+
+/**
+ * Read an integer query param, falling back when it is absent or unusable.
+ *
+ * Seven handlers across `view` and `find-repo` had each written out their
+ * own `typeof req.query.x === "string" ? Number(...) : …` plus a range
+ * check, and the range checks were not written the same way twice. The two
+ * out-of-range policies actually in use both survive here as an explicit
+ * `onOutOfRange` choice rather than an accident of how the ternary was
+ * spelled:
+ *
+ * - `"fallback"` (default) — a value outside [min, max] is discarded and
+ *   `fallback` is used. What `/inbox` (50, ≤200) and `/activity` (20, ≤100)
+ *   already did.
+ * - `"clamp"` — a value outside the range is pulled to the nearest bound
+ *   and floored. What `/find-repo` (5, clamped to [1, 10]) already did.
+ *
+ * With no `fallback` the result is `undefined` for an absent or non-numeric
+ * value, which is how `/promotion` and `/memory/fact` pass "unset" down to
+ * the view layer.
+ */
+export interface IntQueryOptions {
+  fallback?: number;
+  min?: number;
+  max?: number;
+  onOutOfRange?: "fallback" | "clamp";
+}
+
+export function readIntQuery(
+  req: Request,
+  name: string,
+  opts: IntQueryOptions & { fallback: number },
+): number;
+export function readIntQuery(req: Request, name: string, opts?: IntQueryOptions): number | undefined;
+export function readIntQuery(
+  req: Request,
+  name: string,
+  opts: IntQueryOptions = {},
+): number | undefined {
+  const raw = req.query[name];
+  const parsed = typeof raw === "string" ? Number(raw) : NaN;
+  if (!Number.isFinite(parsed)) return opts.fallback;
+
+  const min = opts.min ?? -Infinity;
+  const max = opts.max ?? Infinity;
+  // Clamping callers want an integer index, so floor before the range test
+  // — `?limit=3.7` under [1, 10] is in range and must still come back as 3,
+  // which is what /find-repo's Math.floor(Math.min(...)) already produced.
+  const value = opts.onOutOfRange === "clamp" ? Math.floor(parsed) : parsed;
+  if (value >= min && value <= max) return value;
+
+  return opts.onOutOfRange === "clamp" ? Math.min(max, Math.max(min, value)) : opts.fallback;
+}
+
+/**
+ * Read a trimmed string query param, or `""` when absent, empty, or not a
+ * string — so the caller's next line is a plain `if (!value)` 400.
+ *
+ * Express types a query value as `string | string[] | ParsedQs | …` (a
+ * repeated `?goal=a&goal=b` really does arrive as an array), and
+ * `/find-repo`'s `goal` and `/capabilities`' `task_id` each narrowed it
+ * with the same hand-written ternary before trimming. The other query
+ * params in this package deliberately keep `undefined` for "absent" rather
+ * than folding it into `""`, so they are left alone.
+ */
+export function readStringQuery(req: Request, name: string): string {
+  const raw = req.query[name];
+  return typeof raw === "string" ? raw.trim() : "";
+}
