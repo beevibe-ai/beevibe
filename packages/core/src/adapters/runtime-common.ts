@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,90 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * Everything {@link runCliSession} needs to drive one CLI subprocess, minus
+ * the provider-specific event schema (supplied as the three callbacks).
+ */
+export interface CliSessionSpec<Event> {
+  /** Log tag for the truncation warning, e.g. `"CodexRuntime"`. */
+  runtimeTag: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /** Piped to the child's stdin. Only Claude Code feeds the intent this way. */
+  stdin?: string;
+  /** Supplies `abort_signal`, `onSpawn` and `onStep`. */
+  context: RuntimeContext;
+  /** One stdout line → one provider event, or `null` to skip the line. */
+  parseLine: (line: string) => Event | null;
+  /** One event → 0+ live-transcript steps. */
+  extractSteps: (evt: Event) => RuntimeStep[];
+  /** Fold the collected events into a result, once the process has settled. */
+  buildResult: (events: Event[], exitCode: number | null) => RuntimeResult;
+  /**
+   * Best-effort cleanup, run on both the aborted and the settled path.
+   * On the settled path it runs *after* `buildResult`, so a spec whose
+   * result depends on a scratch file (codex's `--output-last-message`) can
+   * read it in `buildResult` and delete it here.
+   */
+  onSettled?: () => void;
+}
+
+/**
+ * Run one CLI subprocess end to end: stream its NDJSON stdout through
+ * `parseLine`, fan each event out to `context.onStep`, then fold everything
+ * into a `RuntimeResult`.
+ *
+ * All three CLI runtimes (claude-code, codex, opencode) had spelled this
+ * sequence out by hand. The steps are ordered for a reason and the ordering
+ * is easy to get subtly wrong when copied: `flush()` has to run before the
+ * events are folded (a stream that ends without a trailing newline drops its
+ * last event otherwise), and the `aborted` check has to come before
+ * `buildResult` (a cancelled session must not be reported as a failure just
+ * because the CLI exited non-zero on SIGTERM).
+ */
+export async function runCliSession<Event>(spec: CliSessionSpec<Event>): Promise<RuntimeResult> {
+  // Parse incrementally during streaming rather than re-reading the whole of
+  // stdout after close. `createStdoutLineReader` handles chunk boundaries — a
+  // single JSON event can arrive split across chunks.
+  const events: Event[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const evt = spec.parseLine(line);
+    if (!evt) return;
+    events.push(evt);
+    if (!spec.context.onStep) return;
+    for (const step of spec.extractSteps(evt)) {
+      spec.context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: spec.command,
+    args: spec.args,
+    cwd: spec.cwd,
+    env: spec.env,
+    stdin: spec.stdin,
+    abortSignal: spec.context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      spec.context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Emit any final partial line (stream that ended without a trailing \n).
+  stdout.flush();
+
+  warnIfTruncated(spec.runtimeTag, result);
+
+  if (result.aborted) {
+    spec.onSettled?.();
+    return cancelledResult(result);
+  }
+
+  const parsed = spec.buildResult(events, result.exitCode);
+  spec.onSettled?.();
+  return finalizeCliResult(parsed, result);
 }
