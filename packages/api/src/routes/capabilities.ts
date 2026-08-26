@@ -28,6 +28,7 @@ import type {
 import { getReferencedRepos } from "@beevibe/core/services/referenced-repos";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { requireHuman } from "../auth/middleware.js";
+import { runToolAsPrimaryAgent } from "./agent-tool-bridge.js";
 import { readStringQuery } from "./http-errors.js";
 import { createUseRepoTool } from "../tools/use-repo.js";
 
@@ -109,32 +110,25 @@ export function createCapabilitiesRouter(deps: CapabilitiesRouterDeps): Router {
     }
 
     try {
-      // Same pattern as /find-repo: resolve caller's primary team agent
-      // and run the use_repo tool under that agent's identity. The
-      // resulting container task + repo_run + work_product are owned by
-      // the team agent, which matches the existing agent-driven flow.
-      const personId = req.caller!.personId;
-      const agent = await deps.agentRepo.findTopLevelForOwner(personId);
-      if (!agent) {
-        res.status(404).json({ error: "no_agent", message: "Caller has no primary agent." });
-        return;
-      }
-
-      const tool = createUseRepoTool(
-        { agentId: agent.id },
-        {
-          agentRepo: deps.agentRepo,
-          taskRepo: deps.taskRepo,
-          repoRunRepo: deps.repoRunRepo,
-          dispatchService: deps.dispatchService,
-        },
-      );
-      const result = await tool.handler({ goal, repo_url: repoUrl });
-      if (result.isError) {
-        res.status(400).json(result.content);
-        return;
-      }
-      res.status(202).json(result.content);
+      // The resulting container task + repo_run + work_product are owned
+      // by the caller's team agent, which matches the agent-driven flow.
+      await runToolAsPrimaryAgent({
+        res,
+        personId: req.caller!.personId,
+        agentRepo: deps.agentRepo,
+        makeTool: (agentId) =>
+          createUseRepoTool(
+            { agentId },
+            {
+              agentRepo: deps.agentRepo,
+              taskRepo: deps.taskRepo,
+              repoRunRepo: deps.repoRunRepo,
+              dispatchService: deps.dispatchService,
+            },
+          ),
+        input: { goal, repo_url: repoUrl },
+        successStatus: 202,
+      });
     } catch (err) {
       console.error("[capabilities/use]", err);
       res.status(500).json({ error: "use_failed" });
