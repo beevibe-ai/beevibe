@@ -9,6 +9,11 @@
  * so the button the UI shows and the transition the api will actually
  * accept can't disagree. The re-export keeps existing
  * `@/lib/task-status` imports working.
+ *
+ * It goes through the `domain/task` subpath, not the package root: these
+ * are runtime values reached from a client component, and a value import
+ * of the root drags `auth`'s `node:crypto` / `node:util` into webpack and
+ * fails `next build`. See `domain/format.ts` for the long version.
  */
 
 export {
@@ -16,4 +21,4 @@ export {
   TERMINAL_TASK_STATUSES,
   isRetryableTaskStatus,
   isTerminalTaskStatus,
-} from "@beevibe/core";
+} from "@beevibe/core/domain/task";

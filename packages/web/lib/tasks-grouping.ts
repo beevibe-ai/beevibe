@@ -1,4 +1,8 @@
-import { TASK_LIFECYCLE_OF, TASK_LIFECYCLES, type TaskLifecycle } from "@beevibe/core";
+import {
+  TASK_LIFECYCLE_OF,
+  TASK_LIFECYCLES,
+  type TaskLifecycle,
+} from "@beevibe/core/domain/task-lifecycle";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { BoardLane } from "@/components/tasks/board-column";
 
@@ -13,6 +17,12 @@ import type { BoardLane } from "@/components/tasks/board-column";
  *
  * What stays here is presentation — lane labels and dot colors — which the
  * api has no use for.
+ *
+ * The import goes through the `domain/task-lifecycle` subpath, not the
+ * package root: this file is reached from a client component, and a
+ * *value* import of the root drags `auth`'s `node:crypto` / `node:util`
+ * into webpack and fails `next build`. See `domain/format.ts` for the
+ * long version.
  */
 
 export type { TaskLifecycle as Lifecycle };

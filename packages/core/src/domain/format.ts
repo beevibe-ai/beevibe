@@ -20,8 +20,11 @@
  * `UnhandledSchemeError: Reading from "node:crypto" is not handled by
  * plugins`. Type-only root imports are fine — they erase — which is why
  * the rest of the web app gets away with `import type { … } from
- * "@beevibe/core"`. This module is the first runtime value the web
- * pulls out of core, hence the dedicated export subpath.
+ * "@beevibe/core"`. This module was the first runtime value the web
+ * pulled out of core, hence the dedicated export subpath; `domain/task`
+ * and `domain/task-lifecycle` have since been given their own for the
+ * same reason. Any future browser-reachable module in `domain/` needs
+ * one too.
  */
 
 export type DateLike = Date | string | number;
