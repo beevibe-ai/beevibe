@@ -49,7 +49,6 @@ function makeSession(overrides: Partial<Session> = {}): Session {
     intent: "test",
     cli_session_id: "cli_abc",
     created_at: new Date(),
-    updated_at: new Date(),
     ...overrides,
   };
 }
