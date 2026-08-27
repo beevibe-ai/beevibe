@@ -20,6 +20,7 @@ import { Router, type RequestHandler, type Response } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   TASK_PRIORITIES,
+  isCancellableTaskStatus,
   isInFlightSessionStatus,
   taskId,
   type RepoRunRepository,
@@ -29,7 +30,6 @@ import {
   type SkillOutcomeValue,
   type TaskRepository,
   type TaskPriority,
-  type TaskStatus,
   type WorkProductRepository,
 } from "@beevibe/core";
 import { newSkillOutcomeId } from "@beevibe/core/adapters/postgres";
@@ -43,17 +43,6 @@ import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "../runtime/hub.js";
 import { requireParam } from "./http-errors.js";
-
-/** Statuses from which /cancel is legal. Anything non-terminal. */
-const CANCELLABLE_FROM: readonly TaskStatus[] = [
-  "pending",
-  "assigned",
-  "needs_revision",
-  "in_progress",
-  "revision",
-  "review",
-  "blocked",
-];
 
 export interface TaskRoutesDeps {
   authMiddleware: RequestHandler;
@@ -317,7 +306,7 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
         res.status(404).json({ error: "task_not_found" });
         return;
       }
-      if (!CANCELLABLE_FROM.includes(task.status)) {
+      if (!isCancellableTaskStatus(task.status)) {
         res.status(409).json({
           error: "invalid_transition",
           message: `cannot cancel task in status '${task.status}' — already terminal`,
@@ -330,7 +319,7 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
           ? `cancelled by ${req.caller.personId}: ${req.body.reason}`
           : `cancelled by ${req.caller.personId}`;
 
-      // CANCELLABLE_FROM gate above already rejects terminal states, so
+      // The isCancellableTaskStatus gate above already rejects terminal states, so
       // this UPDATE only runs against non-terminal tasks.
       await deps.taskRepo.update(id, {
         status: "cancelled",

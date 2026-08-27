@@ -1,63 +1,59 @@
-import type { TaskStatus } from "@beevibe/core";
+import {
+  TASK_LIFECYCLE_OF,
+  TASK_LIFECYCLES,
+  type TaskLifecycle,
+} from "@beevibe/core/domain/task-lifecycle";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { BoardLane } from "@/components/tasks/board-column";
 
-export type Lifecycle =
-  | "pending"
-  | "in_progress"
-  | "blocked"
-  | "in_review"
-  | "done"
-  | "archived";
-
 /**
- * Status → lifecycle lane.
+ * Board grouping. The status → lane mapping itself lives in
+ * `@beevibe/core`'s `domain/task-lifecycle.ts`, where the api reads the
+ * same one to resolve `GET /task?lifecycle=` into a status set. It used to
+ * be duplicated here and in `packages/api/src/views/tasks-grouping.ts`, and
+ * the two had drifted: the api folded `blocked` into In review and
+ * `failed`/`cancelled` into Done, so a lifecycle-filtered list disagreed
+ * with the columns this file drew from it.
  *
- * - `blocked` lives in its own lane (was previously folded into
- *   In review). Blocked = waiting on an external dependency, semantically
- *   different from "waiting on a human verdict." Different action by the
- *   human reading the board, so different column.
- * - `failed` and `cancelled` are terminal states that aren't success.
- *   They go into the `archived` lane, hidden by default — `Done` should
- *   read as "this shipped." Archive toggle exposes them when the user
- *   wants to see what didn't ship.
+ * What stays here is presentation — lane labels and dot colors — which the
+ * api has no use for.
+ *
+ * The import goes through the `domain/task-lifecycle` subpath, not the
+ * package root: this file is reached from a client component, and a
+ * *value* import of the root drags `auth`'s `node:crypto` / `node:util`
+ * into webpack and fails `next build`. See `domain/format.ts` for the
+ * long version.
  */
-const LIFECYCLE_OF: Record<TaskStatus, Lifecycle> = {
-  pending: "pending",
-  assigned: "pending",
-  in_progress: "in_progress",
-  revision: "in_progress",
-  needs_revision: "in_progress",
-  review: "in_review",
-  blocked: "blocked",
-  done: "done",
-  failed: "archived",
-  cancelled: "archived",
-};
+
+export type { TaskLifecycle as Lifecycle };
 
 interface LaneTemplate {
-  key: Lifecycle;
+  key: TaskLifecycle;
   label: string;
   dot: string;
 }
 
-// Workflow-order, left-to-right. Blocked sits between In progress and
-// In review because that's where blockers actually arise — work
-// started, hit an impasse, needs unblocking before it can land in
-// review.
-const VISIBLE_LANES: LaneTemplate[] = [
-  { key: "pending", label: "Pending", dot: "bg-muted-foreground/50" },
-  { key: "in_progress", label: "In progress", dot: "bg-status-running" },
-  { key: "blocked", label: "Blocked", dot: "bg-status-blocked" },
-  { key: "in_review", label: "In review", dot: "bg-status-review" },
-  { key: "done", label: "Done", dot: "bg-status-done" },
-];
-
-const ARCHIVED_LANE: LaneTemplate = {
-  key: "archived",
-  label: "Archived",
-  dot: "bg-muted-foreground/40",
+const LANE_PRESENTATION: Record<TaskLifecycle, Omit<LaneTemplate, "key">> = {
+  pending: { label: "Pending", dot: "bg-muted-foreground/50" },
+  in_progress: { label: "In progress", dot: "bg-status-running" },
+  blocked: { label: "Blocked", dot: "bg-status-blocked" },
+  in_review: { label: "In review", dot: "bg-status-review" },
+  done: { label: "Done", dot: "bg-status-done" },
+  archived: { label: "Archived", dot: "bg-muted-foreground/40" },
 };
+
+/**
+ * Workflow-order, left-to-right — `TASK_LIFECYCLES` is already in that
+ * order. `archived` is last and hidden unless the toggle is on: failed and
+ * cancelled tasks are noise on the default board, and an always-visible
+ * Cancelled column would dominate it.
+ */
+const LANES: LaneTemplate[] = TASK_LIFECYCLES.map((key) => ({
+  key,
+  ...LANE_PRESENTATION[key],
+}));
+const VISIBLE_LANES = LANES.filter((l) => l.key !== "archived");
+const ARCHIVED_LANES = LANES.filter((l) => l.key === "archived");
 
 interface GroupOptions {
   /** Append the Archived lane (failed + cancelled). Default: false. */
@@ -68,18 +64,11 @@ export function groupTasks(
   tasks: TaskListItem[],
   options: GroupOptions = {},
 ): BoardLane[] {
-  const buckets: Record<Lifecycle, TaskListItem[]> = {
-    pending: [],
-    in_progress: [],
-    blocked: [],
-    in_review: [],
-    done: [],
-    archived: [],
-  };
-  for (const t of tasks) buckets[LIFECYCLE_OF[t.status]].push(t);
-  const template = options.showArchived
-    ? [...VISIBLE_LANES, ARCHIVED_LANE]
-    : VISIBLE_LANES;
+  const buckets = Object.fromEntries(
+    TASK_LIFECYCLES.map((lane) => [lane, [] as TaskListItem[]]),
+  ) as Record<TaskLifecycle, TaskListItem[]>;
+  for (const t of tasks) buckets[TASK_LIFECYCLE_OF[t.status]].push(t);
+  const template = options.showArchived ? [...VISIBLE_LANES, ...ARCHIVED_LANES] : VISIBLE_LANES;
   return template.map((l) => ({
     ...l,
     count: buckets[l.key].length,
@@ -91,7 +80,7 @@ export function groupTasks(
 export function countArchivedTasks(tasks: TaskListItem[]): number {
   let n = 0;
   for (const t of tasks) {
-    if (t.status === "failed" || t.status === "cancelled") n += 1;
+    if (TASK_LIFECYCLE_OF[t.status] === "archived") n += 1;
   }
   return n;
 }
