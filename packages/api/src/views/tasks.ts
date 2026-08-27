@@ -7,11 +7,18 @@
  */
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import type { Lifecycle } from "./tasks-grouping.js";
 import {
   TASK_STATUSES_BY_LIFECYCLE,
   TASK_STATUSES_BY_VIEW,
-} from "./tasks-grouping.js";
+  type CreatorType,
+  type HierarchyLevel,
+  type SessionStatus,
+  type Task,
+  type TaskLifecycle,
+  type TaskPriority,
+  type TaskStatus,
+  type WorkProduct,
+} from "@beevibe/core";
 import { deriveShortId, formatDurationLabel } from "./format.js";
 import type {
   TaskListItem,
@@ -19,24 +26,15 @@ import type {
   TaskDetailSessionRow,
   TaskLatestSessionSummary,
 } from "./types.js";
-import type {
-  HierarchyLevel,
-  SessionStatus,
-  Task,
-  TaskPriority,
-  TaskStatus,
-  WorkProduct,
-  CreatorType,
-} from "@beevibe/core";
 
 export interface TaskListFilter {
-  lifecycle?: Lifecycle;
+  lifecycle?: TaskLifecycle;
   assignee_id?: string;
   /**
    * Saved-view shortcut. "mine" needs the caller's personId — the route
    * resolves that to the caller's primary agent's task assignments and
    * passes it as `assignee_id` instead. "sprint" maps to a status set; see
-   * tasks-grouping.ts.
+   * `@beevibe/core`'s `domain/task-lifecycle.ts`.
    */
   view?: "all" | "mine" | "sprint" | "timeline";
   /**

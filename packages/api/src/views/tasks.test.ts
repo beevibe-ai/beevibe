@@ -74,10 +74,21 @@ describe("listTasks", () => {
     const pool = makeMockPool([[]]);
     const queryMock = pool._spy;
     await listTasks(pool, { lifecycle: "in_review", bypassOwnerScope: true });
-    expect(queryMock).toHaveBeenCalledWith(
-      expect.any(String),
-      [["review", "blocked"], null, null],
-    );
+    expect(queryMock).toHaveBeenCalledWith(expect.any(String), [["review"], null, null]);
+  });
+
+  // `blocked` and `archived` are lanes of their own on the board. The api
+  // used to fold them into `in_review` and `done`, so these two filters
+  // returned rows their column would never show.
+  it.each([
+    ["blocked", ["blocked"]],
+    ["archived", ["failed", "cancelled"]],
+    ["done", ["done"]],
+  ] as const)("filters %s to exactly its lane's statuses", async (lifecycle, statuses) => {
+    const pool = makeMockPool([[]]);
+    const queryMock = pool._spy;
+    await listTasks(pool, { lifecycle, bypassOwnerScope: true });
+    expect(queryMock).toHaveBeenCalledWith(expect.any(String), [[...statuses], null, null]);
   });
 
   it("forwards assignee_id when set", async () => {

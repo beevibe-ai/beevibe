@@ -1,6 +1,7 @@
 export * from "./ids.js";
 export * from "./agent.js";
 export * from "./task.js";
+export * from "./task-lifecycle.js";
 export * from "./session.js";
 export * from "./core-memory.js";
 export * from "./person.js";

@@ -39,6 +39,44 @@ export const TERMINAL_TASK_STATUSES: readonly TaskStatus[] = [
   "cancelled",
 ] as const;
 
+/**
+ * Terminal statuses a task can be pulled back out of by re-dispatching it.
+ * `done` is deliberately absent — a shipped task is re-opened by revising
+ * it, not by retrying it.
+ *
+ * `TaskService.prepareRetry` gates on this, and the web's Retry button
+ * shows for exactly this set, so a status added here becomes retryable on
+ * both sides at once.
+ */
+export const RETRYABLE_TASK_STATUSES: readonly TaskStatus[] = [
+  "failed",
+  "cancelled",
+] as const;
+
+/** True when the task has run its course — done, failed or cancelled. */
+export function isTerminalTaskStatus(status: TaskStatus): boolean {
+  return TERMINAL_TASK_STATUSES.includes(status);
+}
+
+/** True when the task can be re-dispatched as-is — failed or cancelled. */
+export function isRetryableTaskStatus(status: TaskStatus): boolean {
+  return RETRYABLE_TASK_STATUSES.includes(status);
+}
+
+/**
+ * True when `POST /task/:id/cancel` is a legal transition from `status` —
+ * the complement of {@link TERMINAL_TASK_STATUSES}, derived rather than
+ * enumerated.
+ *
+ * That route used to carry the seven non-terminal statuses written out by
+ * hand, so every new `TaskStatus` had to be remembered in two places or
+ * cancel would silently start 409-ing on it. Deriving it makes
+ * "non-terminal" the definition instead of a copy of one.
+ */
+export function isCancellableTaskStatus(status: TaskStatus): boolean {
+  return !isTerminalTaskStatus(status);
+}
+
 export type TaskPriority = "low" | "medium" | "high" | "critical";
 
 export const TASK_PRIORITIES: readonly TaskPriority[] = ["low", "medium", "high", "critical"] as const;
