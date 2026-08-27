@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { extractGitHubRepoRefs, NON_REPO_OWNERS } from "./github-url.js";
+import {
+  extractGitHubRepoRefs,
+  GITHUB_REPO_URL_RE,
+  NON_REPO_OWNERS,
+} from "./github-url.js";
 
 describe("extractGitHubRepoRefs", () => {
   it("pulls owner, name and canonical root out of a bare URL", () => {
@@ -69,10 +73,24 @@ describe("extractGitHubRepoRefs", () => {
     ]);
   });
 
-  // The module-level regex is global; a stale lastIndex would make the second
-  // call start mid-string and miss the match.
-  it("is not order-dependent across calls", () => {
-    const text = "https://github.com/owner/repo";
-    expect(extractGitHubRepoRefs(text)).toEqual(extractGitHubRepoRefs(text));
+  // GITHUB_REPO_URL_RE is module-level and /g, so `lastIndex` is shared
+  // state. The reset at the top of extractGitHubRepoRefs is what makes the
+  // function safe to call after someone else has driven the regex by hand
+  // — which the regex's own docstring tells callers not to do.
+  //
+  // Comparing two back-to-back calls does NOT test this: the `while (exec)`
+  // loop always runs to a null match, and a failed exec resets lastIndex to
+  // 0 on its own, so the second call starts clean whether or not the guard
+  // is there. Dirtying lastIndex from outside is the only way to make the
+  // missing reset observable.
+  it("resets a lastIndex left dirty by an outside caller", () => {
+    const text = "see https://github.com/owner/repo";
+    GITHUB_REPO_URL_RE.lastIndex = 0;
+    expect(GITHUB_REPO_URL_RE.exec(text)).not.toBeNull();
+    expect(GITHUB_REPO_URL_RE.lastIndex).toBeGreaterThan(0);
+
+    expect(extractGitHubRepoRefs(text).map((r) => r.url)).toEqual([
+      "https://github.com/owner/repo",
+    ]);
   });
 });

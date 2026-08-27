@@ -189,7 +189,7 @@ describe("DispatchService.dispatchTask", () => {
     const reason: ResumeReason = {
       kind: "post_escalation",
       role: "initiator",
-      resolution: { title: "T", description: "D", proposals: [], notes: "" },
+      resolution: { title: "T", description: "D", source: "human" },
       prior_session_id: "sess_neg",
     };
 
