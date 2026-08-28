@@ -7,6 +7,12 @@
  * conversation. This test pins exactly which tool names survive the filter
  * so a future tool addition can't accidentally leak into the restricted
  * surface.
+ *
+ * Every assertion here compares the whole sorted name set rather than
+ * spot-checking membership or counting — a count passes for the wrong set,
+ * and a `names.has(...)` sweep says nothing about a tool nobody thought to
+ * list. Adding a tool is meant to fail these; the fix is to add it to the
+ * table above the tier it belongs to, which is the review moment.
  */
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -100,108 +106,144 @@ function icCtx(
   return { caller, beevibeSid: "sess_test", spawnMode, capabilityNetworkEnabled };
 }
 
+/** Everything an IC gets on a daemon, capability network on. */
+const IC_TOOLS = [
+  "create_work_product",
+  "find_repo",
+  "find_up",
+  "get_agent_profile",
+  "get_task",
+  "get_work_product",
+  "list_work_products",
+  "report_blocker",
+  "respond_ask",
+  "save_memory",
+  "search_context",
+  "session_search",
+  "update_core_memory",
+  "update_progress",
+  "update_work_product",
+  "use_repo",
+];
+
+/** Added on top of the IC set for tiers that can have subordinates. */
+const TEAM_ONLY_TOOLS = [
+  "add_to_escalation",
+  "ask",
+  "check_work_status",
+  "create_subordinate_agent",
+  "create_task",
+  "escalate_to_humans",
+  "find_peers",
+  "find_subordinates",
+  "negotiate",
+  "respond_negotiate",
+  "revise_task",
+  "unwatch",
+  "watch_tasks",
+];
+
+/** Gated off by owner flag `capability_network_enabled = false`. */
+const CAPABILITY_NETWORK_TOOLS = ["find_repo", "use_repo"];
+
+/**
+ * Exactly what a team caller keeps under `server_fallback_mesh`: mesh
+ * response paths, escalation openers, read-only context, progress on the
+ * in-flight session, and the memory writes that are part of the
+ * conversation's own record. Nothing that mutates state outside it, and
+ * no capability-network tools.
+ */
+const TEAM_FALLBACK_TOOLS = [
+  "check_work_status",
+  "escalate_to_humans",
+  "find_peers",
+  "find_subordinates",
+  "find_up",
+  "get_agent_profile",
+  "get_task",
+  "get_work_product",
+  "list_work_products",
+  "report_blocker",
+  "respond_ask",
+  "respond_negotiate",
+  "save_memory",
+  "search_context",
+  "session_search",
+  "update_core_memory",
+  "update_progress",
+];
+
+/** The team fallback set minus everything that implies subordinates. */
+const IC_FALLBACK_TOOLS = TEAM_FALLBACK_TOOLS.filter(
+  (n) =>
+    ![
+      "check_work_status",
+      "escalate_to_humans",
+      "find_peers",
+      "find_subordinates",
+      "respond_negotiate",
+    ].includes(n),
+);
+
+function toolNames(ctx: AssembleToolsContext): string[] {
+  return assembleTools(ctx, buildMinimalServices())
+    .map((t) => t.name)
+    .sort();
+}
+
 describe("assembleTools — daemon (full surface)", () => {
-  it("team caller gets the full team surface (29 tools, includes find_repo + use_repo + watch_tasks/unwatch + session_search)", () => {
-    const tools = assembleTools(teamCtx(), buildMinimalServices());
-    expect(tools.length).toBe(29);
-    const names = new Set(tools.map((t) => t.name));
-    expect(names.has("create_task")).toBe(true);
-    expect(names.has("update_work_product")).toBe(true);
-    expect(names.has("get_work_product")).toBe(true);
-    expect(names.has("revise_task")).toBe(true);
-    expect(names.has("add_to_escalation")).toBe(true);
-    expect(names.has("create_subordinate_agent")).toBe(true);
-    expect(names.has("find_repo")).toBe(true);
-    expect(names.has("use_repo")).toBe(true);
-    expect(names.has("watch_tasks")).toBe(true);
-    expect(names.has("unwatch")).toBe(true);
-    expect(names.has("session_search")).toBe(true);
+  it("ic caller gets exactly the IC surface", () => {
+    expect(toolNames(icCtx())).toEqual([...IC_TOOLS].sort());
   });
 
-  it("ic caller gets the IC surface (16 tools, includes find_repo + use_repo + session_search; NO watch_tasks)", () => {
-    const tools = assembleTools(icCtx(), buildMinimalServices());
-    expect(tools.length).toBe(16);
-    const names = new Set(tools.map((t) => t.name));
-    expect(names.has("create_task")).toBe(false);
-    expect(names.has("respond_ask")).toBe(true);
-    expect(names.has("report_blocker")).toBe(true);
-    expect(names.has("find_repo")).toBe(true);
-    expect(names.has("use_repo")).toBe(true);
-    expect(names.has("session_search")).toBe(true);
-    expect(names.has("watch_tasks")).toBe(false);
-    expect(names.has("unwatch")).toBe(false);
+  it("team caller gets exactly the IC surface plus the delegation surface", () => {
+    expect(toolNames(teamCtx())).toEqual([...IC_TOOLS, ...TEAM_ONLY_TOOLS].sort());
   });
 
-  it("owner with capability_network_enabled=false gets neither find_repo nor use_repo", () => {
-    const teamTools = assembleTools(teamCtx(undefined, false), buildMinimalServices());
-    const teamNames = new Set(teamTools.map((t) => t.name));
-    expect(teamNames.has("find_repo")).toBe(false);
-    expect(teamNames.has("use_repo")).toBe(false);
-    // Other tools survive — flag only gates capability network.
-    expect(teamNames.has("create_task")).toBe(true);
-    expect(teamNames.has("save_memory")).toBe(true);
-
-    const icTools = assembleTools(icCtx(undefined, false), buildMinimalServices());
-    const icNames = new Set(icTools.map((t) => t.name));
-    expect(icNames.has("find_repo")).toBe(false);
-    expect(icNames.has("use_repo")).toBe(false);
+  it("capability_network_enabled=false drops find_repo + use_repo and nothing else", () => {
+    expect(toolNames(teamCtx(undefined, false))).toEqual(
+      [...IC_TOOLS, ...TEAM_ONLY_TOOLS]
+        .filter((n) => !CAPABILITY_NETWORK_TOOLS.includes(n))
+        .sort(),
+    );
+    expect(toolNames(icCtx(undefined, false))).toEqual(
+      IC_TOOLS.filter((n) => !CAPABILITY_NETWORK_TOOLS.includes(n)).sort(),
+    );
   });
 });
 
 describe("assembleTools — server_fallback_mesh (restricted surface)", () => {
-  it("strips mutating tools from a team caller", () => {
-    const tools = assembleTools(
-      teamCtx("server_fallback_mesh"),
-      buildMinimalServices(),
+  it("a team caller keeps exactly the read/respond/memory surface", () => {
+    expect(toolNames(teamCtx("server_fallback_mesh"))).toEqual(
+      [...TEAM_FALLBACK_TOOLS].sort(),
     );
-    const names = new Set(tools.map((t) => t.name));
-    // Mutating tools — must NOT be present
-    expect(names.has("create_task")).toBe(false);
-    expect(names.has("update_work_product")).toBe(false);
-    expect(names.has("revise_task")).toBe(false);
-    expect(names.has("add_to_escalation")).toBe(false);
-    expect(names.has("create_subordinate_agent")).toBe(false);
-    expect(names.has("create_work_product")).toBe(false);
   });
 
-  it("keeps response, read, escalation, and memory tools for a team caller", () => {
-    const tools = assembleTools(
-      teamCtx("server_fallback_mesh"),
-      buildMinimalServices(),
+  it("an ic caller keeps exactly that set minus the subordinate-implying tools", () => {
+    expect(toolNames(icCtx("server_fallback_mesh"))).toEqual(
+      [...IC_FALLBACK_TOOLS].sort(),
     );
-    const names = new Set(tools.map((t) => t.name));
-    // Mesh response paths
-    expect(names.has("respond_ask")).toBe(true);
-    expect(names.has("respond_negotiate")).toBe(true);
-    // Escalation paths (they don't write to escalation, they just open one)
-    expect(names.has("report_blocker")).toBe(true);
-    expect(names.has("escalate_to_humans")).toBe(true);
-    // Read context
-    expect(names.has("search_context")).toBe(true);
-    expect(names.has("get_agent_profile")).toBe(true);
-    expect(names.has("get_task")).toBe(true);
-    expect(names.has("find_up")).toBe(true);
-    expect(names.has("find_subordinates")).toBe(true);
-    expect(names.has("find_peers")).toBe(true);
-    expect(names.has("list_work_products")).toBe(true);
-    expect(names.has("check_work_status")).toBe(true);
-    // Update progress on the in-flight session itself
-    expect(names.has("update_progress")).toBe(true);
-    // Memory writes are part of the conversation's record
-    expect(names.has("save_memory")).toBe(true);
-    expect(names.has("update_core_memory")).toBe(true);
-    // Layer-3 recall is read-only and scope-respected — safe under fallback
-    expect(names.has("session_search")).toBe(true);
   });
 
-  it("ic caller in server_fallback_mesh has no mutating tools either", () => {
-    const tools = assembleTools(
-      icCtx("server_fallback_mesh"),
-      buildMinimalServices(),
-    );
-    const names = new Set(tools.map((t) => t.name));
-    expect(names.has("create_task")).toBe(false);
-    expect(names.has("update_work_product")).toBe(false);
-    expect(names.has("respond_ask")).toBe(true);
+  it("every mutating tool is stripped for both tiers", () => {
+    // The invariant the filter exists for: nothing that writes state
+    // outside the in-flight conversation survives.
+    const mutating = [
+      "add_to_escalation",
+      "ask",
+      "create_subordinate_agent",
+      "create_task",
+      "create_work_product",
+      "negotiate",
+      "revise_task",
+      "unwatch",
+      "update_work_product",
+      "watch_tasks",
+    ];
+    for (const name of mutating) {
+      expect(TEAM_FALLBACK_TOOLS).not.toContain(name);
+      expect(toolNames(teamCtx("server_fallback_mesh"))).not.toContain(name);
+      expect(toolNames(icCtx("server_fallback_mesh"))).not.toContain(name);
+    }
   });
 });
