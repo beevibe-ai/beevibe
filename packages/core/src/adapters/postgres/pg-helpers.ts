@@ -119,8 +119,8 @@ export async function updateRowById<Row extends QueryResultRow, Patch extends ob
  * 'low' > 'high' > 'critical' (backwards), so ORDER BY clauses on
  * priority need this numeric expression instead.
  *
- * Pass `priority` for bare-column refs (task-repo `listAssignable`),
- * or `t.priority` when joined with a task alias (session-repo claim).
+ * Pass `priority` for bare-column refs, or `t.priority` when joined
+ * with a task alias (session-repo claim).
  *
  * Mirror of `migrations/1777500000000_fix-task-dispatch-index.sql`'s
  * partial-index CASE — the index uses the same numeric ranks, so the

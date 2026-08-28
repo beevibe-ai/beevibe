@@ -21,9 +21,6 @@ export interface AgentRuntime {
   /** Is the runtime's backing command available? Used by startup probes. */
   healthCheck(): Promise<RuntimeHealth>;
 
-  /** Graceful shutdown — no-op for stateless runtimes. */
-  shutdown(): Promise<void>;
-
   /**
    * Where this runtime's CLI auto-discovers skill files within the workspace
    * (M9.3). For Claude Code: `<workspace>/.claude/skills`. For future

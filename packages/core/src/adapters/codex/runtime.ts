@@ -166,10 +166,6 @@ export class CodexRuntime implements AgentRuntime {
     });
   }
 
-  async shutdown(): Promise<void> {
-    /* stateless — each session is a separate process */
-  }
-
   skillsDir(workspace: Workspace): string {
     return join(workspace.path, ".codex", "skills");
   }

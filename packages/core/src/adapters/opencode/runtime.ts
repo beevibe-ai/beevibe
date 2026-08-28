@@ -112,10 +112,6 @@ export class OpenCodeRuntime implements AgentRuntime {
     return cliVersionHealthCheck(this.config.command ?? "opencode");
   }
 
-  async shutdown(): Promise<void> {
-    /* stateless — each session is a separate process */
-  }
-
   skillsDir(workspace: Workspace): string {
     return join(workspace.path, ".opencode", "skills");
   }

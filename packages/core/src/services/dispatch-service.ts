@@ -161,8 +161,7 @@ export class DispatchService {
 /**
  * Maps task queue states to active states. Returns undefined for
  * statuses that don't transition on dispatch (in_progress / revision are
- * already active; terminal states shouldn't be re-dispatched). Mirrors
- * the legacy executor's claimById CASE logic.
+ * already active; terminal states shouldn't be re-dispatched).
  */
 export function transitionForDispatch(current: TaskStatus): TaskStatus | undefined {
   if (current === "assigned") return "in_progress";

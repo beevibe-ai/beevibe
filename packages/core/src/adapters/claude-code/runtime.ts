@@ -146,10 +146,6 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     return cliVersionHealthCheck(this.config.command ?? "claude");
   }
 
-  async shutdown(): Promise<void> {
-    /* stateless — each session is a separate process */
-  }
-
   /**
    * Claude Code auto-discovers skills from `<cwd>/.claude/skills/` (and
    * `~/.claude/skills/` for user-global). For agent-spawned sessions our
