@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  makeErrorHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +218,76 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("makeErrorHandler", () => {
+  class NotFound extends Error {}
+  class BadState extends Error {}
+  class SubclassOfNotFound extends NotFound {}
+
+  const mappings = [
+    [SubclassOfNotFound, 410, "gone"],
+    [NotFound, 404, "not_found"],
+    [BadState, 409, "invalid_state"],
+  ] as const;
+
+  it("500s an unmapped error with its own message", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeErrorHandler("thing route")(new Error("boom"), res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "boom" });
+    expect(spy).toHaveBeenCalledWith("[thing route]", expect.any(Error));
+    spy.mockRestore();
+  });
+
+  it("appends the per-call context to the log tag", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    makeErrorHandler("view route")(new Error("boom"), fakeRes(), "task detail");
+    expect(spy).toHaveBeenCalledWith("[view route: task detail]", expect.any(Error));
+    spy.mockRestore();
+  });
+
+  it("maps a domain error to its status and code", () => {
+    const res = fakeRes();
+    makeErrorHandler("thing route", mappings)(new BadState("wrong phase"), res);
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({ error: "invalid_state", message: "wrong phase" });
+  });
+
+  // A mapped error is an expected outcome, not a server fault — logging it
+  // would fill the operator's log with 404s the client asked for.
+  it("does not log a mapped error", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    makeErrorHandler("thing route", mappings)(new NotFound("no such id"), fakeRes());
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  // Order is the only control a caller has over subclass-vs-base, so the
+  // first arm listed has to win.
+  it("takes the first matching arm", () => {
+    const res = fakeRes();
+    makeErrorHandler("thing route", mappings)(new SubclassOfNotFound("x"), res);
+    expect(res.statusCode).toBe(410);
+    expect(res.body).toMatchObject({ error: "gone" });
+  });
+
+  it("falls through to the 500 when no arm matches", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeErrorHandler("thing route", mappings)(new TypeError("undefined is not a fn"), res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toMatchObject({ error: "internal_error" });
+    spy.mockRestore();
+  });
+
+  it("stringifies a non-Error throw", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeErrorHandler("thing route", mappings)("just a string", res);
+    expect(res.body).toEqual({ error: "internal_error", message: "just a string" });
+    spy.mockRestore();
   });
 });

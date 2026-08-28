@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import type { CliProcessOptions, CliProcessResult } from "./claude-code/spawn.js";
+import * as spawnModule from "./claude-code/spawn.js";
+import type { RuntimeContext, RuntimeResult, RuntimeStep } from "../ports/runtime.js";
 import {
   cancelledResult,
   createStdoutLineReader,
   finalizeCliResult,
+  runNdjsonCliSession,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -145,5 +147,149 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+describe("runNdjsonCliSession", () => {
+  interface Evt {
+    n: number;
+  }
+
+  function ctx(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
+    return {
+      intent: "do a thing",
+      workspace: { path: "/tmp/agent_x" },
+      system_prompt_append: "",
+      ...overrides,
+    };
+  }
+
+  /**
+   * Stand-in for the CLI: feeds `chunks` to `onLog` as stdout the way a real
+   * subprocess would — arbitrary boundaries, not necessarily line-aligned.
+   */
+  function mockCli(chunks: string[], overrides: Partial<CliProcessResult> = {}) {
+    let seen: CliProcessOptions | undefined;
+    const spy = vi.spyOn(spawnModule, "runCliProcess").mockImplementation(async (options) => {
+      seen = options;
+      const result = cliResult(overrides);
+      if (result.pid !== null) {
+        options.onSpawn?.({
+          pid: result.pid,
+          process_group_id: result.process_group_id ?? result.pid,
+        });
+      }
+      for (const chunk of chunks) options.onLog?.("stdout", chunk);
+      return result;
+    });
+    return { spy, options: () => seen };
+  }
+
+  const session = (chunks: string[], context = ctx(), overrides: Partial<CliProcessResult> = {}) => {
+    const cli = mockCli(chunks, overrides);
+    return runNdjsonCliSession<Evt>({
+      command: "faux",
+      args: ["--json"],
+      cwd: "/tmp/agent_x",
+      env: { FOO: "bar" },
+      runtimeTag: "FauxRuntime",
+      context,
+      // Mirrors the real parsers: they all funnel through `parseNdjsonLine`,
+      // which answers null for a blank or malformed line rather than
+      // throwing. `runNdjsonCliSession` relies on that — it does not catch,
+      // so a parser that threw would abort the whole run.
+      parseLine: (line) => {
+        try {
+          return line.trim() ? (JSON.parse(line) as Evt) : null;
+        } catch {
+          return null;
+        }
+      },
+      extractSteps: (evt) => [
+        { kind: "agent", description: `step ${evt.n}`, timestamp: "t" },
+      ],
+    }).then((out) => ({ ...out, cli }));
+  };
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("collects every parsed event in stream order", async () => {
+    const { events } = await session(['{"n":1}\n{"n":2}\n', '{"n":3}\n']);
+    expect(events).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }]);
+  });
+
+  it("reassembles an event split across chunks", async () => {
+    const { events } = await session(['{"n":', "1}\n"]);
+    expect(events).toEqual([{ n: 1 }]);
+  });
+
+  // The reason the flush has to live in here and not at each call site: a CLI
+  // that exits without a trailing newline would otherwise silently drop its
+  // last — often most important — event.
+  it("flushes a trailing line that arrived without a newline", async () => {
+    const { events } = await session(['{"n":1}\n{"n":2}']);
+    expect(events).toEqual([{ n: 1 }, { n: 2 }]);
+  });
+
+  it("skips lines the parser rejects rather than failing the run", async () => {
+    const { events } = await session(["not json\n", '{"n":7}\n']);
+    expect(events).toEqual([{ n: 7 }]);
+  });
+
+  it("streams a step per event as it arrives", async () => {
+    const steps: RuntimeStep[] = [];
+    await session(['{"n":1}\n{"n":2}\n'], ctx({ onStep: (s) => steps.push(s) }));
+    expect(steps.map((s) => s.description)).toEqual(["step 1", "step 2"]);
+  });
+
+  it("still collects events when the caller wants no live steps", async () => {
+    const { events } = await session(['{"n":1}\n'], ctx());
+    expect(events).toEqual([{ n: 1 }]);
+  });
+
+  // Renaming `pid` to `process_pid` is what lets the executor kill the
+  // session later, so it has to survive the extraction.
+  it("bridges onSpawn to the context's process_pid shape", async () => {
+    const spawned: Array<{ process_pid: number; process_group_id: number }> = [];
+    await session(["\n"], ctx({ onSpawn: (m) => spawned.push(m) }));
+    expect(spawned).toEqual([{ process_pid: 4242, process_group_id: 4242 }]);
+  });
+
+  it("passes argv, cwd, env, stdin and the abort signal through", async () => {
+    const controller = new AbortController();
+    const cli = mockCli([]);
+    await runNdjsonCliSession<Evt>({
+      command: "faux",
+      args: ["--json"],
+      cwd: "/tmp/agent_x",
+      env: { FOO: "bar" },
+      stdin: "the intent",
+      runtimeTag: "FauxRuntime",
+      context: ctx({ abort_signal: controller.signal }),
+      parseLine: () => null,
+      extractSteps: () => [],
+    });
+    expect(cli.options()).toMatchObject({
+      command: "faux",
+      args: ["--json"],
+      cwd: "/tmp/agent_x",
+      env: { FOO: "bar" },
+      stdin: "the intent",
+      abortSignal: controller.signal,
+    });
+  });
+
+  it("warns once with the runtime tag when stdout was capped", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await session(['{"n":1}\n'], ctx(), { truncated: true });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain("[FauxRuntime]");
+  });
+
+  it("hands the raw CliProcessResult back for the caller to finalize", async () => {
+    const { result } = await session([], ctx(), { exitCode: 3, aborted: true });
+    expect(result).toMatchObject({ exitCode: 3, aborted: true, pid: 4242 });
   });
 });

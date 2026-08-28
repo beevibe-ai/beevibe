@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   AlertTriangle,
   FileText,
   ListChecks,
@@ -24,6 +23,7 @@ import { isTerminalTaskStatus } from "@/lib/task-status";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { BackLink } from "@/components/detail/back-link";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
 import { HierChip } from "@/components/hier-chip";
@@ -35,22 +35,12 @@ import type { TaskDetail, TaskDetailSessionRow } from "@/lib/api/types";
 import type { ReferencedRepo } from "@/lib/api/client";
 import type { WorkProduct } from "@beevibe/core";
 
-const TasksBackLink = () => (
-  <Link
-    href="/tasks"
-    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-3"
-  >
-    <ArrowLeft className="h-3 w-3" />
-    Tasks
-  </Link>
-);
-
 export function TaskDetailClient({ taskId }: { taskId: string }) {
   const query = useTask(taskId);
 
   return (
     <DetailGate
-      nav={<TasksBackLink />}
+      nav={<BackLink href="/tasks" label="Tasks" className="mb-3" />}
       icon={ListChecks}
       noun="task"
       id={taskId}

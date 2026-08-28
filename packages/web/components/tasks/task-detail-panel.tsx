@@ -2,15 +2,14 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { AlertTriangle, FileText, ListChecks, Terminal } from "lucide-react";
+import { FileText, ListChecks, Terminal } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { PanelGate } from "@/components/detail/detail-gate";
 import { PanelFooterField, PeekPanel } from "@/components/detail/peek-panel";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
-import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
-import { isApiConfigured } from "@/lib/api/config";
 import { useTask } from "@/lib/hooks/use-tasks";
 import {
   useApproveTask,
@@ -54,43 +53,25 @@ export function TaskDetailPanel({
 }
 
 function PanelBody({ taskId }: { taskId: string }) {
-  const { data, isLoading, isError } = useTask(taskId);
+  const query = useTask(taskId);
 
-  if (!isApiConfigured) {
-    return (
-      <div className="p-4">
-        <EmptyState
-          icon={ListChecks}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL to load this task."
-        />
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="p-5 space-y-4">
-        <Skeleton className="h-7 w-3/4" />
-        <Skeleton className="h-20 w-full rounded-lg" />
-        <Skeleton className="h-32 w-full rounded-lg" />
-      </div>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <div className="p-4">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load task"
-          description={`Task ${taskId} could not be fetched.`}
-        />
-      </div>
-    );
-  }
-
-  return <PanelLoaded task={data} />;
+  return (
+    <PanelGate
+      icon={ListChecks}
+      noun="task"
+      id={taskId}
+      query={query}
+      skeleton={
+        <>
+          <Skeleton className="h-7 w-3/4" />
+          <Skeleton className="h-20 w-full rounded-lg" />
+          <Skeleton className="h-32 w-full rounded-lg" />
+        </>
+      }
+    >
+      {(task) => <PanelLoaded task={task} />}
+    </PanelGate>
+  );
 }
 
 function PanelLoaded({ task }: { task: TaskDetail }) {

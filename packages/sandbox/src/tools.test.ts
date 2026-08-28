@@ -376,6 +376,13 @@ describe("argument validators", () => {
     expect(optionalNumber({ k: 0 }, "k")).toBe(0);
     expect(() => optionalNumber({ k: "1" }, "k")).toThrow(SandboxError);
   });
+
+  // Both optionals share one implementation parameterized by type tag, so
+  // the message has to keep naming the type the caller actually asked for.
+  it("names the expected type and the offending key in the message", () => {
+    expect(() => optionalString({ k: 1 }, "k")).toThrow('invalid "k" (string expected)');
+    expect(() => optionalNumber({ k: "1" }, "k")).toThrow('invalid "k" (number expected)');
+  });
 });
 
 describe("capBytes", () => {

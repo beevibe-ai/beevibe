@@ -1,8 +1,8 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowLeft, ChevronRight, Terminal, Wrench } from "lucide-react";
+import { ChevronRight, Terminal, Wrench } from "lucide-react";
 import { useConversation } from "@/lib/hooks/use-sessions";
+import { BackLink } from "@/components/detail/back-link";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
@@ -73,13 +73,7 @@ export function ChatSessionDetailClient({ sessionShortId }: { sessionShortId: st
 function BackToChat() {
   return (
     <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-xs text-muted-foreground mb-4">
-      <Link
-        href="/chat"
-        className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
-      >
-        <ArrowLeft className="h-3 w-3" />
-        Back to chat
-      </Link>
+      <BackLink href="/chat" label="Back to chat" />
     </nav>
   );
 }

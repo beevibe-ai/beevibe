@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { MessagesSquare, Scale } from "lucide-react";
-import { MeshBackLink } from "@/components/detail/mesh-back-link";
+import { BackLink } from "@/components/detail/back-link";
 import { useNegotiation } from "@/lib/hooks/use-negotiations";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
@@ -22,7 +22,7 @@ export function NegotiationDetailClient({ negotiationId }: { negotiationId: stri
 
   return (
     <DetailGate
-      nav={<MeshBackLink />}
+      nav={<BackLink href="/mesh" label="Mesh" className="mb-3" />}
       icon={MessagesSquare}
       noun="negotiation"
       id={negotiationId}

@@ -217,28 +217,38 @@ export function requireString(obj: Record<string, unknown>, key: string): string
   return v;
 }
 
+/**
+ * Read an optional field of a given primitive type: absent or explicitly
+ * null yields `undefined`, the right type passes through, anything else
+ * throws. `optionalString` and `optionalNumber` below were the same six
+ * lines with `"string"` / `"number"` swapped in both the `typeof` check and
+ * the message, so the type tag drives both here.
+ */
+function optionalOf<K extends "string" | "number">(
+  obj: Record<string, unknown>,
+  key: string,
+  type: K,
+): (K extends "string" ? string : number) | undefined {
+  const v = obj[key];
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== type) {
+    throw new SandboxError(`invalid "${key}" (${type} expected)`);
+  }
+  return v as (K extends "string" ? string : number);
+}
+
 export function optionalString(
   obj: Record<string, unknown>,
   key: string,
 ): string | undefined {
-  const v = obj[key];
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== "string") {
-    throw new SandboxError(`invalid "${key}" (string expected)`);
-  }
-  return v;
+  return optionalOf(obj, key, "string");
 }
 
 export function optionalNumber(
   obj: Record<string, unknown>,
   key: string,
 ): number | undefined {
-  const v = obj[key];
-  if (v === undefined || v === null) return undefined;
-  if (typeof v !== "number") {
-    throw new SandboxError(`invalid "${key}" (number expected)`);
-  }
-  return v;
+  return optionalOf(obj, key, "number");
 }
 
 export function capBytes(s: string, max: number): string {
