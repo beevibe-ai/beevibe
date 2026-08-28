@@ -77,6 +77,42 @@ describe("update_core_memory tool", () => {
     expect(calls).toHaveLength(0);
   });
 
+  it.each([
+    ["a missing block_name", { operation: "append", content: "x" }],
+    ["a blank block_name", { block_name: "   ", operation: "append", content: "x" }],
+    ["a non-string block_name", { block_name: 7, operation: "append", content: "x" }],
+  ])("rejects %s", async (_label, input) => {
+    const { coreMemory, calls } = fakeCoreMemory();
+    const tool = createUpdateCoreMemoryTool(
+      { agentId: "agent_a", hierarchyLevel: "ic" },
+      { coreMemory },
+    );
+
+    const result = await tool.handler(input);
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({ error: "invalid_block_name" });
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects a non-string content", async () => {
+    const { coreMemory, calls } = fakeCoreMemory();
+    const tool = createUpdateCoreMemoryTool(
+      { agentId: "agent_a", hierarchyLevel: "ic" },
+      { coreMemory },
+    );
+
+    const result = await tool.handler({
+      block_name: "persona",
+      operation: "append",
+      content: 42,
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({ error: "invalid_content" });
+    expect(calls).toHaveLength(0);
+  });
+
   it("rejects unknown operation", async () => {
     const { coreMemory, calls } = fakeCoreMemory();
     const tool = createUpdateCoreMemoryTool({ agentId: "agent_a", hierarchyLevel: "ic" }, { coreMemory });

@@ -569,3 +569,291 @@ describe("find_repo tool — output shape", () => {
     ]);
   });
 });
+
+/* ─── Default HTTP clients ──────────────────────────────────────────
+ *
+ * Every test above injects `communityRegistry` / `trending` fakes, which
+ * leaves the shipped HTTP clients — the ones production actually runs —
+ * untested. Omitting those two services from `services` selects the real
+ * clients; the injected `fetcher` still keeps the network out of it.
+ * What matters here is the failure posture: these are best-effort tiers,
+ * so a 404, malformed JSON, or a hung socket must degrade to "no
+ * candidates from this tier", never take the whole call down.
+ */
+
+const REGISTRY_URL =
+  "https://raw.githubusercontent.com/beevibe-ai/beevibe-capabilities/main/data/registry.json";
+const TRENDING_DAILY_URL =
+  "https://raw.githubusercontent.com/beevibe-ai/beevibe-capabilities/main/data/trending-daily.json";
+
+interface CapabilitiesRoutes {
+  registry?: { ok?: boolean; body?: unknown };
+  trendingDaily?: { ok?: boolean; body?: unknown };
+  github?: Array<{ html_url: string; description?: string | null; stargazers_count?: number }>;
+}
+
+/** Fetcher that answers the capabilities-repo URLs and the GitHub search. */
+function capabilitiesFetcher(routes: CapabilitiesRoutes): typeof fetch {
+  return vi.fn(async (url: unknown) => {
+    const u = String(url);
+    if (u === REGISTRY_URL) {
+      const r = routes.registry;
+      if (!r) return { ok: false, status: 404, json: async () => ({}) };
+      return { ok: r.ok !== false, status: 200, json: async () => r.body };
+    }
+    if (u === TRENDING_DAILY_URL) {
+      const t = routes.trendingDaily;
+      if (!t) return { ok: false, status: 404, json: async () => ({}) };
+      return { ok: t.ok !== false, status: 200, json: async () => t.body };
+    }
+    if (u.includes("api.github.com/search/repositories")) {
+      return { ok: true, status: 200, json: async () => ({ items: routes.github ?? [] }) };
+    }
+    // Everything else (trending-weekly) 404s.
+    return { ok: false, status: 404, json: async () => ({}) };
+  }) as unknown as typeof fetch;
+}
+
+/** Services with the real HTTP clients, only the fetcher faked. */
+function httpClientServices(fetcher: typeof fetch) {
+  return {
+    agentRepo: fakeAgentRepo(),
+    learnedSkillRepo: fakeLearnedSkillRepo(),
+    embeddings: fakeEmbeddingsAllMatch(),
+    fetcher,
+  };
+}
+
+describe("find_repo — default community registry client", () => {
+  it("scores repos from a fetched registry", async () => {
+    const fetcher = capabilitiesFetcher({
+      registry: {
+        body: {
+          skills: [{ repo_url: CAMELOT, goal_pattern: "extract tables from PDFs" }],
+        },
+      },
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpClientServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates.map((c) => c.repo_url)).toContain(CAMELOT);
+    expect(candidates[0]?.sources).toContain("community");
+  });
+
+  it("caches the registry for the tool's lifetime", async () => {
+    const fetcher = capabilitiesFetcher({
+      registry: {
+        body: { skills: [{ repo_url: CAMELOT, goal_pattern: "extract tables" }] },
+      },
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpClientServices(fetcher));
+
+    await tool.handler({ goal: "extract tables from a PDF" });
+    await tool.handler({ goal: "extract tables from a PDF" });
+
+    const registryCalls = (fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls.filter(
+      (c) => String(c[0]) === REGISTRY_URL,
+    );
+    expect(registryCalls).toHaveLength(1);
+  });
+
+  it.each([
+    ["a non-ok response", {}],
+    ["a null body", { registry: { body: null } }],
+    ["a body with no skills array", { registry: { body: { skills: "nope" } } }],
+  ])("notes the tier as unavailable on %s", async (_label, routes) => {
+    const fetcher = capabilitiesFetcher(routes as CapabilitiesRoutes);
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpClientServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+
+    expect(result.isError).toBeFalsy();
+    expect((result.content as { notes?: string[] }).notes).toContain(
+      "community registry unavailable (proceeding without Tier 1)",
+    );
+  });
+
+  it("swallows a thrown fetch rather than failing the call", async () => {
+    const fetcher = vi.fn(async (url: unknown) => {
+      if (String(url).includes("api.github.com")) {
+        return { ok: true, status: 200, json: async () => ({ items: [] }) };
+      }
+      throw new Error("socket hang up");
+    }) as unknown as typeof fetch;
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpClientServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+
+    expect(result.isError).toBeFalsy();
+    expect((result.content as { notes?: string[] }).notes).toContain(
+      "community registry unavailable (proceeding without Tier 1)",
+    );
+  });
+});
+
+describe("find_repo — default trending client", () => {
+  it("boosts a github candidate that appears in the daily snapshot", async () => {
+    const fetcher = capabilitiesFetcher({
+      trendingDaily: { body: { period: "daily", repos: [{ repo_url: CAMELOT }] } },
+      github: [
+        { html_url: CAMELOT, description: "table extraction", stargazers_count: 10 },
+        { html_url: RANDOM, description: "unrelated", stargazers_count: 10 },
+      ],
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpClientServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates[0]?.repo_url).toBe(CAMELOT);
+    expect(candidates[0]?.sources).toContain("trending");
+  });
+
+  it("caches each period separately, including the 404 miss", async () => {
+    const fetcher = capabilitiesFetcher({
+      trendingDaily: { body: { period: "daily", repos: [{ repo_url: CAMELOT }] } },
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpClientServices(fetcher));
+
+    await tool.handler({ goal: "extract tables from a PDF" });
+    await tool.handler({ goal: "extract tables from a PDF" });
+
+    const calls = (fetcher as unknown as ReturnType<typeof vi.fn>).mock.calls.map((c) =>
+      String(c[0]),
+    );
+    // Caching the miss matters as much as caching the hit — a long
+    // outage must not turn into two raw.githubusercontent hits per call.
+    expect(calls.filter((u) => u === TRENDING_DAILY_URL)).toHaveLength(1);
+    expect(calls.filter((u) => u.includes("trending-weekly"))).toHaveLength(1);
+  });
+
+  it("tolerates a snapshot whose repos field isn't an array", async () => {
+    const fetcher = capabilitiesFetcher({
+      trendingDaily: { body: { period: "daily", repos: null } },
+      github: [{ html_url: CAMELOT, description: "table extraction", stargazers_count: 10 }],
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpClientServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates[0]?.sources).not.toContain("trending");
+  });
+
+  it("swallows a thrown fetch rather than failing the call", async () => {
+    const fetcher = vi.fn(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes("api.github.com")) {
+        return { ok: true, status: 200, json: async () => ({ items: [] }) };
+      }
+      if (u === REGISTRY_URL) return { ok: false, status: 404, json: async () => ({}) };
+      throw new Error("socket hang up");
+    }) as unknown as typeof fetch;
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpClientServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+
+    expect(result.isError).toBeFalsy();
+  });
+});
+
+describe("find_repo — precomputed embeddings", () => {
+  it("skips the runtime embed call for entries that ship a vector", async () => {
+    const embeddings = fakeEmbeddingsAllMatch();
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        ...BASE_SERVICES(),
+        embeddings,
+        trending: trendingWithEntriesAndVectors([
+          {
+            repo_url: CAMELOT,
+            owner: "camelot-dev",
+            name: "camelot",
+            description: "PDF table extraction",
+            stars_gained: 400,
+            embedding: [1, 0],
+          },
+        ]),
+      },
+    );
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates.map((c) => c.repo_url)).toContain(CAMELOT);
+    // One embed call for the goal itself; the entry's vector came from
+    // the snapshot, so nothing was batched.
+    expect(embeddings.embedBatch).not.toHaveBeenCalled();
+    expect(embeddings.embed).toHaveBeenCalledTimes(1);
+  });
+});
+
+function trendingWithEntriesAndVectors(
+  entries: Array<{
+    repo_url: string;
+    owner?: string;
+    name?: string;
+    description?: string | null;
+    stars_gained?: number;
+    embedding?: number[];
+  }>,
+): TrendingClient {
+  const urls = new Set<string>(entries.map((e) => normalizeForTest(e.repo_url)));
+  return {
+    snapshot: vi.fn(async (p: TrendingPeriod) =>
+      p === "daily" ? { urls, entries } : { urls: new Set<string>(), entries: [] },
+    ),
+  };
+}
+
+describe("find_repo — github search failures", () => {
+  it("notes a non-ok GitHub search instead of failing the call", async () => {
+    const fetcher = vi.fn(async (url: unknown) => {
+      if (String(url).includes("api.github.com")) {
+        return { ok: false, status: 403, json: async () => ({}) };
+      }
+      return { ok: false, status: 404, json: async () => ({}) };
+    }) as unknown as typeof fetch;
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpClientServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+
+    expect(result.isError).toBeFalsy();
+    const notes = (result.content as { notes?: string[] }).notes ?? [];
+    expect(notes.some((n) => n.includes("403"))).toBe(true);
+  });
+});
+
+describe("find_repo — embedding outage", () => {
+  it("drops to github-search-only and says so when the goal can't be embedded", async () => {
+    const embeddings = {
+      type: "fake:down",
+      embed: vi.fn(async () => {
+        throw new Error("provider 503");
+      }),
+      embedBatch: vi.fn(async () => []),
+    } as unknown as EmbeddingService;
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        ...BASE_SERVICES(),
+        embeddings,
+        trending: trendingWith([CAMELOT]),
+        fetcher: githubFetcher([
+          { html_url: CAMELOT, description: "table extraction", stargazers_count: 10 },
+        ]),
+      },
+    );
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+
+    expect(result.isError).toBeFalsy();
+    const body = result.content as { candidates: FindRepoCandidate[]; notes?: string[] };
+    expect(body.notes?.some((n) => n.includes("embedding goal failed"))).toBe(true);
+    // The non-semantic tiers still run — github search is unaffected.
+    expect(body.candidates.map((c) => c.repo_url)).toContain(CAMELOT);
+  });
+});
