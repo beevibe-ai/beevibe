@@ -109,21 +109,6 @@ export class PostgresRepoRunRepository implements RepoRunRepository {
     return rows[0] ? rowToRepoRun(rows[0]) : undefined;
   }
 
-  async listByAgent(
-    agentId: string,
-    opts?: { limit?: number },
-  ): Promise<RepoRun[]> {
-    const limit = opts?.limit ?? 50;
-    const { rows } = await this.pool.query<RepoRunRow>(
-      `SELECT * FROM repo_run
-        WHERE agent_id = $1
-        ORDER BY started_at DESC
-        LIMIT $2`,
-      [agentId, limit],
-    );
-    return rows.map(rowToRepoRun);
-  }
-
   async listRecent(opts?: { limit?: number }): Promise<RepoRun[]> {
     const limit = opts?.limit ?? 50;
     const { rows } = await this.pool.query<RepoRunRow>(

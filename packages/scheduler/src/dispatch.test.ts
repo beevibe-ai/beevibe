@@ -63,7 +63,6 @@ beforeEach(() => {
     findTopLevelForOwner: vi.fn(),
     findSubordinates: vi.fn(),
     findPeers: vi.fn(),
-    findByLevel: vi.fn(),
     findParent: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
@@ -73,7 +72,6 @@ beforeEach(() => {
     findById: vi.fn(),
     findLatestForTask: vi.fn(),
     listForTask: vi.fn(),
-    listForAgent: vi.fn(),
     countRunningByAgent: vi.fn(),
     listRunningWithPid: vi.fn(),
     claimNextForRuntime: vi.fn(),
@@ -90,7 +88,6 @@ beforeEach(() => {
     type: "claude",
     execute: vi.fn(),
     healthCheck: vi.fn(),
-    shutdown: vi.fn(),
   } as unknown as AgentRuntime;
 
   // Spy on AgentSession.run — dispatcher should call it once per session

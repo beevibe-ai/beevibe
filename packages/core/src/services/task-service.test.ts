@@ -78,9 +78,6 @@ beforeEach(() => {
     findById: vi.fn(),
     list: vi.fn(),
     listByAssignee: vi.fn(),
-    listAssignable: vi.fn(),
-    claimById: vi.fn(),
-    listReviewQueue: vi.fn(),
     countChildrenNotComplete: vi.fn(),
     countChildren: vi.fn(),
     create: vi.fn(),
@@ -93,7 +90,6 @@ beforeEach(() => {
   workProductRepo = {
     findById: vi.fn(),
     listByTask: vi.fn(),
-    listByAgent: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
@@ -105,7 +101,6 @@ beforeEach(() => {
     findSubordinates: vi.fn(),
     findPeers: vi.fn(),
     findParent: vi.fn(),
-    findByLevel: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
@@ -114,7 +109,6 @@ beforeEach(() => {
     findById: vi.fn(),
     findLatestForTask: vi.fn(async () => undefined),
     listForTask: vi.fn(),
-    listForAgent: vi.fn(),
     countRunningByAgent: vi.fn(),
     listRunningWithPid: vi.fn(),
     create: vi.fn(),
@@ -594,7 +588,6 @@ describe("TaskService.createWorkProduct + listWorkProducts", () => {
     ).rejects.toBeInstanceOf(TaskNotFoundError);
     expect(workProductRepo.create).not.toHaveBeenCalled();
   });
-
 
   it("updateWorkProduct forwards the mutable patch to the repo", async () => {
     vi.mocked(workProductRepo.update).mockImplementation(async (id, patch) =>

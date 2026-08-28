@@ -21,9 +21,6 @@ export interface PersonRepository {
    */
   findByApiKey(apiKey: string): Promise<Person | undefined>;
 
-  /** Batch lookup for hydrating names in task lists, etc. */
-  findManyByIds(ids: string[]): Promise<Person[]>;
-
   create(input: NewPerson): Promise<Person>;
 
   update(id: string, patch: PersonPatch): Promise<Person>;

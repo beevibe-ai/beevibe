@@ -86,14 +86,6 @@ export class PostgresAgentRepository implements AgentRepository {
     return rows[0] ? rowToAgent(rows[0]) : undefined;
   }
 
-  async findByLevel(level: HierarchyLevel): Promise<Agent[]> {
-    const { rows } = await this.pool.query<AgentRow>(
-      `SELECT * FROM agent WHERE hierarchy_level = $1 ORDER BY name ASC`,
-      [level],
-    );
-    return rows.map(rowToAgent);
-  }
-
   async create(input: NewAgent): Promise<Agent> {
     const { rows } = await this.pool.query<AgentRow>(
       `INSERT INTO agent (

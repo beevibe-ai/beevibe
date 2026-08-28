@@ -81,7 +81,6 @@ function makeRunRepo(): RepoRunRepository {
     create: vi.fn(),
     findById: vi.fn(),
     findBySessionId: vi.fn(),
-    listByAgent: vi.fn(),
     listRecent: vi.fn(),
     update: vi.fn(),
   };
@@ -91,7 +90,6 @@ function makeWorkProductRepo(): WorkProductRepository {
   return {
     findById: vi.fn(),
     listByTask: vi.fn(),
-    listByAgent: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),

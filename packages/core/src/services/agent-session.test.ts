@@ -71,7 +71,6 @@ beforeEach(() => {
     findTopLevelForOwner: vi.fn(),
     findSubordinates: vi.fn(),
     findPeers: vi.fn(),
-    findByLevel: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
@@ -80,7 +79,6 @@ beforeEach(() => {
     findById: vi.fn(),
     findLatestForTask: vi.fn(),
     listForTask: vi.fn(),
-    listForAgent: vi.fn(),
     countRunningByAgent: vi.fn(),
     listRunningWithPid: vi.fn(),
     create: vi.fn(),
@@ -100,7 +98,6 @@ beforeEach(() => {
     type: "fake",
     execute: vi.fn(),
     healthCheck: vi.fn(),
-    shutdown: vi.fn(),
   };
   memoryAgent = {
     prepareBriefing: vi.fn(),

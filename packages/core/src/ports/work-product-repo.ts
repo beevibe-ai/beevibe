@@ -17,8 +17,6 @@ export interface WorkProductRepository {
 
   listByTask(taskId: string): Promise<WorkProductListItem[]>;
 
-  listByAgent(agentId: string): Promise<WorkProductListItem[]>;
-
   create(input: NewWorkProduct): Promise<WorkProduct>;
 
   /**

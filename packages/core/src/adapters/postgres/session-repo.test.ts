@@ -334,9 +334,9 @@ describe("PostgresSessionRepository", () => {
 
       await sessions.softDeleteChatChain(chatHead.id, agent);
 
-      const tasksRemaining = await sessions.listForAgent(agent);
-      // listForAgent returns ALL types and is not filtered by deleted_at,
-      // so the task session must still be there.
+      const tasksRemaining = await sessions.listForTask(task);
+      // listForTask is not filtered by deleted_at, so the task session
+      // must still be there.
       expect(tasksRemaining.some((s) => s.id === taskRun.id)).toBe(true);
     });
   });

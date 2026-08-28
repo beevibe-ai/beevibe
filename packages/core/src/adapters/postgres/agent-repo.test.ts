@@ -144,15 +144,6 @@ describe("PostgresAgentRepository", () => {
     expect(found).toBeUndefined();
   });
 
-  it("findByLevel returns all agents at that level", async () => {
-    const t1 = await agents.create(newAgent({ hierarchy_level: "team", name: "t1" }));
-    const t2 = await agents.create(newAgent({ hierarchy_level: "team", name: "t2" }));
-    await agents.create(newAgent({ hierarchy_level: "ic", name: "ic1" }));
-
-    const teams = await agents.findByLevel("team");
-    expect(teams.map((a) => a.id).sort()).toEqual([t1.id, t2.id].sort());
-  });
-
   it("update patches selective fields only", async () => {
     const a = await agents.create(newAgent({ name: "Before", max_task_sessions: 1 }));
     const updated = await agents.update(a.id, { name: "After", max_task_sessions: 5 });
