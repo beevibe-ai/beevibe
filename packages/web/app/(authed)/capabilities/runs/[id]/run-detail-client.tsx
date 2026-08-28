@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "next/navigation";
 import {
-  ArrowLeft,
   ArrowRight,
   CheckCircle,
   Clock,
@@ -19,20 +18,11 @@ import { api, type RepoRun } from "@/lib/api/client";
 import { truncate } from "@/lib/format";
 import { slugify } from "@/lib/capabilities";
 import { normalizeToolName } from "@/lib/tool-format";
+import { BackLink } from "@/components/detail/back-link";
 import { DetailShell } from "@/components/detail/detail-shell";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { cn } from "@/lib/utils";
-
-const CapabilitiesBackLink = () => (
-  <Link
-    href="/capabilities"
-    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-3"
-  >
-    <ArrowLeft className="h-3 w-3" />
-    Capabilities
-  </Link>
-);
 
 /**
  * Playground for a repo_run. Two roles in one page:
@@ -69,7 +59,7 @@ export function RunDetailClient({ id }: { id: string }) {
 
   if (isLoading) {
     return (
-      <DetailShell nav={<CapabilitiesBackLink />}>
+      <DetailShell nav={<BackLink href="/capabilities" label="Capabilities" className="mb-3" />}>
         <Skeleton className="h-7 w-1/3 mb-2" />
         <Skeleton className="h-4 w-1/4 mb-6" />
         <Skeleton className="h-20 w-full rounded-lg mb-4" />
@@ -80,7 +70,7 @@ export function RunDetailClient({ id }: { id: string }) {
 
   if (!run) {
     return (
-      <DetailShell nav={<CapabilitiesBackLink />}>
+      <DetailShell nav={<BackLink href="/capabilities" label="Capabilities" className="mb-3" />}>
         <EmptyState
           icon={Sparkles}
           title="Run not found"
@@ -91,7 +81,7 @@ export function RunDetailClient({ id }: { id: string }) {
   }
 
   return (
-    <DetailShell nav={<CapabilitiesBackLink />}>
+    <DetailShell nav={<BackLink href="/capabilities" label="Capabilities" className="mb-3" />}>
       <header className="mb-6">
         <div className="flex items-center gap-2 flex-wrap mb-1.5">
           <Sparkles className="h-3.5 w-3.5 text-amber-400" />

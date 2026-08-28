@@ -141,8 +141,15 @@ export async function loadOwned<T>(
  */
 export function makeErrorHandler(
   tag: string,
+  mappings: readonly DomainErrorMapping[] = [],
 ): (err: unknown, res: Response, context?: string) => void {
   return (err, res, context) => {
+    for (const [ErrorClass, status, code] of mappings) {
+      if (err instanceof ErrorClass) {
+        res.status(status).json({ error: code, message: (err as Error).message });
+        return;
+      }
+    }
     console.error(context ? `[${tag}: ${context}]` : `[${tag}]`, err);
     res.status(500).json({
       error: "internal_error",
@@ -150,3 +157,23 @@ export function makeErrorHandler(
     });
   };
 }
+
+/**
+ * One `instanceof` arm of a router's error handler: the domain error class,
+ * the status it maps to, and the wire `error` code.
+ *
+ * `task` and `escalation` had each written the same handler shape by hand —
+ * a run of `if (err instanceof X) { res.status(n).json({error, message}); return; }`
+ * arms ending in a copy of the 500 fallback above. Only the arms differ
+ * between them, so only the arms are worth spelling out; the fallback (and
+ * its `console.error`, easy to leave out when transcribing) comes from
+ * {@link makeErrorHandler}.
+ *
+ * Order matters: the first matching class wins, so list a subclass ahead of
+ * its base.
+ */
+export type DomainErrorMapping = readonly [
+  ErrorClass: new (...args: never[]) => Error,
+  status: number,
+  code: string,
+];

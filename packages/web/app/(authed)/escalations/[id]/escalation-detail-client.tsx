@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useState, type ReactNode } from "react";
 import { Info, Scale } from "lucide-react";
-import { MeshBackLink } from "@/components/detail/mesh-back-link";
+import { BackLink } from "@/components/detail/back-link";
 import { useEscalation } from "@/lib/hooks/use-escalations";
 import { useResolveEscalation } from "@/lib/hooks/use-escalation-mutations";
 import { ChatMarkdown } from "@/components/chat/markdown";
@@ -38,7 +38,7 @@ export function EscalationDetailClient({ escalationId }: { escalationId: string 
 
   return (
     <DetailGate
-      nav={<MeshBackLink />}
+      nav={<BackLink href="/mesh" label="Mesh" className="mb-3" />}
       icon={Scale}
       noun="escalation"
       id={escalationId}

@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -156,6 +161,89 @@ export function createStdoutLineReader(handleLine: (line: string) => void): {
       }
     },
   };
+}
+
+export interface NdjsonCliSessionOptions<Evt> {
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /** Piped to the child's stdin. Only Claude Code feeds its intent this way. */
+  stdin?: string;
+  /** Log tag for the truncation warning — `"CodexRuntime"`, … */
+  runtimeTag: string;
+  /** Supplies `abort_signal`, `onSpawn` and `onStep`. */
+  context: RuntimeContext;
+  /** Provider-specific NDJSON line parser, normally wrapping `parseNdjsonLine`. */
+  parseLine: (line: string) => Evt | null;
+  /** Provider-specific event → live-transcript steps. */
+  extractSteps: (evt: Evt) => RuntimeStep[];
+}
+
+export interface NdjsonCliSession<Evt> {
+  /** Every line that parsed, in stream order. */
+  events: Evt[];
+  result: CliProcessResult;
+}
+
+/**
+ * Spawn a CLI runtime, collect its NDJSON event stream, and emit live steps
+ * as they arrive.
+ *
+ * All three CLI adapters had spelled out the same sequence: allocate an
+ * `events` array, define a `handleLine` that parses / pushes / fans out to
+ * `context.onStep`, wrap it in a {@link createStdoutLineReader}, call
+ * `runCliProcess` with an `onSpawn` that renames `pid` to `process_pid`,
+ * flush the reader, then {@link warnIfTruncated}. Three copies of a
+ * process-lifecycle sequence is three chances for one of them to forget the
+ * flush (dropping a final line that arrived without a trailing newline) or
+ * the `onSpawn` bridge (leaving a session unkillable).
+ *
+ * What stays at the call site is what genuinely differs: argv, the env
+ * scrubbing each provider needs, and the mapping of the collected events to a
+ * `RuntimeResult`. Callers still own the post-conditions too — check
+ * `result.aborted` for {@link cancelledResult}, then pass their parsed result
+ * through {@link finalizeCliResult} — because codex has per-spawn temp-file
+ * cleanup to run on both paths.
+ */
+export async function runNdjsonCliSession<Evt>(
+  opts: NdjsonCliSessionOptions<Evt>,
+): Promise<NdjsonCliSession<Evt>> {
+  const { context } = opts;
+  const events: Evt[] = [];
+
+  // Parse incrementally during streaming rather than re-reading the whole of
+  // stdout after close. The line reader handles chunk boundaries — a single
+  // JSON event can arrive split across chunks.
+  const stdout = createStdoutLineReader((line) => {
+    const evt = opts.parseLine(line);
+    if (!evt) return;
+    events.push(evt);
+    if (!context.onStep) return;
+    for (const step of opts.extractSteps(evt)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: opts.command,
+    args: opts.args,
+    cwd: opts.cwd,
+    env: opts.env,
+    stdin: opts.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Flush any final partial line (a stream that ended without a trailing \n).
+  stdout.flush();
+
+  warnIfTruncated(opts.runtimeTag, result);
+
+  return { events, result };
 }
 
 /**

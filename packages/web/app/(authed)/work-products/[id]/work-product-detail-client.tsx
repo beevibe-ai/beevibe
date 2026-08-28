@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   ChevronRight,
   ExternalLink,
   FileText,
@@ -11,6 +10,7 @@ import {
 import { api, type WorkProductDetail } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
+import { BackLink } from "@/components/detail/back-link";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
@@ -79,13 +79,7 @@ function Body({ wp }: { wp: WorkProductDetail }) {
     <>
       <header className="mb-5">
         <div className="flex items-center gap-2 mb-2">
-          <Link
-            href={`/tasks/${wp.task_id}`}
-            className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          >
-            <ArrowLeft className="h-3 w-3" />
-            Back to task
-          </Link>
+          <BackLink href={`/tasks/${wp.task_id}`} label="Back to task" />
           <span className="text-muted-foreground/50 text-xs">·</span>
           <span className="text-[10px] uppercase tracking-wider text-muted-foreground">
             {wp.type.replace(/_/g, " ")}

@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, BarChart3 } from "lucide-react";
+import { AlertTriangle, BarChart3 } from "lucide-react";
 import { useMemoryActivity } from "@/lib/hooks/use-memory-activity";
 import { isApiConfigured } from "@/lib/api/config";
+import { BackLink } from "@/components/detail/back-link";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { DatePicker, todayIso } from "@/components/date-picker";
@@ -96,13 +97,7 @@ function Header({
   return (
     <header className="space-y-4">
       <div className="flex items-center gap-2 text-xs text-muted-foreground">
-        <Link
-          href="/memory"
-          className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
-        >
-          <ArrowLeft className="h-3 w-3" />
-          Memory
-        </Link>
+        <BackLink href="/memory" label="Memory" />
         <span>/</span>
         <span className="text-foreground">Eval</span>
       </div>
