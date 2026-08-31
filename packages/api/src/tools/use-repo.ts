@@ -27,6 +27,7 @@ import {
   type TaskRepository,
 } from "@beevibe/core";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
+import { optionalTrimmedString } from "./input.js";
 import type { AgentTool } from "./types.js";
 
 const USE_REPO_SCHEMA = {
@@ -122,9 +123,8 @@ export function createUseRepoTool(
       "the UI, or read repo_run.status for completion.",
     schema: USE_REPO_SCHEMA as Record<string, unknown>,
     handler: async (input) => {
-      const goal = typeof input.goal === "string" ? input.goal.trim() : "";
-      const repoUrl =
-        typeof input.repo_url === "string" ? input.repo_url.trim() : "";
+      const goal = optionalTrimmedString(input, "goal") ?? "";
+      const repoUrl = optionalTrimmedString(input, "repo_url") ?? "";
       if (!goal) {
         return {
           content: { error: "invalid_goal", message: "goal must be a non-empty string" },
@@ -141,12 +141,11 @@ export function createUseRepoTool(
         };
       }
 
-      const inputUrl =
-        typeof input.input_url === "string" ? input.input_url.trim() : undefined;
-      const inputFilename =
-        typeof input.input_filename === "string"
-          ? input.input_filename.trim()
-          : undefined;
+      // `optionalTrimmedString` maps a whitespace-only value to undefined
+      // where this used to yield ""; both sandbox consumers gate on
+      // `if (opts.input_url)`, so the two are indistinguishable downstream.
+      const inputUrl = optionalTrimmedString(input, "input_url");
+      const inputFilename = optionalTrimmedString(input, "input_filename");
       const limits = parseLimits(input.limits);
 
       // Look the agent up so we can pin the container task's creator

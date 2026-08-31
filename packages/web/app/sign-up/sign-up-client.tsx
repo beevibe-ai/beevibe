@@ -3,11 +3,17 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Loader2, Sparkles, UserPlus } from "lucide-react";
+import { Sparkles, UserPlus } from "lucide-react";
 import { PASSWORD_MIN_LENGTH } from "@beevibe/core/auth/constants";
 import { api } from "@/lib/api/client";
 import { asApiError } from "@/lib/api/http";
 import { getUserKey, isApiConfigured, setUserKey } from "@/lib/api/config";
+import {
+  FIELD_INPUT_CLASS,
+  FieldLabel,
+  FormError,
+  SubmitButton,
+} from "@/components/form-field";
 
 /**
  * Self-serve signup. Visitor enters name + email; the api mints them a
@@ -104,9 +110,7 @@ export function SignUpClient() {
           </p>
         </header>
 
-        <label className="block text-xs font-medium text-foreground mb-1.5" htmlFor="name">
-          Name
-        </label>
+        <FieldLabel htmlFor="name">Name</FieldLabel>
         <input
           id="name"
           type="text"
@@ -115,13 +119,13 @@ export function SignUpClient() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Alice"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={FIELD_INPUT_CLASS}
           disabled={submitting}
         />
 
-        <label className="block text-xs font-medium text-foreground mb-1.5 mt-3" htmlFor="email">
+        <FieldLabel htmlFor="email" mt>
           Email
-        </label>
+        </FieldLabel>
         <input
           id="email"
           type="email"
@@ -130,13 +134,13 @@ export function SignUpClient() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="alice@example.com"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={FIELD_INPUT_CLASS}
           disabled={submitting}
         />
 
-        <label className="block text-xs font-medium text-foreground mb-1.5 mt-3" htmlFor="password">
+        <FieldLabel htmlFor="password" mt>
           Password
-        </label>
+        </FieldLabel>
         <input
           id="password"
           type="password"
@@ -145,39 +149,25 @@ export function SignUpClient() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder={`at least ${PASSWORD_MIN_LENGTH} characters`}
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={FIELD_INPUT_CLASS}
           disabled={submitting}
         />
 
-        {error ? (
-          <div className="mt-3 flex items-start gap-1.5 text-xs text-status-failed">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
+        <FormError message={error} className="mt-3" />
 
-        <button
-          type="submit"
+        <SubmitButton
+          submitting={submitting}
           disabled={
             submitting ||
             name.trim().length === 0 ||
             email.trim().length === 0 ||
             password.length < PASSWORD_MIN_LENGTH
           }
-          className="mt-5 w-full inline-flex items-center justify-center gap-1.5 h-9 rounded text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+          pendingLabel="Provisioning…"
+          icon={<Sparkles className="h-3.5 w-3.5" />}
         >
-          {submitting ? (
-            <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              Provisioning…
-            </>
-          ) : (
-            <>
-              <Sparkles className="h-3.5 w-3.5" />
-              Create my team agent
-            </>
-          )}
-        </button>
+          Create my team agent
+        </SubmitButton>
 
         <footer className="mt-5 pt-4 border-t border-border/60 text-[11px] text-muted-foreground leading-relaxed">
           Already have a key?{" "}

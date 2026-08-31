@@ -10,6 +10,7 @@ import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { FIELD_INPUT_CLASS, FieldLabel, FormError } from "@/components/form-field";
 import { formatRelativeTime, shortId } from "@/lib/format";
 
 export function RoomsListClient() {
@@ -70,16 +71,14 @@ export function RoomsListClient() {
           className="mb-6 flex items-end gap-2 bg-card border border-border rounded-lg p-3"
         >
           <div className="flex-1">
-            <label htmlFor="room-name" className="block text-xs font-medium text-foreground mb-1.5">
-              Create a new room
-            </label>
+            <FieldLabel htmlFor="room-name">Create a new room</FieldLabel>
             <input
               id="room-name"
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Plan the M9 launch"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className={FIELD_INPUT_CLASS}
               disabled={create.isPending}
             />
           </div>
@@ -92,12 +91,7 @@ export function RoomsListClient() {
             Create
           </button>
         </form>
-        {error ? (
-          <div className="mb-4 flex items-start gap-1.5 text-xs text-status-failed">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
+        <FormError message={error} className="mb-4" />
 
         <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
           Your rooms

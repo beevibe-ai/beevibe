@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  makeDomainErrorHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +218,69 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("makeDomainErrorHandler", () => {
+  class NotFound extends Error {}
+  class Conflict extends Error {}
+  class SubclassOfNotFound extends NotFound {}
+
+  const mappings = [
+    [SubclassOfNotFound, { status: 410, error: "gone" }],
+    [NotFound, { status: 404, error: "thing_not_found" }],
+    [Conflict, { status: 409, error: "invalid_state" }],
+  ] as const;
+
+  it("maps a known domain error to its status and code, keeping the message", () => {
+    const res = fakeRes();
+    makeDomainErrorHandler("test route", mappings)(new NotFound("no such thing"), res);
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "thing_not_found", message: "no such thing" });
+  });
+
+  it("picks each mapping independently", () => {
+    const res = fakeRes();
+    makeDomainErrorHandler("test route", mappings)(new Conflict("already resolved"), res);
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({ error: "invalid_state", message: "already resolved" });
+  });
+
+  it("takes the first matching mapping, so a subclass listed first wins", () => {
+    // `instanceof` matches the base class too. Order is the only thing
+    // that distinguishes them, and the routers rely on their declared
+    // order — this pins that the ladder is not reordered.
+    const res = fakeRes();
+    makeDomainErrorHandler("test route", mappings)(new SubclassOfNotFound("x"), res);
+    expect(res.statusCode).toBe(410);
+    expect(res.body).toEqual({ error: "gone", message: "x" });
+  });
+
+  it("falls through to the shared 500 for an unmapped error", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeDomainErrorHandler("test route", mappings)(new Error("kaboom"), res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "kaboom" });
+    expect(spy).toHaveBeenCalledWith("[test route]", expect.any(Error));
+    spy.mockRestore();
+  });
+
+  it("stringifies a non-Error throw on the fallthrough", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeDomainErrorHandler("test route", mappings)("just a string", res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "just a string" });
+    spy.mockRestore();
+  });
+
+  it("sends exactly one response for a mapped error", () => {
+    // The hand-written ladders each ended their branch with a bare
+    // `return`; a helper that forgot one would 404 and then 500.
+    const res = fakeRes();
+    const json = vi.spyOn(res, "json");
+    makeDomainErrorHandler("test route", mappings)(new NotFound("once"), res);
+    expect(json).toHaveBeenCalledTimes(1);
   });
 });
