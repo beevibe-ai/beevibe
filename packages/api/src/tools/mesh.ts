@@ -10,12 +10,19 @@
 import { randomUUID } from "node:crypto";
 import type { AgentRepository, TaskRepository } from "@beevibe/core";
 import type { TaskService } from "@beevibe/core/services/task-service";
-import type {
-  EscalationService,
-  CreateEscalationInput,
-} from "@beevibe/core/services/escalation-service";
+import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import { toolErrorFromThrown } from "./errors.js";
+import {
+  escalationContributionSchema,
+  parseEscalationContribution,
+} from "./escalation-input.js";
+import {
+  missingArgs,
+  optionalNonEmptyString,
+  optionalString,
+  stringArg,
+} from "./input.js";
 import type { AgentTool } from "./types.js";
 import type { McpCaller } from "./assemble.js";
 import type { MeshServer } from "../mesh/server.js";
@@ -95,11 +102,9 @@ function askTool(ctx: MeshToolContext, services: MeshToolServices): AgentTool {
     },
     handler: async (input) => {
       try {
-        const target = String(input.target_agent_id ?? "");
-        const question = String(input.question ?? "");
-        if (!target || !question) {
-          return { content: { error: "target_agent_id and question required" }, isError: true };
-        }
+        const target = stringArg(input, "target_agent_id");
+        const question = stringArg(input, "question");
+        if (!target || !question) return missingArgs("target_agent_id", "question");
         const requestId = randomUUID();
         const response = await services.mesh.sendAsk(
           requestId,
@@ -133,11 +138,9 @@ function respondAskTool(ctx: MeshToolContext, services: MeshToolServices): Agent
     },
     handler: async (input) => {
       try {
-        const requestId = String(input.request_id ?? "");
-        const answer = String(input.answer ?? "");
-        if (!requestId || !answer) {
-          return { content: { error: "request_id and answer required" }, isError: true };
-        }
+        const requestId = stringArg(input, "request_id");
+        const answer = stringArg(input, "answer");
+        if (!requestId || !answer) return missingArgs("request_id", "answer");
         services.mesh.respondAsk(requestId, {
           request_id: requestId,
           from_agent_id: ctx.caller.agentId,
@@ -178,13 +181,10 @@ function negotiateTool(ctx: MeshToolContext, services: MeshToolServices): AgentT
     },
     handler: async (input) => {
       try {
-        const peerId = String(input.peer_id ?? "");
-        const proposal = String(input.proposal ?? "");
-        const taskId =
-          typeof input.task_id === "string" && input.task_id ? input.task_id : undefined;
-        if (!peerId || !proposal) {
-          return { content: { error: "peer_id and proposal required" }, isError: true };
-        }
+        const peerId = stringArg(input, "peer_id");
+        const proposal = stringArg(input, "proposal");
+        const taskId = optionalNonEmptyString(input, "task_id");
+        if (!peerId || !proposal) return missingArgs("peer_id", "proposal");
 
         const response = await services.mesh.sendNegotiate(
           ctx.caller.agentId,
@@ -228,15 +228,12 @@ function respondNegotiateTool(ctx: MeshToolContext, services: MeshToolServices):
     },
     handler: async (input) => {
       try {
-        const negId = String(input.negotiation_id ?? "");
+        const negId = stringArg(input, "negotiation_id");
         const decision = input.decision as (typeof NEGOTIATE_DECISIONS)[number];
-        const message = String(input.message ?? "");
-        const counter =
-          typeof input.counter_proposal === "string" ? input.counter_proposal : undefined;
+        const message = stringArg(input, "message");
+        const counter = optionalString(input, "counter_proposal");
 
-        if (!negId || !message) {
-          return { content: { error: "negotiation_id and message required" }, isError: true };
-        }
+        if (!negId || !message) return missingArgs("negotiation_id", "message");
         if (!NEGOTIATE_DECISIONS.includes(decision)) {
           return {
             content: { error: `decision must be one of: ${NEGOTIATE_DECISIONS.join(", ")}` },
@@ -299,14 +296,9 @@ function reportBlockerTool(ctx: MeshToolContext, services: MeshToolServices): Ag
     },
     handler: async (input) => {
       try {
-        const taskId = String(input.task_id ?? "");
-        const description = String(input.description ?? "");
-        if (!taskId || !description) {
-          return {
-            content: { error: "task_id and description required" },
-            isError: true,
-          };
-        }
+        const taskId = stringArg(input, "task_id");
+        const description = stringArg(input, "description");
+        if (!taskId || !description) return missingArgs("task_id", "description");
 
         // Server derives parent from caller's hierarchy. Direct parent only.
         const parent = await services.agentRepo.findParent(ctx.caller.agentId);
@@ -369,41 +361,20 @@ function escalateToHumansTool(
           description:
             "Single shared problem statement. Neutral phrasing — \"We're stuck on X; root disagreement is Y.\" Becomes the escalation row's summary; immutable thereafter (peer's add_to_escalation can't change it).",
         },
-        proposals: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              title: { type: "string" },
-              description: { type: "string" },
-              tradeoffs: { type: "string" },
-            },
-            required: ["title", "description"],
-          },
-          description: "Your concrete options for the human (2-3 typical).",
-        },
-        open_questions: {
-          type: "array",
-          items: { type: "string" },
-          description: "Things the human might know that you don't.",
-        },
+        ...escalationContributionSchema({
+          proposals: "Your concrete options for the human (2-3 typical).",
+          openQuestions: "Things the human might know that you don't.",
+        }),
       },
       required: ["negotiation_id", "summary"],
     },
     handler: async (input) => {
       try {
-        const negotiationId = String(input.negotiation_id ?? "");
-        const summary = String(input.summary ?? "");
-        if (!negotiationId || !summary) {
-          return { content: { error: "negotiation_id and summary required" }, isError: true };
-        }
+        const negotiationId = stringArg(input, "negotiation_id");
+        const summary = stringArg(input, "summary");
+        if (!negotiationId || !summary) return missingArgs("negotiation_id", "summary");
 
-        const proposals = Array.isArray(input.proposals)
-          ? (input.proposals as CreateEscalationInput["proposals"])
-          : undefined;
-        const openQuestions = Array.isArray(input.open_questions)
-          ? (input.open_questions as string[]).filter((q) => typeof q === "string")
-          : undefined;
+        const { proposals, openQuestions } = parseEscalationContribution(input);
 
         const escalation = await services.escalationService.create({
           negotiationId,

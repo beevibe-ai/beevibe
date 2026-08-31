@@ -139,6 +139,53 @@ export async function loadOwned<T>(
  * copy-paste, so chat keeps its own handler and this factory preserves the
  * existing behavior of the other four rather than quietly changing it.
  */
+/**
+ * A domain error class paired with the HTTP response it maps to.
+ *
+ * `abstract new (...args: never[])` is just "some error constructor" —
+ * it exists to be the right-hand side of an `instanceof`, so the
+ * constructor's real parameters are irrelevant here.
+ */
+export type DomainErrorMapping = readonly [
+  abstract new (...args: never[]) => Error,
+  { status: number; error: string },
+];
+
+/**
+ * A router's `handleError`: try each domain-error mapping in order,
+ * then fall through to {@link makeErrorHandler}'s 500.
+ *
+ * `escalation`, `negotiation` and `task` each hand-wrote this ladder —
+ * an `if (err instanceof X) { res.status(n).json({ error, message });
+ * return; }` per known failure, then a verbatim copy of the 500 the four
+ * routers on `makeErrorHandler` already shared. Three more copies of the
+ * envelope, and the tail is the half nobody looks at when adding a case.
+ *
+ * The mappings stay per-router because they are the actual contract, but
+ * one of them was already duplicated across routers:
+ * `NegotiationNotFoundError → 404 negotiation_not_found` is declared by
+ * both `escalation` and `negotiation`, which is exactly the pair that
+ * would drift.
+ *
+ * Order matters and is preserved from each call site: the first
+ * matching mapping wins, so a subclass must be listed before its base.
+ */
+export function makeDomainErrorHandler(
+  tag: string,
+  mappings: readonly DomainErrorMapping[],
+): (err: unknown, res: Response) => void {
+  const fallback = makeErrorHandler(tag);
+  return (err, res) => {
+    for (const [ErrorClass, { status, error }] of mappings) {
+      if (err instanceof ErrorClass) {
+        res.status(status).json({ error, message: err.message });
+        return;
+      }
+    }
+    fallback(err, res);
+  };
+}
+
 export function makeErrorHandler(
   tag: string,
 ): (err: unknown, res: Response, context?: string) => void {

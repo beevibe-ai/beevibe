@@ -24,6 +24,7 @@ import { ToolStepList } from "@/components/chat/tool-step-list";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { FIELD_INPUT_CLASS } from "@/components/form-field";
 import { formatRelativeTime, idSuffix, sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -323,7 +324,7 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
           onChange={(e) => setEmail(e.target.value)}
           autoFocus
           placeholder="alice@example.com"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={FIELD_INPUT_CLASS}
           disabled={invite.isPending}
         />
         {error ? (

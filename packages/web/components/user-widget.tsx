@@ -19,6 +19,7 @@ import { ModalOverlay } from "@/components/modal-overlay";
 import { clearUserKey } from "@/lib/api/config";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/avatar";
+import { FIELD_INPUT_CLASS } from "@/components/form-field";
 
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -170,7 +171,7 @@ function InviteTeammateDialog({ onClose }: { onClose: () => void }) {
           onChange={(e) => setEmail(e.target.value)}
           autoFocus
           placeholder="alice@example.com"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={FIELD_INPUT_CLASS}
         />
         {shareLink ? (
           <div className="mt-3 rounded border border-border bg-muted/40 p-3">

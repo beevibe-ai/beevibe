@@ -4,6 +4,7 @@ import {
   SessionSearchService,
 } from "@beevibe/core/services/session-search";
 import { SESSION_TYPES, SESSION_STATUSES } from "@beevibe/core";
+import { optionalNumber, optionalTrimmedString } from "./input.js";
 import type { AgentTool } from "./types.js";
 
 /**
@@ -192,23 +193,16 @@ function inferRequest(input: Record<string, unknown>): SessionSearchRequest {
       ? (input.filters as SessionSearchRequest extends { filters?: infer F } ? F : never)
       : undefined;
 
-  const sessionId =
-    typeof input.session_id === "string" && input.session_id.trim()
-      ? input.session_id.trim()
-      : null;
-  const anchor =
-    typeof input.around_message_id === "string" && input.around_message_id.trim()
-      ? input.around_message_id.trim()
-      : null;
-  const query =
-    typeof input.query === "string" && input.query.trim() ? input.query.trim() : null;
+  const sessionId = optionalTrimmedString(input, "session_id") ?? null;
+  const anchor = optionalTrimmedString(input, "around_message_id") ?? null;
+  const query = optionalTrimmedString(input, "query") ?? null;
 
   if (sessionId && anchor) {
     return {
       kind: "scroll",
       session_id: sessionId,
       around_message_id: anchor,
-      window: typeof input.window === "number" ? input.window : undefined,
+      window: optionalNumber(input, "window"),
     };
   }
   if (sessionId) {
@@ -218,7 +212,7 @@ function inferRequest(input: Record<string, unknown>): SessionSearchRequest {
     return {
       kind: "discover",
       query,
-      limit: typeof input.limit === "number" ? input.limit : undefined,
+      limit: optionalNumber(input, "limit"),
       sort:
         input.sort === "newest" || input.sort === "oldest"
           ? input.sort
@@ -228,7 +222,7 @@ function inferRequest(input: Record<string, unknown>): SessionSearchRequest {
   }
   return {
     kind: "browse",
-    limit: typeof input.limit === "number" ? input.limit : undefined,
+    limit: optionalNumber(input, "limit"),
     filters,
   };
 }
