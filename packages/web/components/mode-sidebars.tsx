@@ -19,7 +19,7 @@ import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import {
   api,
-  type Room,
+  type RoomSummary,
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { useInbox } from "@/lib/hooks/use-inbox";
@@ -110,7 +110,7 @@ export function AgentsSidebar({ pathname }: { pathname: string }) {
 // ── Rooms list ───────────────────────────────────────────────────────
 
 export function RoomsSidebar({ activeRoomId }: { activeRoomId?: string }) {
-  const { data, isLoading } = useQuery<{ ok: true; rooms: Room[] }>({
+  const { data, isLoading } = useQuery<{ ok: true; rooms: RoomSummary[] }>({
     queryKey: queryKeys.rooms.list(),
     queryFn: ({ signal }) => api.rooms.list({ signal }),
     enabled: isApiConfigured,

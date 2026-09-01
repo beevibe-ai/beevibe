@@ -24,38 +24,20 @@ import type {
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "../runtime/hub.js";
+import type {
+  DaemonPanelEntry,
+  RuntimePanelEntry,
+  RuntimesListResponse,
+} from "../views/types.js";
 import { loadOwned, requireParam } from "./http-errors.js";
+
+export type { DaemonPanelEntry, RuntimePanelEntry, RuntimesListResponse };
 
 export interface RuntimesRoutesDeps {
   authMiddleware: RequestHandler;
   daemonRepo: DaemonRepository;
   runtimeRepo: RuntimeRepository;
   hub: DaemonHub;
-}
-
-export interface RuntimePanelEntry {
-  id: string;
-  cli: string;
-  cli_version: string | null;
-  last_heartbeat: string | null;
-  /** True iff a daemon WS client subscribed to this runtime is connected. */
-  online: boolean;
-  capabilities: Record<string, unknown>;
-  created_at: string;
-}
-
-export interface DaemonPanelEntry {
-  id: string;
-  device_name: string;
-  external_id: string;
-  last_seen_at: string | null;
-  created_at: string;
-  runtimes: RuntimePanelEntry[];
-}
-
-export interface RuntimesListResponse {
-  ok: true;
-  daemons: DaemonPanelEntry[];
 }
 
 function projectRuntime(r: Runtime, online: boolean): RuntimePanelEntry {

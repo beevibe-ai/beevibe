@@ -1,5 +1,7 @@
 /**
- * Read-side DTOs returned by the views layer (`packages/api/src/views/*`).
+ * Read-side DTOs returned by the views layer (`packages/api/src/views/*`),
+ * plus the route-level response shapes web reads (rooms, runtimes, work
+ * products) — the sections at the bottom of this file.
  *
  * Single source of truth for the web's read contract. Web re-exports these
  * via `@beevibe/api/views/types` (subpath export). Defining them here means:
@@ -17,10 +19,14 @@
 import type {
   Agent,
   HierarchyLevel,
+  OpenView,
+  RepoCard,
   SessionSpawnMode,
+  SuggestedAction,
   Task,
   TaskStatus,
   WorkProduct,
+  WorkProductType,
   FactType,
   MemoryScope,
   SessionEventKind,
@@ -791,6 +797,152 @@ export interface AgentNetwork {
   self: AgentDisplay[];
   /** Other people's agents the caller co-exists with via shared rooms. */
   peers: AgentPeerOwner[];
+}
+
+// ── Rooms ───────────────────────────────────────────────────────────────────
+//
+// `routes/room.ts` serializes these; the web renders them. They are wire
+// shapes, not view-layer projections, but they belong here for the same
+// reason everything above does: this module is the only thing web can
+// import from the api, so a shape declared anywhere else in this package
+// gets hand-copied on the far side and drifts.
+//
+// Note the `_at` fields are ISO strings, not Dates — these cross JSON,
+// unlike the view DTOs above, which the views layer hands to a serializer
+// that stringifies Dates on the way out.
+
+/** A room row as it appears on the wire. Core's `Room`, JSON-dated. */
+export interface RoomSummary {
+  id: string;
+  name: string;
+  owner_person_id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+/** A room member hydrated with the display fields its kind carries. */
+export type RoomMemberDetail =
+  | { kind: "person"; id: string; name: string; email: string | null }
+  | {
+      kind: "agent";
+      id: string;
+      name: string;
+      hierarchy: HierarchyLevel;
+      owner_person_id: string;
+    };
+
+/**
+ * A room message on the wire.
+ *
+ * Agent messages arrive with their `<suggest_action>` / `<open_view>`
+ * directives already stripped from `content` and re-surfaced as the
+ * sibling fields below, so the renderer never sees raw XML — the same
+ * treatment `ChatHistoryMessage` gets in 1:1 chat.
+ */
+export interface RoomMessageDetail {
+  id: string;
+  room_id: string;
+  kind: "human" | "agent";
+  content: string;
+  sender_person_id?: string;
+  sender_agent_id?: string;
+  session_id?: string;
+  /** Entity ids the agent referenced in this message, hydrated as cards. */
+  view_refs?: string[];
+  open_view?: OpenView;
+  suggested_actions?: SuggestedAction[];
+  repo_cards?: RepoCard[];
+  created_at: string;
+}
+
+/** One tool call in a typing indicator's recent-steps tail. */
+export interface RoomTypingStep {
+  event_id: string;
+  kind: SessionEventKind;
+  tool_name: string | null;
+  content: string;
+}
+
+export interface RoomTypingIndicator {
+  session_id: string;
+  agent_id: string;
+  agent_name: string;
+  started_at: string;
+  /** Last ~6 tool calls for this session, polled. SSE may add more on top. */
+  recent_steps: RoomTypingStep[];
+  total_steps: number;
+}
+
+export interface RoomDetail {
+  ok: true;
+  room: RoomSummary;
+  members: RoomMemberDetail[];
+  messages: RoomMessageDetail[];
+  /**
+   * Agents currently working on a turn for this room. Always sent, but
+   * optional on the type: the web reads this shape out of a react-query
+   * cache that can still hold a response from a server build predating
+   * the field, and the room view's typing-bubble render has to survive
+   * that.
+   */
+  typing?: RoomTypingIndicator[];
+}
+
+/** Why `POST /room/:id/message` invoked the agents it did. */
+export type AddresseeReason = "mention" | "name" | "team-default" | "none";
+
+// ── Runtimes panel ──────────────────────────────────────────────────────────
+
+export interface RuntimePanelEntry {
+  id: string;
+  cli: string;
+  cli_version: string | null;
+  last_heartbeat: string | null;
+  /** True iff a daemon WS client subscribed to this runtime is connected. */
+  online: boolean;
+  capabilities: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface DaemonPanelEntry {
+  id: string;
+  device_name: string;
+  external_id: string;
+  last_seen_at: string | null;
+  created_at: string;
+  runtimes: RuntimePanelEntry[];
+}
+
+export interface RuntimesListResponse {
+  ok: true;
+  daemons: DaemonPanelEntry[];
+}
+
+// ── Work products ───────────────────────────────────────────────────────────
+
+export interface WorkProductDetail {
+  id: string;
+  task_id: string;
+  task_short_id: string;
+  task_title: string;
+  agent_id: string;
+  agent_label: string;
+  type: WorkProductType;
+  title: string;
+  summary?: string;
+  url?: string;
+  provider?: string;
+  external_id?: string;
+  /**
+   * Full deliverable content. Sourced from `work_product.body` when set;
+   * otherwise falls back to reading a `file://` URL from disk. Truncated
+   * to 256 KB.
+   */
+  body?: string;
+  /** True when `url` is file:// — UI uses this to suppress an unclickable link. */
+  url_is_local: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 // ── Re-exports of ambient types that web imports alongside the DTOs ─────────

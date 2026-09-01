@@ -1,7 +1,6 @@
 import { fetchJson } from "./http";
 import type {
   ChatHistoryMessage,
-  HierarchyLevel,
   KnownCli,
   LearnedSkill,
   MemoryScope,
@@ -22,10 +21,36 @@ export type { RepoRun, RepoRunStatus, LearnedSkill };
 export type { ChatHistoryMessage, OpenView, RepoCard, SuggestedAction };
 import type {
   TaskDetail,
+  AddresseeReason,
   AgentDetail,
   DashboardSummary,
   MemoryActivitySummary,
   MeshOverview,
+  RoomDetail,
+  RoomMessageDetail,
+  RoomSummary,
+  RuntimesListResponse,
+  WorkProductDetail,
+} from "./types";
+/**
+ * Room / runtime / work-product wire types come from
+ * `@beevibe/api/views/types` for the same reason the chat ones come from
+ * `@beevibe/core`: the server that emits them and this client that reads
+ * them share one declaration. Re-exported because the pages import their
+ * types from the api client.
+ */
+export type {
+  AddresseeReason,
+  DaemonPanelEntry,
+  RoomDetail,
+  RoomMemberDetail,
+  RoomMessageDetail,
+  RoomSummary,
+  RoomTypingIndicator,
+  RoomTypingStep,
+  RuntimePanelEntry,
+  RuntimesListResponse,
+  WorkProductDetail,
 } from "./types";
 import type { MeshWindow } from "@/lib/types/mesh";
 import type { TaskListItem } from "@/lib/types/tasks";
@@ -125,121 +150,6 @@ export interface ChatTurnResponse {
    * Rendered as a structured repo list with stars + language + source.
    */
   repo_cards?: RepoCard[];
-}
-
-export interface Room {
-  id: string;
-  name: string;
-  owner_person_id: string;
-  created_at: string;
-  updated_at: string;
-}
-
-export type RoomMemberDetail =
-  | { kind: "person"; id: string; name: string; email: string | null }
-  | {
-      kind: "agent";
-      id: string;
-      name: string;
-      hierarchy: HierarchyLevel;
-      owner_person_id: string;
-    };
-
-export interface RoomMessage {
-  id: string;
-  room_id: string;
-  kind: "human" | "agent";
-  content: string;
-  sender_person_id?: string;
-  sender_agent_id?: string;
-  session_id?: string;
-  /** Entity ids the agent referenced in this message, hydrated as cards. */
-  view_refs?: string[];
-  open_view?: OpenView;
-  suggested_actions?: SuggestedAction[];
-  repo_cards?: RepoCard[];
-  created_at: string;
-}
-
-export interface RoomTypingStep {
-  event_id: string;
-  kind: "agent" | "tool_call" | "tool_result" | "summary";
-  tool_name: string | null;
-  content: string;
-}
-
-export interface RoomTypingIndicator {
-  session_id: string;
-  agent_id: string;
-  agent_name: string;
-  started_at: string;
-  /** Last ~6 tool calls for this session, polled. SSE may add more on top. */
-  recent_steps: RoomTypingStep[];
-  total_steps: number;
-}
-
-export interface RoomDetail {
-  ok: true;
-  room: Room;
-  members: RoomMemberDetail[];
-  messages: RoomMessage[];
-  /** Agents currently working on a turn for this room. May be omitted by older server builds. */
-  typing?: RoomTypingIndicator[];
-}
-
-export interface WorkProductDetail {
-  id: string;
-  task_id: string;
-  task_short_id: string;
-  task_title: string;
-  agent_id: string;
-  agent_label: string;
-  type:
-    | "pull_request"
-    | "branch"
-    | "commit"
-    | "document"
-    | "analysis"
-    | "report"
-    | "design"
-    | "artifact"
-    | "preview";
-  title: string;
-  summary?: string;
-  url?: string;
-  provider?: string;
-  external_id?: string;
-  /** Inlined file contents when url is file://. Render as markdown. */
-  body?: string;
-  url_is_local: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface RuntimePanelEntry {
-  id: string;
-  cli: string;
-  cli_version?: string;
-  /** True when a live WebSocket from this runtime is connected. */
-  online: boolean;
-  /** ISO last_heartbeat timestamp; absent when the runtime has never beat. */
-  last_heartbeat?: string;
-}
-
-export interface DaemonPanelEntry {
-  id: string;
-  device_name?: string;
-  external_id: string;
-  /** ISO created_at. */
-  created_at: string;
-  /** ISO last_seen_at — when the daemon last hit /runtime/heartbeat. */
-  last_seen_at?: string;
-  runtimes: RuntimePanelEntry[];
-}
-
-export interface RuntimesListResponse {
-  ok: true;
-  daemons: DaemonPanelEntry[];
 }
 
 export interface SignupInput {
@@ -562,11 +472,11 @@ export const api = {
   },
   rooms: {
     list: (opts: ReadOptions = {}) =>
-      fetchJson<{ ok: true; rooms: Room[] }>("/room", { signal: opts.signal }),
+      fetchJson<{ ok: true; rooms: RoomSummary[] }>("/room", { signal: opts.signal }),
     get: (id: string, opts: ReadOptions = {}) =>
       fetchJson<RoomDetail>(`/room/${encodeURIComponent(id)}`, { signal: opts.signal }),
     create: (input: { name: string }) =>
-      fetchJson<{ ok: true; room: Room }>("/room", { method: "POST", body: input }),
+      fetchJson<{ ok: true; room: RoomSummary }>("/room", { method: "POST", body: input }),
     invite: (id: string, input: { email: string }) =>
       fetchJson<{
         ok: true;
@@ -574,18 +484,18 @@ export const api = {
       }>(`/room/${encodeURIComponent(id)}/invite`, { method: "POST", body: input }),
     /** Self-join — caller adds themselves + their team agent. Used after invite-link signup. */
     join: (id: string) =>
-      fetchJson<{ ok: true; room: Room }>(`/room/${encodeURIComponent(id)}/join`, {
+      fetchJson<{ ok: true; room: RoomSummary }>(`/room/${encodeURIComponent(id)}/join`, {
         method: "POST",
       }),
     sendMessage: (id: string, input: { content: string }) =>
       fetchJson<{
         ok: true;
         /** The persisted human message — returned synchronously. */
-        message: RoomMessage;
+        message: RoomMessageDetail;
         /** Agents that were invoked in the background — their responses arrive via SSE. */
         invoked_agents: { id: string; name: string }[];
         /** Why those agents were chosen — explicit mention, name match, "team" default, or none. */
-        invoked_reason: "mention" | "name" | "team-default" | "none";
+        invoked_reason: AddresseeReason;
       }>(`/room/${encodeURIComponent(id)}/message`, { method: "POST", body: input }),
   },
   signup: {

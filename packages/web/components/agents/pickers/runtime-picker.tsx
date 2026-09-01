@@ -22,7 +22,7 @@ import type { AgentDisplay } from "@/lib/api/types";
 type RuntimeOption = {
   id: string;
   cli: string;
-  cli_version?: string;
+  cli_version: string | null;
   online: boolean;
   device: string;
 };

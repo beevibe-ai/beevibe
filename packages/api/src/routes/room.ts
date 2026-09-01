@@ -32,21 +32,28 @@ import {
   roomMessageId as makeRoomMessageId,
   type Agent,
   type AgentRepository,
-  type OpenView,
   type PersonRepository,
-  type RepoCard,
+  type Room,
   type RoomMessage,
   type RoomRepository,
   type RuntimeRegistry,
   type SessionEventRepository,
   type SessionRepository,
-  type SuggestedAction,
   type WorkspaceManager,
 } from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 import { requireHuman } from "../auth/middleware.js";
+import type {
+  AddresseeReason,
+  RoomDetail,
+  RoomMemberDetail,
+  RoomMessageDetail,
+  RoomSummary,
+} from "../views/types.js";
 import { makeErrorHandler } from "./http-errors.js";
 import { processResponse } from "./directives.js";
+
+export type { AddresseeReason };
 
 export interface RoomRoutesDeps {
   authMiddleware: RequestHandler;
@@ -130,22 +137,23 @@ demo's point. Use this decision order:
 
 const MENTION_RE = /@([A-Za-z0-9_]+)/g;
 
-interface MessageReply {
-  id: string;
-  room_id: string;
-  kind: "human" | "agent";
-  content: string;
-  sender_person_id?: string;
-  sender_agent_id?: string;
-  session_id?: string;
-  view_refs?: string[];
-  open_view?: OpenView;
-  suggested_actions?: SuggestedAction[];
-  repo_cards?: RepoCard[];
-  created_at: string;
+/**
+ * Core's `Room` carries `Date`s; the wire carries ISO strings. Express
+ * would stringify them identically on its own — the point of doing it
+ * here is that `RoomSummary` then type-checks against what web reads,
+ * instead of the shape being whatever `JSON.stringify` happened to make.
+ */
+function toRoomSummary(room: Room): RoomSummary {
+  return {
+    id: room.id,
+    name: room.name,
+    owner_person_id: room.owner_person_id,
+    created_at: room.created_at.toISOString(),
+    updated_at: room.updated_at.toISOString(),
+  };
 }
 
-function toMessageReply(m: RoomMessage): MessageReply {
+function toMessageReply(m: RoomMessage): RoomMessageDetail {
   // Agent messages may contain `<suggest_action>` / `<open_view>`
   // directives + inline entity refs. Strip them from the visible
   // content here so the markdown renderer never sees raw XML, and
@@ -202,7 +210,7 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
       });
       await deps.roomRepo.addPersonMember(room.id, req.caller.personId);
       if (team) await deps.roomRepo.addAgentMember(room.id, team.id);
-      res.json({ ok: true, room });
+      res.json({ ok: true, room: toRoomSummary(room) });
     } catch (err) {
       handleError(err, res);
     }
@@ -213,7 +221,7 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
     if (!requireHuman(req, res)) return;
     try {
       const rooms = await deps.roomRepo.listForPerson(req.caller.personId);
-      res.json({ ok: true, rooms });
+      res.json({ ok: true, rooms: rooms.map(toRoomSummary) });
     } catch (err) {
       handleError(err, res);
     }
@@ -245,7 +253,7 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
         Promise.all(personIds.map((pid) => deps.personRepo.findById(pid))),
         Promise.all(agentIds.map((aid) => deps.agentRepo.findById(aid))),
       ]);
-      const memberDetail = [
+      const memberDetail: RoomMemberDetail[] = [
         ...persons.filter((p) => p).map((p) => ({
           kind: "person" as const,
           id: p!.id,
@@ -287,13 +295,14 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
         };
       });
 
-      res.json({
+      const detail: RoomDetail = {
         ok: true,
-        room,
+        room: toRoomSummary(room),
         members: memberDetail,
         messages: messages.map(toMessageReply),
         typing,
-      });
+      };
+      res.json(detail);
     } catch (err) {
       handleError(err, res);
     }
@@ -315,7 +324,7 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
       await deps.roomRepo.addPersonMember(id, req.caller.personId);
       const team = await deps.agentRepo.findTopLevelForOwner(req.caller.personId);
       if (team) await deps.roomRepo.addAgentMember(id, team.id);
-      res.json({ ok: true, room });
+      res.json({ ok: true, room: toRoomSummary(room) });
     } catch (err) {
       handleError(err, res);
     }
@@ -635,8 +644,6 @@ interface AgentMatchable {
   id: string;
   name: string;
 }
-
-export type AddresseeReason = "mention" | "name" | "team-default" | "none";
 
 /**
  * Decide which agents (if any) should respond to a human room post.
