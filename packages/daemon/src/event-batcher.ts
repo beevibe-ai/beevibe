@@ -17,7 +17,7 @@
  * it would be worse than a gap in it.
  */
 
-import type { SessionEventKind } from "@beevibe/core";
+import type { RuntimeEventInput, RuntimeEventsRequest } from "@beevibe/core";
 import type { ApiClient } from "./api-client.js";
 import { warn } from "./logger.js";
 
@@ -27,13 +27,13 @@ const BATCH_MAX = 16;
 /** Time from the first unflushed event to an automatic flush. */
 const BATCH_INTERVAL_MS = 250;
 
-/** One row as the `/runtime/events` endpoint expects it. */
-export interface BatchedEvent {
-  session_id: string;
-  kind: SessionEventKind;
-  content: string;
-  tool_name?: string;
-}
+/**
+ * One row as the `/runtime/events` endpoint expects it — the endpoint's
+ * own request type from `core/domain/daemon-protocol.ts`, which is where
+ * the rest of the /runtime/* wire contract already lives. Aliased rather
+ * than re-declared so a field added to the protocol reaches the batcher.
+ */
+export type BatchedEvent = RuntimeEventInput;
 
 /** What a caller supplies — `session_id` is filled in by the batcher. */
 export type BatchedEventInput = Omit<BatchedEvent, "session_id">;
@@ -65,9 +65,9 @@ export function createEventBatcher(opts: {
   const flush = async (): Promise<void> => {
     clearTimer();
     if (buffer.length === 0) return;
-    const events = buffer.splice(0);
+    const body: RuntimeEventsRequest = { events: buffer.splice(0) };
     try {
-      await opts.api.post("/runtime/events", { events });
+      await opts.api.post("/runtime/events", body);
     } catch (err) {
       warn(
         `${opts.tag} /runtime/events POST failed; events dropped:`,

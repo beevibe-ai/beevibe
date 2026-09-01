@@ -14,7 +14,12 @@ import {
 } from "lucide-react";
 import { useMe } from "@/lib/hooks/use-me";
 import { isApiConfigured } from "@/lib/api/config";
-import { api, type RoomDetail, type RoomMemberDetail, type RoomMessage } from "@/lib/api/client";
+import {
+  api,
+  type RoomDetail,
+  type RoomMemberDetail,
+  type RoomMessageDetail,
+} from "@/lib/api/client";
 import { ApiError, describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
 import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
@@ -385,7 +390,7 @@ function MessageBubble({
   showSuggestions,
   onSuggest,
 }: {
-  message: RoomMessage;
+  message: RoomMessageDetail;
   members: RoomMemberDetail[];
   myPersonId?: string;
   showSuggestions?: boolean;
