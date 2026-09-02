@@ -2,14 +2,42 @@ import { describe, expect, it } from "vitest";
 import { queryKeys } from "./keys";
 
 describe("queryKeys", () => {
-  it("namespaces every domain under a stable root tuple", () => {
-    expect(queryKeys.tasks.all).toEqual(["tasks"]);
-    expect(queryKeys.agents.all).toEqual(["agents"]);
-    expect(queryKeys.sessions.all).toEqual(["sessions"]);
-    expect(queryKeys.memory.all).toEqual(["memory"]);
-    expect(queryKeys.promotions.all).toEqual(["promotions"]);
-    expect(queryKeys.mesh.all).toEqual(["mesh"]);
-    expect(queryKeys.dashboard.all).toEqual(["dashboard"]);
+  // `lib/sse.ts` invalidates by a domain's `all` tuple and relies on
+  // react-query's prefix matching to reach every slot under it. The literal
+  // root strings are private to this table — both producers (the hooks) and
+  // the consumer (sse.ts) go through the same constant, so pinning them
+  // detects renames without protecting anything. What actually has to hold
+  // is the prefix relationship, across every domain rather than a hand-kept
+  // subset: `agentNetwork.all` is `["agent-network"]`, so a derived key that
+  // drifted to `["agentNetwork", ...]` would silently stop being invalidated.
+  it("derives every key under its domain's `all` prefix (so SSE invalidation cascades reach it)", () => {
+    const mismatched: string[] = [];
+    let checked = 0;
+
+    for (const [domain, group] of Object.entries(queryKeys)) {
+      const { all, ...derived } = group as {
+        all: readonly unknown[];
+      } & Record<string, unknown>;
+
+      for (const [name, member] of Object.entries(derived)) {
+        // Every derived member is either a tuple or a builder; the args only
+        // land in trailing slots, so a dummy is enough to read the prefix.
+        const key =
+          typeof member === "function"
+            ? (member as (arg?: unknown) => readonly unknown[])({})
+            : (member as readonly unknown[]);
+        checked += 1;
+        if (JSON.stringify(key.slice(0, all.length)) !== JSON.stringify(all)) {
+          mismatched.push(
+            `${domain}.${name} -> ${JSON.stringify(key)} (expected prefix ${JSON.stringify(all)})`,
+          );
+        }
+      }
+    }
+
+    expect(mismatched).toEqual([]);
+    // Guard against the walk silently covering nothing if the table's shape changes.
+    expect(checked).toBeGreaterThan(20);
   });
 
   it("derives list/detail keys that share the root prefix (so SSE invalidation cascades work)", () => {
