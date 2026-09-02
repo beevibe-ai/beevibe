@@ -10,6 +10,7 @@ import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { Skeleton } from "@/components/skeleton";
 import { EscalationStatusPill } from "@/components/detail/status-pill";
 import { MutationError } from "@/components/mutation-error";
@@ -110,7 +111,7 @@ function EscalationDetailLoaded({ esc }: { esc: EscalationReviewDetail }) {
 
       {esc.status === "pending" ? <ResolveForm esc={esc} /> : <ResolvedView esc={esc} />}
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="ID">
           <ClickToCopyId id={esc.id} />
         </FooterField>
@@ -124,7 +125,7 @@ function EscalationDetailLoaded({ esc }: { esc: EscalationReviewDetail }) {
         {esc.resolved_at ? (
           <FooterField label="Resolved">{formatRelativeTime(esc.resolved_at)}</FooterField>
         ) : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }

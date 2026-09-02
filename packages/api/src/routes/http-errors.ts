@@ -150,3 +150,76 @@ export function makeErrorHandler(
     });
   };
 }
+
+/**
+ * The *other* 500 handler, for routers that answer with a per-operation
+ * error code and no message.
+ *
+ * `runtime/router`, `repo-runs`, `learned-skills`, `capabilities` and
+ * `find-repo` wrote out the same three lines at the end of 18 handlers —
+ * log `[<router>/<op>]`, then `res.status(500).json({ error: "<something>_failed" })`.
+ * They deliberately do not use {@link makeErrorHandler}: these endpoints
+ * return a bare machine-readable code and keep `err.message` in the logs,
+ * where `makeErrorHandler` reflects the message back to the client. Both
+ * shapes are in the wire contract already, so this factors out the second
+ * one rather than collapsing it into the first.
+ *
+ * `op` and `code` are separate parameters because the code is not derivable
+ * from the operation: `repo-runs/get` answers `get_failed`, but
+ * `runtime/skills` answers `skills_read_failed` and
+ * `capabilities/referenced-repos` answers `scan_failed`. Clients may branch
+ * on these, so — as with `requireParam`'s `errorCode` — this factors out the
+ * shape, not the codes.
+ */
+export function makeCodedErrorHandler(
+  tag: string,
+): (err: unknown, res: Response, op: string, code: string) => void {
+  return (err, res, op, code) => {
+    console.error(`[${tag}/${op}]`, err);
+    res.status(500).json({ error: code });
+  };
+}
+
+/** A domain error class, as passed to {@link makeServiceErrorHandler}. */
+type ServiceErrorClass = abstract new (...args: never[]) => Error;
+
+/** One `instanceof` → HTTP-status/error-code mapping. */
+export interface ServiceErrorRule {
+  /** Domain error class to match with `instanceof`. */
+  error: ServiceErrorClass;
+  status: number;
+  /** Wire error code, e.g. `"task_not_found"`. */
+  code: string;
+}
+
+/**
+ * A `makeErrorHandler` that first maps known domain errors onto their HTTP
+ * status.
+ *
+ * `task`, `escalation` and `negotiation` each hand-wrote the same shape: a
+ * chain of `if (err instanceof SomeDomainError) { res.status(N).json({ error,
+ * message: err.message }); return; }` ending in a byte-identical copy of the
+ * `makeErrorHandler` body. The chain is the part that legitimately differs
+ * per router (different error classes, different codes); the tail is not, and
+ * having it written out three more times meant the generic-500 envelope lived
+ * in seven places instead of one.
+ *
+ * Rules are tried in order, so a subclass must be listed before its base.
+ * Anything unmatched falls through to `makeErrorHandler(tag)` — same log tag,
+ * same `internal_error` envelope, same reflected `err.message`.
+ */
+export function makeServiceErrorHandler(
+  tag: string,
+  rules: readonly ServiceErrorRule[],
+): (err: unknown, res: Response) => void {
+  const fallback = makeErrorHandler(tag);
+  return (err, res) => {
+    for (const rule of rules) {
+      if (err instanceof rule.error) {
+        res.status(rule.status).json({ error: rule.code, message: err.message });
+        return;
+      }
+    }
+    fallback(err, res);
+  };
+}

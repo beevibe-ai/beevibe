@@ -8,6 +8,7 @@ import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { NegotiationStatusPill } from "@/components/detail/status-pill";
 import { Skeleton } from "@/components/skeleton";
 import { formatRelativeTime } from "@/lib/format";
@@ -120,7 +121,7 @@ function NegotiationDetailLoaded({ neg }: { neg: NegotiationReviewDetail }) {
         )}
       </section>
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="ID">
           <ClickToCopyId id={neg.id} />
         </FooterField>
@@ -141,7 +142,7 @@ function NegotiationDetailLoaded({ neg }: { neg: NegotiationReviewDetail }) {
         {neg.updated_at !== neg.created_at ? (
           <FooterField label="Updated">{formatRelativeTime(neg.updated_at)}</FooterField>
         ) : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }

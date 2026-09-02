@@ -3,13 +3,12 @@
 import Link from "next/link";
 import { ChevronRight, Terminal } from "lucide-react";
 import { useSession } from "@/lib/hooks/use-sessions";
-import { Avatar } from "@/components/avatar";
-import { HierChip } from "@/components/hier-chip";
-import { SessionStatusPill } from "@/components/detail/status-pill";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
+import { DetailFooter } from "@/components/detail/detail-footer";
 import { BriefingComposer } from "@/components/sessions/briefing-composer";
+import { SessionHeader } from "@/components/sessions/session-header";
 import { Transcript } from "@/components/sessions/transcript";
 import { Skeleton } from "@/components/skeleton";
 import { formatIntent, shortId } from "@/lib/format";
@@ -87,35 +86,24 @@ function SessionDetailBody({ session, taskId: _taskId }: { session: SessionDispl
   // running session orphaned in the daemon-spawn path.
   return (
     <>
-      <header className="mb-6">
-        <div className="flex items-start gap-3">
-          <Avatar
-            initial={session.agent_label.charAt(0).toUpperCase()}
-            kind={session.agent_hierarchy}
-            label={session.agent_label}
-            size={40}
-            presence={session.status === "running" ? "running" : "idle"}
-          />
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2 mb-1">
-              <h1 className="text-base font-semibold leading-tight truncate">{formatIntent(session.intent)}</h1>
-              <SessionStatusPill status={session.status} />
-            </div>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span className="text-foreground/85">{session.agent_label}</span>
-              <HierChip hier={session.agent_hierarchy} />
-              <span className="text-muted-foreground/50">·</span>
-              <span className="tabular-nums">{session.duration_label}</span>
-            </div>
-          </div>
-        </div>
-      </header>
+      <SessionHeader
+        agentLabel={session.agent_label}
+        agentHierarchy={session.agent_hierarchy}
+        status={session.status}
+        title={formatIntent(session.intent)}
+        meta={
+          <>
+            <span className="text-muted-foreground/50">·</span>
+            <span className="tabular-nums">{session.duration_label}</span>
+          </>
+        }
+      />
 
       <BriefingComposer briefing={session.briefing} />
 
       <Transcript entries={session.transcript} ask_threads={session.ask_threads} />
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="Session ID">
           <ClickToCopyId id={session.id} />
         </FooterField>
@@ -130,7 +118,7 @@ function SessionDetailBody({ session, taskId: _taskId }: { session: SessionDispl
           </FooterField>
         ) : null}
         <FooterField label="Type">{session.type}</FooterField>
-      </footer>
+      </DetailFooter>
     </>
   );
 }

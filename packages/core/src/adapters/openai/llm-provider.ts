@@ -7,14 +7,15 @@ import type {
   LlmStructuredResponse,
   LlmUsage,
 } from "../../ports/llm-provider.js";
+import { resolveLlmProviderConfig, type LlmProviderConfig } from "../llm-common.js";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
 
-export interface OpenAILlmProviderConfig {
-  apiKey?: string;
-  defaultModel?: string;
-  timeoutMs?: number;
-}
+/**
+ * Alias of the shared {@link LlmProviderConfig}. Kept as a named export
+ * because `adapters/openai/index.ts` re-exports it as public API.
+ */
+export type OpenAILlmProviderConfig = LlmProviderConfig;
 
 /**
  * OpenAI chat completions adapter. `completeStructured` uses strict JSON
@@ -29,15 +30,16 @@ export class OpenAILlmProvider implements LlmProvider {
   private defaultModel: string;
 
   constructor(config: OpenAILlmProviderConfig = {}) {
-    const apiKey = config.apiKey ?? process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error("OpenAILlmProvider: OPENAI_API_KEY missing");
-    }
-    this.client = new OpenAI({
-      apiKey,
-      timeout: config.timeoutMs ?? 30_000,
+    const resolved = resolveLlmProviderConfig(config, {
+      providerName: "OpenAILlmProvider",
+      apiKeyEnvVar: "OPENAI_API_KEY",
+      defaultModel: DEFAULT_MODEL,
     });
-    this.defaultModel = config.defaultModel ?? DEFAULT_MODEL;
+    this.client = new OpenAI({
+      apiKey: resolved.apiKey,
+      timeout: resolved.timeoutMs,
+    });
+    this.defaultModel = resolved.defaultModel;
   }
 
   async complete(req: LlmRequest): Promise<LlmResponse> {
