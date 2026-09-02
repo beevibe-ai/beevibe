@@ -16,6 +16,7 @@ import type {
   LearnedSkillRepository,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
+import { makeCodedErrorHandler } from "./http-errors.js";
 import { createFindRepoTool } from "../tools/find-repo.js";
 
 export interface FindRepoRouterDeps {
@@ -24,6 +25,8 @@ export interface FindRepoRouterDeps {
   learnedSkillRepo: LearnedSkillRepository;
   embeddings: EmbeddingService;
 }
+
+const handleFailure = makeCodedErrorHandler("find-repo");
 
 export function createFindRepoRouter(deps: FindRepoRouterDeps): Router {
   const router = Router();
@@ -68,8 +71,7 @@ export function createFindRepoRouter(deps: FindRepoRouterDeps): Router {
       }
       res.status(200).json(result.content);
     } catch (err) {
-      console.error("[find-repo/search]", err);
-      res.status(500).json({ error: "search_failed" });
+      handleFailure(err, res, "search", "search_failed");
     }
   });
 

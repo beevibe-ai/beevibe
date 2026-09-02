@@ -7,6 +7,7 @@ import type {
   LlmStructuredResponse,
   LlmUsage,
 } from "../../ports/llm-provider.js";
+import { resolveLlmProviderConfig, type LlmProviderConfig } from "../llm-common.js";
 
 /**
  * Default model for the memory subsystem. Haiku is cheap + fast and more than
@@ -14,13 +15,13 @@ import type {
  */
 const DEFAULT_MODEL = "claude-haiku-4-5-20251001";
 
-export interface AnthropicLlmProviderConfig {
-  apiKey?: string;
-  /** Override DEFAULT_MODEL. Useful when a caller wants Opus for harder calls. */
-  defaultModel?: string;
-  /** Per-request timeout (ms). Default 30_000. */
-  timeoutMs?: number;
-}
+/**
+ * Alias of the shared {@link LlmProviderConfig}. Kept as a named export
+ * because `adapters/anthropic/index.ts` re-exports it as public API;
+ * `defaultModel` overrides {@link DEFAULT_MODEL}, useful when a caller wants
+ * Opus for harder calls.
+ */
+export type AnthropicLlmProviderConfig = LlmProviderConfig;
 
 /**
  * Anthropic Messages API adapter. `completeStructured` uses the native
@@ -39,15 +40,16 @@ export class AnthropicLlmProvider implements LlmProvider {
   private defaultModel: string;
 
   constructor(config: AnthropicLlmProviderConfig = {}) {
-    const apiKey = config.apiKey ?? process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error("AnthropicLlmProvider: ANTHROPIC_API_KEY missing");
-    }
-    this.client = new Anthropic({
-      apiKey,
-      timeout: config.timeoutMs ?? 30_000,
+    const resolved = resolveLlmProviderConfig(config, {
+      providerName: "AnthropicLlmProvider",
+      apiKeyEnvVar: "ANTHROPIC_API_KEY",
+      defaultModel: DEFAULT_MODEL,
     });
-    this.defaultModel = config.defaultModel ?? DEFAULT_MODEL;
+    this.client = new Anthropic({
+      apiKey: resolved.apiKey,
+      timeout: resolved.timeoutMs,
+    });
+    this.defaultModel = resolved.defaultModel;
   }
 
   async complete(req: LlmRequest): Promise<LlmResponse> {

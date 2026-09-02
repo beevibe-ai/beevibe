@@ -3,6 +3,8 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  makeCodedErrorHandler,
+  makeServiceErrorHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +219,101 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("makeCodedErrorHandler", () => {
+  it("500s with the caller's code and no message", () => {
+    // The code-only envelope is the wire contract for these endpoints —
+    // err.message stays in the log, it must not reach the client.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeCodedErrorHandler("repo-runs")(new Error("boom"), res, "get", "get_failed");
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "get_failed" });
+    spy.mockRestore();
+  });
+
+  it("logs under `[tag/op]`", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const err = new Error("boom");
+    makeCodedErrorHandler("runtime")(err, fakeRes(), "claim", "claim_failed");
+    expect(spy).toHaveBeenCalledWith("[runtime/claim]", err);
+    spy.mockRestore();
+  });
+
+  it("keeps the code independent of the op", () => {
+    // `runtime/skills` answers `skills_read_failed`, not `skills_failed` —
+    // the code is never derived from the operation name.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeCodedErrorHandler("runtime")(new Error("x"), res, "skills", "skills_read_failed");
+    expect(res.body).toEqual({ error: "skills_read_failed" });
+    spy.mockRestore();
+  });
+});
+
+describe("makeServiceErrorHandler", () => {
+  class NotFound extends Error {}
+  class BadState extends Error {}
+  class SubclassOfNotFound extends NotFound {}
+
+  const handle = makeServiceErrorHandler("task route", [
+    { error: NotFound, status: 404, code: "task_not_found" },
+    { error: BadState, status: 409, code: "invalid_transition" },
+  ]);
+
+  it("maps a matched domain error onto its status, code and message", () => {
+    const res = fakeRes();
+    handle(new NotFound("Task t_1 not found"), res);
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({
+      error: "task_not_found",
+      message: "Task t_1 not found",
+    });
+  });
+
+  it("picks the rule that matches, not the first one", () => {
+    const res = fakeRes();
+    handle(new BadState("cannot approve a cancelled task"), res);
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toMatchObject({ error: "invalid_transition" });
+  });
+
+  it("falls through to the shared 500 envelope for an unknown error", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    handle(new Error("connection reset"), res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({
+      error: "internal_error",
+      message: "connection reset",
+    });
+    expect(spy).toHaveBeenCalledWith("[task route]", expect.any(Error));
+    spy.mockRestore();
+  });
+
+  it("stringifies a non-Error throw on the fallback path", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    handle("just a string", res);
+    expect(res.body).toEqual({ error: "internal_error", message: "just a string" });
+    spy.mockRestore();
+  });
+
+  it("tries rules in order, so a subclass listed first wins", () => {
+    const ordered = makeServiceErrorHandler("tag", [
+      { error: SubclassOfNotFound, status: 410, code: "gone" },
+      { error: NotFound, status: 404, code: "not_found" },
+    ]);
+    const res = fakeRes();
+    ordered(new SubclassOfNotFound("x"), res);
+    expect(res.statusCode).toBe(410);
+  });
+
+  it("matches a base-class rule listed first, which is why order matters", () => {
+    const res = fakeRes();
+    handle(new SubclassOfNotFound("x"), res);
+    expect(res.statusCode).toBe(404);
   });
 });
