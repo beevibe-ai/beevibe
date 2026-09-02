@@ -92,7 +92,10 @@ describe("api client (reads)", () => {
     });
   });
 
-  describe("deferred surfaces (paths set; backend not yet shipped)", () => {
+  // These three shipped after the block was written: the routers live in
+  // packages/api/src/views/{promotions,mesh,dashboard}.ts and the UI reads
+  // them through use-promotions / use-mesh / use-dashboard.
+  describe("promotions / mesh / dashboard", () => {
     it("promotions.list() hits /promotion", async () => {
       await api.promotions.list();
       expect(fetchJsonMock).toHaveBeenCalledWith("/promotion", { signal: undefined });
