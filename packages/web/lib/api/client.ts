@@ -12,6 +12,7 @@ import type {
   ReviewPolicy,
   SuggestedAction,
   Task,
+  TaskLifecycle,
 } from "@beevibe/core";
 export type { RepoRun, RepoRunStatus, LearnedSkill };
 /**
@@ -41,12 +42,11 @@ import type { PromotionEvent } from "@/lib/types/promotion-events";
 import type { InboxItem } from "@/lib/types/inbox";
 import type { EscalationReviewDetail } from "@/lib/types/escalations";
 import type { NegotiationReviewDetail } from "@/lib/types/negotiations";
-import type { Lifecycle } from "@/lib/tasks-grouping";
 
 export type TaskView = "all" | "mine";
 
 export interface TaskListFilter {
-  lifecycle?: Lifecycle;
+  lifecycle?: TaskLifecycle;
   assignee_id?: string;
   view?: TaskView;
 }

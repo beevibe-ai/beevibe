@@ -4,10 +4,10 @@ import { MoreHorizontal } from "lucide-react";
 import { TaskCard, type TaskSelectHandler } from "./task-card";
 import { cn } from "@/lib/utils";
 import type { TaskListItem } from "@/lib/types/tasks";
-import type { Lifecycle } from "@/lib/tasks-grouping";
+import type { TaskLifecycle } from "@beevibe/core";
 
 export type BoardLane = {
-  key: Lifecycle;
+  key: TaskLifecycle;
   label: string;
   dot: string;
   count: number;

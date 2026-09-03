@@ -1,11 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { TaskStatus } from "@beevibe/core";
-import { TASK_STATUSES } from "@beevibe/core";
-import {
-  countArchivedTasks,
-  groupTasks,
-  type Lifecycle,
-} from "./tasks-grouping";
+import { TASK_STATUSES, type TaskLifecycle, type TaskStatus } from "@beevibe/core";
+import { countArchivedTasks, groupTasks } from "./tasks-grouping";
 import type { TaskListItem } from "@/lib/types/tasks";
 
 function makeTask(id: string, status: TaskStatus): TaskListItem {
@@ -21,7 +16,7 @@ function makeTask(id: string, status: TaskStatus): TaskListItem {
   };
 }
 
-const EXPECTED_LIFECYCLE: Record<TaskStatus, Lifecycle> = {
+const EXPECTED_LIFECYCLE: Record<TaskStatus, TaskLifecycle> = {
   pending: "pending",
   assigned: "pending",
   in_progress: "in_progress",
