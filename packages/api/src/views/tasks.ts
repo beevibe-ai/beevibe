@@ -7,11 +7,7 @@
  */
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import type { Lifecycle } from "./tasks-grouping.js";
-import {
-  TASK_STATUSES_BY_LIFECYCLE,
-  TASK_STATUSES_BY_VIEW,
-} from "./tasks-grouping.js";
+import { TASK_STATUSES_BY_VIEW } from "./tasks-grouping.js";
 import { deriveShortId, formatDurationLabel } from "./format.js";
 import type {
   TaskListItem,
@@ -19,10 +15,12 @@ import type {
   TaskDetailSessionRow,
   TaskLatestSessionSummary,
 } from "./types.js";
+import { TASK_STATUSES_BY_LIFECYCLE } from "@beevibe/core";
 import type {
   HierarchyLevel,
   SessionStatus,
   Task,
+  TaskLifecycle,
   TaskPriority,
   TaskStatus,
   WorkProduct,
@@ -30,7 +28,7 @@ import type {
 } from "@beevibe/core";
 
 export interface TaskListFilter {
-  lifecycle?: Lifecycle;
+  lifecycle?: TaskLifecycle;
   assignee_id?: string;
   /**
    * Saved-view shortcut. "mine" needs the caller's personId — the route

@@ -34,6 +34,42 @@ export function requireParam(
 }
 
 /**
+ * Shape check for an email address in a request body.
+ *
+ * `signin` and `signup` each carried a byte-identical copy of this
+ * regex. They are the two halves of one credential flow, so a drift
+ * between them is worse than the usual duplication: tightening one side
+ * alone would let a visitor create an account at an address they then
+ * can't sign in with (or vice versa). Deliberately permissive — it
+ * rejects obvious junk, and delivery is the real check.
+ */
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/**
+ * Read and normalize a body `email`, 400-ing when it's absent or
+ * malformed.
+ *
+ * Normalization (trim + lowercase) is part of the contract rather than
+ * the caller's job: `personRepo.findByEmail` does an exact match, so
+ * signup storing `Foo@Bar.com` while signin looks up `foo@bar.com` would
+ * be an account the owner can't reach. Both routes already lowercased —
+ * this makes it impossible for one of them to stop.
+ *
+ * Returns `undefined` after responding, so the caller's next line is
+ * `if (!email) return;` — the same guard convention as `requireParam`.
+ */
+export function requireEmail(req: Request, res: Response): string | undefined {
+  const body = req.body as Record<string, unknown> | undefined;
+  const raw = body?.email;
+  const email = typeof raw === "string" ? raw.trim().toLowerCase() : "";
+  if (!email || !EMAIL_RE.test(email)) {
+    res.status(400).json({ error: "invalid_email", message: "valid email required" });
+    return undefined;
+  }
+  return email;
+}
+
+/**
  * The 400 a handler returns when the request body doesn't typecheck.
  *
  * Six handlers across `view`, `learned-skills` and `me` wrote out the

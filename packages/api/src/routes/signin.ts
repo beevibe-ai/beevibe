@@ -29,15 +29,13 @@
 import { Router } from "express";
 import type { PersonRepository } from "@beevibe/core";
 import { SIGNIN_NO_PASSWORD_SET, verifyPassword } from "@beevibe/core/auth";
-import { makeErrorHandler } from "./http-errors.js";
+import { makeErrorHandler, requireEmail } from "./http-errors.js";
 
 export interface SigninRoutesDeps {
   personRepo: PersonRepository;
   /** Default true. Set to false to 404 the route. */
   enabled?: boolean;
 }
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const handleError = makeErrorHandler("signin route");
 
@@ -51,17 +49,11 @@ export function createSigninRouter(deps: SigninRoutesDeps): Router {
       return;
     }
     try {
-      const body = (req.body ?? {}) as Record<string, unknown>;
-      const email =
-        typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-      const password = typeof body.password === "string" ? body.password : "";
+      const email = requireEmail(req, res);
+      if (!email) return;
 
-      if (!email || !EMAIL_RE.test(email)) {
-        res
-          .status(400)
-          .json({ error: "invalid_email", message: "valid email required" });
-        return;
-      }
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const password = typeof body.password === "string" ? body.password : "";
       if (!password) {
         res.status(400).json({
           error: "invalid_password",

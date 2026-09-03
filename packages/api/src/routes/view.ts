@@ -23,6 +23,7 @@ import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   MEMORY_SCOPES,
   REVIEW_POLICIES,
+  TASK_LIFECYCLES,
   isKnownCli,
   type AgentRepository,
   type DaemonRepository,
@@ -32,6 +33,7 @@ import {
   type ReviewPolicy,
   type RuntimeConfig,
   type RuntimeRepository,
+  type TaskLifecycle,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import {
@@ -40,10 +42,6 @@ import {
   type CoreMemory,
 } from "@beevibe/core/services/memory";
 import { listTasks, getTask, type TaskListFilter } from "../views/tasks.js";
-import {
-  TASK_STATUSES_BY_LIFECYCLE,
-  type Lifecycle,
-} from "../views/tasks-grouping.js";
 import { listAgents, getAgent } from "../views/agents.js";
 import {
   getSessionByShortId,
@@ -85,9 +83,7 @@ export interface ViewRoutesDeps {
   memoryFactRepo: MemoryFactRepository;
 }
 
-const LIFECYCLES = new Set<Lifecycle>(
-  Object.keys(TASK_STATUSES_BY_LIFECYCLE) as Lifecycle[],
-);
+const LIFECYCLES = new Set<TaskLifecycle>(TASK_LIFECYCLES);
 const VIEWS = new Set<TaskListFilter["view"]>(["all", "mine", "sprint", "timeline"]);
 const SCOPES = new Set<MemoryScope>(MEMORY_SCOPES);
 
@@ -122,8 +118,8 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     // owners (any logged-in person could see every task in the DB).
     const filter: TaskListFilter = { caller_person_id: req.caller.personId };
     const lifecycleParam = typeof req.query.lifecycle === "string" ? req.query.lifecycle : undefined;
-    if (lifecycleParam && LIFECYCLES.has(lifecycleParam as Lifecycle)) {
-      filter.lifecycle = lifecycleParam as Lifecycle;
+    if (lifecycleParam && LIFECYCLES.has(lifecycleParam as TaskLifecycle)) {
+      filter.lifecycle = lifecycleParam as TaskLifecycle;
     }
     const viewParam = typeof req.query.view === "string" ? req.query.view : undefined;
     if (viewParam && VIEWS.has(viewParam as TaskListFilter["view"])) {

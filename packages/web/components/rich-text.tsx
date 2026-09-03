@@ -1,7 +1,14 @@
 import { Fragment } from "react";
+import type { RichText } from "@beevibe/api/views/types";
 
-export type RichSegment = string | { mono: string };
-export type RichText = string | RichSegment[];
+/**
+ * The wire shape comes from `@beevibe/api`, which owns the contract and
+ * serializes these values — re-exported here so the existing
+ * `@/components/rich-text` import sites keep resolving. Both packages used
+ * to declare it; structural typing hid the duplication, but a `mono`
+ * rename on the api side would still have silently split the two.
+ */
+export type { RichSegment, RichText } from "@beevibe/api/views/types";
 
 export function RichTextRender({ value }: { value: RichText }) {
   if (typeof value === "string") return <>{value}</>;

@@ -70,15 +70,27 @@ describe("listTasks", () => {
     expect(t.latest_session?.agent_label).toBe("alice");
   });
 
-  it("translates lifecycle filter into a status array param", async () => {
-    const pool = makeMockPool([[]]);
-    const queryMock = pool._spy;
-    await listTasks(pool, { lifecycle: "in_review", bypassOwnerScope: true });
-    expect(queryMock).toHaveBeenCalledWith(
-      expect.any(String),
-      [["review", "blocked"], null, null],
-    );
-  });
+  // The lanes below come from `TASK_LIFECYCLE_OF` in @beevibe/core, which
+  // the web task board groups on too. `in_review` deliberately excludes
+  // `blocked` and `done` excludes `failed`/`cancelled` — those have their
+  // own lanes, so a `?lifecycle=` link returns exactly the rows the
+  // requested lane paints.
+  it.each([
+    ["pending", ["pending", "assigned"]],
+    ["in_progress", ["in_progress", "needs_revision", "revision"]],
+    ["blocked", ["blocked"]],
+    ["in_review", ["review"]],
+    ["done", ["done"]],
+    ["archived", ["failed", "cancelled"]],
+  ] as const)(
+    "translates the %s lifecycle filter into its status array param",
+    async (lifecycle, statuses) => {
+      const pool = makeMockPool([[]]);
+      const queryMock = pool._spy;
+      await listTasks(pool, { lifecycle, bypassOwnerScope: true });
+      expect(queryMock).toHaveBeenCalledWith(expect.any(String), [statuses, null, null]);
+    },
+  );
 
   it("forwards assignee_id when set", async () => {
     const pool = makeMockPool([[]]);

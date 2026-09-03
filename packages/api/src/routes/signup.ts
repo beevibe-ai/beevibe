@@ -30,7 +30,7 @@ import {
   validatePasswordShape,
   verifyPassword,
 } from "@beevibe/core/auth";
-import { makeErrorHandler } from "./http-errors.js";
+import { makeErrorHandler, requireEmail } from "./http-errors.js";
 
 export interface SignupRoutesDeps {
   agentRepo: AgentRepository;
@@ -41,7 +41,6 @@ export interface SignupRoutesDeps {
 }
 
 const NAME_RE = /^[\p{L}\p{N} '\-_.]{1,80}$/u;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const handleError = makeErrorHandler("signup route");
 
@@ -57,8 +56,6 @@ export function createSignupRouter(deps: SignupRoutesDeps): Router {
     try {
       const body = (req.body ?? {}) as Record<string, unknown>;
       const name = typeof body.name === "string" ? body.name.trim() : "";
-      const email =
-        typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
       const password = typeof body.password === "string" ? body.password : "";
 
       if (!name || !NAME_RE.test(name)) {
@@ -69,10 +66,8 @@ export function createSignupRouter(deps: SignupRoutesDeps): Router {
         });
         return;
       }
-      if (!email || !EMAIL_RE.test(email)) {
-        res.status(400).json({ error: "invalid_email", message: "valid email required" });
-        return;
-      }
+      const email = requireEmail(req, res);
+      if (!email) return;
       const pwdCheck = validatePasswordShape(password);
       if (!pwdCheck.ok) {
         res.status(400).json({

@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  requireEmail,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +218,50 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("requireEmail", () => {
+  it("returns a well-formed address unchanged", () => {
+    const res = fakeRes();
+    expect(requireEmail(fakeBodyReq({ email: "dev@beevibe.ai" }), res)).toBe(
+      "dev@beevibe.ai",
+    );
+    expect(res.statusCode).toBeUndefined();
+  });
+
+  it("normalizes case and surrounding whitespace", () => {
+    // findByEmail is an exact match, so signup and signin must agree on
+    // the stored form or the account becomes unreachable.
+    const res = fakeRes();
+    expect(requireEmail(fakeBodyReq({ email: "  Dev@BeeVibe.AI  " }), res)).toBe(
+      "dev@beevibe.ai",
+    );
+  });
+
+  it.each([
+    ["absent", {}],
+    ["empty", { email: "" }],
+    ["whitespace only", { email: "   " }],
+    ["no @", { email: "devbeevibe.ai" }],
+    ["no domain dot", { email: "dev@beevibe" }],
+    ["no local part", { email: "@beevibe.ai" }],
+    ["inner whitespace", { email: "dev name@beevibe.ai" }],
+    ["wrong type", { email: 42 }],
+    ["null", { email: null }],
+  ])("400s invalid_email on %s", (_label, body) => {
+    const res = fakeRes();
+    expect(requireEmail(fakeBodyReq(body), res)).toBeUndefined();
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({
+      error: "invalid_email",
+      message: "valid email required",
+    });
+  });
+
+  it("400s rather than throwing when there is no body at all", () => {
+    const res = fakeRes();
+    expect(requireEmail(fakeBodyReq(undefined), res)).toBeUndefined();
+    expect(res.statusCode).toBe(400);
   });
 });
