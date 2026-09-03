@@ -119,19 +119,6 @@
   }
 }
 
-.timeline-rail {
-  position: relative;
-}
-.timeline-rail::before {
-  content: "";
-  position: absolute;
-  left: 11px;
-  top: 8px;
-  bottom: 8px;
-  width: 1px;
-  background: hsl(var(--border));
-}
-
 /* Pearl button — sidebar New chat CTA. Adapted from Uiverse.io by
    marcelodolza, recolored to the app's honey primary. The .wrap
    pseudo-elements render the glossy top cap and rising under-glow. */
@@ -268,10 +255,10 @@
    material instead of solid blocks against shiny pearls.
 
    Use `.glass-surface` for popovers, composers, peek panels — anything
-   that hosts content. Use `.glass-bubble-agent` / `.glass-bubble-user`
-   for chat message bubbles. All three need a non-solid backdrop behind
-   them to read correctly; the chat surface's gradient + the sidebar's
-   `bg-card` both qualify. */
+   that hosts content. Use `.glass-bubble-user` for user chat message
+   bubbles; agent replies render unbubbled. Both need a non-solid
+   backdrop behind them to read correctly; the chat surface's gradient +
+   the sidebar's `bg-card` both qualify. */
 .glass-surface {
   background-color: hsl(var(--card) / 0.55);
   /* Apple Liquid Glass cues: heavy blur picks up backdrop variation, the
@@ -296,21 +283,6 @@
   .dark .glass-surface { background-color: hsl(var(--card) / 0.92); }
 }
 
-/* Agent message — neutral translucent bubble. Drops the solid
-   bg-secondary block in favor of a frosted variant that lets the
-   gradient backdrop bleed through. */
-.glass-bubble-agent {
-  background-color: hsl(var(--secondary) / 0.5);
-  backdrop-filter: blur(20px) saturate(180%);
-  -webkit-backdrop-filter: blur(20px) saturate(180%);
-  color: hsl(var(--foreground));
-  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.06);
-}
-.dark .glass-bubble-agent {
-  background-color: hsl(var(--secondary) / 0.4);
-  box-shadow: inset 0 1px 0 hsl(0 0% 100% / 0.05);
-}
-
 /* User message — replaces the saturated bg-primary yellow with a low-
    opacity tint + brand-colored border. Brand reads as accent instead
    of dominating the column; short prompts stop looking like billboards. */
@@ -329,7 +301,6 @@
 }
 
 @supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
-  .glass-bubble-agent { background-color: hsl(var(--secondary) / 0.9); }
   .glass-bubble-user { background-color: hsl(var(--primary) / 0.22); }
 }
 
@@ -843,7 +814,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .animate-pulse-breathe,
-  .animate-spin-slow,
   .animate-row-flash {
     animation: none !important;
   }
