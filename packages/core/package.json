@@ -30,6 +30,10 @@
       "types": "./dist/domain/format.d.ts",
       "default": "./dist/domain/format.js"
     },
+    "./domain/task": {
+      "types": "./dist/domain/task.d.ts",
+      "default": "./dist/domain/task.js"
+    },
     "./adapters/postgres": {
       "types": "./dist/adapters/postgres/index.d.ts",
       "default": "./dist/adapters/postgres/index.js"

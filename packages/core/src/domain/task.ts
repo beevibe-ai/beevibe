@@ -1,3 +1,20 @@
+/**
+ * Task domain types and the status / lifecycle taxonomy.
+ *
+ * The constants here are pure and dependency-free, so they are safe to
+ * pull into the browser bundle — the web task board groups on the same
+ * lifecycle map the api filters SQL on.
+ *
+ * IMPORT THE VALUES VIA `@beevibe/core/domain/task`, NOT the package
+ * root. The root barrel re-exports `./auth`, which reaches for
+ * `node:crypto` and `node:util`; a *value* import of the root from a
+ * client component drags those into webpack and fails `next build` with
+ * `UnhandledSchemeError: Reading from "node:crypto" is not handled by
+ * plugins`. Type-only root imports are fine — they erase — which is why
+ * `import type { TaskStatus } from "@beevibe/core"` is everywhere in the
+ * web app. Same rule and same reason as `./format.ts`; see its header.
+ */
+
 import type { ResolutionProposal } from "./escalation.js";
 
 export type TaskStatus =

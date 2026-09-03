@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { TASK_STATUSES, type TaskLifecycle, type TaskStatus } from "@beevibe/core";
+import {
+  TASK_STATUSES,
+  type TaskLifecycle,
+  type TaskStatus,
+} from "@beevibe/core/domain/task";
 import { countArchivedTasks, groupTasks } from "./tasks-grouping";
 import type { TaskListItem } from "@/lib/types/tasks";
 

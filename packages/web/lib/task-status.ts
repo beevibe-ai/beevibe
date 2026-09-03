@@ -18,4 +18,4 @@ export {
   TERMINAL_TASK_STATUSES,
   isRetryableTaskStatus,
   isTerminalTaskStatus,
-} from "@beevibe/core";
+} from "@beevibe/core/domain/task";

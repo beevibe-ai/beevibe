@@ -11,7 +11,7 @@
  * (labels, dot colors, lane order on screen) is web-owned.
  */
 
-import { TASK_LIFECYCLE_OF, type TaskLifecycle } from "@beevibe/core";
+import { TASK_LIFECYCLE_OF, type TaskLifecycle } from "@beevibe/core/domain/task";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { BoardLane } from "@/components/tasks/board-column";
 
