@@ -169,6 +169,117 @@ export function warnIfTruncated(runtimeTag: string, result: CliProcessResult): v
 }
 
 /**
+ * The persisted-transcript wire format, shared by every CLI runtime.
+ *
+ * A transcript is a newline-terminated sequence of tagged lines
+ * (`[assistant] …`, `[tool_call] …`, `[tool_result from X] …`,
+ * `[error] …`). The tags are a cross-provider contract: downstream LLM
+ * consumers — session summarizers, the chat route's history builder — read
+ * them to tell an agent's own words from a tool's output, and they must
+ * look the same whether the session ran under Claude Code, codex, or
+ * opencode.
+ *
+ * All three adapters previously spelled these templates out by hand, so a
+ * change to the format meant finding fourteen scattered template literals
+ * and getting every one of them right. These builders are the single
+ * definition; the adapters decide *which* lines to emit, not how they read.
+ */
+
+/**
+ * Max characters of tool payload kept on one transcript line. Tool output
+ * can be megabytes; the transcript exists to show the shape of a session,
+ * not to archive it.
+ */
+export const TRANSCRIPT_DETAIL_CHARS = 200;
+
+/**
+ * Squeeze arbitrary tool text onto a single transcript line: truncate to
+ * {@link TRANSCRIPT_DETAIL_CHARS} and flatten embedded newlines to spaces
+ * so one payload can't masquerade as several tagged lines.
+ */
+export function transcriptDetail(text: string): string {
+  return text.slice(0, TRANSCRIPT_DETAIL_CHARS).replace(/\n/g, " ");
+}
+
+/** An agent's own message. */
+export function assistantLine(text: string): string {
+  return `[assistant] ${text}\n`;
+}
+
+/**
+ * A tool invocation. `detail` is optional — most runtimes log the tool name
+ * alone, but codex appends the shell command it ran.
+ */
+export function toolCallLine(tool: string, detail?: string): string {
+  return detail ? `[tool_call] ${tool} ${detail}\n` : `[tool_call] ${tool}\n`;
+}
+
+/**
+ * A tool's result. `tool` is optional because Claude Code's `tool_result`
+ * messages carry only a `tool_use_id`; when correlating it back to a name
+ * fails, the line degrades to a bare `[tool_result]` rather than naming the
+ * wrong tool.
+ */
+export function toolResultLine(tool: string | undefined, detail?: string): string {
+  if (!tool) return "[tool_result]\n";
+  return detail ? `[tool_result from ${tool}] ${detail}\n` : `[tool_result from ${tool}]\n`;
+}
+
+/** A runtime-level error event. */
+export function errorLine(message: string): string {
+  return `[error] ${message}\n`;
+}
+
+/**
+ * The message a CLI runtime reports when it exited non-zero with nothing
+ * better to say.
+ *
+ * Lives here rather than in any one adapter because all three produce it
+ * and `routes/chat.ts` matches on it: {@link isBareCliExitMessage} is the
+ * gate the chat route uses to decide a runtime's `output` is a useless
+ * stand-in worth replacing with the stderr tail or a daemon pointer. Both
+ * halves stay adjacent so the producer and its matcher can't drift.
+ */
+export function bareCliExitMessage(exitCode: number | null): string {
+  return `CLI exited with code ${exitCode}`;
+}
+
+/** Matches exactly the strings {@link bareCliExitMessage} produces. */
+export function isBareCliExitMessage(s: string): boolean {
+  return /^CLI exited with code (-?\d+|null)$/.test(s);
+}
+
+/**
+ * Pick a session's user-facing `output` from the candidates a CLI event
+ * stream yields, in priority order.
+ *
+ * The ladder is the same for every runtime: on failure prefer the runtime's
+ * own error message, else whatever the agent last said, else the bare exit
+ * stand-in; on success prefer the runtime's canonical final answer when it
+ * has one (codex writes it to an `--output-last-message` file), else the
+ * agent's text, else a neutral confirmation.
+ *
+ * Note `||`, not `??`: an empty string must fall through to the next
+ * candidate rather than short-circuit as a "present" value. Both adapters
+ * carried this same warning as a comment above their own copy — the kind of
+ * subtlety that is worth stating once, in the one implementation.
+ */
+export function resolveCliOutput(opts: {
+  failed: boolean;
+  exitCode: number | null;
+  /** Last assistant text seen in the event stream. */
+  assistantText: string;
+  /** Runtime-reported failure message, when the stream carried one. */
+  failureMessage?: string;
+  /** Runtime's canonical final answer, preferred over `assistantText`. */
+  preferredOutput?: string;
+}): string {
+  return opts.failed
+    ? opts.failureMessage || opts.assistantText || bareCliExitMessage(opts.exitCode)
+    : opts.preferredOutput || opts.assistantText || "Session completed.";
+}
+
+/**
  * The `RuntimeResult` for a session the caller aborted via `abort_signal`.
  * Deliberately distinct from a failure so the executor marks the session
  * `cancelled` rather than surfacing it as an error to the user.
