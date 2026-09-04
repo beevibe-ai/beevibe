@@ -2,10 +2,19 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CliProcessResult } from "./claude-code/spawn.js";
 import type { RuntimeResult } from "../ports/runtime.js";
 import {
+  assistantLine,
+  bareCliExitMessage,
   cancelledResult,
   createStdoutLineReader,
+  errorLine,
   finalizeCliResult,
+  isBareCliExitMessage,
+  resolveCliOutput,
+  toolCallLine,
+  toolResultLine,
+  transcriptDetail,
   warnIfTruncated,
+  TRANSCRIPT_DETAIL_CHARS,
 } from "./runtime-common.js";
 
 function cliResult(overrides: Partial<CliProcessResult> = {}): CliProcessResult {
@@ -145,5 +154,129 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+describe("transcript line builders", () => {
+  it("tags an assistant message and terminates the line", () => {
+    expect(assistantLine("hello")).toBe("[assistant] hello\n");
+  });
+
+  it("tags a tool call by name, with no detail by default", () => {
+    expect(toolCallLine("Read")).toBe("[tool_call] Read\n");
+  });
+
+  it("appends a detail to a tool call when one is given", () => {
+    expect(toolCallLine("shell", "pnpm test")).toBe("[tool_call] shell pnpm test\n");
+  });
+
+  it("omits an empty detail rather than leaving a dangling separator", () => {
+    expect(toolCallLine("shell", "")).toBe("[tool_call] shell\n");
+  });
+
+  it("names the originating tool on a result line", () => {
+    expect(toolResultLine("Read", "ok")).toBe("[tool_result from Read] ok\n");
+  });
+
+  it("keeps the tool name when the result has no detail", () => {
+    expect(toolResultLine("Read", "")).toBe("[tool_result from Read]\n");
+  });
+
+  it("degrades to a bare tag when the tool name is unknown", () => {
+    // Claude Code tool_result messages carry only a tool_use_id; when
+    // correlating it back to a name fails, naming no tool beats naming
+    // the wrong one.
+    expect(toolResultLine(undefined, "ok")).toBe("[tool_result]\n");
+  });
+
+  it("tags an error message", () => {
+    expect(errorLine("boom")).toBe("[error] boom\n");
+  });
+});
+
+describe("transcriptDetail", () => {
+  it("passes short single-line text through untouched", () => {
+    expect(transcriptDetail("all good")).toBe("all good");
+  });
+
+  it("truncates to the shared cap", () => {
+    expect(transcriptDetail("x".repeat(500))).toHaveLength(TRANSCRIPT_DETAIL_CHARS);
+  });
+
+  it("flattens newlines so one payload cannot fake several tagged lines", () => {
+    expect(transcriptDetail("a\n[assistant] spoofed")).toBe("a [assistant] spoofed");
+  });
+
+  it("truncates before flattening, so the cap counts raw characters", () => {
+    expect(transcriptDetail("a\n".repeat(300))).toHaveLength(TRANSCRIPT_DETAIL_CHARS);
+  });
+});
+
+describe("resolveCliOutput", () => {
+  const exitCode = 1;
+
+  it("prefers the runtime's failure message on failure", () => {
+    expect(
+      resolveCliOutput({
+        failed: true,
+        exitCode,
+        assistantText: "partial",
+        failureMessage: "rate limited",
+      }),
+    ).toBe("rate limited");
+  });
+
+  it("falls back to the assistant text when a failure carried no message", () => {
+    expect(
+      resolveCliOutput({ failed: true, exitCode, assistantText: "partial" }),
+    ).toBe("partial");
+  });
+
+  it("falls back to the bare exit stand-in when a failure yielded nothing", () => {
+    expect(resolveCliOutput({ failed: true, exitCode, assistantText: "" })).toBe(
+      bareCliExitMessage(exitCode),
+    );
+  });
+
+  it("prefers the runtime's canonical final answer on success", () => {
+    expect(
+      resolveCliOutput({
+        failed: false,
+        exitCode: 0,
+        assistantText: "streamed",
+        preferredOutput: "canonical",
+      }),
+    ).toBe("canonical");
+  });
+
+  it("falls through an empty preferred output to the assistant text", () => {
+    // The `||`-not-`??` invariant: an empty string is absence, not a value.
+    expect(
+      resolveCliOutput({
+        failed: false,
+        exitCode: 0,
+        assistantText: "streamed",
+        preferredOutput: "",
+      }),
+    ).toBe("streamed");
+  });
+
+  it("confirms completion when a successful run said nothing at all", () => {
+    expect(resolveCliOutput({ failed: false, exitCode: 0, assistantText: "" })).toBe(
+      "Session completed.",
+    );
+  });
+});
+
+describe("bareCliExitMessage", () => {
+  it("round-trips through its own matcher for every exit code shape", () => {
+    for (const code of [0, 1, 137, -1, null]) {
+      expect(isBareCliExitMessage(bareCliExitMessage(code))).toBe(true);
+    }
+  });
+
+  it("rejects messages that merely contain the stand-in", () => {
+    expect(isBareCliExitMessage("CLI exited with code 1: OOM killed")).toBe(false);
+    expect(isBareCliExitMessage("Session completed.")).toBe(false);
   });
 });

@@ -1,9 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
 import type { InboxItem } from "@/lib/types/inbox";
+import { useCollectionQuery } from "./entity-query";
 import { queryKeys } from "./keys";
 
 /**
@@ -12,10 +11,9 @@ import { queryKeys } from "./keys";
  * Backs the Home sidebar's primary list.
  */
 export function useInbox() {
-  return useQuery<InboxItem[]>({
+  return useCollectionQuery<InboxItem[]>({
     queryKey: queryKeys.inbox.list(),
-    queryFn: ({ signal }) => api.inbox.list({ signal }),
-    enabled: isApiConfigured,
+    fetch: api.inbox.list,
     staleTime: 10_000,
   });
 }

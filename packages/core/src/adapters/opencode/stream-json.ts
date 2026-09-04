@@ -1,7 +1,15 @@
 import type { SessionUsage } from "../../domain/session.js";
 import type { RuntimeResult, RuntimeStep } from "../../ports/runtime.js";
-import { bareCliExitMessage } from "../claude-code/stream-json.js";
-import { describeToolInput, parseNdjsonLine } from "../runtime-common.js";
+import {
+  assistantLine,
+  describeToolInput,
+  errorLine,
+  parseNdjsonLine,
+  resolveCliOutput,
+  toolCallLine,
+  toolResultLine,
+  transcriptDetail,
+} from "../runtime-common.js";
 
 /**
  * Parser for `opencode run --format json` output.
@@ -172,7 +180,7 @@ export function parseOpenCodeEvents(
         const text = evt.part?.text;
         if (text) {
           assistantTexts.push(text);
-          transcriptParts.push(`[assistant] ${text}\n`);
+          transcriptParts.push(assistantLine(text));
         }
         break;
       }
@@ -182,20 +190,16 @@ export function parseOpenCodeEvents(
         const tool = part.tool ?? "unknown";
         const status = part.state?.status;
         if (status === OPENCODE_TOOL_STATUS.Completed || status === OPENCODE_TOOL_STATUS.Error) {
-          const detail = (part.state?.error ?? part.state?.output ?? "")
-            .slice(0, 200)
-            .replace(/\n/g, " ");
-          transcriptParts.push(
-            detail ? `[tool_result from ${tool}] ${detail}\n` : `[tool_result from ${tool}]\n`,
-          );
+          const detail = transcriptDetail(part.state?.error ?? part.state?.output ?? "");
+          transcriptParts.push(toolResultLine(tool, detail));
         } else {
-          transcriptParts.push(`[tool_call] ${tool}\n`);
+          transcriptParts.push(toolCallLine(tool));
         }
         break;
       }
       case OPENCODE_EVENT_TYPE.Error:
         errorMessage = evt.error?.message ?? evt.result?.error?.message ?? errorMessage;
-        if (errorMessage) transcriptParts.push(`[error] ${errorMessage}\n`);
+        if (errorMessage) transcriptParts.push(errorLine(errorMessage));
         break;
       default:
         break;
@@ -204,11 +208,15 @@ export function parseOpenCodeEvents(
 
   const assistantText = assistantTexts.join("\n").trim();
   const failed = exitCode !== 0 || !!errorMessage;
-  // `||` not `??` — empty assistantText must fall through to the next
-  // branch instead of short-circuiting at the empty string.
-  const output = failed
-    ? errorMessage || assistantText || bareCliExitMessage(exitCode)
-    : assistantText || "Session completed.";
+  // No `preferredOutput` — opencode has no canonical final-answer channel
+  // outside the event stream, so the accumulated assistant text is the best
+  // success output available.
+  const output = resolveCliOutput({
+    failed,
+    exitCode,
+    assistantText,
+    failureMessage: errorMessage,
+  });
 
   const usage: SessionUsage | undefined = sawUsage
     ? {

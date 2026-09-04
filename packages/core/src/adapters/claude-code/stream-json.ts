@@ -1,5 +1,20 @@
 import type { RuntimeResult, RuntimeStep } from "../../ports/runtime.js";
-import { parseNdjsonLine } from "../runtime-common.js";
+import {
+  assistantLine,
+  bareCliExitMessage,
+  parseNdjsonLine,
+  toolCallLine,
+  toolResultLine,
+  transcriptDetail,
+} from "../runtime-common.js";
+
+/**
+ * `bareCliExitMessage` / `isBareCliExitMessage` moved to `runtime-common`
+ * once codex and opencode grew the same fallback. Re-exported here because
+ * `@beevibe/core/adapters/claude-code` is the public subpath the api's chat
+ * route imports them from.
+ */
+export { bareCliExitMessage, isBareCliExitMessage } from "../runtime-common.js";
 
 /**
  * Parser for Claude Code's `--output-format stream-json` output. Each line
@@ -214,36 +229,28 @@ export function parseClaudeMessages(
     if (msg.type === STREAM_TYPE.Assistant && msg.message) {
       const content = msg.message.content;
       if (typeof content === "string") {
-        transcriptParts.push(`[assistant] ${content}\n`);
+        transcriptParts.push(assistantLine(content));
         output = content;
       } else if (Array.isArray(content)) {
         const texts: string[] = [];
         for (const block of content) {
           if (block.type === BLOCK_TYPE.Text && typeof block.text === "string") {
-            transcriptParts.push(`[assistant] ${block.text}\n`);
+            transcriptParts.push(assistantLine(block.text));
             texts.push(block.text);
           } else if (block.type === BLOCK_TYPE.ToolUse) {
-            transcriptParts.push(`[tool_call] ${block.name ?? "unknown"}\n`);
+            transcriptParts.push(toolCallLine(block.name ?? "unknown"));
           }
           // Skip thinking blocks + signatures — they bloat the transcript.
         }
         if (texts.length > 0) output = texts.join("\n");
       }
     } else if (msg.type === STREAM_TYPE.ToolUse) {
-      transcriptParts.push(`[tool_call] ${msg.name ?? "unknown"}\n`);
+      transcriptParts.push(toolCallLine(msg.name ?? "unknown"));
     } else if (msg.type === STREAM_TYPE.ToolResult) {
       const toolName = msg.tool_use_id ? toolUseNames.get(msg.tool_use_id) : undefined;
       const resultContent =
-        typeof msg.content === "string" ? msg.content.slice(0, 200).replace(/\n/g, " ") : "";
-      if (toolName) {
-        transcriptParts.push(
-          resultContent
-            ? `[tool_result from ${toolName}] ${resultContent}\n`
-            : `[tool_result from ${toolName}]\n`,
-        );
-      } else {
-        transcriptParts.push("[tool_result]\n");
-      }
+        typeof msg.content === "string" ? transcriptDetail(msg.content) : "";
+      transcriptParts.push(toolResultLine(toolName, resultContent));
     } else if (msg.type === STREAM_TYPE.Result) {
       sessionId = msg.session_id;
       costUsd = msg.total_cost_usd ?? msg.cost_usd;
@@ -283,27 +290,6 @@ export function parseClaudeMessages(
     usage,
     cli_session_id: sessionId,
   };
-}
-
-/**
- * The placeholder message `parseClaudeMessages` returns when the CLI
- * exited non-zero with no final-result message to surface. Exported so
- * downstream consumers (e.g. the chat route's user-facing failure
- * mapping) can detect this exact string and replace it with something
- * more actionable instead of pattern-matching across package boundaries.
- */
-export function bareCliExitMessage(exitCode: number | null): string {
-  return `CLI exited with code ${exitCode}`;
-}
-
-/**
- * Matches strings produced by `bareCliExitMessage` — the only "useless"
- * stand-in this layer emits on failure. Consumers that want to swap a
- * bare exit for a friendlier diagnostic gate on this predicate so the
- * coupling stays in one place.
- */
-export function isBareCliExitMessage(s: string): boolean {
-  return /^CLI exited with code (-?\d+|null)$/.test(s);
 }
 
 /**

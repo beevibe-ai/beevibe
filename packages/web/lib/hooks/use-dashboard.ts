@@ -1,14 +1,12 @@
-import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
 import { summaryToDisplay } from "@/lib/dashboard-display";
+import { useCollectionQuery } from "./entity-query";
 import { queryKeys } from "./keys";
 
 export function useDashboard() {
-  return useQuery({
+  return useCollectionQuery({
     queryKey: queryKeys.dashboard.summary(),
-    queryFn: ({ signal }) => api.dashboard.summary({ signal }),
+    fetch: api.dashboard.summary,
     select: summaryToDisplay,
-    enabled: isApiConfigured,
   });
 }

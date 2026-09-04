@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Cpu,
@@ -20,6 +20,7 @@ import {
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { describeError } from "@/lib/api/http";
+import { useCollectionQuery } from "@/lib/hooks/entity-query";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
 import { CommandBlock } from "@/components/command-block";
@@ -29,10 +30,9 @@ import { Skeleton } from "@/components/skeleton";
 import { cn } from "@/lib/utils";
 
 export function RuntimesClient() {
-  const query = useQuery<RuntimesListResponse>({
+  const query = useCollectionQuery<RuntimesListResponse>({
     queryKey: queryKeys.runtimes.list(),
-    queryFn: ({ signal }) => api.runtimes.list({ signal }),
-    enabled: isApiConfigured,
+    fetch: api.runtimes.list,
     // SSE invalidates this key on `runtime.updated`; keep cache otherwise
     // long so per-render polling doesn't fight the live updates.
     staleTime: 30_000,

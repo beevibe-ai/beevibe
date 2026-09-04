@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Cpu, Sparkles } from "lucide-react";
 import {
   api,
@@ -9,16 +9,20 @@ import {
   type UserPreferences,
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
+import { useCollectionQuery } from "@/lib/hooks/entity-query";
 import { queryKeys } from "@/lib/hooks/keys";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 
 export function SettingsClient() {
   const qc = useQueryClient();
-  const { data, isLoading, isError } = useQuery<MeResponse>({
+  // NOTE: same cache slot as `useMe()`, but deliberately a longer
+  // staleTime — settings is a cold surface, not the onboarding path
+  // useMe() keeps fresh. Left as-is rather than folded into that hook,
+  // which would change refetch behavior on every other caller.
+  const { data, isLoading, isError } = useCollectionQuery<MeResponse>({
     queryKey: queryKeys.me.self(),
-    queryFn: ({ signal }) => api.me.self({ signal }),
-    enabled: isApiConfigured,
+    fetch: api.me.self,
     staleTime: 30_000,
   });
 

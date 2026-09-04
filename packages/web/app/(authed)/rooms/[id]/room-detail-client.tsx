@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Bot,
@@ -16,6 +16,7 @@ import { useMe } from "@/lib/hooks/use-me";
 import { isApiConfigured } from "@/lib/api/config";
 import { api, type RoomDetail, type RoomMemberDetail, type RoomMessage } from "@/lib/api/client";
 import { ApiError, describeError } from "@/lib/api/http";
+import { useEntityQuery } from "@/lib/hooks/entity-query";
 import { queryKeys } from "@/lib/hooks/keys";
 import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
 import { ModalOverlay } from "@/components/modal-overlay";
@@ -33,10 +34,11 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
   const [draft, setDraft] = useState("");
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
-  const { data, isLoading, isError } = useQuery<RoomDetail>({
-    queryKey: queryKeys.rooms.detail(roomId),
-    queryFn: ({ signal }) => api.rooms.get(roomId, { signal }),
-    enabled: isApiConfigured && !!roomId,
+  const { data, isLoading, isError } = useEntityQuery<RoomDetail>({
+    id: roomId,
+    queryKey: queryKeys.rooms.detail,
+    disabledKey: queryKeys.rooms.all,
+    fetch: api.rooms.get,
     staleTime: 1_000,
     // Polling fallback — cloudflared trycloudflare quick tunnels
     // buffer SSE responses, so the bv_event channel often fails to

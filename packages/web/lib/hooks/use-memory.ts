@@ -1,15 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
 import type { MemoryScope } from "@beevibe/core";
 import { api } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
 import type { FactCounts } from "@/lib/types/memory-facts";
+import { useCollectionQuery } from "./entity-query";
 import { queryKeys } from "./keys";
 
 export function useMemoryFacts(filter: { scope?: MemoryScope } = {}) {
-  return useQuery({
+  return useCollectionQuery({
     queryKey: queryKeys.memory.facts(filter),
-    queryFn: ({ signal }) => api.memory.listFacts(filter, { signal }),
-    enabled: isApiConfigured,
+    fetch: (opts) => api.memory.listFacts(filter, opts),
   });
 }
 
@@ -22,9 +20,8 @@ export function useMemoryFacts(filter: { scope?: MemoryScope } = {}) {
  * both at once.
  */
 export function useMemoryFactCounts() {
-  return useQuery<FactCounts>({
+  return useCollectionQuery<FactCounts>({
     queryKey: queryKeys.memory.counts(),
-    queryFn: ({ signal }) => api.memory.factCounts({ signal }),
-    enabled: isApiConfigured,
+    fetch: api.memory.factCounts,
   });
 }

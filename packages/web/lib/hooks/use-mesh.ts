@@ -1,15 +1,13 @@
-import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
 import { overviewToDisplay } from "@/lib/mesh-display";
 import type { MeshWindow } from "@/lib/types/mesh";
+import { useCollectionQuery } from "./entity-query";
 import { queryKeys } from "./keys";
 
 export function useMeshOverview(filter: { window?: MeshWindow } = {}) {
-  return useQuery({
+  return useCollectionQuery({
     queryKey: queryKeys.mesh.overview(filter),
-    queryFn: ({ signal }) => api.mesh.overview(filter, { signal }),
+    fetch: (opts) => api.mesh.overview(filter, opts),
     select: overviewToDisplay,
-    enabled: isApiConfigured,
   });
 }
