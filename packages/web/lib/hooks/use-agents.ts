@@ -1,20 +1,19 @@
-import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
+import { useCollectionQuery, useEntityQuery } from "./entity-query";
 import { queryKeys } from "./keys";
 
 export function useAgents() {
-  return useQuery({
+  return useCollectionQuery({
     queryKey: queryKeys.agents.list(),
-    queryFn: ({ signal }) => api.agents.list({ signal }),
-    enabled: isApiConfigured,
+    fetch: api.agents.list,
   });
 }
 
 export function useAgent(id: string | undefined) {
-  return useQuery({
-    queryKey: id ? queryKeys.agents.detail(id) : queryKeys.agents.all,
-    queryFn: ({ signal }) => api.agents.get(id as string, { signal }),
-    enabled: isApiConfigured && !!id,
+  return useEntityQuery({
+    id,
+    queryKey: queryKeys.agents.detail,
+    disabledKey: queryKeys.agents.all,
+    fetch: api.agents.get,
   });
 }

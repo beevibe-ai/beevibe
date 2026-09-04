@@ -1,20 +1,10 @@
-import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
+import { useCollectionQuery } from "./entity-query";
 import { queryKeys } from "./keys";
 
-export function useMemoryActivity(params: {
-  weeks?: number;
-  since?: string;
-}) {
-  return useQuery({
+export function useMemoryActivity(params: { weeks?: number; since?: string }) {
+  return useCollectionQuery({
     queryKey: queryKeys.memory.activity(params),
-    queryFn: ({ signal }) =>
-      api.memory.activity({
-        signal,
-        weeks: params.weeks,
-        since: params.since,
-      }),
-    enabled: isApiConfigured,
+    fetch: (opts) => api.memory.activity({ ...opts, weeks: params.weeks, since: params.since }),
   });
 }

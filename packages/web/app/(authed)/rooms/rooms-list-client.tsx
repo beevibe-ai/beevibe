@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, MessageCircleMore, Plus, Users } from "lucide-react";
 import { api, type Room } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
+import { useCollectionQuery } from "@/lib/hooks/entity-query";
 import { queryKeys } from "@/lib/hooks/keys";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
@@ -18,10 +19,9 @@ export function RoomsListClient() {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const { data, isLoading, isError } = useQuery<{ ok: true; rooms: Room[] }>({
+  const { data, isLoading, isError } = useCollectionQuery<{ ok: true; rooms: Room[] }>({
     queryKey: queryKeys.rooms.list(),
-    queryFn: ({ signal }) => api.rooms.list({ signal }),
-    enabled: isApiConfigured,
+    fetch: api.rooms.list,
     staleTime: 10_000,
   });
 

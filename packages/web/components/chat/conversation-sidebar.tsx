@@ -3,14 +3,13 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { MessageSquare, Trash2 } from "lucide-react";
 import {
   api,
-  type ChatConversationsResponse,
   type ChatConversationSummary,
 } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
+import { useChatConversations } from "@/lib/hooks/use-chat-conversations";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -107,12 +106,7 @@ export function ConversationSidebar({
   activeConversationId: string | undefined;
   isFresh: boolean;
 }) {
-  const conversations = useQuery<ChatConversationsResponse>({
-    queryKey: queryKeys.chat.conversations(),
-    queryFn: ({ signal }) => api.chat.conversations({ signal }),
-    enabled: isApiConfigured,
-    staleTime: 30_000,
-  });
+  const conversations = useChatConversations();
 
   const list = conversations.data?.conversations ?? [];
   // The "no specific c, no new" state == latest conversation, which is
