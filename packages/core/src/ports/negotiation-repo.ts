@@ -17,11 +17,6 @@ export interface NegotiationPatch {
 
 export interface NegotiationRepository {
   findById(id: string): Promise<Negotiation | undefined>;
-  /** Find an active negotiation between (initiator, counterparty), if any. */
-  findActiveBetween(
-    initiatorAgentId: string,
-    counterpartyAgentId: string,
-  ): Promise<Negotiation | undefined>;
   create(input: NewNegotiation): Promise<Negotiation>;
   update(id: string, patch: NegotiationPatch): Promise<Negotiation>;
 }
@@ -31,7 +26,5 @@ export type NewNegotiationRound = Omit<NegotiationRound, "sent_at">;
 export interface NegotiationRoundRepository {
   /** All rounds for a negotiation, oldest first. */
   listByNegotiation(negotiationId: string): Promise<NegotiationRound[]>;
-  /** Most recent round (highest round_number). */
-  findLatest(negotiationId: string): Promise<NegotiationRound | undefined>;
   create(input: NewNegotiationRound): Promise<NegotiationRound>;
 }

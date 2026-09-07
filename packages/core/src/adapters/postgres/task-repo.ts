@@ -113,27 +113,6 @@ export class PostgresTaskRepository implements TaskRepository {
     return rows[0] ? rowToTask(rows[0]) : undefined;
   }
 
-  async listReviewQueue(): Promise<Task[]> {
-    // Tasks awaiting a human review decision. `review` is the only state
-    // where a reviewer action is needed — `needs_revision` means the human
-    // already decided "re-work" and the executor will pick it up;
-    // `revision` means the agent is actively re-working.
-    const { rows } = await this.pool.query<TaskRow>(
-      `SELECT * FROM task
-        WHERE status = 'review'
-        ORDER BY
-          CASE priority
-            WHEN 'critical' THEN 4
-            WHEN 'high'     THEN 3
-            WHEN 'medium'   THEN 2
-            WHEN 'low'      THEN 1
-            ELSE 0
-          END DESC,
-          updated_at ASC`,
-    );
-    return rows.map(rowToTask);
-  }
-
   async countChildrenNotComplete(parentId: string): Promise<number> {
     const { rows } = await this.pool.query<{ count: string }>(
       `SELECT COUNT(*) AS count FROM task

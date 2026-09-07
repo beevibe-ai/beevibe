@@ -49,13 +49,11 @@ let svc: NegotiationService;
 beforeEach(() => {
   negotiationRepo = {
     findById: vi.fn(),
-    findActiveBetween: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
   };
   negotiationRoundRepo = {
     listByNegotiation: vi.fn(),
-    findLatest: vi.fn(),
     create: vi.fn(),
   };
   agentRepo = {
@@ -73,7 +71,6 @@ beforeEach(() => {
   escalationRepo = {
     findById: vi.fn(),
     findByNegotiation: vi.fn(),
-    listPending: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
   };

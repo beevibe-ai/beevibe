@@ -45,23 +45,6 @@ export class PostgresRuntimeRepository implements RuntimeRepository {
     return rows.map(rowToRuntime);
   }
 
-  async listByOwnerAndCli(
-    ownerPersonId: string,
-    cli: string,
-  ): Promise<Runtime[]> {
-    const { rows } = await this.pool.query<RuntimeRow>(
-      `SELECT r.*
-         FROM runtime r
-         JOIN daemon d ON d.id = r.daemon_id
-        WHERE d.owner_person_id = $1
-          AND d.revoked_at IS NULL
-          AND r.cli = $2
-        ORDER BY r.last_heartbeat DESC NULLS LAST`,
-      [ownerPersonId, cli],
-    );
-    return rows.map(rowToRuntime);
-  }
-
   async create(input: NewRuntime): Promise<Runtime> {
     const { rows } = await this.pool.query<RuntimeRow>(
       `INSERT INTO runtime (

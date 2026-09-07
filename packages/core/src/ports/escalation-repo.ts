@@ -42,7 +42,6 @@ export interface EscalationRepository {
   findById(id: string): Promise<Escalation | undefined>;
   /** One escalation per negotiation (UNIQUE constraint). */
   findByNegotiation(negotiationId: string): Promise<Escalation | undefined>;
-  listPending(): Promise<Escalation[]>;
   create(input: NewEscalation): Promise<Escalation>;
   update(id: string, patch: EscalationPatch): Promise<Escalation>;
 }
