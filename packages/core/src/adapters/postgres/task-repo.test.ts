@@ -118,19 +118,6 @@ describe("PostgresTaskRepository", () => {
     expect(got.map((t) => t.id)).toEqual([mine.id]);
   });
 
-  it("listReviewQueue returns only review, priority desc then updated_at asc", async () => {
-    const high = await tasks.create(newTask({ status: "review", priority: "high" }));
-    const critical = await tasks.create(newTask({ status: "review", priority: "critical" }));
-    // needs_revision (queued for re-work) and revision (actively running
-    // re-work) are NOT in the human review queue — those are executor-side
-    // states now, not awaiting-human-decision states.
-    await tasks.create(newTask({ status: "needs_revision", priority: "critical" }));
-    await tasks.create(newTask({ status: "revision", priority: "critical" }));
-    await tasks.create(newTask({ status: "done" }));
-    const queue = await tasks.listReviewQueue();
-    expect(queue.map((t) => t.id)).toEqual([critical.id, high.id]);
-  });
-
   it("countChildrenNotComplete counts sub-tasks in non-terminal states", async () => {
     const parent = await tasks.create(newTask({ title: "parent" }));
     await tasks.create(newTask({ parent_task_id: parent.id, status: "in_progress" }));

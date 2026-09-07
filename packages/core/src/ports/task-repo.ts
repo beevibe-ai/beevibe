@@ -48,9 +48,6 @@ export interface TaskRepository {
    */
   claimById(taskId: string): Promise<Task | undefined>;
 
-  /** Tasks awaiting human decision: status ∈ {review, revision}. */
-  listReviewQueue(): Promise<Task[]>;
-
   /** Count of sub-tasks of `parentId` whose status is NOT in {done, cancelled, failed}. */
   countChildrenNotComplete(parentId: string): Promise<number>;
 

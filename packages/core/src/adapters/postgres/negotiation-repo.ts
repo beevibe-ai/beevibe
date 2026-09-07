@@ -22,22 +22,6 @@ export class PostgresNegotiationRepository implements NegotiationRepository {
     return findRowById(this.pool, "negotiation", id, rowToNegotiation);
   }
 
-  async findActiveBetween(
-    initiatorAgentId: string,
-    counterpartyAgentId: string,
-  ): Promise<Negotiation | undefined> {
-    const { rows } = await this.pool.query<NegotiationRow>(
-      `SELECT * FROM negotiation
-        WHERE status = 'active'
-          AND initiator_agent_id = $1
-          AND counterparty_agent_id = $2
-        ORDER BY created_at DESC
-        LIMIT 1`,
-      [initiatorAgentId, counterpartyAgentId],
-    );
-    return rows[0] ? rowToNegotiation(rows[0]) : undefined;
-  }
-
   async create(input: NewNegotiation): Promise<Negotiation> {
     const { rows } = await this.pool.query<NegotiationRow>(
       `INSERT INTO negotiation (
@@ -91,17 +75,6 @@ export class PostgresNegotiationRoundRepository implements NegotiationRoundRepos
       [negotiationId],
     );
     return rows.map(rowToRound);
-  }
-
-  async findLatest(negotiationId: string): Promise<NegotiationRound | undefined> {
-    const { rows } = await this.pool.query<NegotiationRoundRow>(
-      `SELECT * FROM negotiation_round
-        WHERE negotiation_id = $1
-        ORDER BY round_number DESC
-        LIMIT 1`,
-      [negotiationId],
-    );
-    return rows[0] ? rowToRound(rows[0]) : undefined;
   }
 
   async create(input: NewNegotiationRound): Promise<NegotiationRound> {

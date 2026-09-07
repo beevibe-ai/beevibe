@@ -73,7 +73,6 @@ beforeEach(() => {
     findById: vi.fn(),
     findLatestForTask: vi.fn(),
     listForTask: vi.fn(),
-    listForAgent: vi.fn(),
     countRunningByAgent: vi.fn(),
     listRunningWithPid: vi.fn(),
     claimNextForRuntime: vi.fn(),

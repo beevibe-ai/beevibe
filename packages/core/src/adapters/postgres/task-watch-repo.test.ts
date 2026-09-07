@@ -125,30 +125,6 @@ describe("PostgresTaskWatchRepository", () => {
     ).rejects.toThrow();
   });
 
-  it("listByWaiterSession returns watches newest-first", async () => {
-    const olderId = taskWatchId();
-    await watches.create({
-      id: olderId,
-      waiter_session_id: waiterSession,
-      agent_id: agentIdValue,
-      mode: "all",
-      task_ids: [taskA],
-    });
-    // Sleep 5ms so created_at values are distinguishable.
-    await new Promise((r) => setTimeout(r, 5));
-    const newerId = taskWatchId();
-    await watches.create({
-      id: newerId,
-      waiter_session_id: waiterSession,
-      agent_id: agentIdValue,
-      mode: "any",
-      task_ids: [taskB],
-    });
-
-    const list = await watches.listByWaiterSession(waiterSession);
-    expect(list.map((w) => w.id)).toEqual([newerId, olderId]);
-  });
-
   it("listWaitingForTask matches via array containment", async () => {
     const wantsAB = await watches.create({
       id: taskWatchId(),
