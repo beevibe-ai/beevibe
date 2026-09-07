@@ -150,3 +150,34 @@ export function makeErrorHandler(
     });
   };
 }
+
+/**
+ * The *other* 500 shape in this codebase: a per-operation machine code and
+ * no message.
+ *
+ * `runtime/router`, `repo-runs`, `learned-skills`, `capabilities` and
+ * `find-repo` all answer failures with `{ error: "<operation>_failed" }`
+ * rather than the `internal_error` + `message` envelope above, and each of
+ * their 20 catch blocks spelled out the same pair of statements: log under a
+ * bracketed tag, then 500 with the code.
+ *
+ * This is deliberately NOT folded into `makeErrorHandler`. The two envelopes
+ * differ in what they put on the wire — these endpoints keep the error's
+ * message server-side and hand clients a code they can branch on — and the
+ * daemon does branch on those codes, so unifying the *envelopes* would be a
+ * wire-contract change. What is shared is only the log-then-respond shape.
+ *
+ * `error` stays a parameter because the codes are per-operation by design
+ * (`claim_failed` vs `events_failed` tells an operator which leg broke), and
+ * `tag` stays separate from it because the log tags are slash-namespaced
+ * (`runtime/claim`) while the codes are not.
+ */
+export function codedFailure(
+  res: Response,
+  tag: string,
+  error: string,
+  err: unknown,
+): void {
+  console.error(`[${tag}]`, err);
+  res.status(500).json({ error });
+}

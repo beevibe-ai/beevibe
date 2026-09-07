@@ -17,6 +17,7 @@ import type {
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { createFindRepoTool } from "../tools/find-repo.js";
+import { codedFailure } from "./http-errors.js";
 
 export interface FindRepoRouterDeps {
   authMiddleware: RequestHandler;
@@ -68,8 +69,7 @@ export function createFindRepoRouter(deps: FindRepoRouterDeps): Router {
       }
       res.status(200).json(result.content);
     } catch (err) {
-      console.error("[find-repo/search]", err);
-      res.status(500).json({ error: "search_failed" });
+      codedFailure(res, "find-repo/search", "search_failed", err);
     }
   });
 
