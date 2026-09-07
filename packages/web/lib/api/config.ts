@@ -65,6 +65,15 @@ export function subscribeToUserKey(cb: Listener): () => void {
 
 export const isApiConfigured: boolean = apiBaseUrl !== null;
 
+/**
+ * What the auth forms show when `isApiConfigured` is false — a
+ * misconfigured deploy, not anything the visitor did wrong. Lives next
+ * to the flag it explains so the three guards that check it (both
+ * `/sign-in` submit paths and `/sign-up`) can't drift on the wording.
+ */
+export const API_NOT_CONFIGURED_MESSAGE =
+  "Web isn't configured to talk to an api server.";
+
 /** Format check only — server-side `lookupApiKey` does the real validation. */
 export function isWellFormedUserKey(key: string): boolean {
   return /^bv_u_[A-Za-z0-9]{16,}$/.test(key.trim());
