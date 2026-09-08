@@ -85,8 +85,6 @@ beforeEach(() => {
     findById: vi.fn(),
     list: vi.fn(),
     listByAssignee: vi.fn(),
-    listAssignable: vi.fn(),
-    claimById: vi.fn(),
     listReviewQueue: vi.fn(),
     countChildrenNotComplete: vi.fn(),
     countChildren: vi.fn(),
