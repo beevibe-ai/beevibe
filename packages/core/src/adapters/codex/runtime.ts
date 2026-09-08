@@ -8,15 +8,13 @@ import type {
   RuntimeWorkspaceContext,
   Workspace,
 } from "../../ports/runtime.js";
-import { runCliProcess } from "../claude-code/spawn.js";
 import { MCP_TOOL_TIMEOUT_MS } from "../local-workspace/manager.js";
 import {
   cancelledResult,
   cliVersionHealthCheck,
   composePrompt,
-  createStdoutLineReader,
   finalizeCliResult,
-  warnIfTruncated,
+  runCliRuntime,
 } from "../runtime-common.js";
 import {
   extractCodexStepEvents,
@@ -120,32 +118,16 @@ export class CodexRuntime implements AgentRuntime {
     if (context.env) Object.assign(env, context.env);
     if (prepared) env.BEEVIBE_AGENT_API_KEY = prepared.agentApiKey;
 
-    const events: CodexEvent[] = [];
-    const handleLine = (line: string): void => {
-      const evt = parseCodexEventLine(line);
-      if (!evt) return;
-      events.push(evt);
-      if (!context.onStep) return;
-      for (const step of extractCodexStepEvents(evt)) {
-        context.onStep(step);
-      }
-    };
-    const stdout = createStdoutLineReader(handleLine);
-
-    const result = await runCliProcess({
+    const { events, result } = await runCliRuntime<CodexEvent>({
+      runtimeTag: "CodexRuntime",
       command: this.config.command ?? "codex",
       args,
       cwd: context.workspace.path,
       env,
-      abortSignal: context.abort_signal,
-      onSpawn: ({ pid, process_group_id }) => {
-        context.onSpawn?.({ process_pid: pid, process_group_id });
-      },
-      onLog: stdout.onLog,
+      context,
+      parseLine: parseCodexEventLine,
+      extractSteps: extractCodexStepEvents,
     });
-    stdout.flush();
-
-    warnIfTruncated("CodexRuntime", result);
 
     if (result.aborted) {
       removeIfExists(lastMessagePath);

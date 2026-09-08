@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -166,6 +171,89 @@ export function createStdoutLineReader(handleLine: (line: string) => void): {
 export function warnIfTruncated(runtimeTag: string, result: CliProcessResult): void {
   if (!result.truncated) return;
   console.warn(`[${runtimeTag}] stdout truncated at 4MB — result parsing may be incomplete`);
+}
+
+export interface CliRuntimeRunOptions<TEvent> {
+  /** Log tag for the truncation warning, e.g. `"CodexRuntime"`. */
+  runtimeTag: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /**
+   * Fed to the CLI's stdin. Only claude-code uses this (it pipes the intent
+   * rather than passing it on argv); `undefined` is what the other adapters
+   * already produced by omitting the field, and `runCliProcess` guards the
+   * write on `!== undefined`, so passing it through unconditionally is
+   * behaviour-preserving for them.
+   */
+  stdin?: string;
+  context: RuntimeContext;
+  /** Provider-specific NDJSON line parser, e.g. `parseCodexEventLine`. */
+  parseLine: (line: string) => TEvent | null;
+  /** Provider-specific step extractor, e.g. `extractCodexStepEvents`. */
+  extractSteps: (event: TEvent) => readonly RuntimeStep[];
+}
+
+export interface CliRuntimeRun<TEvent> {
+  /** Every event the parser accepted, in stream order. */
+  events: TEvent[];
+  result: CliProcessResult;
+}
+
+/**
+ * Spawn a CLI runtime, stream-parse its NDJSON stdout, and collect the events.
+ *
+ * All three CLI adapters run the identical scaffolding around their own
+ * `parseLine` / `extractSteps` pair: accumulate every parsed event into an
+ * array for the post-hoc `parse*Events` call, forward each one's steps to
+ * `context.onStep` as they arrive, wire `onSpawn` through to the pid/pgid
+ * shape the executor persists, flush the trailing partial line, and warn on
+ * truncation. Only the two provider-specific functions and the argv actually
+ * differed, so the scaffolding lives here and the adapters pass those in.
+ *
+ * Deliberately stops short of the final `parse*Events` call: each adapter
+ * feeds that different extra arguments (codex passes its
+ * `--output-last-message` file) and codex has cleanup to do on the aborted
+ * path, so the caller keeps ownership of turning events into a
+ * `RuntimeResult` via {@link cancelledResult} / {@link finalizeCliResult}.
+ */
+export async function runCliRuntime<TEvent>(
+  opts: CliRuntimeRunOptions<TEvent>,
+): Promise<CliRuntimeRun<TEvent>> {
+  // Parse incrementally during streaming rather than re-parsing the whole of
+  // stdout after close. The line reader handles chunk boundaries — a single
+  // JSON event can arrive split across chunks.
+  const events: TEvent[] = [];
+  const stdout = createStdoutLineReader((line: string): void => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!opts.context.onStep) return;
+    for (const step of opts.extractSteps(event)) {
+      opts.context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: opts.command,
+    args: opts.args,
+    cwd: opts.cwd,
+    env: opts.env,
+    stdin: opts.stdin,
+    abortSignal: opts.context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      opts.context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Flush any final partial line (a stream that ends without a trailing \n).
+  stdout.flush();
+
+  warnIfTruncated(opts.runtimeTag, result);
+
+  return { events, result };
 }
 
 /**
