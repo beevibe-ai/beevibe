@@ -101,7 +101,10 @@ describe("getAgentNetwork", () => {
     });
   });
 
-  it("groups peer rows by owner_id into AgentPeerOwner[]", async () => {
+  // Peer rows arrive sorted (team first, then ICs). Grouping must not
+  // shuffle; the UI relies on team-at-index-0 for orbit centers — hence
+  // the ordered `agents.map(...)` assertion rather than a bare length.
+  it("groups peer rows by owner_id into AgentPeerOwner[], preserving SQL row order", async () => {
     const pool = makeMockPool([
       [],
       [peerTeamDaniel, peerIcDaniel, peerTeamBob],
@@ -113,19 +116,8 @@ describe("getAgentNetwork", () => {
     expect(daniel?.owner_label).toBe("Daniel");
     expect(daniel?.agents).toHaveLength(2);
     expect(daniel?.agents.map((a) => a.id)).toEqual(["agt_d_team", "agt_d_ic"]);
+    expect(daniel?.agents.map((a) => a.hierarchy)).toEqual(["team", "ic"]);
     expect(bob?.owner_label).toBe("bob");
     expect(bob?.agents).toHaveLength(1);
-  });
-
-  it("preserves SQL row order within each peer-owner bucket", async () => {
-    // Peer rows arrive sorted (team first, then ICs). Grouping must
-    // not shuffle; the UI relies on team-at-index-0 for orbit centers.
-    const pool = makeMockPool([
-      [],
-      [peerTeamDaniel, peerIcDaniel],
-    ]);
-    const { peers } = await getAgentNetwork(pool, "per_w");
-    expect(peers[0]?.agents[0]?.hierarchy).toBe("team");
-    expect(peers[0]?.agents[1]?.hierarchy).toBe("ic");
   });
 });
