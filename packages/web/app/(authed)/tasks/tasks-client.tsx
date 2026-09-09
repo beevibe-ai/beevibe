@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { type LucideIcon, AlertTriangle, ListChecks } from "lucide-react";
 import { ViewTabs } from "@/components/tasks/view-tabs";
 import { BoardColumn } from "@/components/tasks/board-column";
+import { notConfiguredCopy } from "@/components/api-state";
 import { EmptyState } from "@/components/empty-state";
 import { TaskDetailPanel } from "@/components/tasks/task-detail-panel";
 import { useTasks } from "@/lib/hooks/use-tasks";
@@ -135,11 +136,10 @@ function pickEmptyMessage(state: {
     };
   }
   if (!state.isApiConfigured) {
-    return {
-      icon: ListChecks,
-      title: "No tasks yet",
-      description: "Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load tasks.",
-    };
+    // Not "No tasks yet" — the account may be full of tasks the browser
+    // has no URL to fetch. Naming the real cause is what sends the reader
+    // to .env.local instead of to their agent.
+    return { icon: ListChecks, ...notConfiguredCopy("tasks") };
   }
   // Suppress the empty state while ANY fetch is in flight — including a
   // background refetch where `data === []` is cached. Without this guard,

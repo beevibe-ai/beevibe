@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import type { MemoryScope } from "@beevibe/core";
 import { ScopeTabs, type ScopeFilter } from "@/components/memory/scope-tabs";
+import { NotConfigured } from "@/components/api-state";
 import { EmptyState } from "@/components/empty-state";
 import { FactRowSkeleton } from "@/components/skeletons";
 import { FactTypeTag } from "@/components/fact-type-tag";
@@ -140,11 +141,7 @@ function Body({
     return (
       <tr>
         <td colSpan={6}>
-          <EmptyState
-            icon={Sparkles}
-            title="No facts learned yet"
-            description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load memory."
-          />
+          <NotConfigured icon={Sparkles} subject="memory" />
         </td>
       </tr>
     );

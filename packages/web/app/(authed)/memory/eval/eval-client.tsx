@@ -5,6 +5,7 @@ import Link from "next/link";
 import { AlertTriangle, ArrowLeft, BarChart3 } from "lucide-react";
 import { useMemoryActivity } from "@/lib/hooks/use-memory-activity";
 import { isApiConfigured } from "@/lib/api/config";
+import { NotConfigured } from "@/components/api-state";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { DatePicker, todayIso } from "@/components/date-picker";
@@ -47,13 +48,7 @@ export function MemoryEvalClient() {
   const { data, isLoading, isError } = useMemoryActivity(params);
 
   if (!isApiConfigured) {
-    return (
-      <EmptyState
-        icon={BarChart3}
-        title="Memory eval not connected"
-        description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load Layer A activity telemetry."
-      />
-    );
+    return <NotConfigured icon={BarChart3} subject="Layer A activity telemetry" />;
   }
   if (isError) {
     return (

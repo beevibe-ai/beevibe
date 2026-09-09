@@ -5,6 +5,54 @@ import { AlertTriangle, type LucideIcon } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
 import { DetailShell } from "./detail-shell";
 import { EmptyState } from "@/components/empty-state";
+import { fetchErrorCopy, notConfiguredCopy } from "@/components/api-state";
+
+/** The react-query result shape the gate reads. */
+export interface GateQuery<T> {
+  data: T | undefined;
+  isLoading: boolean;
+  isError: boolean;
+}
+
+/**
+ * Which of the four states an API-backed surface is in, with the copy for
+ * the two that carry a message already resolved.
+ */
+export type GateState<T> =
+  | { kind: "not_configured"; title: string; description: string }
+  | { kind: "loading" }
+  | { kind: "error"; title: string; description: string | undefined }
+  | { kind: "ready"; data: T };
+
+/**
+ * Resolve the state ladder every API-backed surface walks: API not
+ * configured, still loading, failed to load, ready.
+ *
+ * Two things this pins down that hand-rolled ladders kept getting wrong.
+ * The unconfigured check comes *first* — a build with no API URL always
+ * has a failing query behind it, and reporting that as a fetch error
+ * points the reader at the server instead of at their `.env.local`. And
+ * a query that settles without erroring can still hand back nothing (a
+ * 404 mapped to `undefined`), which has to land on `error`, never on
+ * `ready` with a missing row.
+ *
+ * Split out from `DetailGate` because the peek panels need the same
+ * ladder under a different shell: they pad each state differently and
+ * sit inside `PeekPanel`, so they can't take `DetailShell` with it. They
+ * previously re-derived the whole ladder, and the copy had drifted —
+ * their fetch error dropped the "Check the API server logs" hint and
+ * their unconfigured message dropped "and run the API server".
+ */
+export function resolveGateState<T>(noun: string, id: string, query: GateQuery<T>): GateState<T> {
+  if (!isApiConfigured) {
+    return { kind: "not_configured", ...notConfiguredCopy(`this ${noun}`) };
+  }
+  if (query.isLoading) return { kind: "loading" };
+  if (query.isError || !query.data) {
+    return { kind: "error", ...fetchErrorCopy(noun, id) };
+  }
+  return { kind: "ready", data: query.data };
+}
 
 interface Props<T> {
   /**
@@ -20,7 +68,7 @@ interface Props<T> {
   /** Id echoed back in the error message so a failed fetch is identifiable. */
   id: string;
   /** The react-query result driving the page. */
-  query: { data: T | undefined; isLoading: boolean; isError: boolean };
+  query: GateQuery<T>;
   /**
    * Loading placeholder. Per-page rather than generic: the skeleton mirrors
    * the layout it stands in for, so a shared one would jump on hydration.
@@ -31,46 +79,26 @@ interface Props<T> {
 }
 
 /**
- * The three-branch preamble every detail page opens with — API not
- * configured, still loading, failed to load — plus the `DetailShell` all
- * four states share.
- *
- * Written out by hand on each page before this existed, which is why the
- * copy had drifted: the same condition variously said "run the API server",
- * "run the api server" and "run the MCP server" (one process, three names),
- * and half the pages ended the fetch error with "Check the MCP server logs"
- * while the other half dropped the hint. Both messages are derived from
- * `noun` here, so a page can't word them a fourth way.
+ * `resolveGateState` rendered into the `DetailShell` that full-page detail
+ * routes share. The peek panels walk the same ladder against their own
+ * layout; see `resolveGateState`.
  */
 export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }: Props<T>) {
-  if (!isApiConfigured) {
-    return (
-      <DetailShell nav={nav}>
+  const state = resolveGateState(noun, id, query);
+
+  return (
+    <DetailShell nav={nav}>
+      {state.kind === "loading" ? (
+        skeleton
+      ) : state.kind === "ready" ? (
+        children(state.data)
+      ) : (
         <EmptyState
-          icon={icon}
-          title="API not configured"
-          description={`Set NEXT_PUBLIC_BV_API_URL and run the API server to load this ${noun}.`}
+          icon={state.kind === "not_configured" ? icon : AlertTriangle}
+          title={state.title}
+          description={state.description}
         />
-      </DetailShell>
-    );
-  }
-
-  if (query.isLoading) {
-    return <DetailShell nav={nav}>{skeleton}</DetailShell>;
-  }
-
-  if (query.isError || !query.data) {
-    const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
-    return (
-      <DetailShell nav={nav}>
-        <EmptyState
-          icon={AlertTriangle}
-          title={`Couldn't load ${noun}`}
-          description={`${Noun} ${id} could not be fetched. Check the API server logs.`}
-        />
-      </DetailShell>
-    );
-  }
-
-  return <DetailShell nav={nav}>{children(query.data)}</DetailShell>;
+      )}
+    </DetailShell>
+  );
 }
