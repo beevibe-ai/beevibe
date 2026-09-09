@@ -79,7 +79,7 @@ describe("DashboardClient", () => {
   it("renders the not-configured empty state and never fetches", () => {
     apiState.isApiConfigured = false;
     renderHome();
-    expect(screen.getByText("Dashboard not connected")).toBeInTheDocument();
+    expect(screen.getByText("API not configured")).toBeInTheDocument();
     expect(summaryMock).not.toHaveBeenCalled();
   });
 

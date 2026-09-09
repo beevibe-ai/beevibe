@@ -72,9 +72,11 @@ describe("TasksClient — empty-state branches", () => {
     apiState.isApiConfigured = false;
     renderClient();
 
-    expect(await screen.findByText("No tasks yet")).toBeInTheDocument();
+    // Titled for the actual cause, not "No tasks yet" — the account may
+    // hold plenty of tasks the browser has no URL to fetch.
+    expect(await screen.findByText("API not configured")).toBeInTheDocument();
     expect(
-      screen.getByText(/Set NEXT_PUBLIC_BV_API_URL and run the MCP server/i),
+      screen.getByText(/Set NEXT_PUBLIC_BV_API_URL and run the API server to load tasks\./),
     ).toBeInTheDocument();
     expect(listMock).not.toHaveBeenCalled();
   });

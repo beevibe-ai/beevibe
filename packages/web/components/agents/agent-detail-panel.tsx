@@ -10,7 +10,7 @@ import { RecentChatThreadRow } from "@/components/agents/recent-chat-thread-row"
 import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
-import { isApiConfigured } from "@/lib/api/config";
+import { resolveGateState } from "@/components/detail/detail-gate";
 import { useAgent } from "@/lib/hooks/use-agents";
 import { useIsOwner } from "@/lib/hooks/use-me";
 import { formatReviewPolicy } from "@/lib/format";
@@ -42,21 +42,9 @@ export function AgentDetailPanel({
 }
 
 function PanelBody({ agentId }: { agentId: string }) {
-  const { data, isLoading, isError } = useAgent(agentId);
+  const state = resolveGateState("agent", agentId, useAgent(agentId));
 
-  if (!isApiConfigured) {
-    return (
-      <div className="p-4">
-        <EmptyState
-          icon={Bot}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL to load this agent."
-        />
-      </div>
-    );
-  }
-
-  if (isLoading) {
+  if (state.kind === "loading") {
     return (
       <div className="p-5 space-y-4">
         <Skeleton className="h-14 w-full" />
@@ -66,19 +54,17 @@ function PanelBody({ agentId }: { agentId: string }) {
     );
   }
 
-  if (isError || !data) {
-    return (
-      <div className="p-4">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load agent"
-          description={`Agent ${agentId} could not be fetched.`}
-        />
-      </div>
-    );
-  }
+  if (state.kind === "ready") return <PanelLoaded agent={state.data} />;
 
-  return <PanelLoaded agent={data} />;
+  return (
+    <div className="p-4">
+      <EmptyState
+        icon={state.kind === "not_configured" ? Bot : AlertTriangle}
+        title={state.title}
+        description={state.description}
+      />
+    </div>
+  );
 }
 
 function PanelLoaded({ agent }: { agent: AgentDetail }) {

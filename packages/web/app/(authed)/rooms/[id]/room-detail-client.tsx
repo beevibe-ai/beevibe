@@ -23,6 +23,7 @@ import { ChatMarkdown } from "@/components/chat/markdown";
 import { ToolStepList } from "@/components/chat/tool-step-list";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
 import { Skeleton } from "@/components/skeleton";
+import { NotConfigured } from "@/components/api-state";
 import { EmptyState } from "@/components/empty-state";
 import { formatRelativeTime, idSuffix, sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -124,7 +125,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
   if (!isApiConfigured) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <EmptyState icon={Users} title="API not configured" />
+        <NotConfigured icon={Users} subject="this room" />
       </div>
     );
   }

@@ -9,6 +9,7 @@ import { api, type Room } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
 import { Skeleton } from "@/components/skeleton";
+import { NotConfigured } from "@/components/api-state";
 import { EmptyState } from "@/components/empty-state";
 import { formatRelativeTime, shortId } from "@/lib/format";
 
@@ -44,11 +45,7 @@ export function RoomsListClient() {
   if (!isApiConfigured) {
     return (
       <div className="p-6">
-        <EmptyState
-          icon={MessageCircleMore}
-          title="Web isn't configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the api server."
-        />
+        <NotConfigured icon={MessageCircleMore} subject="rooms" />
       </div>
     );
   }

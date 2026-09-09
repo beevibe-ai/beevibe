@@ -24,6 +24,7 @@ import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
 import { CommandBlock } from "@/components/command-block";
 import { DaemonInstallInstructions } from "@/components/daemon-install";
+import { NotConfigured } from "@/components/api-state";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { cn } from "@/lib/utils";
@@ -80,11 +81,7 @@ function Body({
   if (!isApiConfigured) {
     return (
       <div className="rounded-lg border border-dashed border-border">
-        <EmptyState
-          icon={Terminal}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the API server to load this page."
-        />
+        <NotConfigured icon={Terminal} subject="runtimes" />
       </div>
     );
   }

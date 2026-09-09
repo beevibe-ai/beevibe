@@ -1,6 +1,7 @@
 "use client";
 
 import { AlertTriangle, Info, TrendingUp, type LucideIcon } from "lucide-react";
+import { notConfiguredCopy } from "@/components/api-state";
 import { EmptyState } from "@/components/empty-state";
 import { PromotionEventSkeleton } from "@/components/skeletons";
 import { PromotionEventRow } from "@/components/promotions/event-row";
@@ -52,13 +53,7 @@ function Body({
   isError: boolean;
 }) {
   if (!isApiConfigured) {
-    return (
-      <EmptyWrapper
-        icon={TrendingUp}
-        title="No promotions yet"
-        description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load promotion events."
-      />
-    );
+    return <EmptyWrapper icon={TrendingUp} {...notConfiguredCopy("promotion events")} />;
   }
 
   if (isError) {

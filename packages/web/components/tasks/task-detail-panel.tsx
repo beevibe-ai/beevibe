@@ -10,7 +10,7 @@ import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pi
 import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
-import { isApiConfigured } from "@/lib/api/config";
+import { resolveGateState } from "@/components/detail/detail-gate";
 import { useTask } from "@/lib/hooks/use-tasks";
 import {
   useApproveTask,
@@ -54,21 +54,9 @@ export function TaskDetailPanel({
 }
 
 function PanelBody({ taskId }: { taskId: string }) {
-  const { data, isLoading, isError } = useTask(taskId);
+  const state = resolveGateState("task", taskId, useTask(taskId));
 
-  if (!isApiConfigured) {
-    return (
-      <div className="p-4">
-        <EmptyState
-          icon={ListChecks}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL to load this task."
-        />
-      </div>
-    );
-  }
-
-  if (isLoading) {
+  if (state.kind === "loading") {
     return (
       <div className="p-5 space-y-4">
         <Skeleton className="h-7 w-3/4" />
@@ -78,19 +66,17 @@ function PanelBody({ taskId }: { taskId: string }) {
     );
   }
 
-  if (isError || !data) {
-    return (
-      <div className="p-4">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load task"
-          description={`Task ${taskId} could not be fetched.`}
-        />
-      </div>
-    );
-  }
+  if (state.kind === "ready") return <PanelLoaded task={state.data} />;
 
-  return <PanelLoaded task={data} />;
+  return (
+    <div className="p-4">
+      <EmptyState
+        icon={state.kind === "not_configured" ? ListChecks : AlertTriangle}
+        title={state.title}
+        description={state.description}
+      />
+    </div>
+  );
 }
 
 function PanelLoaded({ task }: { task: TaskDetail }) {
