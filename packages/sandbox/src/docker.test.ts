@@ -24,7 +24,6 @@ const {
   createSandbox,
   DEFAULT_IMAGE,
   destroySandbox,
-  ensureArtifactDir,
   exec,
   exportArtifact,
   listDir,
@@ -506,19 +505,5 @@ describe("teardown", () => {
     const sbx = await fakeSandbox();
     await cleanupArtifactDir(sbx);
     await expect(cleanupArtifactDir(sbx)).resolves.toBeUndefined();
-  });
-});
-
-describe("ensureArtifactDir", () => {
-  it("creates the directory recursively and tolerates re-runs", async () => {
-    const base = await mkdtemp(join(tmpdir(), "bv-test-ensure-"));
-    tempDirs.push(base);
-    const nested = join(base, "a", "b", "c");
-
-    await ensureArtifactDir(nested);
-    await ensureArtifactDir(nested);
-
-    await writeFile(join(nested, "probe.txt"), "ok", "utf8");
-    expect(await readFile(join(nested, "probe.txt"), "utf8")).toBe("ok");
   });
 });

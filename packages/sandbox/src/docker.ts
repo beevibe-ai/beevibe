@@ -14,7 +14,7 @@
  */
 import { spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -417,13 +417,4 @@ function generateId(label: string): string {
  */
 export function shellQuote(s: string): string {
   return `'${s.replace(/'/g, `'\\''`)}'`;
-}
-
-/**
- * Ensure the artifact dir exists on the host before bind-mounting.
- * Exposed only because tests want to construct synthetic sandboxes
- * without going through the full `createSandbox` path.
- */
-export async function ensureArtifactDir(path: string): Promise<void> {
-  await mkdir(path, { recursive: true });
 }
