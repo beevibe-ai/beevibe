@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeContext, RuntimeStep } from "../../ports/runtime.js";
 import { OpenCodeRuntime, buildOpenCodeConfig } from "./runtime.js";
@@ -246,5 +249,60 @@ describe("buildOpenCodeConfig", () => {
     expect(parsed.mcp.beevibe.headers["X-Beevibe-Session"]).toBe(
       "{env:BEEVIBE_SESSION_ID}",
     );
+  });
+});
+
+describe("OpenCodeRuntime.prepareWorkspace", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "beevibe-opencode-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("writes opencode.json with the Beevibe MCP server, owner-only", () => {
+    new OpenCodeRuntime().prepareWorkspace({
+      workspace: { path: dir },
+      agentApiKey: "bv_a_test",
+      mcpServerUrl: "http://api.test/mcp",
+    });
+
+    const configPath = join(dir, "opencode.json");
+    expect(JSON.parse(readFileSync(configPath, "utf8"))).toEqual(
+      JSON.parse(buildOpenCodeConfig("bv_a_test", "http://api.test/mcp")),
+    );
+    // The file carries the agent's API key, so it must not be world- or
+    // group-readable.
+    expect(statSync(configPath).mode & 0o777).toBe(0o600);
+  });
+
+  it("leaves an existing opencode.json alone — the agent may have edited it", () => {
+    const configPath = join(dir, "opencode.json");
+    writeFileSync(configPath, '{"mine":true}\n');
+
+    new OpenCodeRuntime().prepareWorkspace({
+      workspace: { path: dir },
+      agentApiKey: "bv_a_test",
+      mcpServerUrl: "http://api.test/mcp",
+    });
+
+    expect(readFileSync(configPath, "utf8")).toBe('{"mine":true}\n');
+  });
+});
+
+describe("OpenCodeRuntime.skillsDir", () => {
+  it("points at opencode's per-workspace skills directory", () => {
+    expect(new OpenCodeRuntime().skillsDir({ path: "/ws/agt_1" })).toBe(
+      "/ws/agt_1/.opencode/skills",
+    );
+  });
+});
+
+describe("OpenCodeRuntime.shutdown", () => {
+  it("resolves — the runtime is stateless, each session is its own process", async () => {
+    await expect(new OpenCodeRuntime().shutdown()).resolves.toBeUndefined();
   });
 });
