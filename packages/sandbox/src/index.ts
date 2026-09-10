@@ -10,7 +10,6 @@ export {
   createSandbox,
   DEFAULT_IMAGE,
   destroySandbox,
-  ensureArtifactDir,
   exec,
   exportArtifact,
   listDir,
