@@ -61,6 +61,9 @@ describe("summaryToDisplay — KPIs", () => {
     expect(byKpi("Awaiting review").trend_kind).toBe("bar");
     expect(byKpi("Completed today").trend_color).toBe("done");
     expect(byKpi("Blocked").trend_color).toBe("primary");
+    // Blocked is its own lifecycle lane, so the KPI deep-links to it
+    // rather than to in_review.
+    expect(byKpi("Blocked").href).toBe("/tasks?lifecycle=blocked");
   });
 
   it("preserves raw trend arrays (web's sparkline owns geometry)", () => {

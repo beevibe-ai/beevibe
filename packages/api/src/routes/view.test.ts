@@ -231,7 +231,7 @@ describe("GET /task", () => {
     expect(vi.mocked(listTasks).mock.calls[0]![1]).toEqual({ caller_person_id: PERSON });
   });
 
-  it.each(["pending", "in_progress", "in_review", "done"])(
+  it.each(["pending", "in_progress", "blocked", "in_review", "done", "archived"])(
     "passes through the %s lifecycle filter",
     async (lifecycle) => {
       await request(makeApp()).get(`/task?lifecycle=${lifecycle}`);
