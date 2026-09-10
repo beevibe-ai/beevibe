@@ -3,6 +3,7 @@ import {
   AmbiguousShortIdError,
   getConversationByShortId,
   getSessionByShortId,
+  getSessionTree,
   toSessionUsageDisplay,
 } from "./sessions.js";
 import { makeMockPool } from "./test-helpers.js";
@@ -38,6 +39,71 @@ describe("getSessionByShortId", () => {
     expect(session?.briefing.block_count).toBe(0);
     expect(session?.transcript).toEqual([]);
     expect(session?.ask_threads).toEqual([]);
+  });
+
+  it("fills the display defaults for a task-less, unclaimed session (a chat turn)", async () => {
+    const row = {
+      ...sampleRow("sess_chat00aaa"),
+      type: "chat",
+      task_id: null,
+      task_title: null,
+      workspace_path: null,
+      cli_session_id: null,
+      started_at: null,
+      spawn_mode: null,
+      runtime_id: null,
+      runtime_cli: null,
+      runtime_cli_version: null,
+      daemon_device_name: null,
+    };
+    const session = await getSessionByShortId(makeMockPool([row]), "chat00");
+    expect(session).toMatchObject({
+      task_id: "",
+      task_short_id: "",
+      task_title: "(untitled task)",
+      // Epoch stands in for "never started" so the UI can sort without
+      // special-casing null.
+      started_at: new Date(0),
+    });
+    expect(session?.worktree).toBeUndefined();
+    expect(session?.cli_session).toBeUndefined();
+    expect(session?.spawn_mode).toBeUndefined();
+    expect(session?.runtime_id).toBeUndefined();
+    expect(session?.runtime_cli).toBeUndefined();
+    expect(session?.runtime_cli_version).toBeUndefined();
+    expect(session?.daemon_device_name).toBeUndefined();
+  });
+
+  it("maps aggregated session_event rows into transcript entries", async () => {
+    const row = {
+      ...sampleRow("sess_script001"),
+      transcript: [
+        {
+          kind: "assistant",
+          timestamp: "2026-04-30T11:00:01Z",
+          content: "on it",
+          tool_name: null,
+        },
+        {
+          kind: "tool_use",
+          timestamp: "2026-04-30T11:00:02Z",
+          content: '{"file":"a.ts"}',
+          tool_name: "Read",
+        },
+      ],
+    };
+    const session = await getSessionByShortId(makeMockPool([row]), "script");
+    expect(session?.transcript).toEqual([
+      // `tool_name` is omitted entirely (not set to null) when the event
+      // carries none — the wire shape marks it optional.
+      { kind: "assistant", timestamp: "2026-04-30T11:00:01Z", content: "on it" },
+      {
+        kind: "tool_use",
+        timestamp: "2026-04-30T11:00:02Z",
+        content: '{"file":"a.ts"}',
+        tool_name: "Read",
+      },
+    ]);
   });
 
   it("returns the persisted briefing JSONB when present (#45 item 3a)", async () => {
@@ -282,6 +348,121 @@ describe("getConversationByShortId", () => {
     expect(conv?.usage).toBeUndefined();
   });
 });
+
+describe("getSessionTree", () => {
+  it("returns undefined when the root session does not exist", async () => {
+    const pool = makeMockPool([]);
+    expect(await getSessionTree(pool, "sess_missing0")).toBeUndefined();
+  });
+
+  it("returns the root plus every descendant, depth-ordered", async () => {
+    const pool = makeMockPool([
+      treeRow("sess_root00aaaa", null, 0),
+      treeRow("sess_child01bbb", "sess_root00aaaa", 1),
+      treeRow("sess_child02ccc", "sess_root00aaaa", 1),
+      treeRow("sess_grand03ddd", "sess_child01bbb", 2),
+    ]);
+
+    const tree = await getSessionTree(pool, "sess_root00aaaa");
+    expect(tree?.root.id).toBe("sess_root00aaaa");
+    expect(tree?.root.short_id).toBe("root00");
+    expect(tree?.descendants.map((n) => n.id)).toEqual([
+      "sess_child01bbb",
+      "sess_child02ccc",
+      "sess_grand03ddd",
+    ]);
+    expect(tree?.descendants.map((n) => n.parent_session_id)).toEqual([
+      "sess_root00aaaa",
+      "sess_root00aaaa",
+      "sess_child01bbb",
+    ]);
+    expect(pool._spy).toHaveBeenCalledWith(expect.any(String), ["sess_root00aaaa"]);
+  });
+
+  it("maps every node field, deriving short ids and ISO timestamps", async () => {
+    const pool = makeMockPool([
+      {
+        ...treeRow("sess_node00aaaa", null, 0),
+        task_id: "task_abcdef01",
+        task_title: "Bill rewrite",
+        type: "task",
+        status: "succeeded",
+        intent: "do the work",
+        started_at: new Date("2026-04-30T11:00:00Z"),
+        completed_at: new Date("2026-04-30T11:02:30Z"),
+      },
+    ]);
+
+    const tree = await getSessionTree(pool, "sess_node00aaaa");
+    expect(tree?.root).toEqual({
+      id: "sess_node00aaaa",
+      short_id: "node00",
+      parent_session_id: null,
+      agent_id: "agt_team",
+      agent_label: "Beta",
+      agent_hierarchy: "team",
+      task_id: "task_abcdef01",
+      task_short_id: "abcdef",
+      task_title: "Bill rewrite",
+      type: "task",
+      status: "succeeded",
+      intent: "do the work",
+      started_at: "2026-04-30T11:00:00.000Z",
+      completed_at: "2026-04-30T11:02:30.000Z",
+    });
+    expect(tree?.descendants).toEqual([]);
+  });
+
+  it("leaves task and timestamp fields null for an unclaimed, task-less session", async () => {
+    const pool = makeMockPool([
+      {
+        ...treeRow("sess_pend00aaaa", null, 0),
+        task_id: null,
+        task_title: null,
+        status: "pending",
+        started_at: null,
+        completed_at: null,
+      },
+    ]);
+
+    const tree = await getSessionTree(pool, "sess_pend00aaaa");
+    expect(tree?.root.task_id).toBeNull();
+    expect(tree?.root.task_short_id).toBeNull();
+    expect(tree?.root.task_title).toBeNull();
+    expect(tree?.root.started_at).toBeNull();
+    expect(tree?.root.completed_at).toBeNull();
+  });
+
+  it("returns undefined when the first row is not the requested root", async () => {
+    // The recursive CTE anchors on `id = $1`, so a first row with a
+    // different id means the caller passed a non-root session id (or the
+    // ordering broke). Serving a partial subtree as if it were the whole
+    // thing would silently hide the caller's real parent chain.
+    const pool = makeMockPool([
+      treeRow("sess_child01bbb", "sess_root00aaaa", 0),
+      treeRow("sess_grand03ddd", "sess_child01bbb", 1),
+    ]);
+    expect(await getSessionTree(pool, "sess_root00aaaa")).toBeUndefined();
+  });
+});
+
+function treeRow(id: string, parent_session_id: string | null, depth: number) {
+  return {
+    id,
+    parent_session_id,
+    agent_id: "agt_team",
+    agent_label: "Beta",
+    agent_hier: "team",
+    task_id: "task_001",
+    task_title: "Bill rewrite",
+    type: "task",
+    status: "running",
+    intent: "do the work",
+    started_at: new Date("2026-04-30T11:00:00Z"),
+    completed_at: null,
+    depth,
+  };
+}
 
 function resolveRow(
   id: string,
