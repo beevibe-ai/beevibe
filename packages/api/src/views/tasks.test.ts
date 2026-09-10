@@ -74,10 +74,29 @@ describe("listTasks", () => {
     const pool = makeMockPool([[]]);
     const queryMock = pool._spy;
     await listTasks(pool, { lifecycle: "in_review", bypassOwnerScope: true });
-    expect(queryMock).toHaveBeenCalledWith(
+    // `in_review` is 'review' alone: 'blocked' is its own lane in the
+    // lifecycle vocabulary core now shares with the board, where it used
+    // to be folded in here.
+    expect(queryMock).toHaveBeenCalledWith(expect.any(String), [["review"], null, null]);
+  });
+
+  it("filters the blocked lane on its own, separately from in_review", async () => {
+    const pool = makeMockPool([[]]);
+    await listTasks(pool, { lifecycle: "blocked", bypassOwnerScope: true });
+    expect(pool._spy).toHaveBeenCalledWith(expect.any(String), [["blocked"], null, null]);
+  });
+
+  it("filters the archived lane on failed + cancelled, keeping them out of done", async () => {
+    const archived = makeMockPool([[]]);
+    await listTasks(archived, { lifecycle: "archived", bypassOwnerScope: true });
+    expect(archived._spy).toHaveBeenCalledWith(
       expect.any(String),
-      [["review", "blocked"], null, null],
+      [["failed", "cancelled"], null, null],
     );
+
+    const done = makeMockPool([[]]);
+    await listTasks(done, { lifecycle: "done", bypassOwnerScope: true });
+    expect(done._spy).toHaveBeenCalledWith(expect.any(String), [["done"], null, null]);
   });
 
   it("forwards assignee_id when set", async () => {

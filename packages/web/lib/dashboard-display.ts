@@ -74,7 +74,10 @@ const KPI_CONFIG: Record<KpiKind, KpiConfig> = {
   },
   blocked: {
     label: "Blocked",
-    href: "/tasks?lifecycle=in_review",
+    // `blocked` is a lane in its own right now that the api and the board
+    // share one lifecycle vocabulary. This pointed at `in_review` because
+    // the api's older four-lane mapping had no `blocked` value to accept.
+    href: "/tasks?lifecycle=blocked",
     trend_color: "primary",
     trend_kind: "bar",
   },

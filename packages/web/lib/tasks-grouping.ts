@@ -1,39 +1,29 @@
-import type { TaskStatus } from "@beevibe/core";
+/**
+ * Board grouping. The lifecycle vocabulary — the lanes and the status →
+ * lane mapping — comes from `@beevibe/core/domain/task`, which the api
+ * reads too; this file owns only the presentation (order, labels, dot
+ * colors) and the bucketing.
+ *
+ * The mapping used to be declared here *and*, differently, in
+ * `packages/api/src/views/tasks-grouping.ts`, with both feeding the same
+ * `?lifecycle=` wire parameter. See `TaskLifecycle` in core for what the
+ * drift broke.
+ *
+ * Imported from the `domain/task` subpath, not the package root: the root
+ * barrel re-exports `./auth`, which reaches for `node:crypto`, and this
+ * module is pulled into a client component. Same reason
+ * `@beevibe/core/domain/format` has its own subpath.
+ */
+
+import {
+  TASK_LIFECYCLE_OF_STATUS,
+  type TaskLifecycle,
+} from "@beevibe/core/domain/task";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { BoardLane } from "@/components/tasks/board-column";
 
-export type Lifecycle =
-  | "pending"
-  | "in_progress"
-  | "blocked"
-  | "in_review"
-  | "done"
-  | "archived";
-
-/**
- * Status → lifecycle lane.
- *
- * - `blocked` lives in its own lane (was previously folded into
- *   In review). Blocked = waiting on an external dependency, semantically
- *   different from "waiting on a human verdict." Different action by the
- *   human reading the board, so different column.
- * - `failed` and `cancelled` are terminal states that aren't success.
- *   They go into the `archived` lane, hidden by default — `Done` should
- *   read as "this shipped." Archive toggle exposes them when the user
- *   wants to see what didn't ship.
- */
-const LIFECYCLE_OF: Record<TaskStatus, Lifecycle> = {
-  pending: "pending",
-  assigned: "pending",
-  in_progress: "in_progress",
-  revision: "in_progress",
-  needs_revision: "in_progress",
-  review: "in_review",
-  blocked: "blocked",
-  done: "done",
-  failed: "archived",
-  cancelled: "archived",
-};
+/** The web's historical name for core's `TaskLifecycle`. */
+export type Lifecycle = TaskLifecycle;
 
 interface LaneTemplate {
   key: Lifecycle;
@@ -76,7 +66,7 @@ export function groupTasks(
     done: [],
     archived: [],
   };
-  for (const t of tasks) buckets[LIFECYCLE_OF[t.status]].push(t);
+  for (const t of tasks) buckets[TASK_LIFECYCLE_OF_STATUS[t.status]].push(t);
   const template = options.showArchived
     ? [...VISIBLE_LANES, ARCHIVED_LANE]
     : VISIBLE_LANES;
@@ -87,11 +77,15 @@ export function groupTasks(
   }));
 }
 
-/** Count of failed+cancelled tasks — drives the "X archived" toggle. */
+/**
+ * Count of tasks in the archived lane (failed + cancelled) — drives the
+ * "X archived" toggle. Keyed off the shared mapping rather than a status
+ * literal so it can't disagree with which lane `groupTasks` hides.
+ */
 export function countArchivedTasks(tasks: TaskListItem[]): number {
   let n = 0;
   for (const t of tasks) {
-    if (t.status === "failed" || t.status === "cancelled") n += 1;
+    if (TASK_LIFECYCLE_OF_STATUS[t.status] === "archived") n += 1;
   }
   return n;
 }

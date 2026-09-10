@@ -19,6 +19,7 @@
 import { Router, type RequestHandler, type Response } from "express";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
+  CANCELLABLE_TASK_STATUSES,
   TASK_PRIORITIES,
   isInFlightSessionStatus,
   taskId,
@@ -29,7 +30,6 @@ import {
   type SkillOutcomeValue,
   type TaskRepository,
   type TaskPriority,
-  type TaskStatus,
   type WorkProductRepository,
 } from "@beevibe/core";
 import { newSkillOutcomeId } from "@beevibe/core/adapters/postgres";
@@ -44,16 +44,13 @@ import { requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "../runtime/hub.js";
 import { requireParam } from "./http-errors.js";
 
-/** Statuses from which /cancel is legal. Anything non-terminal. */
-const CANCELLABLE_FROM: readonly TaskStatus[] = [
-  "pending",
-  "assigned",
-  "needs_revision",
-  "in_progress",
-  "revision",
-  "review",
-  "blocked",
-];
+/**
+ * Statuses from which /cancel is legal. Anything non-terminal — derived
+ * in core as the complement of `TERMINAL_TASK_STATUSES` rather than
+ * listed here, so a newly added non-terminal status is cancellable by
+ * default instead of silently rejected.
+ */
+const CANCELLABLE_FROM = CANCELLABLE_TASK_STATUSES;
 
 export interface TaskRoutesDeps {
   authMiddleware: RequestHandler;

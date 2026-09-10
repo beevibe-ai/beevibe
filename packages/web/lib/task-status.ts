@@ -1,25 +1,28 @@
-import type { TaskStatus } from "@beevibe/core";
-
 /**
- * Status sets the lifecycle-action UI gates on. Single source of truth
- * for "should we show Cancel?" / "should we show Retry?" — keep these
- * in lockstep with:
- *   - api/src/routes/task.ts `CANCELLABLE_FROM` (terminal complement)
- *   - core/src/services/task-service.ts `prepareRetry` (failed | cancelled)
+ * Status sets the lifecycle-action UI gates on — "should we show Cancel?"
+ * / "should we show Retry?"
  *
- * Typed as `readonly TaskStatus[]` so `.includes(task.status)` typechecks
- * without a cast.
+ * Both sets are now re-exports from `@beevibe/core/domain/task`, which is
+ * also what the api's `/cancel` gate and `TaskService.prepareRetry` read.
+ * They used to be declared here as literals, with a comment asking that
+ * they be kept "in lockstep" with those two — including a second,
+ * byte-identical `TERMINAL_TASK_STATUSES` that shadowed core's own export
+ * (whose doc-comment asks callers not to redeclare it). A UI that
+ * disagrees with the server about which statuses are terminal offers a
+ * Cancel button the api answers with 409.
+ *
+ * Imported from the `domain/task` subpath, not the package root — the
+ * root barrel pulls in `node:crypto` via `./auth` and these are used from
+ * client components.
  */
-export const TERMINAL_TASK_STATUSES: readonly TaskStatus[] = [
-  "done",
-  "failed",
-  "cancelled",
-];
 
-export const RETRYABLE_TASK_STATUSES: readonly TaskStatus[] = [
-  "failed",
-  "cancelled",
-];
+import {
+  RETRYABLE_TASK_STATUSES,
+  TERMINAL_TASK_STATUSES,
+  type TaskStatus,
+} from "@beevibe/core/domain/task";
+
+export { RETRYABLE_TASK_STATUSES, TERMINAL_TASK_STATUSES };
 
 export function isTerminalTaskStatus(status: TaskStatus): boolean {
   return TERMINAL_TASK_STATUSES.includes(status);

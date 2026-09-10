@@ -1,4 +1,5 @@
 import {
+  RETRYABLE_TASK_STATUSES,
   TERMINAL_TASK_STATUSES,
   type NextDispatchContext,
   type Task,
@@ -287,7 +288,7 @@ export class TaskService {
     priorSessionId: string | undefined;
   }> {
     const task = await this.requireTask(taskId);
-    if (task.status !== "failed" && task.status !== "cancelled") {
+    if (!RETRYABLE_TASK_STATUSES.includes(task.status)) {
       throw new InvalidTaskTransitionError(
         `Task ${taskId} is in status '${task.status}'; retry is only allowed from 'failed' or 'cancelled'`,
       );

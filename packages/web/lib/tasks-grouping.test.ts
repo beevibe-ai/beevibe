@@ -21,6 +21,12 @@ function makeTask(id: string, status: TaskStatus): TaskListItem {
   };
 }
 
+/**
+ * Spelled out here rather than imported from core so this stays a real
+ * assertion about the lane each status lands in — importing the mapping
+ * `groupTasks` uses would make the exhaustiveness test below tautological.
+ * This copy is the *expectation*; core's is the implementation.
+ */
 const EXPECTED_LIFECYCLE: Record<TaskStatus, Lifecycle> = {
   pending: "pending",
   assigned: "pending",
