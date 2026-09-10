@@ -93,8 +93,6 @@ export interface AgentDisplay
   hierarchy: HierarchyLevel;
   sessions_count?: number;
   facts_learned?: number;
-  /** Reserved for future memory-merge telemetry. */
-  merge_events?: number;
   specialization?: string;
   themes?: string[];
   /** CLI tool the agent uses — derived from `runtime_config.type`. */
