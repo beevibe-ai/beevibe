@@ -450,8 +450,27 @@ describe("PostgresSessionRepository", () => {
         sessions.claimNextForRuntime(runtime),
         sessions.claimNextForRuntime(runtime),
       ]);
-      const claimedIds = [a?.id, b?.id].filter((x): x is string => Boolean(x)).sort();
-      expect(claimedIds).toEqual(ids.slice().sort());
+      const claimedIds = [a?.id, b?.id].filter((x): x is string => Boolean(x));
+
+      // "distinct sessions OR undefined" — not "both succeed". The claim
+      // takes `FOR UPDATE OF s, a SKIP LOCKED`, and both candidates join
+      // the SAME agent row, so a claim that overlaps the other's agent
+      // lock skips every candidate and correctly returns undefined.
+      // Asserting both succeed made this a coin flip on scheduling.
+      expect(new Set(claimedIds).size).toBe(claimedIds.length);
+      expect(claimedIds.length).toBeGreaterThan(0);
+      for (const id of claimedIds) expect(ids).toContain(id);
+
+      // A skip is only a skip: whatever the race passed over is still
+      // pending, not lost or consumed. Draining serially afterwards must
+      // yield exactly the two seeded sessions — this is what would break
+      // if SKIP LOCKED ever handed the same row out twice or dropped one.
+      for (let i = 0; i < ids.length && claimedIds.length < ids.length; i++) {
+        const next = await sessions.claimNextForRuntime(runtime);
+        if (!next) break;
+        claimedIds.push(next.id);
+      }
+      expect(claimedIds.slice().sort()).toEqual(ids.slice().sort());
     });
 
     it("respects per-agent max_task_sessions cap (the exact case from #127)", async () => {
