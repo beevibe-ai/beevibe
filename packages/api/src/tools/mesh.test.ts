@@ -1,10 +1,11 @@
 /**
  * Mesh tool assembly tests — IC vs team tier gating.
  *
- * Per-tool handler behavior is covered indirectly by the m6/m7 e2e scripts
- * (mesh flows require live Postgres + spawned CLI subprocesses). This file
- * locks the static tier inventory — the exact tool *names* each tier gets,
- * so future skill-loader work can rely on the surface being stable.
+ * This file locks the static tier inventory — the exact tool *names* each
+ * tier gets, so future skill-loader work can rely on the surface being
+ * stable. Per-tool handler behavior lives in `mesh-handlers.test.ts`
+ * (fakes for the mesh server + services); the m6/m7 e2e scripts cover the
+ * live end-to-end flow, which needs Postgres + spawned CLI subprocesses.
  */
 import { describe, expect, it } from "vitest";
 import type { ResolvedCaller } from "@beevibe/core/auth";
