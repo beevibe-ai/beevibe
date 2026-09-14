@@ -569,3 +569,356 @@ describe("find_repo tool — output shape", () => {
     ]);
   });
 });
+
+/* ─── Default HTTP-backed data clients ───────────────────────────────
+ *
+ * Every test above injects `communityRegistry` / `trending` fakes, so
+ * the clients that actually run in production — the ones that fetch
+ * raw.githubusercontent, cache on a 1h TTL, and swallow every failure
+ * mode — were never exercised. These tests omit the injections so
+ * `createFindRepoTool` builds its HTTP defaults, and drive them through
+ * a `fetcher` fake.
+ *
+ * The clients are constructed per `createFindRepoTool` call and cache on
+ * the instance, so "call the same tool twice" is what exercises the
+ * cache and "build a second tool" is what starts fresh.
+ */
+
+const REGISTRY_URL_FRAGMENT = "registry.json";
+
+/**
+ * Routes by URL the way the real endpoints do. `registry` / `trending`
+ * are per-URL responses; anything unmatched falls through to an empty
+ * GitHub search so the handler completes.
+ */
+function capabilitiesFetcher(routes: {
+  registry?: () => unknown;
+  trending?: (period: string) => unknown;
+  onRequest?: (url: string) => void;
+}): typeof fetch {
+  return vi.fn(async (url: unknown) => {
+    const u = String(url);
+    routes.onRequest?.(u);
+    if (u.includes(REGISTRY_URL_FRAGMENT)) {
+      return routes.registry?.() ?? { ok: false, json: async () => ({}) };
+    }
+    const trendingMatch = /trending-(daily|weekly|monthly)\.json/.exec(u);
+    if (trendingMatch) {
+      return (
+        routes.trending?.(trendingMatch[1]!) ?? { ok: false, json: async () => ({}) }
+      );
+    }
+    return { ok: true, json: async () => ({ items: [] }) };
+  }) as unknown as typeof fetch;
+}
+
+/** Services with the registry/trending fakes deliberately left out. */
+function httpBackedServices(fetcher: typeof fetch) {
+  return {
+    agentRepo: fakeAgentRepo(),
+    learnedSkillRepo: fakeLearnedSkillRepo(),
+    embeddings: fakeEmbeddingsAllMatch(),
+    fetcher,
+  };
+}
+
+describe("default community-registry client", () => {
+  it("fetches the registry and ranks its entries", async () => {
+    const fetcher = capabilitiesFetcher({
+      registry: () => ({
+        ok: true,
+        json: async () => ({
+          skills: [{ repo_url: PDFPLUMBER, goal_pattern: "extract tables from pdfs" }],
+        }),
+      }),
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpBackedServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates).toHaveLength(1);
+    expect(candidates[0]!.source).toBe("community");
+  });
+
+  it("caches the registry for the process — a second call makes no request", async () => {
+    const registryUrls: string[] = [];
+    const fetcher = capabilitiesFetcher({
+      onRequest: (u) => {
+        if (u.includes(REGISTRY_URL_FRAGMENT)) registryUrls.push(u);
+      },
+      registry: () => ({
+        ok: true,
+        json: async () => ({ skills: [{ repo_url: PDFPLUMBER, goal_pattern: "pdfs" }] }),
+      }),
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpBackedServices(fetcher));
+
+    await tool.handler({ goal: "extract tables from a PDF" });
+    await tool.handler({ goal: "extract tables from a PDF" });
+    expect(registryUrls).toHaveLength(1);
+  });
+
+  it.each([
+    ["a non-200 response", () => ({ ok: false, json: async () => ({}) })],
+    [
+      "a body that isn't a registry",
+      () => ({ ok: true, json: async () => ({ not: "a registry" }) }),
+    ],
+    [
+      "malformed JSON",
+      () => ({
+        ok: true,
+        json: async () => {
+          throw new Error("Unexpected token < in JSON");
+        },
+      }),
+    ],
+    [
+      "a transport failure",
+      () => {
+        throw new Error("ECONNREFUSED");
+      },
+    ],
+  ])("degrades to no community tier on %s", async (_label, registry) => {
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      httpBackedServices(capabilitiesFetcher({ registry })),
+    );
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    // The tool still answers; the community tier just contributes nothing.
+    expect(result.isError).toBeFalsy();
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates.filter((c) => c.source === "community")).toEqual([]);
+  });
+
+  it("does not cache a failure — the next call retries", async () => {
+    let attempt = 0;
+    const fetcher = capabilitiesFetcher({
+      registry: () => {
+        attempt += 1;
+        if (attempt === 1) return { ok: false, json: async () => ({}) };
+        return {
+          ok: true,
+          json: async () => ({
+            skills: [{ repo_url: PDFPLUMBER, goal_pattern: "extract tables from pdfs" }],
+          }),
+        };
+      },
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpBackedServices(fetcher));
+
+    const first = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(
+      (first.content as { candidates: FindRepoCandidate[] }).candidates,
+    ).toHaveLength(0);
+
+    const second = await tool.handler({ goal: "extract tables from a PDF" });
+    expect((second.content as { candidates: FindRepoCandidate[] }).candidates[0]!.source).toBe(
+      "community",
+    );
+  });
+});
+
+describe("default trending client", () => {
+  const TRENDING_ENTRY = {
+    repo_url: CAMELOT,
+    owner: "camelot-dev",
+    name: "camelot",
+    description: "PDF table extraction for humans",
+    stars_gained: 400,
+  };
+
+  it("fetches both the daily and weekly snapshots", async () => {
+    const periods: string[] = [];
+    const fetcher = capabilitiesFetcher({
+      trending: (period) => {
+        periods.push(period);
+        return { ok: true, json: async () => ({ period, repos: [] }) };
+      },
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpBackedServices(fetcher));
+
+    await tool.handler({ goal: "extract tables from a PDF" });
+    expect(periods.sort()).toEqual(["daily", "weekly"]);
+  });
+
+  it("injects a trending repo the github tier never returned", async () => {
+    const fetcher = capabilitiesFetcher({
+      trending: (period) => ({
+        ok: true,
+        json: async () => ({
+          period,
+          repos: period === "daily" ? [TRENDING_ENTRY] : [],
+        }),
+      }),
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpBackedServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates.map((c) => c.repo_url)).toContain(CAMELOT);
+  });
+
+  it("caches each period separately for the process lifetime", async () => {
+    const requests: string[] = [];
+    const fetcher = capabilitiesFetcher({
+      onRequest: (u) => {
+        if (u.includes("trending-")) requests.push(u);
+      },
+      trending: (period) => ({
+        ok: true,
+        json: async () => ({ period, repos: [] }),
+      }),
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpBackedServices(fetcher));
+
+    await tool.handler({ goal: "extract tables from a PDF" });
+    await tool.handler({ goal: "extract tables from a PDF" });
+    // Two periods, fetched once each — the second handler call is served
+    // entirely from the per-period cache.
+    expect(requests).toHaveLength(2);
+  });
+
+  it("negative-caches a non-200 so an outage isn't hammered every call", async () => {
+    const requests: string[] = [];
+    const fetcher = capabilitiesFetcher({
+      onRequest: (u) => {
+        if (u.includes("trending-")) requests.push(u);
+      },
+      trending: () => ({ ok: false, json: async () => ({}) }),
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpBackedServices(fetcher));
+
+    await tool.handler({ goal: "extract tables from a PDF" });
+    await tool.handler({ goal: "extract tables from a PDF" });
+    // Unlike the registry client, a miss here IS cached — the empty
+    // snapshot is stored under the same 1h TTL.
+    expect(requests).toHaveLength(2);
+  });
+
+  it("negative-caches a transport failure too", async () => {
+    const requests: string[] = [];
+    const fetcher = capabilitiesFetcher({
+      onRequest: (u) => {
+        if (u.includes("trending-")) requests.push(u);
+      },
+      trending: () => {
+        throw new Error("ECONNREFUSED");
+      },
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpBackedServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+    await tool.handler({ goal: "extract tables from a PDF" });
+    expect(requests).toHaveLength(2);
+  });
+
+  it("reuses a precomputed embedding instead of calling the embed service", async () => {
+    const embeddings = fakeEmbeddingsAllMatch();
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        ...httpBackedServices(
+          capabilitiesFetcher({
+            trending: (period) => ({
+              ok: true,
+              json: async () => ({
+                period,
+                // fetch-trending.ts writes these into the snapshot so the
+                // hot path doesn't pay an embed call per repo.
+                repos: period === "daily" ? [{ ...TRENDING_ENTRY, embedding: [1, 0] }] : [],
+              }),
+            }),
+          }),
+        ),
+        embeddings,
+      },
+    );
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates.map((c) => c.repo_url)).toContain(CAMELOT);
+    // The goal itself still gets embedded; the trending entry does not.
+    expect(embeddings.embedBatch).not.toHaveBeenCalled();
+  });
+
+  it("tolerates a snapshot whose repos field isn't an array", async () => {
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      httpBackedServices(
+        capabilitiesFetcher({
+          trending: (period) => ({
+            ok: true,
+            json: async () => ({ period, repos: "not an array" }),
+          }),
+        }),
+      ),
+    );
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates.filter((c) => c.source === "trending")).toEqual([]);
+  });
+});
+
+describe("find_repo tool — degraded dependencies", () => {
+  it("notes the outage and skips the semantic tiers when the goal won't embed", async () => {
+    const embeddings: EmbeddingService = {
+      type: "fake:broken",
+      embed: vi.fn(async () => {
+        throw new Error("provider 503");
+      }),
+      embedBatch: vi.fn(async () => []),
+    };
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        ...BASE_SERVICES(),
+        embeddings,
+        communityRegistry: {
+          fetch: vi.fn(async () => ({
+            skills: [{ repo_url: PDFPLUMBER, goal_pattern: "extract tables from pdfs" }],
+          })),
+        },
+        fetcher: githubFetcher([
+          { html_url: RANDOM, description: "a real tool", stargazers_count: 10 },
+        ]),
+      },
+    );
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+    const content = result.content as { candidates: FindRepoCandidate[]; notes: string[] };
+    expect(content.notes).toContainEqual(
+      expect.stringContaining("embedding goal failed (semantic tiers skipped)"),
+    );
+    // GitHub search still runs — the tool degrades rather than failing.
+    expect(content.candidates.map((c) => c.repo_url)).toEqual([RANDOM]);
+    expect(content.candidates.every((c) => c.source !== "community")).toBe(true);
+  });
+
+  it("notes a non-200 from GitHub search rather than failing the call", async () => {
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        ...BASE_SERVICES(),
+        fetcher: vi.fn(async () => ({
+          ok: false,
+          status: 403,
+          json: async () => ({}),
+        })) as unknown as typeof fetch,
+      },
+    );
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+    const content = result.content as { candidates: FindRepoCandidate[]; notes: string[] };
+    expect(content.notes).toContainEqual(
+      expect.stringContaining("GitHub search failed: GitHub search 403"),
+    );
+    expect(content.candidates).toEqual([]);
+  });
+});
