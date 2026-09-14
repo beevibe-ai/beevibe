@@ -10,9 +10,11 @@
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { FactType, MemoryScope } from "@beevibe/core";
 import type { PromotionEvent } from "./types.js";
+import { clampLimit, type LimitBounds } from "../pagination.js";
 
-const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 500;
+/** Default 100 events, ceiling 500. */
+const PROMOTIONS_LIMIT: LimitBounds = { fallback: 100, max: 500 };
+
 const SESSION_PREVIEW = 3;
 
 // memory_promotion_event.fact_id has ON DELETE CASCADE, so an event row
@@ -65,10 +67,7 @@ export async function listPromotions(
   ownerId: string,
   filter: PromotionsFilter = {},
 ): Promise<PromotionEvent[]> {
-  const limit = Math.min(
-    Math.max(1, filter.limit ?? DEFAULT_LIMIT),
-    MAX_LIMIT,
-  );
+  const limit = clampLimit(filter.limit, PROMOTIONS_LIMIT);
   const { rows } = await pool.query<EventRow>(LIST_SQL, [ownerId, limit]);
   return rows.map(rowToPromotionEvent);
 }

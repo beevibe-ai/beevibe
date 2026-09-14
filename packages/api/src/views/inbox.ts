@@ -19,9 +19,11 @@
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { InboxItem, InboxItemKind } from "./types.js";
+import { clampLimit, type LimitBounds } from "../pagination.js";
 
-const DEFAULT_LIMIT = 50;
-const MAX_LIMIT = 200;
+/** Default 50 items, ceiling 200. */
+const INBOX_LIMIT: LimitBounds = { fallback: 50, max: 200 };
+
 const TITLE_TRUNCATE = 120;
 
 /**
@@ -120,10 +122,7 @@ export async function listInbox(
   personId: string,
   filter: InboxFilter = {},
 ): Promise<InboxItem[]> {
-  const limit = Math.min(
-    Math.max(1, filter.limit ?? DEFAULT_LIMIT),
-    MAX_LIMIT,
-  );
+  const limit = clampLimit(filter.limit, INBOX_LIMIT);
   const { rows } = await pool.query<InboxRow>(LIST_SQL, [personId, limit]);
   return rows.map((row) => ({
     id: row.id,
