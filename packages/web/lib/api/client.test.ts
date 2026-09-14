@@ -92,7 +92,7 @@ describe("api client (reads)", () => {
     });
   });
 
-  describe("deferred surfaces (paths set; backend not yet shipped)", () => {
+  describe("read-only dashboard surfaces", () => {
     it("promotions.list() hits /promotion", async () => {
       await api.promotions.list();
       expect(fetchJsonMock).toHaveBeenCalledWith("/promotion", { signal: undefined });

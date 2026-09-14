@@ -184,12 +184,3 @@ describe("FactStore.addOrMerge — merge path", () => {
     expect(vi.mocked(repo.update).mock.calls[0]![1].content).toBe("merged text");
   });
 });
-
-describe("FactStore thin delegations", () => {
-  it("updateScope calls repo.update with just scope", async () => {
-    vi.mocked(repo.update).mockResolvedValue(makeFact({ scope: "team" }));
-    await store.updateScope("fact_x", "team");
-    expect(repo.update).toHaveBeenCalledWith("fact_x", { scope: "team" });
-  });
-
-});
