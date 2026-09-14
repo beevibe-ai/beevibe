@@ -992,14 +992,14 @@ describe("GET /promotion", () => {
     expect(vi.mocked(listPromotions).mock.calls[0]![2]).toEqual({ limit: undefined });
   });
 
-  it("passes an empty limit through as 0", async () => {
-    // `Number("")` is 0, which is finite — so `?limit=` reaches the
-    // composer as an explicit zero rather than falling back to the
-    // default. Pinned as current behavior, not endorsed: unlike /inbox
-    // and /activity this route has no lower-bound clamp.
+  it("drops an empty limit rather than reading it as zero", async () => {
+    // `Number("")` is 0, which is finite — so `?limit=` used to reach the
+    // composer as an explicit zero, and the composer's `Math.max(1, …)`
+    // turned it into a one-row page. `parseLimit` treats a named-but-blank
+    // param as absent, so it falls back to the composer's default.
     await request(makeApp()).get("/promotion?limit=");
 
-    expect(vi.mocked(listPromotions).mock.calls[0]![2]).toEqual({ limit: 0 });
+    expect(vi.mocked(listPromotions).mock.calls[0]![2]).toEqual({ limit: undefined });
   });
 
   it("500s when the composer throws", async () => {
@@ -1125,23 +1125,38 @@ describe("GET /work-product/:id", () => {
 // ── GET /inbox and /activity ─────────────────────────────────────────────
 
 describe("GET /inbox", () => {
-  it("defaults the limit to 50", async () => {
+  // The band (default 50, ceiling 200) belongs to `views/inbox.ts`, which
+  // bounds whatever it is handed — see its own tests. The route's job is
+  // narrower: read the query param, or leave it to the composer's default.
+  it("leaves an absent limit to the composer's default", async () => {
     await request(makeApp()).get("/inbox");
 
-    expect(vi.mocked(listInbox).mock.calls[0]![2]).toEqual({ limit: 50 });
+    expect(vi.mocked(listInbox).mock.calls[0]![2]).toEqual({ limit: undefined });
   });
 
-  it("honours a limit inside the 1..200 band", async () => {
+  it("forwards a limit the caller asked for", async () => {
     await request(makeApp()).get("/inbox?limit=200");
 
     expect(vi.mocked(listInbox).mock.calls[0]![2]).toEqual({ limit: 200 });
   });
 
-  it.each(["0", "-5", "201", "abc"])("clamps an out-of-band limit %j to 50", async (limit) => {
+  it.each(["abc", ""])("drops an unreadable limit %j", async (limit) => {
     await request(makeApp()).get(`/inbox?limit=${limit}`);
 
-    expect(vi.mocked(listInbox).mock.calls[0]![2]).toEqual({ limit: 50 });
+    expect(vi.mocked(listInbox).mock.calls[0]![2]).toEqual({ limit: undefined });
   });
+
+  it.each(["0", "-5", "201"])(
+    "forwards an out-of-band limit %j for the composer to clamp",
+    async (limit) => {
+      // Behavior change: this used to fall back to 50, so ?limit=201
+      // quietly served 50 rows instead of the 200 on offer. It now clamps
+      // to the band, matching /find-repo and the composers.
+      await request(makeApp()).get(`/inbox?limit=${limit}`);
+
+      expect(vi.mocked(listInbox).mock.calls[0]![2]).toEqual({ limit: Number(limit) });
+    },
+  );
 
   it("500s when the composer throws", async () => {
     vi.mocked(listInbox).mockRejectedValueOnce(new Error("pg down"));
@@ -1151,23 +1166,33 @@ describe("GET /inbox", () => {
 });
 
 describe("GET /activity", () => {
-  it("defaults the limit to 20", async () => {
+  // Band (default 20, ceiling 100) lives in `views/activity.ts` now.
+  it("leaves an absent limit to the composer's default", async () => {
     await request(makeApp()).get("/activity");
 
-    expect(vi.mocked(listActivity).mock.calls[0]![2]).toBe(20);
+    expect(vi.mocked(listActivity).mock.calls[0]![2]).toBeUndefined();
   });
 
-  it("honours a limit inside the 1..100 band", async () => {
+  it("forwards a limit the caller asked for", async () => {
     await request(makeApp()).get("/activity?limit=100");
 
     expect(vi.mocked(listActivity).mock.calls[0]![2]).toBe(100);
   });
 
-  it.each(["0", "-1", "101", "abc"])("clamps an out-of-band limit %j to 20", async (limit) => {
+  it.each(["abc", ""])("drops an unreadable limit %j", async (limit) => {
     await request(makeApp()).get(`/activity?limit=${limit}`);
 
-    expect(vi.mocked(listActivity).mock.calls[0]![2]).toBe(20);
+    expect(vi.mocked(listActivity).mock.calls[0]![2]).toBeUndefined();
   });
+
+  it.each(["0", "-1", "101"])(
+    "forwards an out-of-band limit %j for the composer to clamp",
+    async (limit) => {
+      await request(makeApp()).get(`/activity?limit=${limit}`);
+
+      expect(vi.mocked(listActivity).mock.calls[0]![2]).toBe(Number(limit));
+    },
+  );
 
   it("500s when the composer throws", async () => {
     vi.mocked(listActivity).mockRejectedValueOnce(new Error("pg down"));

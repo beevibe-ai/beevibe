@@ -17,6 +17,10 @@ import type {
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { createFindRepoTool } from "../tools/find-repo.js";
+import { clampLimit, parseLimit, type LimitBounds } from "../pagination.js";
+
+/** Default 5 matches, ceiling 10 — the ranker's cost is per-candidate. */
+const FIND_REPO_LIMIT: LimitBounds = { fallback: 5, max: 10 };
 
 export interface FindRepoRouterDeps {
   authMiddleware: RequestHandler;
@@ -37,8 +41,7 @@ export function createFindRepoRouter(deps: FindRepoRouterDeps): Router {
       res.status(400).json({ error: "missing_goal" });
       return;
     }
-    const limitParam = typeof req.query.limit === "string" ? Number(req.query.limit) : 5;
-    const limit = Number.isFinite(limitParam) ? Math.min(10, Math.max(1, Math.floor(limitParam))) : 5;
+    const limit = clampLimit(parseLimit(req.query.limit), FIND_REPO_LIMIT);
 
     try {
       // The ranker scopes learned_skill lookups to the calling agent's

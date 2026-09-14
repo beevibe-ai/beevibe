@@ -13,6 +13,10 @@
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { HierarchyLevel, SessionStatus, SessionType } from "@beevibe/core";
 import { deriveShortId, formatDurationLabel } from "./format.js";
+import { clampLimit, type LimitBounds } from "../pagination.js";
+
+/** Default 20 entries, ceiling 100. */
+const ACTIVITY_LIMIT: LimitBounds = { fallback: 20, max: 100 };
 
 export interface ActivityEntry {
   id: string;
@@ -69,9 +73,12 @@ LIMIT $2
 export async function listActivity(
   pool: Pool,
   ownerId: string,
-  limit = 20,
+  limit?: number,
 ): Promise<ActivityEntry[]> {
-  const { rows } = await pool.query<ActivityRow>(LIST_SQL, [ownerId, limit]);
+  const { rows } = await pool.query<ActivityRow>(LIST_SQL, [
+    ownerId,
+    clampLimit(limit, ACTIVITY_LIMIT),
+  ]);
   return rows.map((row) => ({
     id: row.id,
     short_id: deriveShortId(row.id),

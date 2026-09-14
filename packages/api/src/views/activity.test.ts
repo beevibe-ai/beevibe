@@ -28,10 +28,31 @@ describe("listActivity", () => {
     expect(pool._spy).toHaveBeenCalledWith(expect.any(String), ["per_w", 20]);
   });
 
-  it("forwards an explicit limit verbatim", async () => {
+  it("forwards an in-band explicit limit", async () => {
     const pool = makeMockPool([]);
     await listActivity(pool, "per_w", 5);
     expect(pool._spy).toHaveBeenCalledWith(expect.any(String), ["per_w", 5]);
+  });
+
+  it("clamps limit to [1, 100] and defaults to 20", async () => {
+    // The band used to live only in `GET /activity`, leaving the composer
+    // to hand whatever it was given straight to `LIMIT $2`. It bounds its
+    // own input now, like the other three list views.
+    const pool = makeMockPool([]);
+    await listActivity(pool, "per_w", 9999);
+    expect(pool._spy).toHaveBeenCalledWith(expect.any(String), ["per_w", 100]);
+
+    await listActivity(pool, "per_w", 0);
+    expect(pool._spy).toHaveBeenCalledWith(expect.any(String), ["per_w", 1]);
+
+    await listActivity(pool, "per_w", NaN);
+    expect(pool._spy).toHaveBeenCalledWith(expect.any(String), ["per_w", 20]);
+  });
+
+  it("floors a fractional limit rather than handing pg a non-bigint", async () => {
+    const pool = makeMockPool([]);
+    await listActivity(pool, "per_w", 7.9);
+    expect(pool._spy).toHaveBeenCalledWith(expect.any(String), ["per_w", 7]);
   });
 
   it("returns an empty list when the owner has no sessions", async () => {
