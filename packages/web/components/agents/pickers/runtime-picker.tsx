@@ -18,43 +18,11 @@ import {
   useAgentSettingMutation,
 } from "@/components/agents/pickers/picker-card";
 import type { AgentDisplay } from "@/lib/api/types";
-
-type RuntimeOption = {
-  id: string;
-  cli: string;
-  cli_version?: string;
-  online: boolean;
-  device: string;
-};
-
-type DaemonGroup = {
-  device: string;
-  runtimes: RuntimeOption[];
-};
-
-function groupRuntimesByDaemon(
-  data: RuntimesListResponse | undefined,
-): DaemonGroup[] {
-  if (!data) return [];
-  return data.daemons.map((d) => ({
-    device: d.device_name ?? d.external_id,
-    runtimes: d.runtimes.map((r) => ({
-      id: r.id,
-      cli: r.cli,
-      cli_version: r.cli_version,
-      online: r.online,
-      device: d.device_name ?? d.external_id,
-    })),
-  }));
-}
-
-function flattenRuntimes(groups: DaemonGroup[]): RuntimeOption[] {
-  return groups.flatMap((g) => g.runtimes);
-}
-
-function shortRuntimeLabel(r: RuntimeOption): string {
-  return r.cli_version ? `${r.cli} ${r.cli_version}` : r.cli;
-}
+import {
+  flattenRuntimes,
+  groupRuntimesByDaemon,
+  shortRuntimeLabel,
+} from "@/lib/runtime-options";
 
 function useRuntimesQuery() {
   return useQuery<RuntimesListResponse>({

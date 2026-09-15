@@ -26,6 +26,10 @@ import type {
   SessionEventKind,
   SessionStatus,
   SessionType,
+  WorkProductType,
+  OpenView,
+  RepoCard,
+  SuggestedAction,
 } from "@beevibe/core";
 
 /**
@@ -793,6 +797,123 @@ export interface AgentNetwork {
   peers: AgentPeerOwner[];
 }
 
+// ── Work product detail ─────────────────────────────────────────────────────
+
+/**
+ * Single work product, as `GET /view/work-product/:id` returns it.
+ *
+ * Assembled by `views/work-product.ts`, which is where this used to be
+ * declared — out of reach of the `./views/types` subpath export, so the
+ * web client had hand-copied it. The copy had inlined `WorkProductType`
+ * as a nine-member string union, which would have gone quietly stale the
+ * next time core gained a work-product kind.
+ */
+export interface WorkProductDetail {
+  id: string;
+  task_id: string;
+  task_short_id: string;
+  task_title: string;
+  agent_id: string;
+  agent_label: string;
+  type: WorkProductType;
+  title: string;
+  summary?: string;
+  url?: string;
+  provider?: string;
+  external_id?: string;
+  /**
+   * Full deliverable content. Sourced from `work_product.body` when set;
+   * otherwise falls back to reading a `file://` URL from disk. Truncated
+   * to 256 KB.
+   */
+  body?: string;
+  /** True when `url` is file:// — UI uses this to suppress an unclickable link. */
+  url_is_local: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Runtimes panel — `GET /runtimes` ────────────────────────────────────────
+
+/**
+ * A CLI runtime registered by one of the caller's daemons.
+ *
+ * Note the nullable fields: the route projects absent values as `null`,
+ * not by omitting the key. The web client's hand-written copy of this
+ * interface had them as optional (`cli_version?: string`), which is a
+ * different type from what the wire actually carries — every `=== undefined`
+ * check against one of them was dead code waiting to happen.
+ */
+export interface RuntimePanelEntry {
+  id: string;
+  cli: string;
+  cli_version: string | null;
+  /** ISO last_heartbeat, or null when the runtime has never beat. */
+  last_heartbeat: string | null;
+  /** True iff a daemon WS client subscribed to this runtime is connected. */
+  online: boolean;
+  capabilities: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface DaemonPanelEntry {
+  id: string;
+  device_name: string;
+  external_id: string;
+  /** ISO last_seen_at — when the daemon last hit /runtime/heartbeat. */
+  last_seen_at: string | null;
+  created_at: string;
+  runtimes: RuntimePanelEntry[];
+}
+
+export interface RuntimesListResponse {
+  ok: true;
+  daemons: DaemonPanelEntry[];
+}
+
+// ── Rooms ───────────────────────────────────────────────────────────────────
+
+/**
+ * A room message as the room routes serialize it.
+ *
+ * Agent messages have had their `<suggest_action>` / `<open_view>`
+ * directives stripped from `content` and re-surfaced as siblings, so the
+ * markdown renderer never sees raw XML.
+ *
+ * `routes/room.ts` declared this privately as `MessageReply` and the web
+ * client declared it again as `RoomMessage`; the two were field-for-field
+ * identical, which is exactly the coincidence this module exists to stop
+ * relying on. Named `…Display` here, like the other DTOs, to keep it
+ * distinct from core's `RoomMessage` — the database row it is projected
+ * from. The web re-exports it under its own `RoomMessage` name.
+ */
+export interface RoomMessageDisplay {
+  id: string;
+  room_id: string;
+  kind: "human" | "agent";
+  content: string;
+  sender_person_id?: string;
+  sender_agent_id?: string;
+  session_id?: string;
+  /** Entity ids the agent referenced in this message, hydrated as cards. */
+  view_refs?: string[];
+  open_view?: OpenView;
+  suggested_actions?: SuggestedAction[];
+  repo_cards?: RepoCard[];
+  created_at: string;
+}
+
 // ── Re-exports of ambient types that web imports alongside the DTOs ─────────
 
 export type { TaskStatus };
+
+/**
+ * `GET /find-repo` hands back the ranker's own output verbatim, so the
+ * contract is the tool's type rather than a view DTO. Re-exported here so
+ * the web reaches it through the one subpath it already imports from,
+ * instead of keeping the hand-written copy it had — whose comment claimed
+ * a duplicate avoided "pulling the whole api package into the web bundle",
+ * though `import type` is erased at compile time and a dozen sibling
+ * modules in `lib/types/` already import from here.
+ */
+export type { CandidateSource, FindRepoCandidate } from "../tools/find-repo.js";

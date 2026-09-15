@@ -19,6 +19,7 @@ import {
   useRejectTask,
   useReviseTask,
 } from "@/lib/hooks/use-task-mutations";
+import { SaveCapabilityDialog } from "@/components/capabilities/save-capability-dialog";
 import { TaskLifecycleActions } from "@/components/tasks/task-lifecycle-actions";
 import { isTerminalTaskStatus } from "@/lib/task-status";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
@@ -578,10 +579,11 @@ function WorkProductCard({ wp }: { wp: WorkProduct }) {
         )}
       </div>
       {showSave && repoRunId && (
-        <SaveAsCapabilityModal
+        <SaveCapabilityDialog
           repoRunId={repoRunId}
           initialName={slugify(wp.title)}
           initialGoal={wp.summary ?? wp.title}
+          goalHint="Default comes from this work product's summary."
           onClose={() => setShowSave(false)}
         />
       )}
@@ -590,118 +592,6 @@ function WorkProductCard({ wp }: { wp: WorkProduct }) {
 }
 
 
-function SaveAsCapabilityModal({
-  repoRunId,
-  initialName,
-  initialGoal,
-  onClose,
-}: {
-  repoRunId: string;
-  initialName: string;
-  initialGoal: string;
-  onClose: () => void;
-}) {
-  const [name, setName] = useState(initialName);
-  const [goal, setGoal] = useState(initialGoal);
-  const [done, setDone] = useState(false);
-  const save = useMutation({
-    mutationFn: () =>
-      api.learnedSkills.create({ name, goal_pattern: goal, repo_run_id: repoRunId }),
-    onSuccess: () => setDone(true),
-  });
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50"
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
-      <div className="bg-card border rounded-lg shadow-xl w-full max-w-md mx-4 p-6">
-        <h2 className="text-base font-semibold mb-1">Save as capability</h2>
-        <p className="text-xs text-muted-foreground mb-4">
-          Remember this recipe so your agents can reuse it on similar tasks.
-        </p>
-        {done ? (
-          <div className="space-y-3">
-            <p className="text-sm text-green-600 dark:text-green-400">
-              ✓ Saved as <strong>{name}</strong>.
-            </p>
-            <Link
-              href="/capabilities"
-              className="block text-center w-full rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity"
-            >
-              View in Capabilities →
-            </Link>
-            <button
-              onClick={onClose}
-              className="w-full rounded-md border px-4 py-2 text-sm hover:bg-muted transition-colors"
-            >
-              Close
-            </button>
-          </div>
-        ) : (
-          <form
-            onSubmit={(e) => { e.preventDefault(); save.mutate(); }}
-            className="space-y-4"
-          >
-            <div>
-              <label className="text-xs font-medium text-muted-foreground block mb-1">
-                Capability name
-              </label>
-              <input
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                placeholder="extract-pdf-tables"
-                pattern="[a-z0-9-]{2,64}"
-                required
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                A short slug — lowercase letters, numbers, hyphens.
-              </p>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-muted-foreground block mb-1">
-                When should this trigger?
-              </label>
-              <textarea
-                value={goal}
-                onChange={(e) => setGoal(e.target.value)}
-                rows={3}
-                placeholder="e.g. when the user wants to extract tables from a PDF"
-                required
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Describe the situation in plain language. Agents match this to incoming tasks.
-              </p>
-            </div>
-            {save.error && (
-              <p className="text-xs text-red-500">
-                {save.error instanceof Error ? save.error.message : "Save failed"}
-              </p>
-            )}
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 rounded-md border px-4 py-2 text-sm hover:bg-muted transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={save.isPending}
-                className="flex-1 rounded-md bg-foreground text-background px-4 py-2 text-sm font-medium hover:opacity-90 transition-opacity disabled:opacity-50"
-              >
-                {save.isPending ? "Saving…" : "Save to library"}
-              </button>
-            </div>
-          </form>
-        )}
-      </div>
-    </div>
-  );
-}
 
 function SessionRow({ session, taskId }: { session: TaskDetailSessionRow; taskId: string }) {
   return (

@@ -18,6 +18,11 @@ import {
 } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
 import { api, type RuntimesListResponse } from "@/lib/api/client";
+import {
+  listRuntimeOptions,
+  shortRuntimeLabel,
+  type RuntimeOption,
+} from "@/lib/runtime-options";
 import { DaemonInstallInstructions } from "@/components/daemon-install";
 import { queryKeys } from "@/lib/hooks/keys";
 import { useMe } from "@/lib/hooks/use-me";
@@ -262,19 +267,7 @@ function PickRuntimeStep({
     refetchInterval: 3_000,
   });
 
-  const allRuntimes = useMemo(
-    () =>
-      (query.data?.daemons ?? []).flatMap((d) =>
-        d.runtimes.map((r) => ({
-          id: r.id,
-          cli: r.cli,
-          cli_version: r.cli_version,
-          online: r.online,
-          device: d.device_name ?? d.external_id,
-        })),
-      ),
-    [query.data],
-  );
+  const allRuntimes = useMemo(() => listRuntimeOptions(query.data), [query.data]);
 
   const [selected, setSelected] = useState<string | null>(null);
   // Auto-select the first online runtime to make the happy path one-click.
@@ -359,13 +352,7 @@ function RuntimeCard({
   selected,
   onSelect,
 }: {
-  runtime: {
-    id: string;
-    cli: string;
-    cli_version?: string;
-    online: boolean;
-    device: string;
-  };
+  runtime: RuntimeOption;
   selected: boolean;
   onSelect: () => void;
 }) {
@@ -385,8 +372,7 @@ function RuntimeCard({
         <div className="flex items-baseline gap-1.5">
           <span className="text-sm font-medium text-foreground">{runtime.device}</span>
           <span className="text-xs text-muted-foreground/70 font-mono">
-            · {runtime.cli}
-            {runtime.cli_version ? ` ${runtime.cli_version}` : ""}
+            · {shortRuntimeLabel(runtime)}
           </span>
         </div>
         <div className="text-[11px] text-muted-foreground">

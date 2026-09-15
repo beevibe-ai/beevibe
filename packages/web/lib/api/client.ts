@@ -42,6 +42,23 @@ import type { InboxItem } from "@/lib/types/inbox";
 import type { EscalationReviewDetail } from "@/lib/types/escalations";
 import type { NegotiationReviewDetail } from "@/lib/types/negotiations";
 import type { Lifecycle } from "@/lib/tasks-grouping";
+/**
+ * Response shapes the api declares. Imported rather than restated for the
+ * same reason `lib/types/*` imports its DTOs: the backend owns the wire
+ * contract, and a change to one of these shapes should fail `pnpm
+ * typecheck` here rather than drift silently. Each was a hand-written
+ * copy until it wasn't; see the re-export sites below for what each copy
+ * had got wrong.
+ */
+import type {
+  CandidateSource,
+  DaemonPanelEntry,
+  FindRepoCandidate,
+  RoomMessageDisplay,
+  RuntimePanelEntry,
+  RuntimesListResponse,
+  WorkProductDetail,
+} from "@beevibe/api/views/types";
 
 export type TaskView = "all" | "mine";
 
@@ -145,21 +162,13 @@ export type RoomMemberDetail =
       owner_person_id: string;
     };
 
-export interface RoomMessage {
-  id: string;
-  room_id: string;
-  kind: "human" | "agent";
-  content: string;
-  sender_person_id?: string;
-  sender_agent_id?: string;
-  session_id?: string;
-  /** Entity ids the agent referenced in this message, hydrated as cards. */
-  view_refs?: string[];
-  open_view?: OpenView;
-  suggested_actions?: SuggestedAction[];
-  repo_cards?: RepoCard[];
-  created_at: string;
-}
+/**
+ * The serialized room message, from the api's own declaration. It is
+ * `RoomMessageDisplay` there only to stay distinguishable from core's
+ * `RoomMessage` (the database row it projects); there is no such row on
+ * this side, so it keeps the shorter name here.
+ */
+export type RoomMessage = RoomMessageDisplay;
 
 export interface RoomTypingStep {
   event_id: string;
@@ -187,60 +196,22 @@ export interface RoomDetail {
   typing?: RoomTypingIndicator[];
 }
 
-export interface WorkProductDetail {
-  id: string;
-  task_id: string;
-  task_short_id: string;
-  task_title: string;
-  agent_id: string;
-  agent_label: string;
-  type:
-    | "pull_request"
-    | "branch"
-    | "commit"
-    | "document"
-    | "analysis"
-    | "report"
-    | "design"
-    | "artifact"
-    | "preview";
-  title: string;
-  summary?: string;
-  url?: string;
-  provider?: string;
-  external_id?: string;
-  /** Inlined file contents when url is file://. Render as markdown. */
-  body?: string;
-  url_is_local: boolean;
-  created_at: string;
-  updated_at: string;
-}
+/**
+ * `GET /view/work-product/:id`. The copy this replaced had spelled the
+ * work-product kind out as a nine-member string union rather than
+ * deferring to core's `WorkProductType`, so a tenth kind would have
+ * reached the UI typed as something it isn't.
+ */
+export type { WorkProductDetail };
 
-export interface RuntimePanelEntry {
-  id: string;
-  cli: string;
-  cli_version?: string;
-  /** True when a live WebSocket from this runtime is connected. */
-  online: boolean;
-  /** ISO last_heartbeat timestamp; absent when the runtime has never beat. */
-  last_heartbeat?: string;
-}
-
-export interface DaemonPanelEntry {
-  id: string;
-  device_name?: string;
-  external_id: string;
-  /** ISO created_at. */
-  created_at: string;
-  /** ISO last_seen_at — when the daemon last hit /runtime/heartbeat. */
-  last_seen_at?: string;
-  runtimes: RuntimePanelEntry[];
-}
-
-export interface RuntimesListResponse {
-  ok: true;
-  daemons: DaemonPanelEntry[];
-}
+/**
+ * `GET /runtimes`. The copy this replaced typed `cli_version`,
+ * `last_heartbeat`, `last_seen_at` and `device_name` as optional; the
+ * route sends `null` for each. Every call site tests them for
+ * truthiness, so nothing was visibly broken, but the declared type and
+ * the wire disagreed.
+ */
+export type { DaemonPanelEntry, RuntimePanelEntry, RuntimesListResponse };
 
 export interface SignupInput {
   name: string;
@@ -703,29 +674,16 @@ export interface ReferencedRepo {
 }
 
 /**
- * Mirrors the candidate shape that `packages/api/src/tools/find-repo.ts`
- * returns. Duplicating the type rather than importing it avoids
- * pulling the whole api package into the web bundle — the shape is
- * small + stable enough that a UI-side copy is cheaper than the
- * cross-package coupling.
+ * `GET /find-repo`, which returns the ranker's own output verbatim.
+ *
+ * This was a hand-written mirror of `packages/api/src/tools/find-repo.ts`,
+ * justified in a comment as avoiding "pulling the whole api package into
+ * the web bundle". That cost isn't real for `import type`: the import is
+ * erased at compile time and nothing reaches the bundle — which is why
+ * every module under `lib/types/` already imports its DTOs from the api
+ * package. `FindRepoSource` keeps its local name; it is api's
+ * `CandidateSource`.
  */
-export type FindRepoSource = "learned" | "community" | "trending" | "github";
-
-export interface FindRepoCandidate {
-  repo_url: string;
-  score: number;
-  source: FindRepoSource;
-  sources: FindRepoSource[];
-  reason: string;
-  stars?: number;
-  description?: string;
-  language?: string;
-  learned_skill?: {
-    id: string;
-    name: string;
-    goal_pattern: string;
-    invocation: string;
-  };
-}
+export type { CandidateSource as FindRepoSource, FindRepoCandidate };
 
 export type Api = typeof api;
