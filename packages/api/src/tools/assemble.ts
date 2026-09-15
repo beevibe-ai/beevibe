@@ -28,7 +28,27 @@ import { createFindRepoTool } from "./find-repo.js";
 import { buildWatchTools } from "./watch.js";
 import type { AgentTool } from "./types.js";
 
-export interface AssembleToolsServices {
+/**
+ * Everything the MCP tool surface needs to do its work, minus the
+ * per-session {@link MemoryAgent}.
+ *
+ * Split out from {@link AssembleToolsServices} because the `/mcp` router
+ * holds all of this for the lifetime of the process but cannot hold a
+ * `memoryAgent` — that one is built per session, closed over the calling
+ * agent's id, so its archival reads and writes land in the right agent's
+ * memory. `McpRouterDeps` extends this and adds the request-plumbing deps
+ * (auth middleware, session cache, session/person repos) that the tools
+ * themselves never see.
+ *
+ * Kept as one declaration because the router had redeclared all of it by
+ * hand — the same 17 fields with their own copies of the doc comments,
+ * which had already drifted ("audit log + per-parent daily cap" vs "audit
+ * + per-parent daily cap", "backs use_repo (creates repo_run rows)" vs
+ * "backs the use_repo MCP tool"). Wiring a new service into a tool meant
+ * editing the field list in three places and forgetting one of them was a
+ * type error in the fourth.
+ */
+export interface McpToolServices {
   factStore: FactStore;
   coreMemory: CoreMemory;
   agentRepo: AgentRepository;
@@ -39,7 +59,6 @@ export interface AssembleToolsServices {
   dispatchService: DispatchService;
   mesh: MeshServer;
   pool: Pool;
-  memoryAgent: MemoryAgent;
   /** Phase 9: backs `create_subordinate_agent` (seeds persona/domain blocks). */
   coreMemoryRepo: CoreMemoryBlockRepository;
   /** Phase 9: audit log + per-parent daily cap on subordinate spawning. */
@@ -54,6 +73,15 @@ export interface AssembleToolsServices {
   watchService: WatchService;
   /** Layer-3 memory: FTS over past conversation transcripts. */
   sessionSearch: SessionSearchService;
+}
+
+/**
+ * What {@link assembleTools} needs: {@link McpToolServices} plus the
+ * session's own `memoryAgent`, which the caller builds per session from
+ * the resolved agent id.
+ */
+export interface AssembleToolsServices extends McpToolServices {
+  memoryAgent: MemoryAgent;
 }
 
 /**
