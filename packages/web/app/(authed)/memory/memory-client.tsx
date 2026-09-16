@@ -20,6 +20,12 @@ import {
 import type { MemoryScope } from "@beevibe/core";
 import { ScopeTabs, type ScopeFilter } from "@/components/memory/scope-tabs";
 import { EmptyState } from "@/components/empty-state";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  LOAD_FAILED_DESCRIPTION,
+  apiNotConfiguredDescription,
+  loadFailedTitle,
+} from "@/components/load-gate";
 import { FactRowSkeleton } from "@/components/skeletons";
 import { FactTypeTag } from "@/components/fact-type-tag";
 import { ScopeChip } from "@/components/scope-chip";
@@ -142,8 +148,8 @@ function Body({
         <td colSpan={6}>
           <EmptyState
             icon={Sparkles}
-            title="No facts learned yet"
-            description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load memory."
+            title={API_NOT_CONFIGURED_TITLE}
+            description={apiNotConfiguredDescription("memory")}
           />
         </td>
       </tr>
@@ -154,7 +160,11 @@ function Body({
     return (
       <tr>
         <td colSpan={6}>
-          <EmptyState icon={AlertTriangle} title="Couldn't load memory" />
+          <EmptyState
+            icon={AlertTriangle}
+            title={loadFailedTitle("memory")}
+            description={LOAD_FAILED_DESCRIPTION}
+          />
         </td>
       </tr>
     );

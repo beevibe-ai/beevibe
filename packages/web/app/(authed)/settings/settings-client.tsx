@@ -11,6 +11,12 @@ import {
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
 import { EmptyState } from "@/components/empty-state";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  LOAD_FAILED_DESCRIPTION,
+  apiNotConfiguredDescription,
+  loadFailedTitle,
+} from "@/components/load-gate";
 import { Skeleton } from "@/components/skeleton";
 
 export function SettingsClient() {
@@ -35,7 +41,10 @@ export function SettingsClient() {
     return (
       <div className="flex-1 overflow-auto">
         <div className="max-w-3xl mx-auto px-6 py-8">
-          <EmptyState title="API not configured" description="Set NEXT_PUBLIC_BV_API_URL." />
+          <EmptyState
+            title={API_NOT_CONFIGURED_TITLE}
+            description={apiNotConfiguredDescription("your settings")}
+          />
         </div>
       </div>
     );
@@ -62,8 +71,8 @@ export function SettingsClient() {
             <Skeleton className="h-20 w-full rounded-lg" />
           ) : isError || !data ? (
             <EmptyState
-              title="Couldn't load preferences"
-              description="Try refreshing the page."
+              title={loadFailedTitle("preferences")}
+              description={LOAD_FAILED_DESCRIPTION}
             />
           ) : (
             <CapabilityNetworkToggle

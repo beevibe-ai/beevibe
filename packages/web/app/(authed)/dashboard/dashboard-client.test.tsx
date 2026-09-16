@@ -79,14 +79,14 @@ describe("DashboardClient", () => {
   it("renders the not-configured empty state and never fetches", () => {
     apiState.isApiConfigured = false;
     renderHome();
-    expect(screen.getByText("Dashboard not connected")).toBeInTheDocument();
+    expect(screen.getByText("API not configured")).toBeInTheDocument();
     expect(summaryMock).not.toHaveBeenCalled();
   });
 
   it("renders the error empty state when fetch fails", async () => {
     summaryMock.mockRejectedValue(new Error("boom"));
     renderHome();
-    expect(await screen.findByText("Couldn't load dashboard")).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load the dashboard")).toBeInTheDocument();
   });
 
   it("renders the Metrics header + KPIs + breakdown + fleet when data is loaded", async () => {

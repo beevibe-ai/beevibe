@@ -8,6 +8,11 @@ import { CoreBlockCard } from "@/components/agents/core-block-card";
 import { RecentSessionRow } from "@/components/agents/recent-session-row";
 import { RecentChatThreadRow } from "@/components/agents/recent-chat-thread-row";
 import { EmptyState } from "@/components/empty-state";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  apiNotConfiguredDescription,
+  loadFailedTitle,
+} from "@/components/load-gate";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
 import { isApiConfigured } from "@/lib/api/config";
@@ -49,8 +54,8 @@ function PanelBody({ agentId }: { agentId: string }) {
       <div className="p-4">
         <EmptyState
           icon={Bot}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL to load this agent."
+          title={API_NOT_CONFIGURED_TITLE}
+          description={apiNotConfiguredDescription("this agent")}
         />
       </div>
     );
@@ -71,7 +76,7 @@ function PanelBody({ agentId }: { agentId: string }) {
       <div className="p-4">
         <EmptyState
           icon={AlertTriangle}
-          title="Couldn't load agent"
+          title={loadFailedTitle("agent")}
           description={`Agent ${agentId} could not be fetched.`}
         />
       </div>

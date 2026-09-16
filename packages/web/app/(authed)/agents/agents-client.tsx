@@ -7,6 +7,12 @@ import type { PanZoomTransform } from "@/lib/hooks/use-pan-zoom";
 import { useAgentNetwork } from "@/lib/hooks/use-agent-network";
 import { isApiConfigured } from "@/lib/api/config";
 import { EmptyState } from "@/components/empty-state";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  LOAD_FAILED_DESCRIPTION,
+  apiNotConfiguredDescription,
+  loadFailedTitle,
+} from "@/components/load-gate";
 import { TeamOrbit } from "@/components/team-orbit";
 import { AgentDetailPanel } from "@/components/agents/agent-detail-panel";
 import { AgentsListView } from "@/components/agents/agents-list-view";
@@ -101,11 +107,15 @@ export function AgentsClient() {
       {!isApiConfigured ? (
         <CenteredShell
           icon={Bot}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load agents."
+          title={API_NOT_CONFIGURED_TITLE}
+          description={apiNotConfiguredDescription("agents")}
         />
       ) : isError ? (
-        <CenteredShell icon={AlertTriangle} title="Couldn't load the network" />
+        <CenteredShell
+          icon={AlertTriangle}
+          title={loadFailedTitle("agents")}
+          description={LOAD_FAILED_DESCRIPTION}
+        />
       ) : view === "list" ? (
         <AgentsListView
           agents={selfAgents}
