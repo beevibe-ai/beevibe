@@ -72,9 +72,12 @@ describe("TasksClient — empty-state branches", () => {
     apiState.isApiConfigured = false;
     renderClient();
 
-    expect(await screen.findByText("No tasks yet")).toBeInTheDocument();
+    // Not "No tasks yet" — an unset env var is a configuration problem,
+    // not an empty board, and saying otherwise sent users looking for
+    // tasks they did have.
+    expect(await screen.findByText("API not configured")).toBeInTheDocument();
     expect(
-      screen.getByText(/Set NEXT_PUBLIC_BV_API_URL and run the MCP server/i),
+      screen.getByText(/Set NEXT_PUBLIC_BV_API_URL and run the API server/i),
     ).toBeInTheDocument();
     expect(listMock).not.toHaveBeenCalled();
   });

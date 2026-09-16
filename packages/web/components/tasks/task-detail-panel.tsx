@@ -8,6 +8,11 @@ import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { PanelFooterField, PeekPanel } from "@/components/detail/peek-panel";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
 import { EmptyState } from "@/components/empty-state";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  apiNotConfiguredDescription,
+  loadFailedTitle,
+} from "@/components/load-gate";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
 import { isApiConfigured } from "@/lib/api/config";
@@ -61,8 +66,8 @@ function PanelBody({ taskId }: { taskId: string }) {
       <div className="p-4">
         <EmptyState
           icon={ListChecks}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL to load this task."
+          title={API_NOT_CONFIGURED_TITLE}
+          description={apiNotConfiguredDescription("this task")}
         />
       </div>
     );
@@ -83,7 +88,7 @@ function PanelBody({ taskId }: { taskId: string }) {
       <div className="p-4">
         <EmptyState
           icon={AlertTriangle}
-          title="Couldn't load task"
+          title={loadFailedTitle("task")}
           description={`Task ${taskId} could not be fetched.`}
         />
       </div>

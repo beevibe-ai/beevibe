@@ -10,6 +10,12 @@ import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  LOAD_FAILED_DESCRIPTION,
+  apiNotConfiguredDescription,
+  loadFailedTitle,
+} from "@/components/load-gate";
 import { formatRelativeTime, shortId } from "@/lib/format";
 
 export function RoomsListClient() {
@@ -46,8 +52,8 @@ export function RoomsListClient() {
       <div className="p-6">
         <EmptyState
           icon={MessageCircleMore}
-          title="Web isn't configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the api server."
+          title={API_NOT_CONFIGURED_TITLE}
+          description={apiNotConfiguredDescription("rooms")}
         />
       </div>
     );
@@ -111,8 +117,8 @@ export function RoomsListClient() {
         ) : isError ? (
           <EmptyState
             icon={AlertTriangle}
-            title="Couldn't load rooms"
-            description="Check that the api server is reachable."
+            title={loadFailedTitle("rooms")}
+            description={LOAD_FAILED_DESCRIPTION}
           />
         ) : (data?.rooms ?? []).length === 0 ? (
           <EmptyState

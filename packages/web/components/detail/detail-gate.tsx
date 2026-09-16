@@ -5,6 +5,11 @@ import { AlertTriangle, type LucideIcon } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
 import { DetailShell } from "./detail-shell";
 import { EmptyState } from "@/components/empty-state";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  apiNotConfiguredDescription,
+  loadFailedTitle,
+} from "@/components/load-gate";
 
 interface Props<T> {
   /**
@@ -41,6 +46,9 @@ interface Props<T> {
  * and half the pages ended the fetch error with "Check the MCP server logs"
  * while the other half dropped the hint. Both messages are derived from
  * `noun` here, so a page can't word them a fourth way.
+ *
+ * The strings themselves live in `components/load-gate`, shared with the
+ * list pages' `ListGate` — the same drift had to be undone there too.
  */
 export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }: Props<T>) {
   if (!isApiConfigured) {
@@ -48,8 +56,8 @@ export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }
       <DetailShell nav={nav}>
         <EmptyState
           icon={icon}
-          title="API not configured"
-          description={`Set NEXT_PUBLIC_BV_API_URL and run the API server to load this ${noun}.`}
+          title={API_NOT_CONFIGURED_TITLE}
+          description={apiNotConfiguredDescription(`this ${noun}`)}
         />
       </DetailShell>
     );
@@ -65,7 +73,7 @@ export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }
       <DetailShell nav={nav}>
         <EmptyState
           icon={AlertTriangle}
-          title={`Couldn't load ${noun}`}
+          title={loadFailedTitle(noun)}
           description={`${Noun} ${id} could not be fetched. Check the API server logs.`}
         />
       </DetailShell>

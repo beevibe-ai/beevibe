@@ -6,6 +6,12 @@ import { AlertTriangle, ArrowLeft, BarChart3 } from "lucide-react";
 import { useMemoryActivity } from "@/lib/hooks/use-memory-activity";
 import { isApiConfigured } from "@/lib/api/config";
 import { EmptyState } from "@/components/empty-state";
+import {
+  API_NOT_CONFIGURED_TITLE,
+  LOAD_FAILED_DESCRIPTION,
+  apiNotConfiguredDescription,
+  loadFailedTitle,
+} from "@/components/load-gate";
 import { Skeleton } from "@/components/skeleton";
 import { DatePicker, todayIso } from "@/components/date-picker";
 import type {
@@ -50,8 +56,8 @@ export function MemoryEvalClient() {
     return (
       <EmptyState
         icon={BarChart3}
-        title="Memory eval not connected"
-        description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load Layer A activity telemetry."
+        title={API_NOT_CONFIGURED_TITLE}
+        description={apiNotConfiguredDescription("memory activity")}
       />
     );
   }
@@ -59,8 +65,8 @@ export function MemoryEvalClient() {
     return (
       <EmptyState
         icon={AlertTriangle}
-        title="Couldn't load memory activity"
-        description="Check that the api server is reachable."
+        title={loadFailedTitle("memory activity")}
+        description={LOAD_FAILED_DESCRIPTION}
       />
     );
   }
