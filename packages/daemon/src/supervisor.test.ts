@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
-import { Supervisor } from "./supervisor.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { DEFAULT_MAX_CONCURRENT, Supervisor } from "./supervisor.js";
 
 describe("Supervisor", () => {
   it("respects maxConcurrent: hasCapacity flips to false at the cap", () => {
@@ -46,5 +46,53 @@ describe("Supervisor", () => {
     s.cancelAll();
     expect(abortCount).toBe(3);
     expect(s.inFlight()).toBe(0);
+  });
+});
+
+/**
+ * `runStart` builds the Supervisor with no argument, so the env-derived
+ * default is the only cap production ever uses — a bad parse silently
+ * un-bounding (or zero-bounding) concurrent CLI spawns is the failure
+ * mode these guard.
+ */
+describe("Supervisor — cap from BEEVIBE_DAEMON_MAX_CONCURRENT", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  function capOf(supervisor: Supervisor): number {
+    let n = 0;
+    while (supervisor.hasCapacity()) {
+      supervisor.start(`sess_${n++}`);
+    }
+    return n;
+  }
+
+  it("defaults to 10 when the env var is unset", () => {
+    vi.stubEnv("BEEVIBE_DAEMON_MAX_CONCURRENT", undefined);
+
+    expect(capOf(new Supervisor())).toBe(DEFAULT_MAX_CONCURRENT);
+    expect(DEFAULT_MAX_CONCURRENT).toBe(10);
+  });
+
+  it("uses the env var when it parses to a positive integer", () => {
+    vi.stubEnv("BEEVIBE_DAEMON_MAX_CONCURRENT", "3");
+
+    expect(capOf(new Supervisor())).toBe(3);
+  });
+
+  it.each(["", "not-a-number", "0", "-1"])(
+    "falls back to the default for %j rather than un-bounding spawns",
+    (raw) => {
+      vi.stubEnv("BEEVIBE_DAEMON_MAX_CONCURRENT", raw);
+
+      expect(capOf(new Supervisor())).toBe(DEFAULT_MAX_CONCURRENT);
+    },
+  );
+
+  it("takes an explicit constructor cap over the env var", () => {
+    vi.stubEnv("BEEVIBE_DAEMON_MAX_CONCURRENT", "9");
+
+    expect(capOf(new Supervisor(2))).toBe(2);
   });
 });
