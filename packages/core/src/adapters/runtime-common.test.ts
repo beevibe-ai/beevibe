@@ -5,6 +5,8 @@ import {
   cancelledResult,
   createStdoutLineReader,
   finalizeCliResult,
+  TranscriptBuilder,
+  transcriptDetail,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -145,5 +147,106 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+describe("transcriptDetail", () => {
+  it("returns empty for absent or empty input", () => {
+    expect(transcriptDetail(undefined)).toBe("");
+    expect(transcriptDetail(null)).toBe("");
+    expect(transcriptDetail("")).toBe("");
+  });
+
+  it("flattens newlines to spaces so one entry stays one line", () => {
+    expect(transcriptDetail("line one\nline two\nline three")).toBe(
+      "line one line two line three",
+    );
+  });
+
+  it("truncates to 200 chars", () => {
+    expect(transcriptDetail("x".repeat(500))).toHaveLength(200);
+  });
+
+  it("truncates before flattening, matching the pre-extraction parsers", () => {
+    // The old inline form was `.slice(0, 200).replace(/\n/g, " ")` in all
+    // three adapters. Order matters: a newline past char 200 is cut, not
+    // converted, so the result is still exactly 200 chars.
+    const out = transcriptDetail("a".repeat(250) + "\ntail");
+    expect(out).toBe("a".repeat(200));
+    expect(out).toHaveLength(200);
+  });
+});
+
+describe("TranscriptBuilder", () => {
+  it("builds undefined when nothing was recorded", () => {
+    expect(new TranscriptBuilder().build()).toBeUndefined();
+  });
+
+  it("formats an assistant line", () => {
+    expect(new TranscriptBuilder().assistant("hello").build()).toBe("[assistant] hello\n");
+  });
+
+  it("formats a bare tool call", () => {
+    expect(new TranscriptBuilder().toolCall("Read").build()).toBe("[tool_call] Read\n");
+  });
+
+  it("appends a detail to a tool call when one is given", () => {
+    expect(new TranscriptBuilder().toolCall("shell", "pnpm build").build()).toBe(
+      "[tool_call] shell pnpm build\n",
+    );
+  });
+
+  it("keeps the trailing space for an empty tool-call detail", () => {
+    // Codex emitted `[tool_call] shell \n` for a command-less execution
+    // and its tests pin that exact string; passing "" must not silently
+    // collapse to the bare form.
+    expect(new TranscriptBuilder().toolCall("shell", "").build()).toBe("[tool_call] shell \n");
+  });
+
+  it("formats a tool result with a detail", () => {
+    expect(new TranscriptBuilder().toolResult("Read", "ok").build()).toBe(
+      "[tool_result from Read] ok\n",
+    );
+  });
+
+  it("drops the detail segment when the detail is empty", () => {
+    expect(new TranscriptBuilder().toolResult("Read", "").build()).toBe(
+      "[tool_result from Read]\n",
+    );
+    expect(new TranscriptBuilder().toolResult("Read").build()).toBe("[tool_result from Read]\n");
+  });
+
+  it("falls back to an opaque tool result when the tool name is unknown", () => {
+    expect(new TranscriptBuilder().toolResult(undefined, "ignored").build()).toBe(
+      "[tool_result]\n",
+    );
+  });
+
+  it("formats an error line", () => {
+    expect(new TranscriptBuilder().error("boom").build()).toBe("[error] boom\n");
+  });
+
+  it("concatenates entries in call order", () => {
+    const transcript = new TranscriptBuilder()
+      .assistant("thinking")
+      .toolCall("Read")
+      .toolResult("Read", "file contents")
+      .error("boom")
+      .build();
+
+    expect(transcript).toBe(
+      "[assistant] thinking\n" +
+        "[tool_call] Read\n" +
+        "[tool_result from Read] file contents\n" +
+        "[error] boom\n",
+    );
+  });
+
+  it("is chainable", () => {
+    const b = new TranscriptBuilder();
+    expect(b.assistant("a")).toBe(b);
+    expect(b.toolCall("t")).toBe(b);
+    expect(b.toolResult("t", "d")).toBe(b);
+    expect(b.error("e")).toBe(b);
   });
 });

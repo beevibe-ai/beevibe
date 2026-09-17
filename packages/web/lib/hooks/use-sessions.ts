@@ -1,14 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "./keys";
+import { useDetailQuery } from "./use-detail-query";
 
 export function useSession(shortId: string | undefined) {
-  return useQuery({
-    queryKey: shortId ? queryKeys.sessions.detail(shortId) : queryKeys.sessions.all,
-    queryFn: ({ signal }) => api.sessions.get(shortId as string, { signal }),
-    enabled: isApiConfigured && !!shortId,
-  });
+  return useDetailQuery(shortId, queryKeys.sessions, (sid, opts) =>
+    api.sessions.get(sid, opts),
+  );
 }
 
 /**
@@ -16,18 +13,22 @@ export function useSession(shortId: string | undefined) {
  * turn sharing the addressed session's `conversation_id`. Non-chat
  * sessions resolve to a single-turn conversation, so the detail page
  * renders them unchanged.
+ *
+ * Same id-keyed shape as `useSession`, under the `conversation` key slot
+ * rather than `detail` — hence the key pair spelled out here instead of
+ * passing the `queryKeys.sessions` group whole.
  */
 export function useConversation(shortId: string | undefined) {
-  return useQuery({
-    queryKey: shortId
-      ? queryKeys.sessions.conversation(shortId)
-      : queryKeys.sessions.all,
-    queryFn: ({ signal }) => api.sessions.conversation(shortId as string, { signal }),
-    enabled: isApiConfigured && !!shortId,
-    // A completed turn's transcript is immutable, so this potentially-large
-    // fetch (every turn × up to 500 events) needn't refetch on focus/idle.
-    // In-flight turns surface live via SSE, not this query. Cold loads still
-    // refetch on mount.
-    staleTime: 60_000,
-  });
+  return useDetailQuery(
+    shortId,
+    { all: queryKeys.sessions.all, detail: queryKeys.sessions.conversation },
+    (sid, opts) => api.sessions.conversation(sid, opts),
+    {
+      // A completed turn's transcript is immutable, so this potentially-large
+      // fetch (every turn × up to 500 events) needn't refetch on focus/idle.
+      // In-flight turns surface live via SSE, not this query. Cold loads still
+      // refetch on mount.
+      staleTime: 60_000,
+    },
+  );
 }

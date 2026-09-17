@@ -1,6 +1,11 @@
 import type { RuntimeResult, RuntimeStep } from "../../ports/runtime.js";
 import { bareCliExitMessage } from "../claude-code/stream-json.js";
-import { describeToolInput, parseNdjsonLine } from "../runtime-common.js";
+import {
+  describeToolInput,
+  parseNdjsonLine,
+  TranscriptBuilder,
+  transcriptDetail,
+} from "../runtime-common.js";
 
 /**
  * Parser for `codex exec --json` output.
@@ -195,7 +200,7 @@ export function parseCodexEvents(
   let assistantText = "";
   let turnFailed: string | undefined;
   let topLevelError: string | undefined;
-  const transcriptParts: string[] = [];
+  const transcript = new TranscriptBuilder();
 
   for (const evt of events) {
     switch (evt.type) {
@@ -210,29 +215,25 @@ export function parseCodexEvents(
         break;
       case CODEX_EVENT_TYPE.Error:
         topLevelError = evt.message ?? topLevelError;
-        if (evt.message) transcriptParts.push(`[error] ${evt.message}\n`);
+        if (evt.message) transcript.error(evt.message);
         break;
       case CODEX_EVENT_TYPE.ItemCompleted: {
         const item = evt.item;
         if (!item || !item.type) break;
         if (item.type === CODEX_ITEM_TYPE.AgentMessage && item.text) {
           assistantText = item.text;
-          transcriptParts.push(`[assistant] ${item.text}\n`);
+          transcript.assistant(item.text);
         } else if (item.type === CODEX_ITEM_TYPE.McpToolCall) {
           const tool = item.tool ?? "unknown";
-          transcriptParts.push(`[tool_call] ${tool}\n`);
+          transcript.toolCall(tool);
           const resultSummary = summarizeMcpResult(item.result);
           if (resultSummary || item.error?.message) {
-            transcriptParts.push(
-              `[tool_result from ${tool}] ${item.error?.message ?? resultSummary}\n`,
-            );
+            transcript.toolResult(tool, item.error?.message ?? resultSummary);
           }
         } else if (item.type === CODEX_ITEM_TYPE.CommandExecution) {
-          transcriptParts.push(`[tool_call] shell ${(item.command ?? "").slice(0, 200)}\n`);
+          transcript.toolCall("shell", (item.command ?? "").slice(0, 200));
           if (item.aggregated_output) {
-            transcriptParts.push(
-              `[tool_result from shell] ${item.aggregated_output.slice(0, 200).replace(/\n/g, " ")}\n`,
-            );
+            transcript.toolResult("shell", transcriptDetail(item.aggregated_output));
           }
         }
         break;
@@ -260,7 +261,7 @@ export function parseCodexEvents(
   return {
     status: failed ? "failed" : "completed",
     output,
-    transcript: transcriptParts.join("") || undefined,
+    transcript: transcript.build(),
     cli_session_id: threadId,
     usage: usage
       ? {
@@ -280,7 +281,7 @@ function summarizeMcpResult(result: { content?: unknown[] } | null | undefined):
   for (const block of result.content) {
     if (block && typeof block === "object" && (block as { type?: unknown }).type === "text") {
       const text = (block as { text?: unknown }).text;
-      if (typeof text === "string") return text.slice(0, 200).replace(/\n/g, " ");
+      if (typeof text === "string") return transcriptDetail(text);
     }
   }
   return JSON.stringify(result.content).slice(0, 200);

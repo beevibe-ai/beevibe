@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import type { LucideIcon } from "lucide-react";
-import { useQuery } from "@tanstack/react-query";
 import {
   AlertCircle,
   Bot,
@@ -17,13 +16,8 @@ import {
 } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
-import {
-  api,
-  type Room,
-} from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
 import { useInbox } from "@/lib/hooks/use-inbox";
-import { queryKeys } from "@/lib/hooks/keys";
+import { useRooms } from "@/lib/hooks/use-rooms";
 import { formatRelativeTime } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import type { InboxItem, InboxItemKind } from "@/lib/types/inbox";
@@ -110,12 +104,7 @@ export function AgentsSidebar({ pathname }: { pathname: string }) {
 // ── Rooms list ───────────────────────────────────────────────────────
 
 export function RoomsSidebar({ activeRoomId }: { activeRoomId?: string }) {
-  const { data, isLoading } = useQuery<{ ok: true; rooms: Room[] }>({
-    queryKey: queryKeys.rooms.list(),
-    queryFn: ({ signal }) => api.rooms.list({ signal }),
-    enabled: isApiConfigured,
-    staleTime: 30_000,
-  });
+  const { data, isLoading } = useRooms();
 
   const rooms = data?.rooms ?? [];
 

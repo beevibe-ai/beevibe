@@ -1,7 +1,12 @@
 import type { SessionUsage } from "../../domain/session.js";
 import type { RuntimeResult, RuntimeStep } from "../../ports/runtime.js";
 import { bareCliExitMessage } from "../claude-code/stream-json.js";
-import { describeToolInput, parseNdjsonLine } from "../runtime-common.js";
+import {
+  describeToolInput,
+  parseNdjsonLine,
+  TranscriptBuilder,
+  transcriptDetail,
+} from "../runtime-common.js";
 
 /**
  * Parser for `opencode run --format json` output.
@@ -149,7 +154,7 @@ export function parseOpenCodeEvents(
   let totalCacheWrite = 0;
   let totalCost = 0;
   const assistantTexts: string[] = [];
-  const transcriptParts: string[] = [];
+  const transcript = new TranscriptBuilder();
   let errorMessage: string | undefined;
 
   for (const evt of events) {
@@ -172,7 +177,7 @@ export function parseOpenCodeEvents(
         const text = evt.part?.text;
         if (text) {
           assistantTexts.push(text);
-          transcriptParts.push(`[assistant] ${text}\n`);
+          transcript.assistant(text);
         }
         break;
       }
@@ -182,20 +187,15 @@ export function parseOpenCodeEvents(
         const tool = part.tool ?? "unknown";
         const status = part.state?.status;
         if (status === OPENCODE_TOOL_STATUS.Completed || status === OPENCODE_TOOL_STATUS.Error) {
-          const detail = (part.state?.error ?? part.state?.output ?? "")
-            .slice(0, 200)
-            .replace(/\n/g, " ");
-          transcriptParts.push(
-            detail ? `[tool_result from ${tool}] ${detail}\n` : `[tool_result from ${tool}]\n`,
-          );
+          transcript.toolResult(tool, transcriptDetail(part.state?.error ?? part.state?.output));
         } else {
-          transcriptParts.push(`[tool_call] ${tool}\n`);
+          transcript.toolCall(tool);
         }
         break;
       }
       case OPENCODE_EVENT_TYPE.Error:
         errorMessage = evt.error?.message ?? evt.result?.error?.message ?? errorMessage;
-        if (errorMessage) transcriptParts.push(`[error] ${errorMessage}\n`);
+        if (errorMessage) transcript.error(errorMessage);
         break;
       default:
         break;
@@ -227,7 +227,7 @@ export function parseOpenCodeEvents(
   return {
     status: failed ? "failed" : "completed",
     output,
-    transcript: transcriptParts.join("") || undefined,
+    transcript: transcript.build(),
     cli_session_id: sessionId,
     usage,
   };

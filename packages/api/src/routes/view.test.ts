@@ -10,6 +10,7 @@
  * error contract clients branch on.
  */
 import express, { json } from "express";
+import { makeStubAuth } from "./test-helpers.js";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -145,21 +146,7 @@ function makePorts(overrides: Partial<Ports> = {}): Ports {
   };
 }
 
-function stubAuth(source: "human" | "agent" | "none") {
-  return (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    if (source === "human") {
-      req.caller = {
-        source: "human",
-        agentId: AGENT,
-        hierarchyLevel: "team",
-        personId: PERSON,
-      };
-    } else if (source === "agent") {
-      req.caller = { source: "agent", agentId: AGENT, hierarchyLevel: "ic" };
-    }
-    next();
-  };
-}
+const stubAuth = makeStubAuth({ personId: PERSON, agentId: AGENT });
 
 function makeApp(ports: Ports = makePorts(), source: "human" | "agent" | "none" = "human") {
   const app = express();
