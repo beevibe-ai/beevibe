@@ -151,16 +151,22 @@ In a sandbox with no Docker and no provider keys, these failures are
 | `DATABASE_URL_TEST env var is required…` | no Postgres |
 | `Cannot read properties of undefined (reading 'end')` in `afterAll` | knock-on from the above |
 | `OPENAI_API_KEY missing` / `ANTHROPIC_API_KEY missing` | no provider keys |
+| `OPENAI_API_KEY, ANTHROPIC_API_KEY env var(s) required…` | no provider keys (`routes/mcp.test.ts`) |
 
-Baseline in a bare sandbox (no Docker, no keys), for comparison rather
-than expecting green:
+Baseline in a bare sandbox (no Docker, no keys, `--exclude
+'**/*.e2e.test.ts'`), for comparison rather than expecting green. A
+"skipped" count is the un-run remainder of a suite that threw in
+`beforeAll`, plus the opt-in gated files (`smoke.test.ts`, the win32
+guards):
 
-| Package | Result |
-| --- | --- |
-| `@beevibe/api` | 27 files pass, 9 fail (308 tests pass) |
-| `@beevibe/core` | 9 tests fail, 415 pass |
-| `@beevibe/scheduler` | 2 files pass, 2 fail (10 tests pass) |
-| `@beevibe/sandbox` | exits 0 — its only suite is Docker-gated and skips |
+| Package | Files | Tests |
+| --- | --- | --- |
+| `@beevibe/api` | 43 pass, 10 fail | 820 pass, 110 skipped |
+| `@beevibe/core` | 39 pass, 20 fail, 1 skipped | 609 pass, 7 fail, 269 skipped |
+| `@beevibe/daemon` | 12 pass | 156 pass |
+| `@beevibe/scheduler` | 2 pass, 2 fail | 10 pass, 17 skipped |
+| `@beevibe/sandbox` | 4 pass | 109 pass |
+| `@beevibe/web` | 24 pass | 203 pass |
 
 `typecheck`, `lint`, and `build` need none of this and should always be
 clean — use them as the real gate when the DB isn't available.

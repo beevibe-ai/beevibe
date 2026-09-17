@@ -33,10 +33,30 @@ import { DEFAULT_RUNTIME_CONFIG, agentId, personId, sessionId } from "@beevibe/c
 import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
 import { bootstrap, type BootstrapResult } from "../bootstrap.js";
 
-const HAS_LIVE_API_KEYS =
-  Boolean(process.env.OPENAI_API_KEY) && Boolean(process.env.ANTHROPIC_API_KEY);
+/**
+ * Prerequisites fail loudly rather than silently skipping the suite —
+ * same contract as `createTestPool()`, and the one CONTRIBUTING.md and
+ * `.github/workflows/ci.yml` both state for the key-gated integration
+ * tests. A `describe.skipIf` here would make the suite vanish without a
+ * word on any checkout whose `.env` is missing a key.
+ */
+function requireLiveApiKeys(): { openaiApiKey: string; anthropicApiKey: string } {
+  const missing = (["OPENAI_API_KEY", "ANTHROPIC_API_KEY"] as const).filter(
+    (k) => !process.env[k],
+  );
+  if (missing.length > 0) {
+    throw new Error(
+      `${missing.join(", ")} env var(s) required for integration tests. ` +
+        "Set them in .env or export them before running vitest.",
+    );
+  }
+  return {
+    openaiApiKey: process.env.OPENAI_API_KEY!,
+    anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
+  };
+}
 
-describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
+describe("/mcp router — integration", () => {
   let pool: Pool;
   let agentRepo: PostgresAgentRepository;
   let personRepo: PostgresPersonRepository;
@@ -47,6 +67,7 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
   const port = 3987;
 
   beforeAll(async () => {
+    const { openaiApiKey, anthropicApiKey } = requireLiveApiKeys();
     pool = createTestPool();
     agentRepo = new PostgresAgentRepository(pool);
     personRepo = new PostgresPersonRepository(pool);
@@ -57,8 +78,8 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
     api = await bootstrap({
       databaseUrl: process.env.DATABASE_URL_TEST!,
       mcpServerUrl: `http://localhost:${port}/mcp`,
-      openaiApiKey: process.env.OPENAI_API_KEY!,
-      anthropicApiKey: process.env.ANTHROPIC_API_KEY!,
+      openaiApiKey,
+      anthropicApiKey,
       port,
     });
     await api.server.start();
