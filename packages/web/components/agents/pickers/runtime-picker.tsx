@@ -1,9 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
 import { api, type RuntimesListResponse } from "@/lib/api/client";
-import { queryKeys } from "@/lib/hooks/keys";
+import { useRuntimes } from "@/lib/hooks/use-runtimes";
 import {
   ChipCaret,
   ChipMenuItem,
@@ -56,14 +55,6 @@ function shortRuntimeLabel(r: RuntimeOption): string {
   return r.cli_version ? `${r.cli} ${r.cli_version}` : r.cli;
 }
 
-function useRuntimesQuery() {
-  return useQuery<RuntimesListResponse>({
-    queryKey: queryKeys.runtimes.list(),
-    queryFn: ({ signal }) => api.runtimes.list({ signal }),
-    staleTime: 30_000,
-  });
-}
-
 function useRuntimeMutation(agentId: string) {
   return useAgentSettingMutation((runtimeId: string | null) =>
     api.agents.setRuntime(agentId, runtimeId),
@@ -77,7 +68,7 @@ function useRuntimeMutation(agentId: string) {
  * popover with runtimes grouped by daemon.
  */
 export function RuntimeChip({ agent }: { agent: AgentDisplay }) {
-  const runtimesQuery = useRuntimesQuery();
+  const runtimesQuery = useRuntimes();
   const mutation = useRuntimeMutation(agent.id);
 
   const groups = groupRuntimesByDaemon(runtimesQuery.data);
@@ -174,7 +165,7 @@ export function RuntimeChip({ agent }: { agent: AgentDisplay }) {
  * hook so behavior stays in sync with the chip variant.
  */
 export function RuntimePicker({ agent }: { agent: AgentDisplay }) {
-  const runtimesQuery = useRuntimesQuery();
+  const runtimesQuery = useRuntimes();
   const mutation = useRuntimeMutation(agent.id);
   const all = flattenRuntimes(groupRuntimesByDaemon(runtimesQuery.data));
   const value = agent.preferred_runtime_id ?? "";

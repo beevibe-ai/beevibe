@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Bot,
@@ -13,6 +13,7 @@ import {
   Users,
 } from "lucide-react";
 import { useMe } from "@/lib/hooks/use-me";
+import { useRoom } from "@/lib/hooks/use-rooms";
 import { isApiConfigured } from "@/lib/api/config";
 import { api, type RoomDetail, type RoomMemberDetail, type RoomMessage } from "@/lib/api/client";
 import { ApiError, describeError } from "@/lib/api/http";
@@ -33,19 +34,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
   const [draft, setDraft] = useState("");
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
-  const { data, isLoading, isError } = useQuery<RoomDetail>({
-    queryKey: queryKeys.rooms.detail(roomId),
-    queryFn: ({ signal }) => api.rooms.get(roomId, { signal }),
-    enabled: isApiConfigured && !!roomId,
-    staleTime: 1_000,
-    // Polling fallback — cloudflared trycloudflare quick tunnels
-    // buffer SSE responses, so the bv_event channel often fails to
-    // propagate to remote browsers. SSE remains the fast path when
-    // it works (sub-second latency); this 3s poll guarantees the
-    // room view eventually catches up regardless of the tunnel.
-    refetchInterval: 3_000,
-    refetchIntervalInBackground: false,
-  });
+  const { data, isLoading, isError } = useRoom(roomId);
 
   // Optimistic UI: snapshot the message text on send, push it into
   // the cached room detail so the sender sees their own line

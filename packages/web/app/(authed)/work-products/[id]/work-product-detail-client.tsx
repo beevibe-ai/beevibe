@@ -1,16 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ChevronRight,
   ExternalLink,
   FileText,
 } from "lucide-react";
-import { api, type WorkProductDetail } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
-import { queryKeys } from "@/lib/hooks/keys";
+import { type WorkProductDetail } from "@/lib/api/client";
+import { useWorkProduct } from "@/lib/hooks/use-work-products";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
@@ -20,12 +18,7 @@ import { FooterField } from "@/components/detail/footer-field";
 import { formatRelativeTime, shortId } from "@/lib/format";
 
 export function WorkProductDetailClient({ workProductId }: { workProductId: string }) {
-  const query = useQuery<WorkProductDetail>({
-    queryKey: queryKeys.workProducts.detail(workProductId),
-    queryFn: ({ signal }) => api.workProducts.get(workProductId, { signal }),
-    enabled: isApiConfigured && !!workProductId,
-    staleTime: 30_000,
-  });
+  const query = useWorkProduct(workProductId);
 
   return (
     <DetailGate
