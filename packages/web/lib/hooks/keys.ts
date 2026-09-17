@@ -58,7 +58,6 @@ export const queryKeys = {
     self: () => ["agent-network", "self"] as const,
   },
   workProducts: {
-    all: ["work-products"] as const,
     detail: (id: string) => ["work-products", "detail", id] as const,
   },
   rooms: {
@@ -71,7 +70,6 @@ export const queryKeys = {
     list: () => ["runtimes", "list"] as const,
   },
   chat: {
-    all: ["chat"] as const,
     /** Per-conversation history. `undefined` = the most recent conversation. */
     history: (conversationId?: string) =>
       ["chat", "history", conversationId ?? "<latest>"] as const,
