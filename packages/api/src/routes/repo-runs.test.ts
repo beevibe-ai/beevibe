@@ -7,6 +7,7 @@
  * guard on cancel, and the path-traversal guard on the artifact route.
  */
 import express, { json } from "express";
+import { makeStubAuth } from "./test-helpers.js";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import type {
@@ -65,21 +66,7 @@ function makeSessionEventRepo(): SessionEventRepository {
  * against Postgres; these tests only care that handlers see the caller
  * shape `requireHuman` gates on, so the source is set per-app.
  */
-function stubAuth(source: "human" | "agent" | "none" = "human") {
-  return (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    if (source === "human") {
-      req.caller = {
-        source: "human",
-        agentId: "agent_a",
-        hierarchyLevel: "team",
-        personId: PERSON,
-      };
-    } else if (source === "agent") {
-      req.caller = { source: "agent", agentId: "agent_a", hierarchyLevel: "ic" };
-    }
-    next();
-  };
-}
+const stubAuth = makeStubAuth({ personId: PERSON, agentId: "agent_a" });
 
 function makeApp(
   repoRunRepo: RepoRunRepository,
