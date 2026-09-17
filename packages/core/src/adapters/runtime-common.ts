@@ -169,6 +169,102 @@ export function warnIfTruncated(runtimeTag: string, result: CliProcessResult): v
 }
 
 /**
+ * Cap on a single excerpt embedded in the persisted transcript. The
+ * transcript is read back by LLMs summarizing a session, so a runaway
+ * tool output would crowd out everything around it.
+ */
+const TRANSCRIPT_DETAIL_CHARS = 200;
+
+/**
+ * Normalize a tool output / error string for embedding in a transcript
+ * line: truncate to {@link TRANSCRIPT_DETAIL_CHARS} and flatten newlines
+ * to spaces so one entry stays one line. Empty and absent both collapse
+ * to `""`, which the builder below reads as "no detail".
+ */
+export function transcriptDetail(raw: string | null | undefined): string {
+  if (!raw) return "";
+  return raw.slice(0, TRANSCRIPT_DETAIL_CHARS).replace(/\n/g, " ");
+}
+
+/**
+ * Accumulates the `[assistant] …` / `[tool_call] …` / `[tool_result from
+ * X] …` / `[error] …` line format that every CLI runtime persists as a
+ * session transcript.
+ *
+ * This format is a cross-provider contract, not an implementation
+ * detail: downstream summarizers and the session-detail view parse these
+ * tags, and `RuntimeResult.transcript` is the same field regardless of
+ * which CLI produced it. All three adapters had nonetheless been
+ * building the lines by hand — 21 template literals across the three
+ * `stream-json.ts` files, plus three separate copies of the
+ * truncate-and-flatten step above.
+ *
+ * The methods are deliberately narrow: each one owns exactly the
+ * punctuation of its line, so a provider parser chooses *what* to record
+ * and never *how* it is spelled. Output is byte-for-byte what the three
+ * parsers emitted before.
+ */
+export class TranscriptBuilder {
+  private readonly parts: string[] = [];
+
+  /** `[assistant] <text>` */
+  assistant(text: string): this {
+    this.parts.push(`[assistant] ${text}\n`);
+    return this;
+  }
+
+  /**
+   * `[tool_call] <tool>`, or `[tool_call] <tool> <detail>` when `detail`
+   * is passed. Codex uses the second form for shell invocations, where
+   * the command is the only thing that distinguishes one call from the
+   * next. `detail` is appended whenever the argument is present — an
+   * empty command still yields the trailing space codex emitted before,
+   * which its tests pin.
+   */
+  toolCall(tool: string, detail?: string): this {
+    this.parts.push(
+      detail === undefined ? `[tool_call] ${tool}\n` : `[tool_call] ${tool} ${detail}\n`,
+    );
+    return this;
+  }
+
+  /**
+   * `[tool_result from <tool>] <detail>`, degrading to the bare
+   * `[tool_result from <tool>]` without a detail and to an opaque
+   * `[tool_result]` without a tool name.
+   *
+   * The nameless form is claude-code-specific: its `tool_result`
+   * messages carry only a `tool_use_id`, so the name is unavailable when
+   * the correlating `tool_use` block never arrived.
+   */
+  toolResult(tool: string | undefined, detail: string = ""): this {
+    if (!tool) {
+      this.parts.push("[tool_result]\n");
+      return this;
+    }
+    this.parts.push(
+      detail ? `[tool_result from ${tool}] ${detail}\n` : `[tool_result from ${tool}]\n`,
+    );
+    return this;
+  }
+
+  /** `[error] <message>` */
+  error(message: string): this {
+    this.parts.push(`[error] ${message}\n`);
+    return this;
+  }
+
+  /**
+   * The assembled transcript, or `undefined` when nothing was recorded —
+   * `RuntimeResult.transcript` is optional and every parser was already
+   * collapsing the empty string to absent.
+   */
+  build(): string | undefined {
+    return this.parts.join("") || undefined;
+  }
+}
+
+/**
  * The `RuntimeResult` for a session the caller aborted via `abort_signal`.
  * Deliberately distinct from a failure so the executor marks the session
  * `cancelled` rather than surfacing it as an error to the user.
