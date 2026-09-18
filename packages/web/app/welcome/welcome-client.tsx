@@ -8,7 +8,6 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import {
-  AlertTriangle,
   ArrowRight,
   Check,
   Cpu,
@@ -18,6 +17,7 @@ import {
 } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
 import { api, type RuntimesListResponse } from "@/lib/api/client";
+import { InlineError } from "@/components/error-display";
 import { DaemonInstallInstructions } from "@/components/daemon-install";
 import { queryKeys } from "@/lib/hooks/keys";
 import { useMe } from "@/lib/hooks/use-me";
@@ -324,10 +324,10 @@ function PickRuntimeStep({
       </div>
 
       {mutation.isError ? (
-        <div className="max-w-xl mx-auto rounded-md border border-status-failed/40 bg-status-failed/5 p-3 text-xs text-status-failed flex items-start gap-1.5">
-          <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-          <span>Couldn&apos;t bind that runtime. Try another?</span>
-        </div>
+        <InlineError
+          message="Couldn't bind that runtime. Try another?"
+          className="max-w-xl mx-auto rounded-md border border-status-failed/40 bg-status-failed/5 p-3"
+        />
       ) : null}
 
       <div className="flex items-center justify-center">

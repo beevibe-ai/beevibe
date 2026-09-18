@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, KeyRound, Loader2, LogIn } from "lucide-react";
+import { KeyRound, Loader2, LogIn } from "lucide-react";
 import { SIGNIN_NO_PASSWORD_SET } from "@beevibe/core/auth/constants";
+import { InlineError } from "@/components/error-display";
 import { api } from "@/lib/api/client";
 import { asApiError } from "@/lib/api/http";
 import {
@@ -189,12 +190,7 @@ export function SignInClient() {
           </>
         )}
 
-        {error ? (
-          <div className="mt-3 flex items-start gap-1.5 text-xs text-status-failed">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
+        {error ? <InlineError message={error} className="mt-3" /> : null}
 
         <button
           type="submit"

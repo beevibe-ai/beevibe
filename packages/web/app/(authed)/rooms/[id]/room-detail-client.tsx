@@ -17,8 +17,9 @@ import { isApiConfigured } from "@/lib/api/config";
 import { api, type RoomDetail, type RoomMemberDetail, type RoomMessage } from "@/lib/api/client";
 import { ApiError, describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
-import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
+import { ErrorPanel, InlineError } from "@/components/error-display";
 import { ModalOverlay } from "@/components/modal-overlay";
+import { ShareLinkBox } from "@/components/share-link-box";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ToolStepList } from "@/components/chat/tool-step-list";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
@@ -191,13 +192,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
               <TypingIndicators typing={data.typing!} />
             ) : null}
             {send.error ? (
-              <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
-                <div className="flex items-center gap-1.5 text-status-failed font-medium mb-1">
-                  <AlertTriangle className="h-3.5 w-3.5" />
-                  Couldn&apos;t send
-                </div>
-                <div className="text-muted-foreground">{(send.error as Error).message}</div>
-              </div>
+              <ErrorPanel title="Couldn't send" detail={(send.error as Error).message} />
             ) : null}
           </div>
         </div>
@@ -275,7 +270,6 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
   const [error, setError] = useState<string | null>(null);
   /** When the invitee doesn't have an account yet, surface a share link they can use to sign up + auto-join. */
   const [shareLink, setShareLink] = useState<string | null>(null);
-  const { copied, copy } = useCopyToClipboard();
 
   const invite = useMutation({
     mutationFn: () => api.rooms.invite(roomId, { email: email.trim() }),
@@ -326,34 +320,17 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
           className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
           disabled={invite.isPending}
         />
-        {error ? (
-          <div className="mt-2 text-xs text-status-failed flex items-start gap-1.5">
-            <AlertTriangle className="h-3 w-3 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
+        {error ? <InlineError message={error} className="mt-2" /> : null}
         {shareLink ? (
-          <div className="mt-3 rounded border border-border bg-muted/40 p-3">
-            <div className="text-[11px] text-muted-foreground mb-1.5">
-              No account for that email yet. Send them this link — they&apos;ll sign up and
-              land in this room.
-            </div>
-            <div className="flex items-center gap-1.5">
-              <input
-                readOnly
-                value={shareLink}
-                className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-[11px] font-mono"
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <button
-                type="button"
-                onClick={() => void copy(shareLink ?? "")}
-                className="h-7 px-2.5 rounded text-[11px] font-medium border border-border hover:bg-secondary transition-colors cursor-pointer shrink-0"
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-          </div>
+          <ShareLinkBox
+            link={shareLink}
+            hint={
+              <>
+                No account for that email yet. Send them this link — they&apos;ll sign up and
+                land in this room.
+              </>
+            }
+          />
         ) : null}
         <div className="mt-4 flex items-center justify-end gap-2">
           <button

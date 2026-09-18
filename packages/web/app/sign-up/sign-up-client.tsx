@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Loader2, Sparkles, UserPlus } from "lucide-react";
+import { Loader2, Sparkles, UserPlus } from "lucide-react";
 import { PASSWORD_MIN_LENGTH } from "@beevibe/core/auth/constants";
+import { InlineError } from "@/components/error-display";
 import { api } from "@/lib/api/client";
 import { asApiError } from "@/lib/api/http";
 import { getUserKey, isApiConfigured, setUserKey } from "@/lib/api/config";
@@ -149,12 +150,7 @@ export function SignUpClient() {
           disabled={submitting}
         />
 
-        {error ? (
-          <div className="mt-3 flex items-start gap-1.5 text-xs text-status-failed">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
+        {error ? <InlineError message={error} className="mt-3" /> : null}
 
         <button
           type="submit"
