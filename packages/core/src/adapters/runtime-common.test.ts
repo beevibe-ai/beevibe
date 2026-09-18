@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import type { CliProcessOptions, CliProcessResult } from "./claude-code/spawn.js";
+import * as spawnModule from "./claude-code/spawn.js";
+import type { RuntimeContext, RuntimeResult } from "../ports/runtime.js";
 import {
   cancelledResult,
   createStdoutLineReader,
   finalizeCliResult,
+  parseNdjsonLine,
+  runCliStreamingSession,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -72,6 +75,125 @@ describe("createStdoutLineReader", () => {
     const reader = createStdoutLineReader((l) => lines.push(l));
     reader.onLog("stdout", "a\n\nb\n");
     expect(lines).toEqual(["a", "", "b"]);
+  });
+});
+
+describe("runCliStreamingSession", () => {
+  let runCliSpy: ReturnType<typeof vi.spyOn>;
+
+  /** Feeds `chunks` through the session's `onLog` and resolves with `result`. */
+  function mockRunCli(chunks: string[], result: CliProcessResult = cliResult()): void {
+    runCliSpy = vi.spyOn(spawnModule, "runCliProcess").mockImplementation(async (options) => {
+      lastOptions = options;
+      if (result.pid !== null) {
+        options.onSpawn?.({ pid: result.pid, process_group_id: result.process_group_id ?? result.pid });
+      }
+      for (const chunk of chunks) options.onLog?.("stdout", chunk);
+      return result;
+    });
+  }
+
+  let lastOptions: CliProcessOptions | undefined;
+
+  function ctx(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
+    return {
+      intent: "do a thing",
+      workspace: { path: "/tmp/ws" },
+      system_prompt_append: "",
+      ...overrides,
+    };
+  }
+
+  const opts = {
+    runtimeTag: "TestRuntime",
+    command: "testcli",
+    args: ["--json"],
+    env: { PATH: "/usr/bin" },
+    // The real adapters all parse through `parseNdjsonLine`, which returns
+    // null rather than throwing on log noise interleaved with the stream.
+    parseLine: (line: string) => parseNdjsonLine<{ n: number }>(line),
+    extractSteps: (e: { n: number }) => [
+      { kind: "agent" as const, description: String(e.n), timestamp: new Date(0) },
+    ],
+  };
+
+  afterEach(() => {
+    runCliSpy?.mockRestore();
+    lastOptions = undefined;
+  });
+
+  it("spawns with the workspace as cwd and forwards command, args, env and stdin", async () => {
+    mockRunCli([]);
+    await runCliStreamingSession(ctx({ workspace: { path: "/sandbox/a1" } }), {
+      ...opts,
+      stdin: "piped intent",
+    });
+    expect(lastOptions?.command).toBe("testcli");
+    expect(lastOptions?.args).toEqual(["--json"]);
+    expect(lastOptions?.cwd).toBe("/sandbox/a1");
+    expect(lastOptions?.env).toEqual({ PATH: "/usr/bin" });
+    expect(lastOptions?.stdin).toBe("piped intent");
+  });
+
+  it("collects every parsed event and skips unparseable lines", async () => {
+    mockRunCli(['{"n":1}\n', "not json\n", '{"n":2}\n']);
+    const { events } = await runCliStreamingSession(ctx(), opts);
+    expect(events).toEqual([{ n: 1 }, { n: 2 }]);
+  });
+
+  it("reassembles events split across chunk boundaries", async () => {
+    mockRunCli(['{"n', '":7}\n']);
+    const { events } = await runCliStreamingSession(ctx(), opts);
+    expect(events).toEqual([{ n: 7 }]);
+  });
+
+  it("flushes a trailing line that arrives without a newline", async () => {
+    // The `result` line the parsers key off is the last one on the stream,
+    // so losing it to a missing flush would silently drop every session's
+    // outcome. Regression guard for the bug the shared helper exists to
+    // make impossible.
+    mockRunCli(['{"n":1}\n', '{"n":2}']);
+    const { events } = await runCliStreamingSession(ctx(), opts);
+    expect(events).toEqual([{ n: 1 }, { n: 2 }]);
+  });
+
+  it("streams steps to onStep as lines arrive", async () => {
+    mockRunCli(['{"n":1}\n', '{"n":2}\n']);
+    const steps: string[] = [];
+    await runCliStreamingSession(
+      ctx({ onStep: (s) => steps.push(s.description) }),
+      opts,
+    );
+    expect(steps).toEqual(["1", "2"]);
+  });
+
+  it("does not project steps when the caller passed no onStep", async () => {
+    mockRunCli(['{"n":1}\n']);
+    const extractSteps = vi.fn(opts.extractSteps);
+    await runCliStreamingSession(ctx(), { ...opts, extractSteps });
+    expect(extractSteps).not.toHaveBeenCalled();
+  });
+
+  it("forwards the spawn callback with pid and pgid", async () => {
+    mockRunCli([], cliResult({ pid: 321, process_group_id: 321 }));
+    const onSpawn = vi.fn();
+    await runCliStreamingSession(ctx({ onSpawn }), opts);
+    expect(onSpawn).toHaveBeenCalledWith({ process_pid: 321, process_group_id: 321 });
+  });
+
+  it("warns once with the runtime tag when stdout was capped", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockRunCli([], cliResult({ truncated: true }));
+    await runCliStreamingSession(ctx(), opts);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toContain("[TestRuntime]");
+  });
+
+  it("returns the raw process result so callers own the abort branch", async () => {
+    mockRunCli([], cliResult({ aborted: true, exitCode: null }));
+    const { result } = await runCliStreamingSession(ctx(), opts);
+    expect(result.aborted).toBe(true);
+    expect(result.exitCode).toBeNull();
   });
 });
 

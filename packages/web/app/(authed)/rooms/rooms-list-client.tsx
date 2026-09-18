@@ -8,6 +8,7 @@ import { AlertTriangle, Loader2, MessageCircleMore, Plus, Users } from "lucide-r
 import { api, type Room } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
+import { InlineError } from "@/components/error-display";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { formatRelativeTime, shortId } from "@/lib/format";
@@ -92,12 +93,7 @@ export function RoomsListClient() {
             Create
           </button>
         </form>
-        {error ? (
-          <div className="mb-4 flex items-start gap-1.5 text-xs text-status-failed">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
+        {error ? <InlineError message={error} className="mb-4" /> : null}
 
         <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
           Your rooms

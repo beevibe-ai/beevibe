@@ -5,7 +5,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
-  AlertTriangle,
   ArrowRight,
   ArrowUp,
   Bell,
@@ -36,6 +35,7 @@ import { queryKeys } from "@/lib/hooks/keys";
 import { deriveShortId, formatRelativeTime } from "@/lib/format";
 import { defaultTryGoal, formatStars } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
+import { ErrorPanel } from "@/components/error-display";
 import { Avatar } from "@/components/avatar";
 import { ReferenceCards } from "@/components/chat/reference-cards";
 import { ChatMarkdown } from "@/components/chat/markdown";
@@ -288,13 +288,11 @@ export function ChatClient() {
                   />
                 ) : null}
                 {error ? (
-                  <div className="mt-4 rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
-                    <div className="flex items-center gap-1.5 text-status-failed font-medium mb-1">
-                      <AlertTriangle className="h-3.5 w-3.5" />
-                      Couldn&apos;t reach the agent
-                    </div>
-                    <div className="text-muted-foreground">{error.message}</div>
-                  </div>
+                  <ErrorPanel
+                    title="Couldn't reach the agent"
+                    detail={error.message}
+                    className="mt-4"
+                  />
                 ) : null}
               </div>
             </div>
