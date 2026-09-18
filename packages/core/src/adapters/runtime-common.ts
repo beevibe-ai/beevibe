@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -156,6 +161,84 @@ export function createStdoutLineReader(handleLine: (line: string) => void): {
       }
     },
   };
+}
+
+/**
+ * The provider-specific half of a streaming CLI session: how to spawn the
+ * process, and how to turn one stdout line into zero-or-more transcript
+ * steps. Everything else about the session is identical across runtimes and
+ * lives in {@link runCliStreamingSession}.
+ */
+export interface CliStreamingSessionOptions<E> {
+  /** Log tag for the truncation warning — "CodexRuntime", "OpenCodeRuntime", … */
+  runtimeTag: string;
+  /** CLI binary to spawn. */
+  command: string;
+  args: string[];
+  /** Fully-resolved env for the subprocess (the adapter does its own stripping). */
+  env: Record<string, string | undefined>;
+  /** Written to the child's stdin. Only Claude Code pipes the intent this way. */
+  stdin?: string;
+  /** Provider's NDJSON line parser. Returns null for lines to skip. */
+  parseLine: (line: string) => E | null;
+  /** Provider's event → transcript-step projection, for `context.onStep`. */
+  extractSteps: (event: E) => Iterable<RuntimeStep>;
+}
+
+/**
+ * Drive one streaming CLI session and hand back the collected events.
+ *
+ * The claude-code, codex and opencode adapters each spawn a CLI, read an
+ * NDJSON event stream off stdout, forward steps to `context.onStep` as they
+ * arrive, and keep every event for a final parse after exit. That loop was
+ * written out once per adapter, which made the ordering constraints — flush
+ * the line reader *after* the process settles, warn on truncation, wire
+ * `onSpawn` through — three separate things to get right rather than one.
+ * Dropping the `flush()` in particular silently loses the last event of any
+ * stream that ends without a trailing newline, which is exactly the `result`
+ * line the parsers key off.
+ *
+ * Returns both halves the callers need: `events` for the provider's
+ * `parse*Events`, and the raw `CliProcessResult` for the abort check and
+ * {@link finalizeCliResult}. It deliberately does NOT decide what to do with
+ * either — cancellation handling and per-provider cleanup (codex's
+ * `--output-last-message` file) stay at the call site.
+ */
+export async function runCliStreamingSession<E>(
+  context: RuntimeContext,
+  opts: CliStreamingSessionOptions<E>,
+): Promise<{ events: E[]; result: CliProcessResult }> {
+  // Parse incrementally during streaming rather than re-walking the whole
+  // stdout buffer after close.
+  const events: E[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of opts.extractSteps(event)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: opts.command,
+    args: opts.args,
+    cwd: context.workspace.path,
+    env: opts.env,
+    stdin: opts.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Flush any final partial line (stream that ended without a trailing \n).
+  stdout.flush();
+  warnIfTruncated(opts.runtimeTag, result);
+
+  return { events, result };
 }
 
 /**
