@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
+import { detailQueryOptions } from "./detail-query";
 import { queryKeys } from "./keys";
 
 export function useAgents() {
@@ -12,9 +13,5 @@ export function useAgents() {
 }
 
 export function useAgent(id: string | undefined) {
-  return useQuery({
-    queryKey: id ? queryKeys.agents.detail(id) : queryKeys.agents.all,
-    queryFn: ({ signal }) => api.agents.get(id as string, { signal }),
-    enabled: isApiConfigured && !!id,
-  });
+  return useQuery(detailQueryOptions(queryKeys.agents, api.agents.get, id));
 }
