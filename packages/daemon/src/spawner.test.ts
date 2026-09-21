@@ -47,7 +47,6 @@ describe("runDispatch", () => {
         };
       }),
       healthCheck: vi.fn(),
-      shutdown: vi.fn(),
       skillsDir: (workspace: Workspace) => `${workspace.path}/.opencode/skills`,
     };
     const posts: Array<{ path: string; body: unknown }> = [];
@@ -99,7 +98,6 @@ function fakeRuntime(result: Partial<RuntimeResult> | Error): AgentRuntime {
       return result as RuntimeResult;
     }),
     healthCheck: vi.fn(),
-    shutdown: vi.fn(),
     skillsDir: (workspace: Workspace) => `${workspace.path}/.opencode/skills`,
   };
 }

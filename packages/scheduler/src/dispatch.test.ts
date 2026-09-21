@@ -90,7 +90,6 @@ beforeEach(() => {
     type: "claude",
     execute: vi.fn(),
     healthCheck: vi.fn(),
-    shutdown: vi.fn(),
   } as unknown as AgentRuntime;
 
   // Spy on AgentSession.run — dispatcher should call it once per session

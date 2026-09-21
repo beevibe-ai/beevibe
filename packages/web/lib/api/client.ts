@@ -727,5 +727,3 @@ export interface FindRepoCandidate {
     invocation: string;
   };
 }
-
-export type Api = typeof api;
