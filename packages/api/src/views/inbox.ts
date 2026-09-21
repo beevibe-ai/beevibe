@@ -18,6 +18,7 @@
  */
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
+import { TASK_ACTOR_JOINS, taskOwnerScopeSql } from "./task-scope.js";
 import type { InboxItem, InboxItemKind } from "./types.js";
 
 const DEFAULT_LIMIT = 50;
@@ -25,59 +26,63 @@ const MAX_LIMIT = 200;
 const TITLE_TRUNCATE = 120;
 
 /**
+ * Branches 1 + 2 — tasks awaiting the caller's review/unblock decision.
+ *
+ * The two differ only in the status they select and the `detail` line
+ * they show, so one template generates both. Written out twice they
+ * were 15 near-identical lines apiece, including a verbatim copy of the
+ * owner-scope predicate — and a change to one arm that missed the other
+ * would silently make the inbox's two halves disagree about which tasks
+ * the caller can see.
+ *
+ * Scoping is `taskOwnerScopeSql`, the same rule the `/task` list uses
+ * (see views/task-scope.ts).
+ */
+function taskBranchSql(
+  kind: "task_review" | "task_blocked",
+  status: "review" | "blocked",
+  detail: string,
+): string {
+  return /* sql */ `
+  SELECT
+    '${kind}:' || t.id               AS id,
+    '${kind}'::text                  AS kind,
+    LEFT(t.title, ${TITLE_TRUNCATE}) AS title,
+    ${detail}                        AS detail,
+    '/tasks/' || t.id                AS href,
+    t.updated_at                     AS age_at
+  FROM task t
+  ${TASK_ACTOR_JOINS}
+  WHERE t.status = '${status}'
+    AND ${taskOwnerScopeSql("$1")}`;
+}
+
+/**
  * One UNION ALL query covers all three sources. Each branch yields
  * the same column set (id / kind / title / detail / href / age_at)
  * so the application layer maps a uniform row shape to InboxItem.
  *
- * Branches 1 + 2 — tasks awaiting the caller's review/unblock decision.
- *   Scoped via assignee or creator-agent ownership (matching the
- *   `/task` list scope in views/tasks.ts). Humans don't create tasks
+ * Branches 1 + 2 — see `taskBranchSql` above. Humans don't create tasks
  *   directly — the `create_task` MCP tool stamps `creator_type='agent'`
  *   — so a `creator_type='person' AND creator_id=$1` filter (which is
  *   what this query used to do) misses every real task in the system.
- *   Detail: assignee name when in review, blocker reason when blocked.
  *
  * Branch 3 — escalations awaiting a human resolver. Walked from
  *   negotiation → both agents to find any owned by the caller; one
  *   row per escalation regardless of which side the caller owns.
+ *   Its own scope rule: escalations hang off a negotiation, not a
+ *   task, so `taskOwnerScopeSql` doesn't apply.
  */
 const LIST_SQL = /* sql */ `
 WITH inbox AS (
-  SELECT
-    'task_review:' || t.id          AS id,
-    'task_review'::text             AS kind,
-    LEFT(t.title, ${TITLE_TRUNCATE}) AS title,
-    COALESCE(asg.name, '(unassigned)') AS detail,
-    '/tasks/' || t.id               AS href,
-    t.updated_at                    AS age_at
-  FROM task t
-  LEFT JOIN agent asg   ON asg.id   = t.assignee_id
-  LEFT JOIN agent crt_a ON crt_a.id = t.creator_id  AND t.creator_type = 'agent'
-  WHERE t.status = 'review'
-    AND (
-      asg.owner_id = $1
-      OR crt_a.owner_id = $1
-      OR (t.creator_type = 'person' AND t.creator_id = $1)
-    )
+${taskBranchSql("task_review", "review", `COALESCE(asg.name, '(unassigned)')`)}
 
   UNION ALL
-
-  SELECT
-    'task_blocked:' || t.id              AS id,
-    'task_blocked'::text                 AS kind,
-    LEFT(t.title, ${TITLE_TRUNCATE})     AS title,
-    COALESCE(t.blocker_reason, 'Blocked — no reason given') AS detail,
-    '/tasks/' || t.id                    AS href,
-    t.updated_at                         AS age_at
-  FROM task t
-  LEFT JOIN agent asg   ON asg.id   = t.assignee_id
-  LEFT JOIN agent crt_a ON crt_a.id = t.creator_id  AND t.creator_type = 'agent'
-  WHERE t.status = 'blocked'
-    AND (
-      asg.owner_id = $1
-      OR crt_a.owner_id = $1
-      OR (t.creator_type = 'person' AND t.creator_id = $1)
-    )
+${taskBranchSql(
+  "task_blocked",
+  "blocked",
+  `COALESCE(t.blocker_reason, 'Blocked — no reason given')`,
+)}
 
   UNION ALL
 
