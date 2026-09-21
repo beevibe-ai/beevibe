@@ -29,6 +29,7 @@ import { getReferencedRepos } from "@beevibe/core/services/referenced-repos";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { requireHuman } from "../auth/middleware.js";
 import { createUseRepoTool } from "../tools/use-repo.js";
+import { requirePrimaryAgent } from "./http-errors.js";
 
 export interface CapabilitiesRouterDeps {
   authMiddleware: RequestHandler;
@@ -112,12 +113,8 @@ export function createCapabilitiesRouter(deps: CapabilitiesRouterDeps): Router {
       // and run the use_repo tool under that agent's identity. The
       // resulting container task + repo_run + work_product are owned by
       // the team agent, which matches the existing agent-driven flow.
-      const personId = req.caller!.personId;
-      const agent = await deps.agentRepo.findTopLevelForOwner(personId);
-      if (!agent) {
-        res.status(404).json({ error: "no_agent", message: "Caller has no primary agent." });
-        return;
-      }
+      const agent = await requirePrimaryAgent(res, req.caller!.personId, deps.agentRepo);
+      if (!agent) return;
 
       const tool = createUseRepoTool(
         { agentId: agent.id },
