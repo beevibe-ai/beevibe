@@ -100,7 +100,6 @@ beforeEach(() => {
     type: "fake",
     execute: vi.fn(),
     healthCheck: vi.fn(),
-    shutdown: vi.fn(),
   };
   memoryAgent = {
     prepareBriefing: vi.fn(),

@@ -2,7 +2,6 @@ import pg from "pg";
 
 const { Pool } = pg;
 export type Pool = pg.Pool;
-export type PoolClient = pg.PoolClient;
 export type QueryResultRow = pg.QueryResultRow;
 
 export interface CreatePoolOptions {

@@ -1,5 +1,5 @@
 export { createPool } from "./client.js";
-export type { Pool, PoolClient, CreatePoolOptions } from "./client.js";
+export type { Pool, CreatePoolOptions } from "./client.js";
 export type {
   PersonRow,
   AgentRow,
