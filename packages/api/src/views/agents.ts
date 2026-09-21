@@ -7,7 +7,13 @@
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { HierarchyLevel, SessionStatus } from "@beevibe/core";
-import { toAgentDisplay } from "./agent-display.js";
+import {
+  AGENT_BASE_COLUMNS,
+  AGENT_HIERARCHY_ORDER,
+  AGENT_STAT_COLUMNS,
+  AGENT_STAT_JOINS,
+  toAgentDisplay,
+} from "./agent-display.js";
 import { deriveShortId, formatRelativeShort, truncate } from "./format.js";
 import { CHAT_THREAD_TITLE_MAX } from "./types.js";
 import type {
@@ -40,31 +46,17 @@ interface AgentRow {
 
 const LIST_SQL = /* sql */ `
 SELECT
-  a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
-  a.review_policy, a.runtime_config, a.preferred_runtime_id, a.archived_at,
-  a.created_at, a.updated_at,
+  ${AGENT_BASE_COLUMNS},
+  a.archived_at,
   p.name                  AS owner_label,
-  COALESCE(sc.n, 0)::int  AS sessions_count,
-  COALESCE(fc.n, 0)::int  AS facts_learned,
-  tl.content              AS tag_line
+  ${AGENT_STAT_COLUMNS}
 FROM agent a
 LEFT JOIN person p ON p.id = a.owner_id
-LEFT JOIN (
-  SELECT agent_id, COUNT(*)::int AS n
-  FROM session
-  GROUP BY agent_id
-) sc ON sc.agent_id = a.id
-LEFT JOIN (
-  SELECT agent_id, COUNT(*)::int AS n
-  FROM memory_fact
-  GROUP BY agent_id
-) fc ON fc.agent_id = a.id
-LEFT JOIN core_memory_block tl ON tl.agent_id = a.id AND tl.block_name = 'tag_line'
+${AGENT_STAT_JOINS}
 WHERE ($1::text IS NULL OR a.owner_id = $1)
   AND a.archived_at IS NULL
 ORDER BY
-  CASE a.hierarchy_level WHEN 'org' THEN 0 WHEN 'team' THEN 1 ELSE 2 END,
-  a.name ASC
+  ${AGENT_HIERARCHY_ORDER}
 `;
 
 /** Shared mapping plus the two columns only this view selects. */
@@ -84,11 +76,14 @@ export async function listAgents(
   return rows.map(rowToAgentDisplay);
 }
 
+// Same projection as LIST_SQL, but the three display stats come from
+// correlated scalar subqueries instead of AGENT_STAT_JOINS: this reads
+// exactly one agent, and the grouped-subquery form would aggregate the
+// whole `session` / `memory_fact` table to get that one row's counts.
 const DETAIL_SQL_AGENT = /* sql */ `
 SELECT
-  a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
-  a.review_policy, a.runtime_config, a.preferred_runtime_id, a.archived_at,
-  a.created_at, a.updated_at,
+  ${AGENT_BASE_COLUMNS},
+  a.archived_at,
   p.name AS owner_label,
   (SELECT COUNT(*)::int FROM session       WHERE agent_id = a.id) AS sessions_count,
   (SELECT COUNT(*)::int FROM memory_fact   WHERE agent_id = a.id) AS facts_learned,

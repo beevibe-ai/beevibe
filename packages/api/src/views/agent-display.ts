@@ -1,5 +1,7 @@
 /**
- * The `agent` row → `AgentDisplay` mapping, in one place.
+ * The agent-display projection, in one place: the SQL that selects the
+ * columns, the row type they come back as, and the mapping into
+ * `AgentDisplay`.
  *
  * Three views project the same agent columns into the same display
  * shape: the list (`agents.ts:listAgents`), the detail header
@@ -9,6 +11,14 @@
  * meant the derivation rules below had to be re-explained — and
  * re-fixed — in each one.
  *
+ * The four queries behind those views then still spelled the column
+ * list, the stat joins and the hierarchy ordering out by hand, so
+ * adding an agent column meant four coordinated edits and one of them
+ * was easy to miss. The SQL fragments below are the other half of the
+ * same single-source-of-truth: `AgentDisplayRow` describes what
+ * `AGENT_BASE_COLUMNS` + `AGENT_STAT_COLUMNS` select, so the type and
+ * the query can't drift apart.
+ *
  * Callers with extra columns (`owner_label`, `archived_at`) spread the
  * result and add them, so a view only opts into the fields its SQL
  * actually selects.
@@ -17,6 +27,55 @@
 import type { HierarchyLevel } from "@beevibe/core";
 import { firstNonEmptyLine } from "./format.js";
 import type { AgentDisplay } from "./types.js";
+
+/**
+ * The `agent` columns every display query selects, aliased `a`.
+ *
+ * Deliberately excludes `a.archived_at`: the list and detail queries
+ * select it (they surface archived agents' state), the network queries
+ * filter on it but never project it. Views that need it append the
+ * column themselves.
+ */
+export const AGENT_BASE_COLUMNS = /* sql */ `a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
+  a.review_policy, a.runtime_config, a.preferred_runtime_id,
+  a.created_at, a.updated_at`;
+
+/**
+ * The three derived display columns, paired with {@link AGENT_STAT_JOINS}
+ * — use both or neither.
+ */
+export const AGENT_STAT_COLUMNS = /* sql */ `COALESCE(sc.n, 0)::int  AS sessions_count,
+  COALESCE(fc.n, 0)::int  AS facts_learned,
+  tl.content              AS tag_line`;
+
+/**
+ * Joins backing {@link AGENT_STAT_COLUMNS}: per-agent session and fact
+ * counts, plus the `tag_line` core-memory block the card's
+ * `specialization` line is derived from.
+ *
+ * Grouped subqueries rather than correlated ones because these run over
+ * a whole result set. `getAgent` fetches a single row by id and uses
+ * correlated scalar subqueries instead — same columns, but it would
+ * otherwise aggregate the entire `session` table to read one agent's
+ * count.
+ */
+export const AGENT_STAT_JOINS = /* sql */ `LEFT JOIN (SELECT agent_id, COUNT(*)::int AS n FROM session GROUP BY agent_id) sc
+  ON sc.agent_id = a.id
+LEFT JOIN (SELECT agent_id, COUNT(*)::int AS n FROM memory_fact GROUP BY agent_id) fc
+  ON fc.agent_id = a.id
+LEFT JOIN core_memory_block tl ON tl.agent_id = a.id AND tl.block_name = 'tag_line'`;
+
+/**
+ * ORDER BY terms that put an owner's team above its ICs, then sort
+ * alphabetically — the reading order every agent surface uses. Goes
+ * after any leading grouping term (the peer query orders by
+ * `a.owner_id` first so each owner's agents stay one contiguous orbit).
+ *
+ * `hierarchy_level` is TEXT, so alphabetical DESC would read
+ * 'team' > 'org' > 'ic'; the CASE pins the intended rank instead.
+ */
+export const AGENT_HIERARCHY_ORDER = /* sql */ `CASE a.hierarchy_level WHEN 'org' THEN 0 WHEN 'team' THEN 1 ELSE 2 END,
+  a.name ASC`;
 
 /**
  * The columns every agent view selects. Widened where the callers
