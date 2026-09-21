@@ -1,14 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
+import { detailQueryOptions } from "./detail-query";
 import { queryKeys } from "./keys";
 
 export function useSession(shortId: string | undefined) {
-  return useQuery({
-    queryKey: shortId ? queryKeys.sessions.detail(shortId) : queryKeys.sessions.all,
-    queryFn: ({ signal }) => api.sessions.get(shortId as string, { signal }),
-    enabled: isApiConfigured && !!shortId,
-  });
+  return useQuery(detailQueryOptions(queryKeys.sessions, api.sessions.get, shortId));
 }
 
 /**
@@ -19,11 +15,13 @@ export function useSession(shortId: string | undefined) {
  */
 export function useConversation(shortId: string | undefined) {
   return useQuery({
-    queryKey: shortId
-      ? queryKeys.sessions.conversation(shortId)
-      : queryKeys.sessions.all,
-    queryFn: ({ signal }) => api.sessions.conversation(shortId as string, { signal }),
-    enabled: isApiConfigured && !!shortId,
+    ...detailQueryOptions(
+      // Same fallback key as `useSession`, but the loaded key is the
+      // conversation slot — the two coexist for one short id.
+      { all: queryKeys.sessions.all, detail: queryKeys.sessions.conversation },
+      api.sessions.conversation,
+      shortId,
+    ),
     // A completed turn's transcript is immutable, so this potentially-large
     // fetch (every turn × up to 500 events) needn't refetch on focus/idle.
     // In-flight turns surface live via SSE, not this query. Cold loads still

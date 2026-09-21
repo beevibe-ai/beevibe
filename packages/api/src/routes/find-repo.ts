@@ -17,6 +17,7 @@ import type {
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { createFindRepoTool } from "../tools/find-repo.js";
+import { requirePrimaryAgent } from "./http-errors.js";
 
 export interface FindRepoRouterDeps {
   authMiddleware: RequestHandler;
@@ -46,12 +47,8 @@ export function createFindRepoRouter(deps: FindRepoRouterDeps): Router {
       // primary team agent and use its id. If they have no agent at
       // all, the ranker just gets zero learned-skill matches and the
       // other 3 tiers still work.
-      const personId = req.caller!.personId;
-      const agent = await deps.agentRepo.findTopLevelForOwner(personId);
-      if (!agent) {
-        res.status(404).json({ error: "no_agent", message: "Caller has no primary agent." });
-        return;
-      }
+      const agent = await requirePrimaryAgent(res, req.caller!.personId, deps.agentRepo);
+      if (!agent) return;
 
       const tool = createFindRepoTool(
         { agentId: agent.id },

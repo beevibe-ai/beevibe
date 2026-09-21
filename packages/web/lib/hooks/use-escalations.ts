@@ -1,12 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
+import { detailQueryOptions } from "./detail-query";
 import { queryKeys } from "./keys";
 
 export function useEscalation(id: string | undefined) {
-  return useQuery({
-    queryKey: id ? queryKeys.escalations.detail(id) : queryKeys.escalations.all,
-    queryFn: ({ signal }) => api.escalations.get(id as string, { signal }),
-    enabled: isApiConfigured && !!id,
-  });
+  return useQuery(detailQueryOptions(queryKeys.escalations, api.escalations.get, id));
 }

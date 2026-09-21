@@ -1,4 +1,42 @@
 import type { Request, Response } from "express";
+import type { Agent, AgentRepository } from "@beevibe/core";
+
+/**
+ * Resolve the human caller to the agent that acts on their behalf,
+ * 404-ing when they have none.
+ *
+ * `/find-repo` and `/capabilities/use` are both HTTP front doors onto
+ * an MCP tool that an agent would otherwise call itself, so both have
+ * to borrow the caller's identity before they can run one. They had
+ * the same six lines twice over, down to the error body — the comment
+ * on the second even read "Same pattern as /find-repo".
+ *
+ * Top-level (team, else org) rather than any agent: IC agents are
+ * subordinates, not the caller's primary identity.
+ *
+ * NOTE: the `no_agent` 404 is for endpoints that genuinely cannot
+ * proceed without one. Plenty of other handlers call
+ * `findTopLevelForOwner` and deliberately do something else when it
+ * comes back empty — `/chat` returns an empty conversation list,
+ * `/view` an empty task list, `/room` just skips adding the team as a
+ * member. Those aren't missing this helper; they have different
+ * behavior, and folding them in would change what they return.
+ *
+ * Returns `undefined` after responding, so the caller's next line is
+ * `if (!agent) return;` — the same guard convention as `requireHuman`.
+ */
+export async function requirePrimaryAgent(
+  res: Response,
+  personId: string,
+  agentRepo: AgentRepository,
+): Promise<Agent | undefined> {
+  const agent = await agentRepo.findTopLevelForOwner(personId);
+  if (!agent) {
+    res.status(404).json({ error: "no_agent", message: "Caller has no primary agent." });
+    return undefined;
+  }
+  return agent;
+}
 
 /**
  * Read a required route param, 400-ing when Express hands back an empty

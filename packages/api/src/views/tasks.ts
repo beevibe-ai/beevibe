@@ -13,6 +13,7 @@ import {
   TASK_STATUSES_BY_VIEW,
 } from "./tasks-grouping.js";
 import { deriveShortId, formatDurationLabel } from "./format.js";
+import { TASK_ACTOR_JOINS, taskOwnerScopeSql } from "./task-scope.js";
 import type {
   TaskListItem,
   TaskDetail,
@@ -85,8 +86,18 @@ interface TaskListRow {
   latest_session_agent_label: string | null;
 }
 
-const LIST_SQL = /* sql */ `
-WITH latest_session AS (
+/**
+ * The `latest_session` CTE: each task's most recent session, with the
+ * running agent's name. `scope` narrows the rows it walks — the list
+ * builds it for every task at once, the detail query for the one id it
+ * was asked about.
+ *
+ * DISTINCT ON + the matching ORDER BY prefix is what picks "most
+ * recent"; both must name `s.task_id` first, so they stay together
+ * here rather than being assembled at each call site.
+ */
+function latestSessionCte(scope: string): string {
+  return /* sql */ `latest_session AS (
   SELECT DISTINCT ON (s.task_id)
     s.task_id,
     s.id           AS sid,
@@ -96,9 +107,37 @@ WITH latest_session AS (
     a.name         AS agent_label
   FROM session s
   JOIN agent a ON a.id = s.agent_id
-  WHERE s.task_id IS NOT NULL
+  WHERE ${scope}
   ORDER BY s.task_id, s.created_at DESC
-),
+)`;
+}
+
+/**
+ * Assignee + creator display labels. The creator is either an agent or
+ * a person (`creator_type` decides which join matched), so the label
+ * coalesces the two.
+ */
+const ACTOR_LABEL_COLUMNS = /* sql */ `asg.name              AS assignee_name,
+  asg.hierarchy_level   AS assignee_hier,
+  COALESCE(crt_a.name, crt_p.name) AS creator_label`;
+
+/** The five columns {@link latestSessionCte} feeds, aliased `ls`. */
+const LATEST_SESSION_COLUMNS = /* sql */ `ls.sid                AS latest_session_id,
+  ls.sstatus            AS latest_session_status,
+  ls.sstarted           AS latest_session_started_at,
+  ls.scompleted         AS latest_session_completed_at,
+  ls.agent_label        AS latest_session_agent_label`;
+
+/**
+ * Joins behind {@link ACTOR_LABEL_COLUMNS}. The first two are shared
+ * with the inbox (and are what `taskOwnerScopeSql` reads); `crt_p` is
+ * this view's own addition, for the person half of `creator_label`.
+ */
+const ACTOR_LABEL_JOINS = /* sql */ `${TASK_ACTOR_JOINS}
+LEFT JOIN person crt_p ON crt_p.id = t.creator_id  AND t.creator_type = 'person'`;
+
+const LIST_SQL = /* sql */ `
+WITH ${latestSessionCte("s.task_id IS NOT NULL")},
 session_counts AS (
   SELECT task_id, COUNT(*)::int AS n
   FROM session
@@ -112,31 +151,18 @@ wp_counts AS (
 )
 SELECT
   t.*,
-  asg.name              AS assignee_name,
-  asg.hierarchy_level   AS assignee_hier,
-  COALESCE(crt_a.name, crt_p.name) AS creator_label,
+  ${ACTOR_LABEL_COLUMNS},
   COALESCE(sc.n, 0)     AS session_count,
   COALESCE(wpc.n, 0)    AS work_product_count,
-  ls.sid                AS latest_session_id,
-  ls.sstatus            AS latest_session_status,
-  ls.sstarted           AS latest_session_started_at,
-  ls.scompleted         AS latest_session_completed_at,
-  ls.agent_label        AS latest_session_agent_label
+  ${LATEST_SESSION_COLUMNS}
 FROM task t
-LEFT JOIN agent  asg   ON asg.id   = t.assignee_id
-LEFT JOIN agent  crt_a ON crt_a.id = t.creator_id  AND t.creator_type = 'agent'
-LEFT JOIN person crt_p ON crt_p.id = t.creator_id  AND t.creator_type = 'person'
+${ACTOR_LABEL_JOINS}
 LEFT JOIN session_counts sc ON sc.task_id = t.id
 LEFT JOIN wp_counts wpc     ON wpc.task_id = t.id
 LEFT JOIN latest_session ls ON ls.task_id = t.id
 WHERE ($1::text[] IS NULL OR t.status = ANY($1::text[]))
   AND ($2::text   IS NULL OR t.assignee_id = $2)
-  AND (
-    $3::text IS NULL
-    OR asg.owner_id = $3
-    OR crt_a.owner_id = $3
-    OR (t.creator_type = 'person' AND t.creator_id = $3)
-  )
+  AND ($3::text   IS NULL OR ${taskOwnerScopeSql("$3")})
 ORDER BY t.created_at DESC
 `;
 
@@ -225,32 +251,20 @@ interface DetailSessionRow {
   result_summary: string | null;
 }
 
+// Same row shape as LIST_SQL — both map through `rowToTaskListItem` —
+// but scoped to one id, so the counts come from correlated subqueries
+// rather than the list's grouped CTEs, and there is no owner-scope
+// predicate: the route checks ownership before calling `getTask`.
 const DETAIL_SQL_TASK = /* sql */ `
-WITH latest_session AS (
-  SELECT DISTINCT ON (s.task_id)
-    s.task_id, s.id AS sid, s.status AS sstatus, s.started_at AS sstarted,
-    s.completed_at AS scompleted, a.name AS agent_label
-  FROM session s
-  JOIN agent a ON a.id = s.agent_id
-  WHERE s.task_id = $1
-  ORDER BY s.task_id, s.created_at DESC
-)
+WITH ${latestSessionCte("s.task_id = $1")}
 SELECT
   t.*,
-  asg.name              AS assignee_name,
-  asg.hierarchy_level   AS assignee_hier,
-  COALESCE(crt_a.name, crt_p.name) AS creator_label,
+  ${ACTOR_LABEL_COLUMNS},
   (SELECT COUNT(*) FROM session       WHERE task_id = t.id)::int AS session_count,
   (SELECT COUNT(*) FROM work_product  WHERE task_id = t.id)::int AS work_product_count,
-  ls.sid                AS latest_session_id,
-  ls.sstatus            AS latest_session_status,
-  ls.sstarted           AS latest_session_started_at,
-  ls.scompleted         AS latest_session_completed_at,
-  ls.agent_label        AS latest_session_agent_label
+  ${LATEST_SESSION_COLUMNS}
 FROM task t
-LEFT JOIN agent  asg   ON asg.id   = t.assignee_id
-LEFT JOIN agent  crt_a ON crt_a.id = t.creator_id  AND t.creator_type = 'agent'
-LEFT JOIN person crt_p ON crt_p.id = t.creator_id  AND t.creator_type = 'person'
+${ACTOR_LABEL_JOINS}
 LEFT JOIN latest_session ls ON ls.task_id = t.id
 WHERE t.id = $1
 LIMIT 1
