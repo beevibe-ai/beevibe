@@ -37,7 +37,18 @@ const TITLE_TRUNCATE = 120;
  *
  * Scoping is `taskOwnerScopeSql`, the same rule the `/task` list uses
  * (see views/task-scope.ts).
+ *
+ * The select list is no longer column-aligned the way the two
+ * hand-written branches were: `detail` varies in width between them, so
+ * there is no padding that lines both up. Keeping the generated SQL
+ * readable in logs is what `indent` is for — a multi-line fragment
+ * pasted into an indented position would otherwise land ragged.
  */
+function indent(fragment: string, spaces: number): string {
+  const pad = " ".repeat(spaces);
+  return fragment.split("\n").join(`\n${pad}`);
+}
+
 function taskBranchSql(
   kind: "task_review" | "task_blocked",
   status: "review" | "blocked",
@@ -45,16 +56,16 @@ function taskBranchSql(
 ): string {
   return /* sql */ `
   SELECT
-    '${kind}:' || t.id               AS id,
-    '${kind}'::text                  AS kind,
+    '${kind}:' || t.id AS id,
+    '${kind}'::text AS kind,
     LEFT(t.title, ${TITLE_TRUNCATE}) AS title,
-    ${detail}                        AS detail,
-    '/tasks/' || t.id                AS href,
-    t.updated_at                     AS age_at
+    ${detail} AS detail,
+    '/tasks/' || t.id AS href,
+    t.updated_at AS age_at
   FROM task t
-  ${TASK_ACTOR_JOINS}
+  ${indent(TASK_ACTOR_JOINS, 2)}
   WHERE t.status = '${status}'
-    AND ${taskOwnerScopeSql("$1")}`;
+    AND ${indent(taskOwnerScopeSql("$1"), 4)}`;
 }
 
 /**
