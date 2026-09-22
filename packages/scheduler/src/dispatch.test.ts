@@ -63,7 +63,6 @@ beforeEach(() => {
     findTopLevelForOwner: vi.fn(),
     findSubordinates: vi.fn(),
     findPeers: vi.fn(),
-    findByLevel: vi.fn(),
     findParent: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),

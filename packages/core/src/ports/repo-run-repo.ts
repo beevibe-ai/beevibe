@@ -32,7 +32,6 @@ export interface RepoRunRepository {
   create(input: NewRepoRun): Promise<RepoRun>;
   findById(id: string): Promise<RepoRun | undefined>;
   findBySessionId(sessionId: string): Promise<RepoRun | undefined>;
-  listByAgent(agentId: string, opts?: { limit?: number }): Promise<RepoRun[]>;
   listRecent(opts?: { limit?: number }): Promise<RepoRun[]>;
   update(id: string, patch: RepoRunPatch): Promise<RepoRun>;
 }

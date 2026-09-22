@@ -174,38 +174,6 @@ describe("capability-network postgres repositories", () => {
       expect(await runs.findBySessionId("sess_missing")).toBeUndefined();
     });
 
-    it("lists by agent newest-first, scoped to that agent and capped", async () => {
-      const other = await agents.create({
-        id: agentId(),
-        name: "Other",
-        owner_id: owner,
-        hierarchy_level: "ic",
-        runtime_config: DEFAULT_RUNTIME_CONFIG,
-      });
-      const first = await newRun();
-      const second = await newRun();
-      await newRun({ agent_id: other.id });
-      // started_at defaults to NOW() at millisecond-or-better resolution;
-      // nudge them apart so the ordering assertion isn't a coin flip.
-      await pool.query(`UPDATE repo_run SET started_at = $2 WHERE id = $1`, [
-        first.id,
-        new Date("2026-01-01T00:00:00Z"),
-      ]);
-      await pool.query(`UPDATE repo_run SET started_at = $2 WHERE id = $1`, [
-        second.id,
-        new Date("2026-02-01T00:00:00Z"),
-      ]);
-
-      expect((await runs.listByAgent(agent)).map((r) => r.id)).toEqual([
-        second.id,
-        first.id,
-      ]);
-      expect((await runs.listByAgent(agent, { limit: 1 })).map((r) => r.id)).toEqual([
-        second.id,
-      ]);
-      expect(await runs.listByAgent("agent_nobody")).toEqual([]);
-    });
-
     it("lists recent runs across every agent", async () => {
       const other = await agents.create({
         id: agentId(),

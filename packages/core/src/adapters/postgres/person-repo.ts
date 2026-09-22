@@ -27,15 +27,6 @@ export class PostgresPersonRepository implements PersonRepository {
     return rows[0] ? rowToPerson(rows[0]) : undefined;
   }
 
-  async findManyByIds(ids: string[]): Promise<Person[]> {
-    if (ids.length === 0) return [];
-    const { rows } = await this.pool.query<PersonRow>(
-      `SELECT * FROM person WHERE id = ANY($1::text[])`,
-      [ids],
-    );
-    return rows.map(rowToPerson);
-  }
-
   async create(input: NewPerson): Promise<Person> {
     const { rows } = await this.pool.query<PersonRow>(
       `INSERT INTO person (id, name, email, api_key, password_hash)

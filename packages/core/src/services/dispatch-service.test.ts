@@ -48,7 +48,6 @@ beforeEach(() => {
     findSubordinates: vi.fn(),
     findPeers: vi.fn(),
     findParent: vi.fn(),
-    findByLevel: vi.fn(),
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),

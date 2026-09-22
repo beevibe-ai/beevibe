@@ -28,15 +28,6 @@ export class PostgresEscalationRepository implements EscalationRepository {
     return rows[0] ? rowToEscalation(rows[0]) : undefined;
   }
 
-  async listPending(): Promise<Escalation[]> {
-    const { rows } = await this.pool.query<EscalationRow>(
-      `SELECT * FROM escalation
-        WHERE status = 'pending'
-        ORDER BY created_at ASC`,
-    );
-    return rows.map(rowToEscalation);
-  }
-
   async create(input: NewEscalation): Promise<Escalation> {
     const { rows } = await this.pool.query<EscalationRow>(
       `INSERT INTO escalation (

@@ -51,10 +51,13 @@ export interface TaskExecutionWorkerConfig {
  * One poll cycle:
  *   1. Reap — detect orphaned sessions whose CLI process died (via
  *      `isProcessAlive`) and mark them failed; re-queue the parent task.
- *   2. Dispatch — list all assignable tasks, for each: check per-agent
- *      capacity (DB running count + poll-local pending), atomically claim
- *      via `TaskRepository.claimById`, provision the workspace, hand off to
- *      `dispatchTask` (fire-and-forget).
+ *   2. Dispatch — drain the server-fallback queue: atomically claim each
+ *      pending session with no `runtime_id` via
+ *      `SessionRepository.claimNextForServerFallback`, flip the parent
+ *      task into its active state (`transitionTaskOnClaim`), provision the
+ *      workspace, hand off to `dispatchTask` (fire-and-forget).
+ *      Daemon-bound sessions never reach this loop — they are claimed over
+ *      `/runtime/claim`.
  *
  * All session-row bookkeeping (create/update), briefing composition, runtime
  * spawn, and post-session promotion live inside `AgentSession` (M3). The
