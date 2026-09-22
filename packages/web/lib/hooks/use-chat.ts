@@ -1,15 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   api,
+  type ChatConversationsResponse,
   type ChatHistoryMessage,
   type ChatHistoryResponse,
   type ChatTurnResponse,
 } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
 import { ApiError } from "@/lib/api/http";
+import { useApiQuery } from "./api-query";
 import { queryKeys } from "./keys";
 
 /**
@@ -97,14 +98,16 @@ export function useChat(opts: UseChatOptions = {}) {
   const cacheId = fresh ? FRESH_CACHE_ID : conversationId;
   const queryKey = queryKeys.chat.history(cacheId);
 
-  const history = useQuery<ChatHistoryResponse>({
+  const history = useApiQuery<ChatHistoryResponse>(
     queryKey,
-    queryFn: ({ signal }) => api.chat.history({ conversationId, signal }),
-    // Fresh surface has no server-side chain to fetch; the cache slot
-    // accumulates locally via mutation `setQueryData` below.
-    enabled: isApiConfigured && !fresh,
-    staleTime: Infinity,
-  });
+    ({ signal }) => api.chat.history({ conversationId, signal }),
+    {
+      // Fresh surface has no server-side chain to fetch; the cache slot
+      // accumulates locally via mutation `setQueryData` below.
+      enabled: !fresh,
+      staleTime: Infinity,
+    },
+  );
 
   // Seed the fresh cache slot when entering a fresh surface so a stale
   // draft from a prior /chat?new=1 visit doesn't reappear. Depends on
@@ -322,4 +325,18 @@ export function useChat(opts: UseChatOptions = {}) {
      */
     runtimeMismatch: history.data?.runtime_mismatch,
   };
+}
+
+/**
+ * The conversation list behind both chat surfaces — the `/chat` landing
+ * page's "recent chats" strip and the sidebar's full list. Both rendered
+ * the same query inline with the same key and the same `staleTime`; a hook
+ * keeps the two reading one cache entry by construction.
+ */
+export function useChatConversations() {
+  return useApiQuery<ChatConversationsResponse>(
+    queryKeys.chat.conversations(),
+    ({ signal }) => api.chat.conversations({ signal }),
+    { staleTime: 30_000 },
+  );
 }

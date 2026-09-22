@@ -1,8 +1,7 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { api, type MeResponse } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
+import { useApiQuery } from "./api-query";
 import { queryKeys } from "./keys";
 
 /**
@@ -11,12 +10,11 @@ import { queryKeys } from "./keys";
  * (e.g. the chat route flipped the column after the first turn).
  */
 export function useMe() {
-  return useQuery<MeResponse>({
-    queryKey: queryKeys.me.self(),
-    queryFn: ({ signal }) => api.me.self({ signal }),
-    enabled: isApiConfigured,
-    staleTime: 0,
-  });
+  return useApiQuery<MeResponse>(
+    queryKeys.me.self(),
+    ({ signal }) => api.me.self({ signal }),
+    { staleTime: 0 },
+  );
 }
 
 /**

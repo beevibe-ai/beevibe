@@ -1,12 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
+import { useApiDetailQuery } from "./api-query";
 import { queryKeys } from "./keys";
 
 export function useNegotiation(id: string | undefined) {
-  return useQuery({
-    queryKey: id ? queryKeys.negotiations.detail(id) : queryKeys.negotiations.all,
-    queryFn: ({ signal }) => api.negotiations.get(id as string, { signal }),
-    enabled: isApiConfigured && !!id,
-  });
+  return useApiDetailQuery(id, queryKeys.negotiations, (negotiationId, opts) =>
+    api.negotiations.get(negotiationId, opts),
+  );
 }

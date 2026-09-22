@@ -1,9 +1,8 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
 import type { AgentNetwork } from "@/lib/types/agent-network";
+import { useApiQuery } from "./api-query";
 import { queryKeys } from "./keys";
 
 /**
@@ -12,10 +11,9 @@ import { queryKeys } from "./keys";
  * peer team orbits around it).
  */
 export function useAgentNetwork() {
-  return useQuery<AgentNetwork>({
-    queryKey: queryKeys.agentNetwork.self(),
-    queryFn: ({ signal }) => api.agents.network({ signal }),
-    enabled: isApiConfigured,
-    staleTime: 30_000,
-  });
+  return useApiQuery<AgentNetwork>(
+    queryKeys.agentNetwork.self(),
+    ({ signal }) => api.agents.network({ signal }),
+    { staleTime: 30_000 },
+  );
 }

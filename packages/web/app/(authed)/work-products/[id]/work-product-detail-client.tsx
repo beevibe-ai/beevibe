@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useQuery } from "@tanstack/react-query";
 import {
   ArrowLeft,
   ChevronRight,
@@ -9,23 +8,23 @@ import {
   FileText,
 } from "lucide-react";
 import { api, type WorkProductDetail } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
+import { useApiDetailQuery } from "@/lib/hooks/api-query";
 import { queryKeys } from "@/lib/hooks/keys";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
-import { FooterField } from "@/components/detail/footer-field";
+import { DetailFooter, FooterField } from "@/components/detail/detail-footer";
 import { formatRelativeTime, shortId } from "@/lib/format";
 
 export function WorkProductDetailClient({ workProductId }: { workProductId: string }) {
-  const query = useQuery<WorkProductDetail>({
-    queryKey: queryKeys.workProducts.detail(workProductId),
-    queryFn: ({ signal }) => api.workProducts.get(workProductId, { signal }),
-    enabled: isApiConfigured && !!workProductId,
-    staleTime: 30_000,
-  });
+  const query = useApiDetailQuery<WorkProductDetail>(
+    workProductId,
+    queryKeys.workProducts,
+    (id, opts) => api.workProducts.get(id, opts),
+    { staleTime: 30_000 },
+  );
 
   return (
     <DetailGate
@@ -125,7 +124,7 @@ function Body({ wp }: { wp: WorkProductDetail }) {
         />
       )}
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="ID">
           <ClickToCopyId id={wp.id} />
         </FooterField>
@@ -143,7 +142,7 @@ function Body({ wp }: { wp: WorkProductDetail }) {
           </FooterField>
         ) : null}
         {wp.provider ? <FooterField label="Provider">{wp.provider}</FooterField> : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }

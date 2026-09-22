@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   AlertTriangle,
@@ -15,13 +15,8 @@ import {
 } from "lucide-react";
 import type { HierarchyLevel, KnownCli } from "@beevibe/core";
 import { isApiConfigured } from "@/lib/api/config";
-import {
-  api,
-  type ChatConversationsResponse,
-  type RepoCard,
-  type SuggestedAction,
-} from "@/lib/api/client";
-import { useChat, type ChatMessage } from "@/lib/hooks/use-chat";
+import { api, type RepoCard, type SuggestedAction } from "@/lib/api/client";
+import { useChat, useChatConversations, type ChatMessage } from "@/lib/hooks/use-chat";
 import {
   useChatStream,
   useChatStreamTree,
@@ -32,7 +27,6 @@ import { useConversation } from "@/lib/hooks/use-sessions";
 import type { TranscriptEntry } from "@/lib/types/sessions";
 import { useMe } from "@/lib/hooks/use-me";
 import { useAgents } from "@/lib/hooks/use-agents";
-import { queryKeys } from "@/lib/hooks/keys";
 import { deriveShortId, formatRelativeTime } from "@/lib/format";
 import { defaultTryGoal, formatStars } from "@/lib/capabilities";
 import { cn } from "@/lib/utils";
@@ -374,12 +368,7 @@ function HeroEmptyChat({
   const teamAgent = agents.data?.find((a) => a.hierarchy !== "ic");
   const initial = (teamAgent?.display_name ?? teamAgent?.name ?? "?").charAt(0).toUpperCase();
 
-  const conversations = useQuery<ChatConversationsResponse>({
-    queryKey: queryKeys.chat.conversations(),
-    queryFn: ({ signal }) => api.chat.conversations({ signal }),
-    enabled: isApiConfigured,
-    staleTime: 30_000,
-  });
+  const conversations = useChatConversations();
   const recentChats = (conversations.data?.conversations ?? []).slice(0, 4);
   const suggestions = onboarding ? ONBOARDING_PROMPT_SUGGESTIONS : PROMPT_SUGGESTIONS;
 

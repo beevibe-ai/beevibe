@@ -3,6 +3,8 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  makeCodeErrorHandler,
+  makeErrorHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +219,85 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("the two 500 handlers", () => {
+  // They answer with different envelopes on purpose: the older routers
+  // reflect `err.message` under a fixed `internal_error` code, the newer
+  // ones expose only a per-operation code. Clients branch on the code, so
+  // these assertions pin the divergence rather than tolerating it.
+
+  it("makeErrorHandler reflects the error message under `internal_error`", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+
+    makeErrorHandler("room route")(new Error("db is down"), res);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "db is down" });
+    expect(log).toHaveBeenCalledWith("[room route]", expect.any(Error));
+    log.mockRestore();
+  });
+
+  it("makeErrorHandler folds a per-call context into the log tag", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    makeErrorHandler("view route")(new Error("x"), fakeRes(), "task detail");
+
+    expect(log).toHaveBeenCalledWith("[view route: task detail]", expect.any(Error));
+    log.mockRestore();
+  });
+
+  it("makeErrorHandler stringifies a non-Error throw", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+
+    makeErrorHandler("signin")("just a string", res);
+
+    expect(res.body).toEqual({ error: "internal_error", message: "just a string" });
+    log.mockRestore();
+  });
+
+  it("makeCodeErrorHandler answers with the bare code and no message", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+
+    makeCodeErrorHandler("repo-runs")(new Error("boom"), res, "get", "get_failed");
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "get_failed" });
+    log.mockRestore();
+  });
+
+  it("makeCodeErrorHandler logs under `[router/op]`", () => {
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    makeCodeErrorHandler("capabilities")(
+      new Error("boom"),
+      fakeRes(),
+      "referenced-repos",
+      "scan_failed",
+    );
+
+    expect(log).toHaveBeenCalledWith("[capabilities/referenced-repos]", expect.any(Error));
+    log.mockRestore();
+  });
+
+  it("makeCodeErrorHandler keeps the code independent of the op", () => {
+    // `referenced-repos` answers `scan_failed` — the code is not derived
+    // from the operation name, which is why it stays a parameter.
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+
+    makeCodeErrorHandler("capabilities")(
+      new Error("boom"),
+      res,
+      "referenced-repos",
+      "scan_failed",
+    );
+
+    expect(res.body).toEqual({ error: "scan_failed" });
+    log.mockRestore();
   });
 });

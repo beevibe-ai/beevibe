@@ -150,3 +150,29 @@ export function makeErrorHandler(
     });
   };
 }
+
+/**
+ * The other 500 handler — the one the newer routers use.
+ *
+ * `capabilities`, `find-repo`, `learned-skills` and `repo-runs` answer a
+ * failure with a bare per-operation code (`{ error: "get_failed" }`) and no
+ * `message`, logging under a `[router/op]` tag. Ten handlers spelled out the
+ * same log-then-respond pair.
+ *
+ * Deliberately not folded into `makeErrorHandler`: that one reflects
+ * `err.message` back to the client under a fixed `internal_error` code.
+ * These routers expose nothing but the code, and clients branch on the code,
+ * so the two envelopes are a wire-contract difference rather than drift —
+ * hence two factories, each with one implementation.
+ *
+ * `errorCode` stays a parameter because it is not derivable from `op`:
+ * `referenced-repos` answers with `scan_failed`.
+ */
+export function makeCodeErrorHandler(
+  tag: string,
+): (err: unknown, res: Response, op: string, errorCode: string) => void {
+  return (err, res, op, errorCode) => {
+    console.error(`[${tag}/${op}]`, err);
+    res.status(500).json({ error: errorCode });
+  };
+}

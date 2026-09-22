@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowRight, Cpu, Sparkles } from "lucide-react";
 import {
   api,
@@ -9,18 +9,18 @@ import {
   type UserPreferences,
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
+import { useApiQuery } from "@/lib/hooks/api-query";
 import { queryKeys } from "@/lib/hooks/keys";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 
 export function SettingsClient() {
   const qc = useQueryClient();
-  const { data, isLoading, isError } = useQuery<MeResponse>({
-    queryKey: queryKeys.me.self(),
-    queryFn: ({ signal }) => api.me.self({ signal }),
-    enabled: isApiConfigured,
-    staleTime: 30_000,
-  });
+  const { data, isLoading, isError } = useApiQuery<MeResponse>(
+    queryKeys.me.self(),
+    ({ signal }) => api.me.self({ signal }),
+    { staleTime: 30_000 },
+  );
 
   const toggle = useMutation({
     mutationFn: (input: Partial<UserPreferences>) => api.me.updatePreferences(input),
