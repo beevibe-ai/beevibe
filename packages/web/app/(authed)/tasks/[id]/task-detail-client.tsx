@@ -25,7 +25,7 @@ import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pi
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { DetailGate } from "@/components/detail/detail-gate";
-import { FooterField } from "@/components/detail/footer-field";
+import { DetailFooter, FooterField } from "@/components/detail/detail-footer";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
 import { richTextToMarkdown } from "@/components/rich-text";
@@ -293,7 +293,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         </aside>
       </div>
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
+      <DetailFooter>
         <FooterField label="ID">
           <ClickToCopyId id={task.id} />
         </FooterField>
@@ -316,7 +316,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
             </Link>
           </FooterField>
         ) : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }

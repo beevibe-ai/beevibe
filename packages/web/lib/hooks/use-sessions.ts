@@ -1,14 +1,11 @@
-import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api/client";
-import { isApiConfigured } from "@/lib/api/config";
+import { useApiDetailQuery } from "./api-query";
 import { queryKeys } from "./keys";
 
 export function useSession(shortId: string | undefined) {
-  return useQuery({
-    queryKey: shortId ? queryKeys.sessions.detail(shortId) : queryKeys.sessions.all,
-    queryFn: ({ signal }) => api.sessions.get(shortId as string, { signal }),
-    enabled: isApiConfigured && !!shortId,
-  });
+  return useApiDetailQuery(shortId, queryKeys.sessions, (sid, opts) =>
+    api.sessions.get(sid, opts),
+  );
 }
 
 /**
@@ -18,16 +15,16 @@ export function useSession(shortId: string | undefined) {
  * renders them unchanged.
  */
 export function useConversation(shortId: string | undefined) {
-  return useQuery({
-    queryKey: shortId
-      ? queryKeys.sessions.conversation(shortId)
-      : queryKeys.sessions.all,
-    queryFn: ({ signal }) => api.sessions.conversation(shortId as string, { signal }),
-    enabled: isApiConfigured && !!shortId,
-    // A completed turn's transcript is immutable, so this potentially-large
-    // fetch (every turn × up to 500 events) needn't refetch on focus/idle.
-    // In-flight turns surface live via SSE, not this query. Cold loads still
-    // refetch on mount.
-    staleTime: 60_000,
-  });
+  return useApiDetailQuery(
+    shortId,
+    { all: queryKeys.sessions.all, detail: queryKeys.sessions.conversation },
+    (sid, opts) => api.sessions.conversation(sid, opts),
+    {
+      // A completed turn's transcript is immutable, so this potentially-large
+      // fetch (every turn × up to 500 events) needn't refetch on focus/idle.
+      // In-flight turns surface live via SSE, not this query. Cold loads still
+      // refetch on mount.
+      staleTime: 60_000,
+    },
+  );
 }

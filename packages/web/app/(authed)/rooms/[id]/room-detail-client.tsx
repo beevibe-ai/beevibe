@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   Bot,
@@ -17,8 +17,9 @@ import { isApiConfigured } from "@/lib/api/config";
 import { api, type RoomDetail, type RoomMemberDetail, type RoomMessage } from "@/lib/api/client";
 import { ApiError, describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
-import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
+import { useRoom } from "@/lib/hooks/use-rooms";
 import { ModalOverlay } from "@/components/modal-overlay";
+import { ShareLinkBox } from "@/components/share-link-box";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ToolStepList } from "@/components/chat/tool-step-list";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
@@ -33,19 +34,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
   const [draft, setDraft] = useState("");
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
-  const { data, isLoading, isError } = useQuery<RoomDetail>({
-    queryKey: queryKeys.rooms.detail(roomId),
-    queryFn: ({ signal }) => api.rooms.get(roomId, { signal }),
-    enabled: isApiConfigured && !!roomId,
-    staleTime: 1_000,
-    // Polling fallback — cloudflared trycloudflare quick tunnels
-    // buffer SSE responses, so the bv_event channel often fails to
-    // propagate to remote browsers. SSE remains the fast path when
-    // it works (sub-second latency); this 3s poll guarantees the
-    // room view eventually catches up regardless of the tunnel.
-    refetchInterval: 3_000,
-    refetchIntervalInBackground: false,
-  });
+  const { data, isLoading, isError } = useRoom(roomId);
 
   // Optimistic UI: snapshot the message text on send, push it into
   // the cached room detail so the sender sees their own line
@@ -275,7 +264,6 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
   const [error, setError] = useState<string | null>(null);
   /** When the invitee doesn't have an account yet, surface a share link they can use to sign up + auto-join. */
   const [shareLink, setShareLink] = useState<string | null>(null);
-  const { copied, copy } = useCopyToClipboard();
 
   const invite = useMutation({
     mutationFn: () => api.rooms.invite(roomId, { email: email.trim() }),
@@ -333,27 +321,10 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
           </div>
         ) : null}
         {shareLink ? (
-          <div className="mt-3 rounded border border-border bg-muted/40 p-3">
-            <div className="text-[11px] text-muted-foreground mb-1.5">
-              No account for that email yet. Send them this link — they&apos;ll sign up and
-              land in this room.
-            </div>
-            <div className="flex items-center gap-1.5">
-              <input
-                readOnly
-                value={shareLink}
-                className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-[11px] font-mono"
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <button
-                type="button"
-                onClick={() => void copy(shareLink ?? "")}
-                className="h-7 px-2.5 rounded text-[11px] font-medium border border-border hover:bg-secondary transition-colors cursor-pointer shrink-0"
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-          </div>
+          <ShareLinkBox link={shareLink}>
+            No account for that email yet. Send them this link — they&apos;ll sign up and
+            land in this room.
+          </ShareLinkBox>
         ) : null}
         <div className="mt-4 flex items-center justify-end gap-2">
           <button
