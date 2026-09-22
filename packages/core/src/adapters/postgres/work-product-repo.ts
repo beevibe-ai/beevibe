@@ -36,16 +36,6 @@ export class PostgresWorkProductRepository implements WorkProductRepository {
     return rows.map(rowToWorkProductListItem);
   }
 
-  async listByAgent(agentId: string): Promise<WorkProductListItem[]> {
-    const { rows } = await this.pool.query<WorkProductListRow>(
-      `SELECT ${LIST_COLUMNS} FROM work_product
-        WHERE agent_id = $1
-        ORDER BY created_at DESC`,
-      [agentId],
-    );
-    return rows.map(rowToWorkProductListItem);
-  }
-
   async create(input: NewWorkProduct): Promise<WorkProduct> {
     const { rows } = await this.pool.query<WorkProductRow>(
       `INSERT INTO work_product (

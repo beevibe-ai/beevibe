@@ -11,7 +11,7 @@ import type {
   TaskListFilter,
 } from "../../ports/task-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById, taskPriorityRankSql, updateRowById } from "./pg-helpers.js";
+import { findRowById, updateRowById } from "./pg-helpers.js";
 import type { TaskRow } from "./row-types.js";
 
 export class PostgresTaskRepository implements TaskRepository {
@@ -73,63 +73,6 @@ export class PostgresTaskRepository implements TaskRepository {
     const { rows } = await this.pool.query<TaskRow>(
       `SELECT * FROM task WHERE assignee_id = $1 ORDER BY created_at DESC`,
       [assigneeId],
-    );
-    return rows.map(rowToTask);
-  }
-
-  async listAssignable(): Promise<Task[]> {
-    // Matches idx_task_dispatch (migrations/..._add-task-needs-revision-status.sql).
-    // The queue states are `assigned` (first dispatch) and `needs_revision`
-    // (re-work requested). Tasks in `in_progress` / `revision` are currently
-    // running, not assignable.
-    const { rows } = await this.pool.query<TaskRow>(
-      `SELECT * FROM task
-        WHERE status IN ('assigned', 'needs_revision')
-          AND assignee_id IS NOT NULL
-        ORDER BY ${taskPriorityRankSql("priority")} DESC,
-                 created_at ASC`,
-    );
-    return rows.map(rowToTask);
-  }
-
-  async claimById(taskId: string): Promise<Task | undefined> {
-    // Row-level MVCC atomic: under concurrent executors, one UPDATE wins and
-    // the other sees the row with a status no longer in the WHERE predicate
-    // and returns empty. The CASE preserves the semantic distinction between
-    // fresh work (assigned → in_progress) and re-work (needs_revision →
-    // revision). Dispatch reads post-claim status=="revision" to decide on
-    // priorSessionId (--resume).
-    const { rows } = await this.pool.query<TaskRow>(
-      `UPDATE task
-          SET status = CASE
-                         WHEN status = 'assigned'       THEN 'in_progress'
-                         WHEN status = 'needs_revision' THEN 'revision'
-                       END,
-              updated_at = NOW()
-        WHERE id = $1 AND status IN ('assigned', 'needs_revision')
-        RETURNING *`,
-      [taskId],
-    );
-    return rows[0] ? rowToTask(rows[0]) : undefined;
-  }
-
-  async listReviewQueue(): Promise<Task[]> {
-    // Tasks awaiting a human review decision. `review` is the only state
-    // where a reviewer action is needed — `needs_revision` means the human
-    // already decided "re-work" and the executor will pick it up;
-    // `revision` means the agent is actively re-working.
-    const { rows } = await this.pool.query<TaskRow>(
-      `SELECT * FROM task
-        WHERE status = 'review'
-        ORDER BY
-          CASE priority
-            WHEN 'critical' THEN 4
-            WHEN 'high'     THEN 3
-            WHEN 'medium'   THEN 2
-            WHEN 'low'      THEN 1
-            ELSE 0
-          END DESC,
-          updated_at ASC`,
     );
     return rows.map(rowToTask);
   }

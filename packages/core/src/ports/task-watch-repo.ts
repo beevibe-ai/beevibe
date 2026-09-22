@@ -9,10 +9,6 @@ export type NewTaskWatch = Omit<
 
 export interface TaskWatchRepository {
   findById(id: string): Promise<TaskWatch | undefined>;
-  /** Watches the given waiter session registered, newest first. */
-  listByWaiterSession(waiterSessionId: string): Promise<TaskWatch[]>;
-  /** Waiting watches whose `task_ids` contains `taskId`; used by the M2 trigger / service to enumerate candidates on a status transition. */
-  listWaitingForTask(taskId: string): Promise<TaskWatch[]>;
   create(input: NewTaskWatch): Promise<TaskWatch>;
   /**
    * Mark a watch as fired and link the wake session. Idempotent on the

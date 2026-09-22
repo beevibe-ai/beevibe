@@ -1,4 +1,4 @@
-import type { Agent, HierarchyLevel } from "../domain/agent.js";
+import type { Agent } from "../domain/agent.js";
 
 export type NewAgent = Omit<Agent, "created_at" | "updated_at">;
 
@@ -28,9 +28,6 @@ export interface AgentRepository {
    * before letting a parent revise a subordinate's task.
    */
   findParent(agentId: string): Promise<Agent | undefined>;
-
-  /** All agents at a given hierarchy level (e.g., all team agents under an org). */
-  findByLevel(level: HierarchyLevel): Promise<Agent[]>;
 
   /**
    * All agent ids reachable by walking `parent_agent_id` downward from
