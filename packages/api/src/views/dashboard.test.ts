@@ -255,26 +255,35 @@ describe("getDashboardSummary", () => {
   });
 
   it("fires all 7 queries in parallel (single Promise.all)", async () => {
-    const calls: number[] = [];
-    let next = 0;
-    const query = vi.fn(async (sql: unknown) => {
-      const i = next++;
-      calls.push(i);
-      // First-issued query resolves last to prove they were issued together,
-      // not awaited sequentially.
-      await new Promise((r) => setTimeout(r, i === 0 ? 10 : 0));
-      const sqlText = String(sql);
-      if (sqlText.includes("FROM days") && sqlText.includes("active_sessions")) return { rows: makeKpiTrendRows() };
-      if (sqlText.includes("FROM days")) return { rows: makeTrendRows() };
-      if (sqlText.includes("FROM agent")) return { rows: [] };
-      if (sqlText.includes("blocked', 'failed'")) return { rows: [] };
-      if (sqlText.includes("usage IS NOT NULL")) return { rows: [] };
-      return { rows: [] };
-    });
+    // Hold every query open. Under Promise.all all 7 are issued before any
+    // of them settles; under a sequential `await` only the first would have
+    // been issued by the time we look. Recording issue *order* proves
+    // nothing here — a sequential loop issues them 1..7 in order too.
+    const pending: Array<() => void> = [];
+    const query = vi.fn(
+      (sql: unknown) =>
+        new Promise<{ rows: unknown[] }>((resolve) => {
+          const sqlText = String(sql);
+          pending.push(() => {
+            if (sqlText.includes("FROM days") && sqlText.includes("active_sessions")) {
+              resolve({ rows: makeKpiTrendRows() });
+            } else if (sqlText.includes("FROM days")) {
+              resolve({ rows: makeTrendRows() });
+            } else {
+              resolve({ rows: [] });
+            }
+          });
+        }),
+    );
     const pool = { query } as unknown as Pool;
-    await getDashboardSummary(pool);
-    expect(calls).toEqual([0, 1, 2, 3, 4, 5, 6]);
+
+    const summary = getDashboardSummary(pool);
+    // Let the synchronous fan-out run without settling anything.
+    await Promise.resolve();
     expect(query).toHaveBeenCalledTimes(7);
+
+    for (const settle of pending) settle();
+    await summary;
   });
 });
 

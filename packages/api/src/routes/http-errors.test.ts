@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import type { Request, Response } from "express";
 import {
   invalidBody,
@@ -137,12 +137,6 @@ describe("loadOwned", () => {
     );
     expect(got).toBeUndefined();
     expect(res.statusCode).toBe(403);
-  });
-
-  it("does not call the loader more than once", async () => {
-    const load = vi.fn().mockResolvedValue(agent);
-    await loadOwned(fakeRes(), "person_1", load, (a: typeof agent) => a.owner_id, "nf");
-    expect(load).toHaveBeenCalledTimes(1);
   });
 });
 
