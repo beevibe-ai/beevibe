@@ -18,37 +18,10 @@ import type {
   PersonRepository,
   RuntimeRegistry,
 } from "@beevibe/core";
+import { makeAgentRepoFake, makePersonRepoFake } from "../test-fakes.js";
 import { createMeRouter } from "./me.js";
 
 const PERSON = "person_1";
-
-function makePersonRepo(): PersonRepository {
-  return {
-    findById: vi.fn(),
-    findByEmail: vi.fn(),
-    findByApiKey: vi.fn(),
-    findManyByIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-}
-
-function makeAgentRepo(): AgentRepository {
-  return {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findParent: vi.fn(),
-    findByLevel: vi.fn(),
-    findDescendantIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-}
 
 function fakePerson(overrides: Partial<Person> = {}): Person {
   return {
@@ -116,8 +89,8 @@ interface AppOpts {
 }
 
 function makeApp(opts: AppOpts = {}) {
-  const personRepo = opts.personRepo ?? makePersonRepo();
-  const agentRepo = opts.agentRepo ?? makeAgentRepo();
+  const personRepo = opts.personRepo ?? makePersonRepoFake();
+  const agentRepo = opts.agentRepo ?? makeAgentRepoFake();
   const app = express();
   app.use(json());
   app.use(
@@ -137,8 +110,8 @@ function makeApp(opts: AppOpts = {}) {
 
 describe("GET /me", () => {
   it("returns person, primary agent and preferences", async () => {
-    const personRepo = makePersonRepo();
-    const agentRepo = makeAgentRepo();
+    const personRepo = makePersonRepoFake();
+    const agentRepo = makeAgentRepoFake();
     vi.mocked(personRepo.findById).mockResolvedValue(
       fakePerson({ onboarding_completed_at: new Date("2026-04-02T10:00:00Z") }),
     );
@@ -162,8 +135,8 @@ describe("GET /me", () => {
   });
 
   it("flags needs_onboarding when the stamp is absent", async () => {
-    const personRepo = makePersonRepo();
-    const agentRepo = makeAgentRepo();
+    const personRepo = makePersonRepoFake();
+    const agentRepo = makeAgentRepoFake();
     vi.mocked(personRepo.findById).mockResolvedValue(fakePerson());
     vi.mocked(agentRepo.findTopLevelForOwner).mockResolvedValue(fakeAgent());
 
@@ -175,8 +148,8 @@ describe("GET /me", () => {
   });
 
   it("returns a null primary_agent rather than 404ing when no agent exists", async () => {
-    const personRepo = makePersonRepo();
-    const agentRepo = makeAgentRepo();
+    const personRepo = makePersonRepoFake();
+    const agentRepo = makeAgentRepoFake();
     vi.mocked(personRepo.findById).mockResolvedValue(fakePerson());
     vi.mocked(agentRepo.findTopLevelForOwner).mockResolvedValue(undefined);
 
@@ -188,8 +161,8 @@ describe("GET /me", () => {
   });
 
   it("404s when the caller's person row is gone", async () => {
-    const personRepo = makePersonRepo();
-    const agentRepo = makeAgentRepo();
+    const personRepo = makePersonRepoFake();
+    const agentRepo = makeAgentRepoFake();
     vi.mocked(personRepo.findById).mockResolvedValue(undefined);
     vi.mocked(agentRepo.findTopLevelForOwner).mockResolvedValue(undefined);
 
@@ -213,7 +186,7 @@ describe("GET /me", () => {
 
 describe("POST /me/onboarding/complete", () => {
   it("stamps the completion time for the caller", async () => {
-    const personRepo = makePersonRepo();
+    const personRepo = makePersonRepoFake();
     const stamped = new Date("2026-04-03T12:00:00Z");
     vi.mocked(personRepo.update).mockResolvedValue(
       fakePerson({ onboarding_completed_at: stamped }),
@@ -233,7 +206,7 @@ describe("POST /me/onboarding/complete", () => {
   });
 
   it("is idempotent — a second call just re-stamps", async () => {
-    const personRepo = makePersonRepo();
+    const personRepo = makePersonRepoFake();
     vi.mocked(personRepo.update).mockResolvedValue(
       fakePerson({ onboarding_completed_at: new Date("2026-04-03T12:00:00Z") }),
     );
@@ -259,7 +232,7 @@ describe("POST /me/onboarding/complete", () => {
 
 describe("PATCH /me/preferences", () => {
   it("persists the capability-network toggle", async () => {
-    const personRepo = makePersonRepo();
+    const personRepo = makePersonRepoFake();
     vi.mocked(personRepo.update).mockResolvedValue(
       fakePerson({ capability_network_enabled: false }),
     );
@@ -282,7 +255,7 @@ describe("PATCH /me/preferences", () => {
     ["a numeric 1", { capability_network_enabled: 1 }],
     ["an explicit null", { capability_network_enabled: null }],
   ])("400s on %s rather than coercing", async (_label, body) => {
-    const personRepo = makePersonRepo();
+    const personRepo = makePersonRepoFake();
     const { app } = makeApp({ personRepo });
 
     const res = await request(app).patch("/me/preferences").send(body);
