@@ -28,7 +28,18 @@ import { createFindRepoTool } from "./find-repo.js";
 import { buildWatchTools } from "./watch.js";
 import type { AgentTool } from "./types.js";
 
-export interface AssembleToolsServices {
+/**
+ * Every collaborator an MCP tool closure can reach, minus the per-caller
+ * `memoryAgent`.
+ *
+ * Split out from {@link AssembleToolsServices} because `McpRouterDeps`
+ * (routes/mcp.ts) is this same bag plus a handful of router-only fields, and
+ * it used to restate all seventeen entries — doc comments included. Adding a
+ * service meant editing both declarations and the `assembleTools(...)` call
+ * site that copied `deps` field by field; missing one showed up as a
+ * `TypeError` inside a tool handler at runtime rather than a type error.
+ */
+export interface McpToolServices {
   factStore: FactStore;
   coreMemory: CoreMemory;
   agentRepo: AgentRepository;
@@ -39,7 +50,6 @@ export interface AssembleToolsServices {
   dispatchService: DispatchService;
   mesh: MeshServer;
   pool: Pool;
-  memoryAgent: MemoryAgent;
   /** Phase 9: backs `create_subordinate_agent` (seeds persona/domain blocks). */
   coreMemoryRepo: CoreMemoryBlockRepository;
   /** Phase 9: audit log + per-parent daily cap on subordinate spawning. */
@@ -54,6 +64,14 @@ export interface AssembleToolsServices {
   watchService: WatchService;
   /** Layer-3 memory: FTS over past conversation transcripts. */
   sessionSearch: SessionSearchService;
+}
+
+export interface AssembleToolsServices extends McpToolServices {
+  /**
+   * Resolved per MCP session from the caller's agent id, so unlike the rest
+   * of the bag it can't be a router-lifetime singleton.
+   */
+  memoryAgent: MemoryAgent;
 }
 
 /**
