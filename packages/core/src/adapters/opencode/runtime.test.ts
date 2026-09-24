@@ -4,6 +4,7 @@ import { OpenCodeRuntime, buildOpenCodeConfig } from "./runtime.js";
 import { OPENCODE_EVENT_TYPE } from "./stream-json.js";
 import type { CliProcessOptions, CliProcessResult } from "../claude-code/spawn.js";
 import * as spawnModule from "../claude-code/spawn.js";
+import { cliResult } from "../test-fakes.js";
 
 const SID = "ses_op_mock";
 
@@ -43,16 +44,7 @@ const CANONICAL_STDOUT =
   }) +
   "\n";
 
-const MOCK_OK: CliProcessResult = {
-  stdout: CANONICAL_STDOUT,
-  stderr: "",
-  exitCode: 0,
-  timedOut: false,
-  aborted: false,
-  pid: 9999,
-  process_group_id: 9999,
-  truncated: false,
-};
+const MOCK_OK = cliResult({ stdout: CANONICAL_STDOUT });
 
 let runCliSpy: ReturnType<typeof vi.spyOn>;
 let lastOptions: CliProcessOptions | undefined;

@@ -3,8 +3,9 @@ import type { RuntimeContext, RuntimeStep } from "../../ports/runtime.js";
 import { ClaudeCodeRuntime } from "./runtime.js";
 import type { CliProcessOptions, CliProcessResult } from "./spawn.js";
 import * as spawnModule from "./spawn.js";
+import { cliResult } from "../test-fakes.js";
 
-const MOCK_OK: CliProcessResult = {
+const MOCK_OK = cliResult({
   stdout:
     JSON.stringify({
       type: "result",
@@ -13,14 +14,7 @@ const MOCK_OK: CliProcessResult = {
       model: "claude-opus-4-7",
       usage: { input_tokens: 100, output_tokens: 50 },
     }) + "\n",
-  stderr: "",
-  exitCode: 0,
-  timedOut: false,
-  aborted: false,
-  pid: 9999,
-  process_group_id: 9999,
-  truncated: false,
-};
+});
 
 let runCliSpy: ReturnType<typeof vi.spyOn>;
 let lastOptions: CliProcessOptions | undefined;
