@@ -1,5 +1,21 @@
 import { Skeleton } from "./skeleton";
 
+/**
+ * Loading shape for both session detail pages — `/sessions/[sid]` and
+ * `/tasks/[id]/sessions/[sid]`. They render the same layout (header, briefing
+ * or first turn, transcript) so they had the same three `<Skeleton>` lines
+ * copied into each `DetailGate`.
+ */
+export function SessionDetailSkeleton() {
+  return (
+    <>
+      <Skeleton className="h-14 w-full mb-6" />
+      <Skeleton className="h-32 w-full mb-5 rounded-lg" />
+      <Skeleton className="h-64 w-full rounded-lg" />
+    </>
+  );
+}
+
 export function FactRowSkeleton() {
   return (
     <tr>
