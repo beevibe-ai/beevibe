@@ -9,6 +9,41 @@
  * had its own slightly-different `defaultTryGoal` / `formatStars`.
  */
 
+/**
+ * Repo-URL display helpers.
+ *
+ * `capabilities-client.tsx` and `run-card.tsx` each had a local
+ * `repoName(url)` doing `url.replace("https://github.com/", "").split("/")`
+ * — and they returned *different things* under the same name: the former
+ * the bare repo segment, the latter `owner/repo`. `capabilities-client` then
+ * hand-rolled the split a third time to pull the owner out. Naming the three
+ * results separately is the point: whichever one a new call site wants, it
+ * now has to say so.
+ *
+ * Only the `https://github.com/` prefix is stripped, matching what the api
+ * stores in `repo_url`. Anything else passes through, which is why each
+ * helper degrades to a prefix of the raw input rather than throwing.
+ */
+function stripRepoHost(url: string): string {
+  return url.replace("https://github.com/", "");
+}
+
+/** `https://github.com/sst/opencode` → `"opencode"`. */
+export function repoShortName(url: string): string {
+  const parts = stripRepoHost(url).split("/");
+  return parts[1] ?? parts[0] ?? url;
+}
+
+/** `https://github.com/sst/opencode` → `"sst/opencode"`. */
+export function repoFullName(url: string): string {
+  return stripRepoHost(url).split("/").slice(0, 2).join("/");
+}
+
+/** `https://github.com/sst/opencode` → `"sst"`; `""` when there is no owner segment. */
+export function repoOwner(url: string): string {
+  return stripRepoHost(url).split("/")[0] ?? "";
+}
+
 /** Stars formatter: 1234 → "1.2k", 18500 → "19k". */
 export function formatStars(n: number): string {
   if (n >= 1000) return `${(n / 1000).toFixed(n >= 10000 ? 0 : 1)}k`;

@@ -8,6 +8,12 @@ import type { SessionRepository } from "../ports/session-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
 import type { WorkProductRepository } from "../ports/work-product-repo.js";
 import {
+  makeAgentRepoFake,
+  makeSessionRepoFake,
+  makeTaskRepoFake,
+  makeWorkProductRepoFake,
+} from "./test-fakes.js";
+import {
   InvalidTaskTransitionError,
   TaskNotFoundError,
   TaskService,
@@ -74,52 +80,10 @@ let sessionRepo: SessionRepository;
 let service: TaskService;
 
 beforeEach(() => {
-  taskRepo = {
-    findById: vi.fn(),
-    list: vi.fn(),
-    listByAssignee: vi.fn(),
-    listAssignable: vi.fn(),
-    claimById: vi.fn(),
-    listReviewQueue: vi.fn(),
-    countChildrenNotComplete: vi.fn(),
-    countChildren: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    updateProgress: vi.fn(),
-    markBlocked: vi.fn(),
-    clearBlocker: vi.fn(),
-    delete: vi.fn(),
-  };
-  workProductRepo = {
-    findById: vi.fn(),
-    listByTask: vi.fn(),
-    listByAgent: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-  agentRepo = {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findParent: vi.fn(),
-    findByLevel: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-  sessionRepo = {
-    findById: vi.fn(),
-    findLatestForTask: vi.fn(async () => undefined),
-    listForTask: vi.fn(),
-    listForAgent: vi.fn(),
-    countRunningByAgent: vi.fn(),
-    listRunningWithPid: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  };
+  taskRepo = makeTaskRepoFake();
+  workProductRepo = makeWorkProductRepoFake();
+  agentRepo = makeAgentRepoFake();
+  sessionRepo = makeSessionRepoFake({ findLatestForTask: vi.fn(async () => undefined) });
   service = new TaskService({ taskRepo, workProductRepo, agentRepo, sessionRepo });
 });
 

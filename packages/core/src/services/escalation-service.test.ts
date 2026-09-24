@@ -11,6 +11,7 @@ import type {
 } from "../ports/negotiation-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
 import type { DispatchService } from "./dispatch-service.js";
+import { makeAgentRepoFake, makeTaskRepoFake } from "./test-fakes.js";
 import {
   EscalationNotFoundError,
   EscalationService,
@@ -81,15 +82,7 @@ beforeEach(() => {
     findLatest: vi.fn(),
     create: vi.fn(),
   };
-  taskRepo = {
-    findById: vi.fn(),
-    list: vi.fn(),
-    listByAssignee: vi.fn(),
-    listAssignable: vi.fn(),
-    claimById: vi.fn(),
-    listReviewQueue: vi.fn(),
-    countChildrenNotComplete: vi.fn(),
-    countChildren: vi.fn(),
+  taskRepo = makeTaskRepoFake({
     create: vi.fn(async (input) => ({ ...input, status: input.status ?? "pending", priority: input.priority, created_at: new Date(), updated_at: new Date() }) as Task),
     update: vi.fn(async (id, patch) => ({
       id,
@@ -100,23 +93,8 @@ beforeEach(() => {
       updated_at: new Date(),
       ...patch,
     }) as Task),
-    updateProgress: vi.fn(),
-    markBlocked: vi.fn(),
-    clearBlocker: vi.fn(),
-    delete: vi.fn(),
-  };
-  agentRepo = {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findParent: vi.fn(),
-    findByLevel: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
+  });
+  agentRepo = makeAgentRepoFake();
   svc = new EscalationService({
     escalationRepo,
     negotiationRepo,

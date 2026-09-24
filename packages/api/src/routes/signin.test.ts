@@ -12,21 +12,10 @@ import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Person, PersonRepository } from "@beevibe/core";
 import { SIGNIN_NO_PASSWORD_SET, hashPassword } from "@beevibe/core/auth";
+import { makePersonRepoFake } from "../test-fakes.js";
 import { createSigninRouter } from "./signin.js";
 
 const PASSWORD = "correct-horse-battery";
-
-function makePersonRepo(): PersonRepository {
-  return {
-    findById: vi.fn(),
-    findByEmail: vi.fn(),
-    findByApiKey: vi.fn(),
-    findManyByIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-}
 
 function fakePerson(overrides: Partial<Person> = {}): Person {
   return {
@@ -63,7 +52,7 @@ describe("POST /signin — request shape", () => {
     ["email with no dot in the domain", { email: "ada@example", password: PASSWORD }],
     ["email with whitespace", { email: "a b@example.com", password: PASSWORD }],
   ])("400s on %s", async (_label, body) => {
-    const repo = makePersonRepo();
+    const repo = makePersonRepoFake();
     const res = await request(makeApp(repo)).post("/signin").send(body);
 
     expect(res.status).toBe(400);
@@ -72,7 +61,7 @@ describe("POST /signin — request shape", () => {
   });
 
   it("400s when the password is missing", async () => {
-    const repo = makePersonRepo();
+    const repo = makePersonRepoFake();
     const res = await request(makeApp(repo)).post("/signin").send({ email: "ada@example.com" });
 
     expect(res.status).toBe(400);
@@ -81,7 +70,7 @@ describe("POST /signin — request shape", () => {
   });
 
   it("400s on a non-string password rather than coercing it", async () => {
-    const repo = makePersonRepo();
+    const repo = makePersonRepoFake();
     const res = await request(makeApp(repo))
       .post("/signin")
       .send({ email: "ada@example.com", password: 12345 });
@@ -91,7 +80,7 @@ describe("POST /signin — request shape", () => {
   });
 
   it("lowercases and trims the email before lookup", async () => {
-    const repo = makePersonRepo();
+    const repo = makePersonRepoFake();
     vi.mocked(repo.findByEmail).mockResolvedValue(undefined);
 
     await request(makeApp(repo))
@@ -104,7 +93,7 @@ describe("POST /signin — request shape", () => {
 
 describe("POST /signin — credentials", () => {
   it("returns the caller's existing key on a match", async () => {
-    const repo = makePersonRepo();
+    const repo = makePersonRepoFake();
     vi.mocked(repo.findByEmail).mockResolvedValue(fakePerson({ password_hash: hash }));
 
     const res = await request(makeApp(repo))
@@ -120,7 +109,7 @@ describe("POST /signin — credentials", () => {
   });
 
   it("reports a null email rather than omitting the field", async () => {
-    const repo = makePersonRepo();
+    const repo = makePersonRepoFake();
     const person = fakePerson({ password_hash: hash });
     delete person.email;
     vi.mocked(repo.findByEmail).mockResolvedValue(person);
@@ -134,7 +123,7 @@ describe("POST /signin — credentials", () => {
   });
 
   it("401s on a wrong password", async () => {
-    const repo = makePersonRepo();
+    const repo = makePersonRepoFake();
     vi.mocked(repo.findByEmail).mockResolvedValue(fakePerson({ password_hash: hash }));
 
     const res = await request(makeApp(repo))
@@ -147,7 +136,7 @@ describe("POST /signin — credentials", () => {
   });
 
   it("409s a legacy account that has a key but no password", async () => {
-    const repo = makePersonRepo();
+    const repo = makePersonRepoFake();
     vi.mocked(repo.findByEmail).mockResolvedValue(fakePerson());
 
     const res = await request(makeApp(repo))
@@ -162,9 +151,9 @@ describe("POST /signin — credentials", () => {
   it("gives an unknown email and a wrong password the identical 401 body", async () => {
     // The three failure modes must be indistinguishable, otherwise the
     // endpoint tells an attacker which emails have accounts.
-    const unknown = makePersonRepo();
+    const unknown = makePersonRepoFake();
     vi.mocked(unknown.findByEmail).mockResolvedValue(undefined);
-    const wrongPwd = makePersonRepo();
+    const wrongPwd = makePersonRepoFake();
     vi.mocked(wrongPwd.findByEmail).mockResolvedValue(fakePerson({ password_hash: hash }));
 
     const unknownRes = await request(makeApp(unknown))
@@ -179,7 +168,7 @@ describe("POST /signin — credentials", () => {
   });
 
   it("401s a person row with a password but no api_key", async () => {
-    const repo = makePersonRepo();
+    const repo = makePersonRepoFake();
     const person = fakePerson({ password_hash: hash });
     delete person.api_key;
     vi.mocked(repo.findByEmail).mockResolvedValue(person);
@@ -195,7 +184,7 @@ describe("POST /signin — credentials", () => {
 
 describe("POST /signin — lockdown and failures", () => {
   it("404s when the route is disabled", async () => {
-    const repo = makePersonRepo();
+    const repo = makePersonRepoFake();
     const res = await request(makeApp(repo, false))
       .post("/signin")
       .send({ email: "ada@example.com", password: PASSWORD });
@@ -206,7 +195,7 @@ describe("POST /signin — lockdown and failures", () => {
   });
 
   it("is enabled when the flag is omitted", async () => {
-    const repo = makePersonRepo();
+    const repo = makePersonRepoFake();
     vi.mocked(repo.findByEmail).mockResolvedValue(undefined);
 
     const res = await request(makeApp(repo))
@@ -218,7 +207,7 @@ describe("POST /signin — lockdown and failures", () => {
 
   it("500s when the lookup throws", async () => {
     vi.spyOn(console, "error").mockImplementation(() => {});
-    const repo = makePersonRepo();
+    const repo = makePersonRepoFake();
     vi.mocked(repo.findByEmail).mockRejectedValue(new Error("pg down"));
 
     const res = await request(makeApp(repo))

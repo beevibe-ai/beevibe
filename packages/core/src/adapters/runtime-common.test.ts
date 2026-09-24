@@ -7,19 +7,11 @@ import {
   finalizeCliResult,
   warnIfTruncated,
 } from "./runtime-common.js";
+import { cliResult as baseCliResult } from "./test-fakes.js";
 
+/** This file's assertions are written against pid 4242, not the shared default. */
 function cliResult(overrides: Partial<CliProcessResult> = {}): CliProcessResult {
-  return {
-    stdout: "",
-    stderr: "",
-    exitCode: 0,
-    timedOut: false,
-    aborted: false,
-    pid: 4242,
-    process_group_id: 4242,
-    truncated: false,
-    ...overrides,
-  };
+  return baseCliResult({ pid: 4242, process_group_id: 4242, ...overrides });
 }
 
 describe("createStdoutLineReader", () => {

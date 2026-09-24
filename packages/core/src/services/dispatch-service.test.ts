@@ -6,6 +6,7 @@ import type { AgentRepository } from "../ports/agent-repo.js";
 import type { SessionRepository } from "../ports/session-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
 import { DispatchService, transitionTaskOnClaim } from "./dispatch-service.js";
+import { makeAgentRepoFake, makeSessionRepoFake } from "./test-fakes.js";
 import type { ResumeReason } from "./agent-session.js";
 
 const FIXED_NOW = new Date("2026-05-08T00:00:00Z");
@@ -41,30 +42,12 @@ let onSessionInserted: ReturnType<typeof vi.fn>;
 let svc: DispatchService;
 
 beforeEach(() => {
-  agentRepo = {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findParent: vi.fn(),
-    findByLevel: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-  sessionRepo = {
-    findById: vi.fn(),
-    findLatestForTask: vi.fn(),
-    listForTask: vi.fn(),
-    listForAgent: vi.fn(),
-    countRunningByAgent: vi.fn(),
-    listRunningWithPid: vi.fn(),
+  agentRepo = makeAgentRepoFake();
+  sessionRepo = makeSessionRepoFake({
     create: vi.fn().mockImplementation(async (input) =>
       makeSession({ id: input.id, agent_id: input.agent_id, ...input }),
     ),
-    update: vi.fn(),
-  };
+  });
   onSessionInserted = vi.fn().mockResolvedValue(undefined);
   svc = new DispatchService({ agentRepo, sessionRepo, onSessionInserted });
 });

@@ -53,6 +53,12 @@ import {
   type ResumeReason,
 } from "@beevibe/core/services/agent-session";
 import { toolErrorFromThrown } from "./errors.js";
+import {
+  OPEN_QUESTIONS_SCHEMA,
+  PROPOSALS_SCHEMA,
+  coerceOpenQuestions,
+  coerceProposals,
+} from "./escalation-input.js";
 import type { AgentTool } from "./types.js";
 
 // ── Agent-callable status subsets ─────────────────────────────────────────
@@ -952,21 +958,11 @@ function addToEscalationTool(
           description: "The escalation id (from the 'escalated' sentinel).",
         },
         proposals: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              title: { type: "string" },
-              description: { type: "string" },
-              tradeoffs: { type: "string" },
-            },
-            required: ["title", "description"],
-          },
+          ...PROPOSALS_SCHEMA,
           description: "Your proposals for the human (different from initiator's).",
         },
         open_questions: {
-          type: "array",
-          items: { type: "string" },
+          ...OPEN_QUESTIONS_SCHEMA,
           description: "Questions in your domain that humans should know about.",
         },
       },
@@ -978,12 +974,8 @@ function addToEscalationTool(
         if (!escalationId) {
           return { content: { error: "escalation_id required" }, isError: true };
         }
-        const proposals = Array.isArray(input.proposals)
-          ? (input.proposals as Array<{ title: string; description: string; tradeoffs?: string }>)
-          : undefined;
-        const openQuestions = Array.isArray(input.open_questions)
-          ? (input.open_questions as string[]).filter((q) => typeof q === "string")
-          : undefined;
+        const proposals = coerceProposals(input.proposals);
+        const openQuestions = coerceOpenQuestions(input.open_questions);
 
         const updated = await services.escalationService.addContribution({
           escalationId,

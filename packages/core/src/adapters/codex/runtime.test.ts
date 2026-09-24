@@ -6,6 +6,7 @@ import { CodexRuntime } from "./runtime.js";
 import { CODEX_EVENT_TYPE, CODEX_ITEM_TYPE } from "./stream-json.js";
 import type { CliProcessOptions, CliProcessResult } from "../claude-code/spawn.js";
 import * as spawnModule from "../claude-code/spawn.js";
+import { cliResult } from "../test-fakes.js";
 
 /**
  * Canonical stdout for a clean codex turn — fixtures match the schema in
@@ -33,16 +34,7 @@ const CANONICAL_STDOUT =
   }) +
   "\n";
 
-const MOCK_OK: CliProcessResult = {
-  stdout: CANONICAL_STDOUT,
-  stderr: "",
-  exitCode: 0,
-  timedOut: false,
-  aborted: false,
-  pid: 9999,
-  process_group_id: 9999,
-  truncated: false,
-};
+const MOCK_OK = cliResult({ stdout: CANONICAL_STDOUT });
 
 let runCliSpy: ReturnType<typeof vi.spyOn>;
 let lastOptions: CliProcessOptions | undefined;

@@ -21,47 +21,14 @@ import type {
   PersonRepository,
 } from "@beevibe/core";
 import { hashPassword } from "@beevibe/core/auth";
+import {
+  makeAgentRepoFake,
+  makeCoreMemoryRepoFake,
+  makePersonRepoFake,
+} from "../test-fakes.js";
 import { createSignupRouter } from "./signup.js";
 
 const PASSWORD = "correct-horse-battery";
-
-function makePersonRepo(): PersonRepository {
-  return {
-    findById: vi.fn(),
-    findByEmail: vi.fn(),
-    findByApiKey: vi.fn(),
-    findManyByIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-}
-
-function makeAgentRepo(): AgentRepository {
-  return {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findParent: vi.fn(),
-    findByLevel: vi.fn(),
-    findDescendantIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-}
-
-function makeCoreMemoryRepo(): CoreMemoryBlockRepository {
-  return {
-    findByAgentId: vi.fn(),
-    findByNames: vi.fn(),
-    upsert: vi.fn(),
-    updateContent: vi.fn(),
-    initDefaults: vi.fn().mockResolvedValue([]),
-  } as unknown as CoreMemoryBlockRepository;
-}
 
 function fakePerson(overrides: Partial<Person> = {}): Person {
   return {
@@ -101,15 +68,15 @@ interface Fakes {
  * the input they were handed.
  */
 function makeFakes(): Fakes {
-  const personRepo = makePersonRepo();
-  const agentRepo = makeAgentRepo();
+  const personRepo = makePersonRepoFake();
+  const agentRepo = makeAgentRepoFake();
   vi.mocked(personRepo.create).mockImplementation(async (input: NewPerson) =>
     fakePerson({ ...input, id: input.id ?? "person_new" } as Partial<Person>),
   );
   vi.mocked(agentRepo.create).mockImplementation(async (input: NewAgent) =>
     fakeAgent(input as Partial<Agent>),
   );
-  return { personRepo, agentRepo, coreMemoryRepo: makeCoreMemoryRepo() };
+  return { personRepo, agentRepo, coreMemoryRepo: makeCoreMemoryRepoFake() };
 }
 
 function makeApp(fakes: Fakes, enabled?: boolean) {

@@ -3,11 +3,7 @@
 import Link from "next/link";
 import { CheckCircle, Clock, Loader2, XCircle } from "lucide-react";
 import type { RepoRun } from "@/lib/api/client";
-
-function repoName(url: string) {
-  const parts = url.replace("https://github.com/", "").split("/");
-  return parts.slice(0, 2).join("/");
-}
+import { repoFullName } from "@/lib/capabilities";
 
 function statusIcon(status: RepoRun["status"]) {
   switch (status) {
@@ -36,7 +32,7 @@ export function RunCard({ run }: { run: RepoRun }) {
       <div className="flex-1 min-w-0">
         <p className="text-sm font-medium truncate">{run.goal}</p>
         <p className="text-xs text-muted-foreground truncate">
-          {repoName(run.repo_url)}
+          {repoFullName(run.repo_url)}
           {run.error ? (
             <span className="text-red-400"> · {run.error}</span>
           ) : null}

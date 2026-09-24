@@ -2,6 +2,7 @@
 
 import { useMemo } from "react";
 import { Network } from "lucide-react";
+import { truncate } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { EmptyState } from "@/components/empty-state";
 import type { GraphEdge, GraphNode, MeshHover } from "@/lib/types/mesh";
@@ -24,10 +25,8 @@ const HIER_RING: Record<GraphNode["hier"], string> = {
   ic: "stroke-hier-ic",
 };
 
+/** Node labels are laid out against a fixed node radius, so they get hard-capped. */
 const MAX_LABEL_CHARS = 22;
-function truncateLabel(s: string): string {
-  return s.length <= MAX_LABEL_CHARS ? s : `${s.slice(0, MAX_LABEL_CHARS - 1)}…`;
-}
 
 interface Props {
   nodes?: readonly GraphNode[];
@@ -180,7 +179,7 @@ export function MeshGraphStatic({
                     fill="hsl(var(--foreground))"
                     fontFamily="JetBrains Mono"
                   >
-                    {truncateLabel(n.label)}
+                    {truncate(n.label, MAX_LABEL_CHARS)}
                   </text>
                 </g>
               );
