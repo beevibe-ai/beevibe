@@ -7,6 +7,7 @@ import type { SessionRepository } from "../ports/session-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
 import type { DispatchService } from "./dispatch-service.js";
 import type { TaskService } from "./task-service.js";
+import { makeSessionRepoFake, makeTaskRepoFake } from "./test-fakes.js";
 import {
   NUDGE_COMPLETION_MARKER,
   buildPostDispatchHook,
@@ -61,22 +62,7 @@ let agentRepo: AgentRepository;
 
 beforeEach(() => {
   vi.useFakeTimers();
-  taskRepo = {
-    findById: vi.fn(),
-    list: vi.fn(),
-    listByAssignee: vi.fn(),
-    listAssignable: vi.fn(),
-    claimById: vi.fn(),
-    listReviewQueue: vi.fn(),
-    countChildrenNotComplete: vi.fn(),
-    countChildren: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    updateProgress: vi.fn(),
-    markBlocked: vi.fn(),
-    clearBlocker: vi.fn(),
-    delete: vi.fn(),
-  };
+  taskRepo = makeTaskRepoFake();
   taskService = {
     checkAndCompleteParent: vi.fn(),
   } as unknown as TaskService;
@@ -86,16 +72,7 @@ beforeEach(() => {
       runtime_id: null,
     }),
   } as unknown as DispatchService;
-  sessionRepo = {
-    findById: vi.fn(),
-    findLatestForTask: vi.fn(),
-    listForTask: vi.fn(),
-    listForAgent: vi.fn(),
-    countRunningByAgent: vi.fn(),
-    listRunningWithPid: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  } as unknown as SessionRepository;
+  sessionRepo = makeSessionRepoFake();
   vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue({
     id: "sess_orig",
   } as unknown as Session);
