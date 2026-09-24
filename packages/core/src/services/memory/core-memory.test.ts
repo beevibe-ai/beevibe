@@ -14,6 +14,7 @@ function makeBlock(overrides: Partial<CoreMemoryBlock> = {}): CoreMemoryBlock {
     block_name: "persona",
     content: "",
     char_limit: 2000,
+    description: "Who I am and how I work.",
     is_system: true,
     created_at: new Date(),
     updated_at: new Date(),

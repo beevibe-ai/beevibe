@@ -46,13 +46,15 @@ describe("PostgresCoreMemoryRepository", () => {
       block_name: "persona",
       content: "I am a test agent",
       char_limit: 500,
+      description: "Who I am and how I work.",
       is_system: true,
     });
     expect(b.block_name).toBe("persona");
     expect(b.content).toBe("I am a test agent");
+    expect(b.description).toBe("Who I am and how I work.");
   });
 
-  it("upsert updates content + char_limit when row exists (ON CONFLICT branch)", async () => {
+  it("upsert updates content + char_limit + description when row exists (ON CONFLICT branch)", async () => {
     const originalId = blockId();
     await blocks.upsert({
       id: originalId,
@@ -60,6 +62,7 @@ describe("PostgresCoreMemoryRepository", () => {
       block_name: "persona",
       content: "v1",
       char_limit: 500,
+      description: "Who I am and how I work.",
       is_system: true,
     });
     const updated = await blocks.upsert({
@@ -68,11 +71,15 @@ describe("PostgresCoreMemoryRepository", () => {
       block_name: "persona",
       content: "v2",
       char_limit: 1000,
+      description: "Revised guidance.",
       is_system: true,
     });
     expect(updated.id).toBe(originalId);
     expect(updated.content).toBe("v2");
     expect(updated.char_limit).toBe(1000);
+    // description is in the DO UPDATE SET list too — a template reword
+    // has to reach existing agents, not just newly created ones.
+    expect(updated.description).toBe("Revised guidance.");
   });
 
   it("findByAgent returns all blocks for an agent, sorted", async () => {
@@ -82,6 +89,7 @@ describe("PostgresCoreMemoryRepository", () => {
       block_name: "zulu",
       content: "z",
       char_limit: 100,
+      description: "Who I am and how I work.",
       is_system: true,
     });
     await blocks.upsert({
@@ -90,6 +98,7 @@ describe("PostgresCoreMemoryRepository", () => {
       block_name: "alpha",
       content: "a",
       char_limit: 100,
+      description: "Who I am and how I work.",
       is_system: true,
     });
     const all = await blocks.findByAgent(agent1Id);
@@ -108,6 +117,7 @@ describe("PostgresCoreMemoryRepository", () => {
       block_name: "persona",
       content: "original",
       char_limit: 500,
+      description: "Who I am and how I work.",
       is_system: true,
     });
     const originalUpdated = b.updated_at.getTime();
@@ -128,6 +138,7 @@ describe("PostgresCoreMemoryRepository", () => {
       block_name: "persona",
       content: "",
       char_limit: 500,
+      description: "Who I am and how I work.",
       is_system: true,
     });
     await blocks.delete(agent1Id, "persona");
@@ -170,6 +181,7 @@ describe("PostgresCoreMemoryRepository", () => {
       block_name: "persona",
       content: "a1",
       char_limit: 500,
+      description: "Who I am and how I work.",
       is_system: true,
     });
     await blocks.upsert({
@@ -178,6 +190,7 @@ describe("PostgresCoreMemoryRepository", () => {
       block_name: "persona",
       content: "a2",
       char_limit: 500,
+      description: "Who I am and how I work.",
       is_system: true,
     });
     const a1 = await blocks.findOne(agent1Id, "persona");

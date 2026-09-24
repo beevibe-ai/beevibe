@@ -6,22 +6,15 @@ import {
 } from "./runtime-registry.js";
 
 describe("createDefaultRuntimeRegistry", () => {
-  it("registers claude-code", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["claude"]).toBeDefined();
-    expect(registry["claude"]!.type).toBe("claude");
-  });
-
-  it("registers opencode", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["opencode"]).toBeDefined();
-    expect(registry["opencode"]!.type).toBe("opencode");
-  });
-
-  it("registers codex", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["codex"]).toBeDefined();
-    expect(registry["codex"]!.type).toBe("codex");
+  // An exact set, not three presence checks: it catches a runtime being
+  // dropped AND one being added without the call sites that branch on
+  // `runtime_config.type` being updated to match.
+  it("registers exactly claude, codex and opencode", () => {
+    expect(Object.keys(createDefaultRuntimeRegistry()).sort()).toEqual([
+      "claude",
+      "codex",
+      "opencode",
+    ]);
   });
 
   it("every registry value's .type matches its registry key (sanity check against typos)", () => {

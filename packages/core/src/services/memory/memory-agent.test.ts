@@ -8,13 +8,24 @@ import type { FactStore } from "./fact-store.js";
 import type { MemoryPromotionEventRepository } from "../../ports/promotion-event-repo.js";
 import { createMemoryAgent, type MemoryAgent } from "./memory-agent.js";
 
-function makeBlock(name: string, content: string): CoreMemoryBlock {
+// `description` is a required field on CoreMemoryBlock and every block
+// production creates carries one (DEFAULT_BLOCK_TEMPLATES supplies it).
+// The fixture used to omit it, so every briefing assertion below pinned
+// composeBriefing's no-description branch — output the system never
+// emits. Default to a real description; pass "" to exercise the empty
+// branch explicitly.
+function makeBlock(
+  name: string,
+  content: string,
+  description = `What belongs in ${name}.`,
+): CoreMemoryBlock {
   return {
     id: `block_${name}`,
     agent_id: "agent_1",
     block_name: name,
     content,
     char_limit: 2000,
+    description,
     is_system: true,
     created_at: new Date(),
     updated_at: new Date(),
@@ -98,10 +109,10 @@ describe("MemoryAgent.prepareBriefing", () => {
     // prefix; memory_tools section dropped (covered by skill #10).
     expect(briefing.systemPromptAppend).toContain("<core_memory>");
     expect(briefing.systemPromptAppend).toContain(
-      '<block name="persona">Senior infra engineer.</block>',
+      '<block name="persona" description="What belongs in persona.">Senior infra engineer.</block>',
     );
     expect(briefing.systemPromptAppend).toContain(
-      '<block name="domain">TypeScript, Postgres.</block>',
+      '<block name="domain" description="What belongs in domain.">TypeScript, Postgres.</block>',
     );
     expect(briefing.systemPromptAppend).not.toContain("<archival_memory>");
     expect(briefing.systemPromptAppend).not.toContain("<memory_tools>");
@@ -126,6 +137,35 @@ describe("MemoryAgent.prepareBriefing", () => {
       scope: "ic",
       content: "Prefers pnpm over npm.",
     });
+  });
+
+  it("omits the description attribute entirely when a block has none", async () => {
+    vi.mocked(coreMemory.read).mockResolvedValue([makeBlock("persona", "Terse.", "")]);
+    vi.mocked(embed.embed).mockResolvedValue([]);
+    vi.mocked(factStore.search).mockResolvedValue([]);
+
+    const briefing = await agent.prepareBriefing("x");
+
+    // Not `description=""` — the attribute is dropped, so an agent
+    // reading the prompt sees no empty guidance slot.
+    expect(briefing.systemPromptAppend).toContain('<block name="persona">Terse.</block>');
+    expect(briefing.systemPromptAppend).not.toContain("description=");
+  });
+
+  it("escapes XML-special characters in a block description", async () => {
+    vi.mocked(coreMemory.read).mockResolvedValue([
+      makeBlock("persona", "x", 'Use "quotes" & <tags>.'),
+    ]);
+    vi.mocked(embed.embed).mockResolvedValue([]);
+    vi.mocked(factStore.search).mockResolvedValue([]);
+
+    const briefing = await agent.prepareBriefing("x");
+
+    // The description lands inside a double-quoted attribute, so an
+    // unescaped `"` would break out of it and corrupt the envelope.
+    expect(briefing.systemPromptAppend).toContain(
+      'description="Use &quot;quotes&quot; &amp; &lt;tags&gt;."',
+    );
   });
 
   it("passes the intent's embedding through to FactStore.search with the recall floor", async () => {

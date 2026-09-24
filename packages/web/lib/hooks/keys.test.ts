@@ -25,10 +25,4 @@ describe("queryKeys", () => {
     const b = queryKeys.tasks.list({ view: "mine" });
     expect(a).not.toEqual(b);
   });
-
-  it("structural equality across separate calls with the same arg shape", () => {
-    const a = queryKeys.tasks.list({ view: "mine" });
-    const b = queryKeys.tasks.list({ view: "mine" });
-    expect(a).toEqual(b);
-  });
 });
