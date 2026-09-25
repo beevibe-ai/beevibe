@@ -38,22 +38,21 @@ import {
   InvalidTaskTransitionError,
   TaskNotFoundError,
 } from "@beevibe/core/services/task-service";
+import { CANCELLABLE_TASK_STATUSES } from "@beevibe/core/domain/task-lifecycle";
 import { buildIntent, type ResumeReason } from "@beevibe/core/services/agent-session";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "../runtime/hub.js";
 import { requireParam } from "./http-errors.js";
 
-/** Statuses from which /cancel is legal. Anything non-terminal. */
-const CANCELLABLE_FROM: readonly TaskStatus[] = [
-  "pending",
-  "assigned",
-  "needs_revision",
-  "in_progress",
-  "revision",
-  "review",
-  "blocked",
-];
+/**
+ * Statuses from which /cancel is legal. Anything non-terminal.
+ *
+ * Derived from the canonical set rather than enumerated — the seven were
+ * written out by hand here, in a list nobody would think to revisit when a
+ * status is added to the union.
+ */
+const CANCELLABLE_FROM: readonly TaskStatus[] = CANCELLABLE_TASK_STATUSES;
 
 export interface TaskRoutesDeps {
   authMiddleware: RequestHandler;

@@ -74,10 +74,75 @@ describe("listTasks", () => {
     const pool = makeMockPool([[]]);
     const queryMock = pool._spy;
     await listTasks(pool, { lifecycle: "in_review", bypassOwnerScope: true });
+    // `blocked` is NOT in this set. It used to be: this module kept its own
+    // four-lane copy of the board's map and folded Blocked into In review,
+    // so `?lifecycle=in_review` returned rows the board renders in a
+    // different column. Both sides now read
+    // `@beevibe/core/domain/task-lifecycle`, where `blocked` is its own lane.
     expect(queryMock).toHaveBeenCalledWith(
       expect.any(String),
-      [["review", "blocked"], null, null],
+      [["review"], null, null],
     );
+  });
+
+  it.each([
+    ["blocked", ["blocked"]],
+    ["archived", ["failed", "cancelled"]],
+  ] as const)(
+    "filters on the %s lane, which used to be unreachable",
+    async (lifecycle, statuses) => {
+      // These two lanes exist on the board and are typed as valid by the
+      // web's `TaskListFilter`, but this module's map had no key for them,
+      // so the route's allow-list dropped the param and answered with
+      // every task.
+      const pool = makeMockPool([[]]);
+      await listTasks(pool, { lifecycle, bypassOwnerScope: true });
+      expect(pool._spy).toHaveBeenCalledWith(expect.any(String), [
+        [...statuses],
+        null,
+        null,
+      ]);
+    },
+  );
+
+  it("leaves done meaning shipped, not merely terminal", async () => {
+    const pool = makeMockPool([[]]);
+    await listTasks(pool, { lifecycle: "done", bypassOwnerScope: true });
+    expect(pool._spy).toHaveBeenCalledWith(expect.any(String), [
+      ["done"],
+      null,
+      null,
+    ]);
+  });
+
+  it.each([
+    [
+      "sprint",
+      ["pending", "assigned", "in_progress", "needs_revision", "revision", "review", "blocked"],
+    ],
+    [
+      "timeline",
+      [
+        "pending",
+        "assigned",
+        "in_progress",
+        "needs_revision",
+        "revision",
+        "review",
+        "blocked",
+        "done",
+        "failed",
+        "cancelled",
+      ],
+    ],
+  ] as const)("keeps the %s view's status set unchanged", async (view, statuses) => {
+    // The saved views used to pick up `blocked` and `failed`/`cancelled`
+    // implicitly, through the old four-lane map. They now name every lane
+    // explicitly, and must still resolve to the same statuses.
+    const pool = makeMockPool([[]]);
+    await listTasks(pool, { view, bypassOwnerScope: true });
+    const [actual] = pool._spy.mock.calls[0]![1] as [string[]];
+    expect([...actual].sort()).toEqual([...statuses].sort());
   });
 
   it("forwards assignee_id when set", async () => {
