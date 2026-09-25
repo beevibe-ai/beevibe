@@ -1,9 +1,9 @@
 import {
-  TERMINAL_TASK_STATUSES,
   type NextDispatchContext,
   type Task,
   type TaskStatus,
 } from "../domain/task.js";
+import { TERMINAL_TASK_STATUSES } from "../domain/task-lifecycle.js";
 import type { WorkProduct, WorkProductListItem } from "../domain/work-product.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type { SessionRepository } from "../ports/session-repo.js";

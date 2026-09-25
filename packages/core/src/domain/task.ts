@@ -25,19 +25,10 @@ export const TASK_STATUSES: readonly TaskStatus[] = [
   "cancelled",
 ] as const;
 
-/**
- * Task statuses that signal "this task has run its course" — done /
- * failed / cancelled. Distinct from the narrower TERMINAL set used by
- * task-service for status-patch guards (which excludes 'failed' so
- * retries can move out of it). Watch_tasks fires on transitions into
- * this set; downstream services that need the same "no further work
- * expected" semantics should import from here rather than redeclaring.
- */
-export const TERMINAL_TASK_STATUSES: readonly TaskStatus[] = [
-  "done",
-  "failed",
-  "cancelled",
-] as const;
+// `TERMINAL_TASK_STATUSES` lives in `./task-lifecycle.js` alongside the
+// rest of the status vocabulary the api and the web both read. It is
+// re-exported from the `domain/` barrel, so `import { … } from
+// "../domain/index.js"` is unaffected.
 
 export type TaskPriority = "low" | "medium" | "high" | "critical";
 
