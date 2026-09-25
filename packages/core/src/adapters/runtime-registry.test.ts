@@ -6,22 +6,15 @@ import {
 } from "./runtime-registry.js";
 
 describe("createDefaultRuntimeRegistry", () => {
-  it("registers claude-code", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["claude"]).toBeDefined();
-    expect(registry["claude"]!.type).toBe("claude");
-  });
-
-  it("registers opencode", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["opencode"]).toBeDefined();
-    expect(registry["opencode"]!.type).toBe("opencode");
-  });
-
-  it("registers codex", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["codex"]).toBeDefined();
-    expect(registry["codex"]!.type).toBe("codex");
+  it("registers exactly claude-code, codex and opencode", () => {
+    // An exact key set, not three presence checks: it fails on a dropped
+    // runtime the way per-key assertions do, and also on one that is added
+    // or renamed without the call sites (and this list) being updated.
+    expect(Object.keys(createDefaultRuntimeRegistry()).sort()).toEqual([
+      "claude",
+      "codex",
+      "opencode",
+    ]);
   });
 
   it("every registry value's .type matches its registry key (sanity check against typos)", () => {
