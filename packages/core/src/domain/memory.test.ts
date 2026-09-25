@@ -32,6 +32,10 @@ describe("FACT_TYPE_DESCRIPTIONS", () => {
     // The `save_memory` tool builds its `fact_type` enum from FACT_TYPES and
     // its per-value guidance from this record — a missing key ships an enum
     // value with no guidance, which is how #90's over-saving started.
+    //
+    // The record's keys are unique by construction, so this also pins
+    // FACT_TYPES itself as duplicate-free: a repeated entry makes the right
+    // side one longer than the left and the comparison fails.
     expect(Object.keys(FACT_TYPE_DESCRIPTIONS).sort()).toEqual(
       [...FACT_TYPES].sort(),
     );
@@ -41,9 +45,5 @@ describe("FACT_TYPE_DESCRIPTIONS", () => {
     for (const type of FACT_TYPES) {
       expect(FACT_TYPE_DESCRIPTIONS[type].trim().length).toBeGreaterThan(0);
     }
-  });
-
-  it("lists each fact type only once", () => {
-    expect(new Set(FACT_TYPES).size).toBe(FACT_TYPES.length);
   });
 });
