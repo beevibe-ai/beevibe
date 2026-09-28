@@ -3,6 +3,7 @@ import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspa
 import type WebSocket from "ws";
 import type { ApiClient } from "./api-client.js";
 import { Claimer } from "./claimer.js";
+import { warn } from "./logger.js";
 import { Supervisor } from "./supervisor.js";
 import type { DispatchPayload } from "./spawner.js";
 
@@ -423,11 +424,30 @@ describe("Claimer ws push handling", () => {
   });
 
   it("logs a ws error without reconnecting — close drives that", async () => {
-    const { claimer, socket } = connected(makeApi());
+    // Fake timers + the 10ms backoff cap from startClaimerWithFakeWs are
+    // what make "no reconnect" observable: scheduleWsReconnect's timer
+    // would fire well inside the 50ms advanced below. The previous
+    // version asserted only `not.toThrow()`, so it pinned neither half of
+    // the behavior its name describes.
+    vi.useFakeTimers();
+    const { claimer, sockets } = startClaimerWithFakeWs();
+    try {
+      expect(sockets).toHaveLength(1);
+      sockets[0]!.fire("open");
+      vi.mocked(warn).mockClear();
 
-    expect(() => socket.fire("error", new Error("ECONNRESET"))).not.toThrow();
+      sockets[0]!.fire("error", new Error("ECONNRESET"));
+      // Past the capped reconnect backoff, short of the 1s ping tick.
+      vi.advanceTimersByTime(50);
 
-    await claimer.stop();
+      // claimer.ts ws.on("error") warns and returns; `close` is the sole
+      // reconnect trigger, so no replacement socket is opened here.
+      expect(vi.mocked(warn)).toHaveBeenCalledWith("[daemon] ws error:", "ECONNRESET");
+      expect(sockets).toHaveLength(1);
+    } finally {
+      await claimer.stop();
+      vi.useRealTimers();
+    }
   });
 
   it("does not reconnect after stop()", async () => {
