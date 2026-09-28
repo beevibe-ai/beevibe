@@ -18,7 +18,7 @@ export { PostgresAgentRepository } from "./agent-repo.js";
 export { PostgresCoreMemoryRepository } from "./core-memory-repo.js";
 export { PostgresTaskRepository } from "./task-repo.js";
 export { PostgresSessionRepository } from "./session-repo.js";
-export { PostgresWorkProductRepository } from "./work-product-repo.js";
+export { PostgresWorkProductRepository, rowToWorkProduct } from "./work-product-repo.js";
 export { PostgresMemoryFactRepository } from "./memory-fact-repo.js";
 export { PostgresMemoryPromotionEventRepository } from "./promotion-event-repo.js";
 export { PostgresSessionEventRepository } from "./session-event-repo.js";
