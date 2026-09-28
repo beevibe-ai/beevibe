@@ -19,6 +19,7 @@ import {
 } from "@beevibe/core/services/watch-service";
 import { toolError } from "./errors.js";
 import type { AgentTool, AgentToolResult } from "./types.js";
+import { optionalString, optionalTrimmedString } from "./input.js";
 
 export interface WatchToolContext {
   agentId: string;
@@ -107,10 +108,7 @@ function buildWatchTasksTool(
           );
         }
         const mode: TaskWatchMode = isMode(input.mode) ? input.mode : "all";
-        const reason =
-          typeof input.reason === "string" && input.reason.trim().length > 0
-            ? input.reason.trim()
-            : undefined;
+        const reason = optionalTrimmedString(input, "reason");
         if (!ctx.sessionId) {
           return toolError(
             "watch_validation",
@@ -161,8 +159,7 @@ function buildUnwatchTool(
     },
     handler: async (input) => {
       try {
-        const watchId =
-          typeof input.watch_id === "string" ? input.watch_id : "";
+        const watchId = optionalString(input, "watch_id") ?? "";
         if (!watchId) {
           return toolError(
             "watch_validation",

@@ -16,6 +16,7 @@ import type {
 } from "@beevibe/core/services/escalation-service";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import { toolErrorFromThrown } from "./errors.js";
+import { optionalNonEmptyString, optionalString, requireStrings } from "./input.js";
 import type { AgentTool } from "./types.js";
 import type { McpCaller } from "./assemble.js";
 import type { MeshServer } from "../mesh/server.js";
@@ -95,11 +96,7 @@ function askTool(ctx: MeshToolContext, services: MeshToolServices): AgentTool {
     },
     handler: async (input) => {
       try {
-        const target = String(input.target_agent_id ?? "");
-        const question = String(input.question ?? "");
-        if (!target || !question) {
-          return { content: { error: "target_agent_id and question required" }, isError: true };
-        }
+        const [target, question] = requireStrings(input, "target_agent_id", "question");
         const requestId = randomUUID();
         const response = await services.mesh.sendAsk(
           requestId,
@@ -133,11 +130,7 @@ function respondAskTool(ctx: MeshToolContext, services: MeshToolServices): Agent
     },
     handler: async (input) => {
       try {
-        const requestId = String(input.request_id ?? "");
-        const answer = String(input.answer ?? "");
-        if (!requestId || !answer) {
-          return { content: { error: "request_id and answer required" }, isError: true };
-        }
+        const [requestId, answer] = requireStrings(input, "request_id", "answer");
         services.mesh.respondAsk(requestId, {
           request_id: requestId,
           from_agent_id: ctx.caller.agentId,
@@ -178,13 +171,8 @@ function negotiateTool(ctx: MeshToolContext, services: MeshToolServices): AgentT
     },
     handler: async (input) => {
       try {
-        const peerId = String(input.peer_id ?? "");
-        const proposal = String(input.proposal ?? "");
-        const taskId =
-          typeof input.task_id === "string" && input.task_id ? input.task_id : undefined;
-        if (!peerId || !proposal) {
-          return { content: { error: "peer_id and proposal required" }, isError: true };
-        }
+        const [peerId, proposal] = requireStrings(input, "peer_id", "proposal");
+        const taskId = optionalNonEmptyString(input, "task_id");
 
         const response = await services.mesh.sendNegotiate(
           ctx.caller.agentId,
@@ -228,15 +216,10 @@ function respondNegotiateTool(ctx: MeshToolContext, services: MeshToolServices):
     },
     handler: async (input) => {
       try {
-        const negId = String(input.negotiation_id ?? "");
+        const [negId, message] = requireStrings(input, "negotiation_id", "message");
         const decision = input.decision as (typeof NEGOTIATE_DECISIONS)[number];
-        const message = String(input.message ?? "");
-        const counter =
-          typeof input.counter_proposal === "string" ? input.counter_proposal : undefined;
+        const counter = optionalString(input, "counter_proposal");
 
-        if (!negId || !message) {
-          return { content: { error: "negotiation_id and message required" }, isError: true };
-        }
         if (!NEGOTIATE_DECISIONS.includes(decision)) {
           return {
             content: { error: `decision must be one of: ${NEGOTIATE_DECISIONS.join(", ")}` },
@@ -299,14 +282,7 @@ function reportBlockerTool(ctx: MeshToolContext, services: MeshToolServices): Ag
     },
     handler: async (input) => {
       try {
-        const taskId = String(input.task_id ?? "");
-        const description = String(input.description ?? "");
-        if (!taskId || !description) {
-          return {
-            content: { error: "task_id and description required" },
-            isError: true,
-          };
-        }
+        const [taskId, description] = requireStrings(input, "task_id", "description");
 
         // Server derives parent from caller's hierarchy. Direct parent only.
         const parent = await services.agentRepo.findParent(ctx.caller.agentId);
@@ -392,11 +368,7 @@ function escalateToHumansTool(
     },
     handler: async (input) => {
       try {
-        const negotiationId = String(input.negotiation_id ?? "");
-        const summary = String(input.summary ?? "");
-        if (!negotiationId || !summary) {
-          return { content: { error: "negotiation_id and summary required" }, isError: true };
-        }
+        const [negotiationId, summary] = requireStrings(input, "negotiation_id", "summary");
 
         const proposals = Array.isArray(input.proposals)
           ? (input.proposals as CreateEscalationInput["proposals"])

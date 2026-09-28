@@ -576,3 +576,50 @@ describe("check_work_status", () => {
     expect((result.content as { error: string }).error).toBe("unauthorized");
   });
 });
+
+describe("required-argument envelopes", () => {
+  // These tools used to guard their arguments with a hand-written
+  // `return { content: { error: "<names> required" }, isError: true }`. They
+  // now call `requireString` / `requireStrings`, which throw into each
+  // handler's existing `toolErrorFromThrown` catch. That is only a faithful
+  // swap if the envelope on the wire is unchanged — so assert the whole
+  // object, not just `isError`.
+  it.each([
+    ["get_agent_profile", {}, "agent_id required"],
+    ["get_task", {}, "task_id required"],
+    ["list_work_products", {}, "task_id required"],
+    ["get_work_product", {}, "id required"],
+    ["update_work_product", {}, "id required"],
+    ["create_work_product", { type: "pr" }, "task_id and title required"],
+    ["create_work_product", { task_id: "t1", type: "pr" }, "task_id and title required"],
+    ["add_to_escalation", {}, "escalation_id required"],
+  ])("%s with %o answers %s", async (name, input, message) => {
+    // Built at team level so the one team-only tool in the table
+    // (`add_to_escalation`) is in the set alongside the shared ones.
+    const tools = buildHierarchyTools({ agentId: "a", hierarchyLevel: "team" }, buildServices());
+    expect(await callTool(tools, name, input)).toEqual({
+      content: { error: message },
+      isError: true,
+    });
+  });
+
+  it("create_task reports both names, and checks them before authorizing", async () => {
+    const services = buildServices();
+    const tools = buildHierarchyTools({ agentId: "agent_t", hierarchyLevel: "team" }, services);
+
+    expect(await callTool(tools, "create_task", { intent: "do it" })).toEqual({
+      content: { error: "intent and agent_id required" },
+      isError: true,
+    });
+    // The guard ran first: no subordinate lookup was attempted.
+    expect(services.agentRepo.findSubordinates).not.toHaveBeenCalled();
+  });
+
+  it("check_work_status rejects a missing agent_id", async () => {
+    const tools = buildHierarchyTools({ agentId: "agent_t", hierarchyLevel: "team" }, buildServices());
+    expect(await callTool(tools, "check_work_status", {})).toEqual({
+      content: { error: "agent_id required" },
+      isError: true,
+    });
+  });
+});

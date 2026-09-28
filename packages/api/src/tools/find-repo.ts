@@ -40,6 +40,7 @@ import type {
   LearnedSkillRepository,
 } from "@beevibe/core";
 import type { AgentTool, AgentToolResult } from "./types.js";
+import { optionalNumber, optionalString } from "./input.js";
 
 /**
  * Data layer URLs — all live in the public `beevibe-ai/beevibe-capabilities`
@@ -310,14 +311,14 @@ async function findRepoHandler(
   trending: TrendingClient,
   githubToken: string | undefined,
 ): Promise<AgentToolResult> {
-  const goal = typeof input.goal === "string" ? input.goal.trim() : "";
+  const goal = optionalString(input, "goal")?.trim() ?? "";
   if (!goal) {
     return {
       content: { error: "invalid_goal", message: "goal must be a non-empty string" },
       isError: true,
     };
   }
-  const limitRaw = typeof input.limit === "number" ? input.limit : 5;
+  const limitRaw = optionalNumber(input, "limit") ?? 5;
   const limit = Math.min(10, Math.max(1, Math.floor(limitRaw)));
 
   // Resolve the agent's owner so we can scope learned-skill lookups.

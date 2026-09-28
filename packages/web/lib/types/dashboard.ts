@@ -1,4 +1,4 @@
-import type { TaskStatus } from "@beevibe/core";
+import type { HierarchyLevel, TaskStatus } from "@beevibe/core";
 import type { LegendBucket } from "@beevibe/api/views/types";
 
 // ── Display shapes the home page binds against ─────────────────────────────
@@ -42,7 +42,13 @@ export interface StatusLegendEntry {
 }
 
 export interface FleetBar {
-  hier: "org" | "team" | "ic";
+  /**
+   * Was written out as `"org" | "team" | "ic"` here, which is
+   * `HierarchyLevel` spelled again — the api ships this field as
+   * `FleetBarData.hier`, typed with the real union. A level added to core
+   * would have left this side silently one case short.
+   */
+  hier: HierarchyLevel;
   count: number;
   percent: number;
 }

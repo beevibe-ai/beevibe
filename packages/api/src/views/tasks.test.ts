@@ -100,6 +100,9 @@ describe("listTasks", () => {
   });
 });
 
+/** Fixed so the mapped `created_at` / `updated_at` are comparable. */
+const WP_AT = new Date("2026-04-30T10:00:00Z");
+
 describe("getTask", () => {
   it("returns undefined when the task isn't found", async () => {
     const pool = makeMockPool([[], [], []]);
@@ -157,13 +160,14 @@ describe("getTask", () => {
           agent_id: "agt_a",
           type: "pull_request",
           title: "PR #42",
-          summary: null,
+          summary: "adds the kanban board",
+          body: "diff --git …",
           url: "https://github.com/foo/bar/pull/42",
           provider: "github",
           external_id: "42",
           metadata: null,
-          created_at: new Date(),
-          updated_at: new Date(),
+          created_at: WP_AT,
+          updated_at: WP_AT,
         },
       ],
     ]);
@@ -173,6 +177,26 @@ describe("getTask", () => {
     expect(detail?.sessions[0]?.short_id).toBe("abcdef");
     expect(detail?.sessions[0]?.duration_label).toBe("30m");
     expect(detail?.work_products).toHaveLength(1);
-    expect(detail?.work_products[0]?.title).toBe("PR #42");
+    // Asserted field-by-field, not just on `title`. This view reads
+    // `work_product` with its own `SELECT *` and used to carry a private copy
+    // of the repository's row mapper; it now imports
+    // `rowToWorkProduct` from `@beevibe/core/adapters/postgres`, and this is
+    // what pins the two to the same 13 fields. Note `summary: null` in the row
+    // becomes `undefined`, not `null`.
+    expect(detail?.work_products[0]).toEqual({
+      id: "wp_001",
+      task_id: "task_001",
+      agent_id: "agt_a",
+      type: "pull_request",
+      title: "PR #42",
+      summary: "adds the kanban board",
+      body: "diff --git …",
+      url: "https://github.com/foo/bar/pull/42",
+      provider: "github",
+      external_id: "42",
+      metadata: undefined,
+      created_at: WP_AT,
+      updated_at: WP_AT,
+    });
   });
 });
