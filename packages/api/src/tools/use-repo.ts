@@ -28,6 +28,7 @@ import {
 } from "@beevibe/core";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { AgentTool } from "./types.js";
+import { optionalString } from "./input.js";
 
 const USE_REPO_SCHEMA = {
   type: "object",
@@ -122,9 +123,8 @@ export function createUseRepoTool(
       "the UI, or read repo_run.status for completion.",
     schema: USE_REPO_SCHEMA as Record<string, unknown>,
     handler: async (input) => {
-      const goal = typeof input.goal === "string" ? input.goal.trim() : "";
-      const repoUrl =
-        typeof input.repo_url === "string" ? input.repo_url.trim() : "";
+      const goal = optionalString(input, "goal")?.trim() ?? "";
+      const repoUrl = optionalString(input, "repo_url")?.trim() ?? "";
       if (!goal) {
         return {
           content: { error: "invalid_goal", message: "goal must be a non-empty string" },
@@ -141,12 +141,8 @@ export function createUseRepoTool(
         };
       }
 
-      const inputUrl =
-        typeof input.input_url === "string" ? input.input_url.trim() : undefined;
-      const inputFilename =
-        typeof input.input_filename === "string"
-          ? input.input_filename.trim()
-          : undefined;
+      const inputUrl = optionalString(input, "input_url")?.trim();
+      const inputFilename = optionalString(input, "input_filename")?.trim();
       const limits = parseLimits(input.limits);
 
       // Look the agent up so we can pin the container task's creator
