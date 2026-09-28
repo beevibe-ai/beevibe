@@ -8,7 +8,7 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { syncSkills, type SyncResult } from "./sync.js";
+import { listFilesRecursive, syncSkills, type SyncResult } from "./sync.js";
 
 let workdir: string;
 
@@ -293,5 +293,68 @@ describe("syncSkills", () => {
     expect(await readFileIfExists(path.join(targetDir, "beevibe", "linked.md"))).toBe(
       "real content",
     );
+  });
+});
+
+describe("listFilesRecursive", () => {
+  // Shared with `packages/api/src/runtime/router.ts`, which walks a skill
+  // directory to build the daemon skills bundle and used to carry its own
+  // copy of this. The bundle's version is a hash over paths and contents in
+  // traversal order, so the ordering guarantee below is load-bearing there.
+
+  it("returns nothing for a directory that does not exist", async () => {
+    expect(await listFilesRecursive(path.join(workdir, "nope"))).toEqual([]);
+  });
+
+  it("returns nothing for an empty directory", async () => {
+    const dir = path.join(workdir, "empty");
+    await fs.mkdir(dir, { recursive: true });
+    expect(await listFilesRecursive(dir)).toEqual([]);
+  });
+
+  it("descends into subdirectories and returns absolute paths", async () => {
+    const dir = path.join(workdir, "skill");
+    await fs.mkdir(path.join(dir, "refs", "deep"), { recursive: true });
+    await fs.writeFile(path.join(dir, "SKILL.md"), "#\n");
+    await fs.writeFile(path.join(dir, "refs", "a.md"), "a\n");
+    await fs.writeFile(path.join(dir, "refs", "deep", "b.md"), "b\n");
+
+    const found = await listFilesRecursive(dir);
+    expect([...found].sort()).toEqual(
+      [
+        path.join(dir, "SKILL.md"),
+        path.join(dir, "refs", "a.md"),
+        path.join(dir, "refs", "deep", "b.md"),
+      ].sort(),
+    );
+    for (const p of found) expect(path.isAbsolute(p)).toBe(true);
+  });
+
+  it("lists a symlinked file rather than skipping or following it", async () => {
+    const external = path.join(workdir, "external");
+    await fs.mkdir(external, { recursive: true });
+    await fs.writeFile(path.join(external, "real.md"), "real\n");
+
+    const dir = path.join(workdir, "skill2");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.symlink(path.join(external, "real.md"), path.join(dir, "linked.md"));
+
+    expect(await listFilesRecursive(dir)).toEqual([path.join(dir, "linked.md")]);
+  });
+
+  it("orders each directory level by name when sorted, and descends in place", async () => {
+    const dir = path.join(workdir, "ordered");
+    await fs.mkdir(path.join(dir, "b_dir"), { recursive: true });
+    await fs.writeFile(path.join(dir, "a.md"), "a\n");
+    await fs.writeFile(path.join(dir, "b_dir", "inner.md"), "i\n");
+    await fs.writeFile(path.join(dir, "c.md"), "c\n");
+
+    // `b_dir` sorts between `a.md` and `c.md`, so its contents come out
+    // between them — depth-first, not all files before all directories.
+    expect(await listFilesRecursive(dir, { sorted: true })).toEqual([
+      path.join(dir, "a.md"),
+      path.join(dir, "b_dir", "inner.md"),
+      path.join(dir, "c.md"),
+    ]);
   });
 });

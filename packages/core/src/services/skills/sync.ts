@@ -172,10 +172,30 @@ async function syncDirIfChanged(src: string, tgt: string): Promise<boolean> {
   return changed;
 }
 
-async function listFilesRecursive(dir: string): Promise<string[]> {
+/**
+ * Every file under `dir`, recursively, as absolute paths. A missing `dir` is
+ * empty rather than an error.
+ *
+ * A symlink counts as a file and is listed, not followed — a skill directory
+ * may link a shared reference file, and the bytes are wanted while the link
+ * itself must not be descended into. That rule is the subtle part of this
+ * walk, which is why `packages/api/src/runtime/router.ts` shares this
+ * function rather than keeping the second copy it used to have for building
+ * the daemon skills bundle.
+ *
+ * `sorted` orders each directory level by name before descending, which makes
+ * the traversal deterministic. The skills bundle hashes file paths and
+ * contents in traversal order to produce its version, so it needs that; the
+ * sync paths below only ever compare sets and don't.
+ */
+export async function listFilesRecursive(
+  dir: string,
+  opts: { sorted?: boolean } = {},
+): Promise<string[]> {
   const out: string[] = [];
   async function walk(d: string): Promise<void> {
     const entries = await fs.readdir(d, { withFileTypes: true });
+    if (opts.sorted) entries.sort((a, b) => a.name.localeCompare(b.name));
     for (const entry of entries) {
       const p = path.join(d, entry.name);
       if (entry.isDirectory()) await walk(p);

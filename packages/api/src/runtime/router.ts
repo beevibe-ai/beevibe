@@ -43,6 +43,7 @@ import {
   teamAgentRoutingDirective,
 } from "@beevibe/core/services/agent-session";
 import { transitionTaskOnClaim } from "@beevibe/core/services/dispatch-service";
+import { listFilesRecursive } from "@beevibe/core/services/skills";
 import { requireDaemon, requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "./hub.js";
 
@@ -673,23 +674,22 @@ async function readSkills(sourceDir: string): Promise<RuntimeSkillsResponse> {
   return { version: hasher.digest("hex"), skills };
 }
 
+/**
+ * A skill directory's files, in the deterministic order the bundle version
+ * hashes over.
+ *
+ * The traversal — including the rule that a symlink counts as a file and is
+ * listed rather than followed — comes from `listFilesRecursive`, which
+ * `services/skills/sync.ts` already had. This used to be a second copy of it
+ * with the file read interleaved into the recursion.
+ */
 async function readSkillFiles(
   skillDir: string,
 ): Promise<RuntimeSkillsResponse["skills"][number]["files"]> {
   const out: RuntimeSkillsResponse["skills"][number]["files"] = [];
-  async function walk(dir: string): Promise<void> {
-    const entries = await fs.readdir(dir, { withFileTypes: true });
-    for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
-      const abs = join(dir, entry.name);
-      if (entry.isDirectory()) {
-        await walk(abs);
-      } else if (entry.isFile() || entry.isSymbolicLink()) {
-        const content = await fs.readFile(abs, "utf8");
-        out.push({ path: relative(skillDir, abs), content });
-      }
-    }
+  for (const abs of await listFilesRecursive(skillDir, { sorted: true })) {
+    out.push({ path: relative(skillDir, abs), content: await fs.readFile(abs, "utf8") });
   }
-  await walk(skillDir);
   return out;
 }
 
