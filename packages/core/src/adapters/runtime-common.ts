@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,88 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+export interface StreamingCliOptions<T> {
+  /** Tag for the truncation warning — "ClaudeCodeRuntime", "CodexRuntime", … */
+  runtimeTag: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /** Piped to the child's stdin. Only Claude Code feeds its intent this way. */
+  stdin?: string;
+  context: RuntimeContext;
+  /** One NDJSON line → one provider event, or `null` to skip the line. */
+  parseLine: (line: string) => T | null;
+  /** One provider event → the step events to forward to `context.onStep`. */
+  extractSteps: (event: T) => RuntimeStep[];
+}
+
+export interface StreamingCliRun<T> {
+  /** Every event parsed off stdout, in arrival order. */
+  events: T[];
+  result: CliProcessResult;
+  /**
+   * Set when the caller aborted via `abort_signal`. Return it as-is; the
+   * events are not worth parsing, and a runtime with per-spawn temp files
+   * still gets to clean them up first.
+   */
+  cancelled?: RuntimeResult;
+}
+
+/**
+ * Run a CLI runtime's subprocess and collect its NDJSON event stream.
+ *
+ * The three CLI adapters (claude-code, codex, opencode) had an identical
+ * twelve-line tail: build a line handler that parses, buffers, and fans
+ * step events out to `context.onStep`; wrap it in a line reader; call
+ * `runCliProcess` with the same `onSpawn` shim; flush; warn on truncation;
+ * and short-circuit on abort. Only `parseLine` and `extractSteps` actually
+ * differ, so they are the parameters and the rest lives here.
+ *
+ * What stays in each adapter is what is genuinely per-provider: argv
+ * construction, auth-var stripping, MCP wiring, and mapping the collected
+ * events to a `RuntimeResult` (each provider's `parse*Events`), which is why
+ * this returns the raw events rather than a finished result.
+ */
+export async function runStreamingCli<T>(
+  opts: StreamingCliOptions<T>,
+): Promise<StreamingCliRun<T>> {
+  const { context } = opts;
+
+  // Parse incrementally while streaming rather than re-reading stdout after
+  // close, so `onStep` can drive the live transcript.
+  const events: T[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of opts.extractSteps(event)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: opts.command,
+    args: opts.args,
+    cwd: opts.cwd,
+    env: opts.env,
+    stdin: opts.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Emit any trailing partial line — a stream can end without a final \n.
+  stdout.flush();
+
+  warnIfTruncated(opts.runtimeTag, result);
+
+  return result.aborted
+    ? { events, result, cancelled: cancelledResult(result) }
+    : { events, result };
 }

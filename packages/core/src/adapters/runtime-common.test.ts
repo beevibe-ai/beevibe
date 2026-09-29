@@ -1,10 +1,13 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import * as spawnModule from "./claude-code/spawn.js";
+import type { RuntimeContext, RuntimeResult, RuntimeStep } from "../ports/runtime.js";
 import {
   cancelledResult,
   createStdoutLineReader,
   finalizeCliResult,
+  parseNdjsonLine,
+  runStreamingCli,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -145,5 +148,187 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+describe("runStreamingCli", () => {
+  function context(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
+    return {
+      workspace: { path: "/ws", id: "ws_1" },
+      intent: "do the thing",
+      system_prompt_append: "",
+      ...overrides,
+    } as RuntimeContext;
+  }
+
+  /** Drive `onLog` with the given stdout chunks, then settle. */
+  function spawnEmitting(chunks: string[], result: Partial<CliProcessResult> = {}) {
+    return vi
+      .spyOn(spawnModule, "runCliProcess")
+      .mockImplementation(async (options) => {
+        for (const chunk of chunks) options.onLog?.("stdout", chunk);
+        return cliResult(result);
+      });
+  }
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("collects one event per parseable line, skipping the rest", async () => {
+    spawnEmitting(['{"n":1}\n', "noise\n", '{"n":2}\n']);
+    const run = await runStreamingCli<{ n: number }>({
+      runtimeTag: "T",
+      command: "x",
+      args: [],
+      cwd: "/ws",
+      env: {},
+      context: context(),
+      parseLine: (l) => parseNdjsonLine<{ n: number }>(l),
+      extractSteps: () => [],
+    });
+    expect(run.events).toEqual([{ n: 1 }, { n: 2 }]);
+    expect(run.cancelled).toBeUndefined();
+  });
+
+  it("reassembles an event split across chunk boundaries", async () => {
+    spawnEmitting(['{"n"', ":1}\n"]);
+    const run = await runStreamingCli<{ n: number }>({
+      runtimeTag: "T",
+      command: "x",
+      args: [],
+      cwd: "/ws",
+      env: {},
+      context: context(),
+      parseLine: (l) => parseNdjsonLine<{ n: number }>(l),
+      extractSteps: () => [],
+    });
+    expect(run.events).toEqual([{ n: 1 }]);
+  });
+
+  it("flushes a trailing line that has no final newline", async () => {
+    spawnEmitting(['{"n":1}']);
+    const run = await runStreamingCli<{ n: number }>({
+      runtimeTag: "T",
+      command: "x",
+      args: [],
+      cwd: "/ws",
+      env: {},
+      context: context(),
+      parseLine: (l) => parseNdjsonLine<{ n: number }>(l),
+      extractSteps: () => [],
+    });
+    expect(run.events).toEqual([{ n: 1 }]);
+  });
+
+  it("forwards every extracted step to context.onStep in arrival order", async () => {
+    spawnEmitting(['{"n":1}\n{"n":2}\n']);
+    const steps: string[] = [];
+    await runStreamingCli<{ n: number }>({
+      runtimeTag: "T",
+      command: "x",
+      args: [],
+      cwd: "/ws",
+      env: {},
+      context: context({ onStep: (s) => steps.push(s.kind) }),
+      parseLine: (l) => parseNdjsonLine<{ n: number }>(l),
+      extractSteps: (e) =>
+        [{ kind: "tool_call", label: String(e.n) }] as unknown as RuntimeStep[],
+    });
+    expect(steps).toEqual(["tool_call", "tool_call"]);
+  });
+
+  it("does not call extractSteps at all when no onStep is wired", async () => {
+    spawnEmitting(['{"n":1}\n']);
+    const extractSteps = vi.fn(() => []);
+    await runStreamingCli<{ n: number }>({
+      runtimeTag: "T",
+      command: "x",
+      args: [],
+      cwd: "/ws",
+      env: {},
+      context: context(),
+      parseLine: (l) => parseNdjsonLine<{ n: number }>(l),
+      extractSteps,
+    });
+    expect(extractSteps).not.toHaveBeenCalled();
+  });
+
+  it("renames pid/process_group_id onto context.onSpawn", async () => {
+    vi.spyOn(spawnModule, "runCliProcess").mockImplementation(async (options) => {
+      options.onSpawn?.({ pid: 99, process_group_id: 98 });
+      return cliResult();
+    });
+    const onSpawn = vi.fn();
+    await runStreamingCli({
+      runtimeTag: "T",
+      command: "x",
+      args: [],
+      cwd: "/ws",
+      env: {},
+      context: context({ onSpawn }),
+      parseLine: () => null,
+      extractSteps: () => [],
+    });
+    expect(onSpawn).toHaveBeenCalledWith({ process_pid: 99, process_group_id: 98 });
+  });
+
+  it("returns a cancelled result on abort, alongside whatever it parsed", async () => {
+    spawnEmitting(['{"n":1}\n'], { aborted: true });
+    const run = await runStreamingCli<{ n: number }>({
+      runtimeTag: "T",
+      command: "x",
+      args: [],
+      cwd: "/ws",
+      env: {},
+      context: context(),
+      parseLine: (l) => parseNdjsonLine<{ n: number }>(l),
+      extractSteps: () => [],
+    });
+    expect(run.cancelled).toEqual({
+      status: "cancelled",
+      output: "Session cancelled.",
+      process_pid: 4242,
+      process_group_id: 4242,
+    });
+    // The events are still handed back — a codex-style adapter needs the
+    // call to return before it can clean up its per-spawn temp file.
+    expect(run.events).toEqual([{ n: 1 }]);
+  });
+
+  it("warns once, under the caller's tag, when stdout was truncated", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    spawnEmitting([], { truncated: true });
+    await runStreamingCli({
+      runtimeTag: "CodexRuntime",
+      command: "x",
+      args: [],
+      cwd: "/ws",
+      env: {},
+      context: context(),
+      parseLine: () => null,
+      extractSteps: () => [],
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain("[CodexRuntime]");
+  });
+
+  it("passes stdin through only when given", async () => {
+    const spy = spawnEmitting([]);
+    const base = {
+      runtimeTag: "T",
+      command: "x",
+      args: [],
+      cwd: "/ws",
+      env: {},
+      context: context(),
+      parseLine: () => null,
+      extractSteps: () => [],
+    } as const;
+
+    await runStreamingCli({ ...base, stdin: "piped intent" });
+    expect(spy.mock.calls[0]?.[0].stdin).toBe("piped intent");
+
+    await runStreamingCli(base);
+    // `undefined` is what runCliProcess already treats as "no stdin".
+    expect(spy.mock.calls[1]?.[0].stdin).toBeUndefined();
   });
 });
