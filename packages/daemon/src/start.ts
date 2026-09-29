@@ -12,6 +12,7 @@ import { getConfigRoot, loadConfig } from "./config.js";
 import { log, warn } from "./logger.js";
 import { syncSkillsCache } from "./skills-cache.js";
 import { Supervisor } from "./supervisor.js";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 export interface StartOptions {
   /** Dev-only `~/.beevibe` override; see config.ts:getConfigRoot. */
@@ -36,10 +37,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
   // LocalWorkspaceManager.ensureWorkspace.
   const skillsSourceDir = await syncSkillsCache(api, options.configRoot).catch(
     (err: unknown) => {
-      warn(
-        "[daemon] skills sync failed; continuing without skills:",
-        err instanceof Error ? err.message : String(err),
-      );
+      warn("[daemon] skills sync failed; continuing without skills:", errorMessage(err));
       return undefined;
     },
   );
@@ -87,10 +85,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
   // self-healing, so logging and continuing is the right behavior under
   // Node 20+'s default `--unhandled-rejections=throw`.
   process.on("unhandledRejection", (reason) => {
-    warn(
-      "[daemon] unhandledRejection (continuing):",
-      reason instanceof Error ? reason.message : String(reason),
-    );
+    warn("[daemon] unhandledRejection (continuing):", errorMessage(reason));
   });
 
   // Hold the process open. The `setInterval` in claimer keeps the event

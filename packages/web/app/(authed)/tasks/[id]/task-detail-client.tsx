@@ -34,6 +34,7 @@ import { slugify } from "@/lib/capabilities";
 import type { TaskDetail, TaskDetailSessionRow } from "@/lib/api/types";
 import type { ReferencedRepo } from "@/lib/api/client";
 import type { WorkProduct } from "@beevibe/core";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 const TasksBackLink = () => (
   <Link
@@ -677,7 +678,7 @@ function SaveAsCapabilityModal({
             </div>
             {save.error && (
               <p className="text-xs text-red-500">
-                {save.error instanceof Error ? save.error.message : "Save failed"}
+                {errorMessage(save.error, "Save failed")}
               </p>
             )}
             <div className="flex gap-2">

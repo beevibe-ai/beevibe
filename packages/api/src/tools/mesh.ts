@@ -15,7 +15,7 @@ import type {
   CreateEscalationInput,
 } from "@beevibe/core/services/escalation-service";
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import { toolErrorFromThrown } from "./errors.js";
+import { toolError, toolErrorFromThrown } from "./errors.js";
 import type { AgentTool } from "./types.js";
 import type { McpCaller } from "./assemble.js";
 import type { MeshServer } from "../mesh/server.js";
@@ -98,7 +98,7 @@ function askTool(ctx: MeshToolContext, services: MeshToolServices): AgentTool {
         const target = String(input.target_agent_id ?? "");
         const question = String(input.question ?? "");
         if (!target || !question) {
-          return { content: { error: "target_agent_id and question required" }, isError: true };
+          return toolError("target_agent_id and question required");
         }
         const requestId = randomUUID();
         const response = await services.mesh.sendAsk(
@@ -136,7 +136,7 @@ function respondAskTool(ctx: MeshToolContext, services: MeshToolServices): Agent
         const requestId = String(input.request_id ?? "");
         const answer = String(input.answer ?? "");
         if (!requestId || !answer) {
-          return { content: { error: "request_id and answer required" }, isError: true };
+          return toolError("request_id and answer required");
         }
         services.mesh.respondAsk(requestId, {
           request_id: requestId,
@@ -183,7 +183,7 @@ function negotiateTool(ctx: MeshToolContext, services: MeshToolServices): AgentT
         const taskId =
           typeof input.task_id === "string" && input.task_id ? input.task_id : undefined;
         if (!peerId || !proposal) {
-          return { content: { error: "peer_id and proposal required" }, isError: true };
+          return toolError("peer_id and proposal required");
         }
 
         const response = await services.mesh.sendNegotiate(
@@ -235,19 +235,13 @@ function respondNegotiateTool(ctx: MeshToolContext, services: MeshToolServices):
           typeof input.counter_proposal === "string" ? input.counter_proposal : undefined;
 
         if (!negId || !message) {
-          return { content: { error: "negotiation_id and message required" }, isError: true };
+          return toolError("negotiation_id and message required");
         }
         if (!NEGOTIATE_DECISIONS.includes(decision)) {
-          return {
-            content: { error: `decision must be one of: ${NEGOTIATE_DECISIONS.join(", ")}` },
-            isError: true,
-          };
+          return toolError(`decision must be one of: ${NEGOTIATE_DECISIONS.join(", ")}`);
         }
         if (decision === "counter" && !counter) {
-          return {
-            content: { error: "counter_proposal required when decision='counter'" },
-            isError: true,
-          };
+          return toolError("counter_proposal required when decision='counter'");
         }
 
         // The server computes the round number internally from
@@ -302,23 +296,16 @@ function reportBlockerTool(ctx: MeshToolContext, services: MeshToolServices): Ag
         const taskId = String(input.task_id ?? "");
         const description = String(input.description ?? "");
         if (!taskId || !description) {
-          return {
-            content: { error: "task_id and description required" },
-            isError: true,
-          };
+          return toolError("task_id and description required");
         }
 
         // Server derives parent from caller's hierarchy. Direct parent only.
         const parent = await services.agentRepo.findParent(ctx.caller.agentId);
         if (!parent) {
-          return {
-            content: {
-              error: "no_parent_to_block",
-              message:
-                "Top-level agents have no parent to report blockers to. Use escalate_to_humans or update_progress('failed') instead.",
-            },
-            isError: true,
-          };
+          return toolError(
+            "no_parent_to_block",
+            "Top-level agents have no parent to report blockers to. Use escalate_to_humans or update_progress('failed') instead.",
+          );
         }
 
         // Mark the task blocked + record the blocker_agent_id + reason.
@@ -395,7 +382,7 @@ function escalateToHumansTool(
         const negotiationId = String(input.negotiation_id ?? "");
         const summary = String(input.summary ?? "");
         if (!negotiationId || !summary) {
-          return { content: { error: "negotiation_id and summary required" }, isError: true };
+          return toolError("negotiation_id and summary required");
         }
 
         const proposals = Array.isArray(input.proposals)

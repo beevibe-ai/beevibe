@@ -63,6 +63,7 @@ import { RuntimeWsServer } from "./runtime/ws-server.js";
 import { SseManager } from "./sse/manager.js";
 import { SseListener } from "./sse/listener.js";
 import { OwnerLookup } from "./sse/owner-lookup.js";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 export interface BootstrapConfig {
   databaseUrl: string;
@@ -443,10 +444,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
         try {
           await taskRepo.update(session.task_id, { status: "review" });
         } catch (err) {
-          console.warn(
-            "[onSessionComplete] run_repo task→review failed:",
-            err instanceof Error ? err.message : String(err),
-          );
+          console.warn("[onSessionComplete] run_repo task→review failed:", errorMessage(err));
         }
       }
       // Auto-retry-then-fail for task sessions whose agent exited

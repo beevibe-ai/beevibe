@@ -36,6 +36,7 @@ import type { SessionRepository } from "../ports/session-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
 import type { DispatchService } from "./dispatch-service.js";
 import { buildIntent } from "./agent-session.js";
+import { toError } from "../domain/errors.js";
 
 export const DEFAULT_REAPER_POLL_MS = 60_000;
 export const DEFAULT_SESSION_STALE_SECONDS = 5 * 60;
@@ -124,7 +125,7 @@ export class DaemonOrphanReaper {
           try {
             await this.config.onSessionReaped(updated);
           } catch (err) {
-            this.onError(asError(err));
+            this.onError(toError(err));
           }
         }
 
@@ -156,13 +157,9 @@ export class DaemonOrphanReaper {
           }
         }
       } catch (err) {
-        this.onError(asError(err));
+        this.onError(toError(err));
       }
     }
     return { reaped, redispatched };
   }
-}
-
-function asError(err: unknown): Error {
-  return err instanceof Error ? err : new Error(String(err));
 }

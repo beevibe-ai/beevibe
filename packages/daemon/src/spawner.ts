@@ -31,6 +31,7 @@ import type { ApiClient } from "./api-client.js";
 import { createEventBatcher } from "./event-batcher.js";
 import { error, log } from "./logger.js";
 import { runRepoDispatch } from "./repo-runs.js";
+import { errorMessage, toError } from "@beevibe/core/domain/errors";
 
 export type {
   DispatchPayload,
@@ -124,7 +125,7 @@ export async function runDispatch(
     // Spawn / parse failure — runtime never produced a result. POST
     // /runtime/done with a `failed` status anyway so the chat resolver
     // unblocks instead of waiting out the 90s timeout.
-    runError = err instanceof Error ? err : new Error(String(err));
+    runError = toError(err);
   }
 
   await events.close();
@@ -170,9 +171,6 @@ export async function runDispatch(
   try {
     await deps.api.post("/runtime/done", done);
   } catch (err) {
-    error(
-      "[daemon/spawner] /runtime/done POST failed:",
-      err instanceof Error ? err.message : String(err),
-    );
+    error("[daemon/spawner] /runtime/done POST failed:", errorMessage(err));
   }
 }

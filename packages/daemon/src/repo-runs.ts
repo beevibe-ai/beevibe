@@ -23,6 +23,7 @@ import type { ApiClient } from "./api-client.js";
 import { createEventBatcher } from "./event-batcher.js";
 import { error, log } from "./logger.js";
 import type { DispatchPayload, RunRepoArtifact } from "./spawner.js";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 export interface RunRepoDeps {
   api: ApiClient;
@@ -171,10 +172,7 @@ export async function runRepoDispatch(
   try {
     await deps.api.post("/runtime/done", done);
   } catch (err) {
-    error(
-      "[daemon/repo-run] /runtime/done POST failed:",
-      err instanceof Error ? err.message : String(err),
-    );
+    error("[daemon/repo-run] /runtime/done POST failed:", errorMessage(err));
   }
 }
 

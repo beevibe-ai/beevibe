@@ -28,6 +28,7 @@ import {
 import { NegotiationNotFoundError } from "@beevibe/core/services/negotiation-service";
 import { requireHuman } from "../auth/middleware.js";
 import { requireParam } from "./http-errors.js";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 export interface EscalationRoutesDeps {
   authMiddleware: RequestHandler;
@@ -104,7 +105,7 @@ function handleEscalationError(err: unknown, res: Response): void {
   console.error("[escalation route]", err);
   res.status(500).json({
     error: "internal_error",
-    message: err instanceof Error ? err.message : String(err),
+    message: errorMessage(err),
   });
 }
 

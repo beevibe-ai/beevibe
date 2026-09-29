@@ -47,6 +47,7 @@ import { processResponse } from "./directives.js";
 import { requireParam } from "./http-errors.js";
 import { truncate } from "../views/format.js";
 import { CHAT_THREAD_TITLE_MAX } from "../views/types.js";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 export interface ChatRoutesDeps {
   authMiddleware: RequestHandler;
@@ -679,10 +680,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
         deps.personRepo
           .update(req.caller.personId, { onboarding_completed_at: new Date() })
           .catch((err: unknown) =>
-            console.error(
-              "[chat route] onboarding_completed_at flip failed:",
-              err instanceof Error ? err.message : String(err),
-            ),
+            console.error("[chat route] onboarding_completed_at flip failed:", errorMessage(err)),
           );
       }
 
