@@ -15,6 +15,7 @@ import {
 } from "@beevibe/core/services/negotiation-service";
 import { requireHuman } from "../auth/middleware.js";
 import { requireParam } from "./http-errors.js";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 export interface NegotiationRoutesDeps {
   authMiddleware: RequestHandler;
@@ -40,7 +41,7 @@ export function createNegotiationRouter(deps: NegotiationRoutesDeps): Router {
       console.error("[negotiation route]", err);
       res.status(500).json({
         error: "internal_error",
-        message: err instanceof Error ? err.message : String(err),
+        message: errorMessage(err),
       });
     }
   });

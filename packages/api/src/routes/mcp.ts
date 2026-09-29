@@ -35,6 +35,7 @@ import { assembleTools } from "../tools/assemble.js";
 import { buildInstructions } from "../tools/instructions.js";
 import type { AgentTool } from "../tools/types.js";
 import type { SessionCache } from "../session-cache.js";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 export interface McpRouterDeps {
   authMiddleware: RequestHandler;
@@ -362,7 +363,7 @@ function registerToolsOnServer(server: McpLowLevelServer, tools: AgentTool[]): v
         isError: result.isError ?? false,
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       return {
         content: [{ type: "text" as const, text: JSON.stringify({ error: message }) }],
         isError: true,

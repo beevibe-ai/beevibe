@@ -17,5 +17,6 @@ export * from "./repo-run.js";
 export * from "./task-watch.js";
 export * from "./session-search.js";
 export * from "./xml.js";
+export * from "./errors.js";
 export * from "./format.js";
 export * from "./github-url.js";

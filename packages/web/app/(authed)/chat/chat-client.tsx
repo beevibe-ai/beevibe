@@ -41,6 +41,7 @@ import { ReferenceCards } from "@/components/chat/reference-cards";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ToolStepList } from "@/components/chat/tool-step-list";
 import { ChatLoader } from "@/components/chat/chat-loader";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 function useTeamAgent() {
   const agents = useAgents();
@@ -809,7 +810,7 @@ function RepoCardRow({ card }: { card: RepoCard }) {
       ) : null}
       {tryRun.error ? (
         <p className="mt-1 text-[11px] text-red-500">
-          {tryRun.error instanceof Error ? tryRun.error.message : "Couldn't start the sandbox."}
+          {errorMessage(tryRun.error, "Couldn't start the sandbox.")}
         </p>
       ) : null}
     </div>

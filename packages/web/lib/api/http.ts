@@ -1,4 +1,5 @@
 import { apiBaseUrl, getUserKey } from "./config";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 export class ApiError extends Error {
   readonly status: number;
@@ -43,7 +44,7 @@ export function describeError(err: unknown): string {
     if (err.errorCode) return err.errorCode.replace(/_/g, " ");
     return err.message;
   }
-  return err instanceof Error ? err.message : String(err);
+  return errorMessage(err);
 }
 
 /**

@@ -5,6 +5,7 @@ import {
 } from "@beevibe/core/services/session-search";
 import { SESSION_TYPES, SESSION_STATUSES } from "@beevibe/core";
 import type { AgentTool } from "./types.js";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 /**
  * session_search — Layer-3 memory: search past conversations via FTS,
@@ -278,7 +279,7 @@ export function createSessionSearchTool(
         return {
           content: {
             error: "internal_error",
-            message: err instanceof Error ? err.message : String(err),
+            message: errorMessage(err),
           },
           isError: true,
         };

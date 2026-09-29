@@ -19,6 +19,7 @@
 
 import { CodedMeshError } from "../mesh/types.js";
 import type { AgentToolResult } from "./types.js";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 /**
  * A named failure: `code` is the stable identifier the agent branches
@@ -53,7 +54,7 @@ export function toolErrorFromThrown(
   }
   return {
     content: {
-      error: err instanceof Error ? err.message : String(err),
+      error: errorMessage(err),
       ...extra,
     },
     isError: true,

@@ -20,6 +20,7 @@ import {
 import { requireHuman } from "../auth/middleware.js";
 import { readArtifactBody } from "../views/work-product.js";
 import { invalidBody, loadOwned, requireParam } from "./http-errors.js";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 export interface LearnedSkillsRouterDeps {
   authMiddleware: RequestHandler;
@@ -233,7 +234,7 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
       console.error("[learned-skills/publish]", err);
       res.status(500).json({
         error: "publish_failed",
-        message: err instanceof Error ? err.message : String(err),
+        message: errorMessage(err),
       });
     }
   });

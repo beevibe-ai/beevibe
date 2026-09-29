@@ -9,6 +9,7 @@ import type {
   WorkspaceManager,
 } from "@beevibe/core";
 import { transitionTaskOnClaim } from "@beevibe/core/services/dispatch-service";
+import { toError } from "@beevibe/core/domain/errors";
 
 /**
  * Default poll interval. Matches the old repo's `POLL_INTERVAL_MS`.
@@ -213,9 +214,7 @@ export class TaskExecutionWorker {
 
       void Promise.resolve()
         .then(() => this.config.dispatchTask(session, agent, workspace, ac.signal))
-        .catch((err: unknown) =>
-          this.onError(err instanceof Error ? err : new Error(String(err))),
-        )
+        .catch((err: unknown) => this.onError(toError(err)))
         .finally(() => {
           this.inFlight.delete(session.id);
         });

@@ -17,6 +17,7 @@
  */
 
 import { RUNTIME_HEARTBEAT_INTERVAL_MS } from "@beevibe/core";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 export type DaemonPushPayload =
   | { type: "task_available"; runtime_id: string; session_id: string }
@@ -187,7 +188,7 @@ export class DaemonHub {
     } catch (err) {
       console.warn("[hub] send failed; unregistering client", {
         daemonId: client.daemonId,
-        err: err instanceof Error ? err.message : String(err),
+        err: errorMessage(err),
       });
       this.unregister(client);
     }

@@ -23,6 +23,7 @@ import { DetailShell } from "@/components/detail/detail-shell";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { cn } from "@/lib/utils";
+import { errorMessage } from "@beevibe/core/domain/errors";
 
 const CapabilitiesBackLink = () => (
   <Link
@@ -357,7 +358,7 @@ function IterateBlock({ run }: { run: RepoRun }) {
         />
         {start.error ? (
           <p className="text-xs text-red-500">
-            {start.error instanceof Error ? start.error.message : "Couldn't start the sandbox."}
+            {errorMessage(start.error, "Couldn't start the sandbox.")}
           </p>
         ) : null}
         <div className="flex items-center justify-between">
@@ -925,7 +926,7 @@ function SaveCapabilityModal({
             </div>
             {save.error ? (
               <p className="text-xs text-red-500">
-                {save.error instanceof Error ? save.error.message : "Save failed."}
+                {errorMessage(save.error, "Save failed.")}
               </p>
             ) : null}
             <div className="flex gap-2 pt-1">
