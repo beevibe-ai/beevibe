@@ -20,6 +20,37 @@ describe("toolError", () => {
       isError: true,
     });
   });
+
+  it("omits `message` entirely when not given — the uncoded shape", () => {
+    const result = toolError("task_id required");
+    expect(result).toEqual({ content: { error: "task_id required" }, isError: true });
+    expect(Object.keys(result.content)).toEqual(["error"]);
+  });
+
+  it("carries `extra` with no message — a code whose context IS the message", () => {
+    const result = toolError("task_not_found", undefined, { task_id: "task_1" });
+    expect(result).toEqual({
+      content: { error: "task_not_found", task_id: "task_1" },
+      isError: true,
+    });
+    expect(Object.keys(result.content)).toEqual(["error", "task_id"]);
+  });
+
+  it("keeps error/message/extra in that key order for the JSON on the wire", () => {
+    // MCP serializes `content` with JSON.stringify, so key order is
+    // observable by the agent reading the transcript.
+    const result = toolError("subordinate_daily_cap", "at cap", { cap: 10, count: 10 });
+    expect(Object.keys(result.content)).toEqual(["error", "message", "cap", "count"]);
+  });
+
+  it("keeps an empty-string message rather than dropping it", () => {
+    // Only `undefined` means "no message"; "" is a (useless but real) one,
+    // and silently dropping it would change the shape a caller asked for.
+    expect(toolError("code", "")).toEqual({
+      content: { error: "code", message: "" },
+      isError: true,
+    });
+  });
 });
 
 describe("toolErrorFromThrown", () => {

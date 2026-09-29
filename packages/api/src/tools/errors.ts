@@ -8,13 +8,15 @@
  *   - `{ error: <code>, message: <human text> }` — a known, named
  *     failure the calling agent can branch on. `watch.ts` had this as a
  *     private `errResult`; most other modules wrote the literal inline.
- *   - `{ error: <message> }` — the catch-all for an unexpected throw.
- *     `mesh.ts` and `hierarchy.ts` each had a private `asError` for it.
+ *   - `{ error: <message> }` — argument validation with no stable code,
+ *     and the catch-all for an unexpected throw. `mesh.ts` and
+ *     `hierarchy.ts` each had a private `asError` for the latter.
  *
- * Note the catch-all puts the human message in `error`, where the coded
- * shape puts a stable code there. That is the existing wire contract on
- * both paths, preserved here rather than harmonized — agents already
- * branch on `error` for the coded tools.
+ * Note the uncoded shape puts the human message in `error`, where the
+ * coded shape puts a stable code there. That is the existing wire
+ * contract on both paths, preserved here rather than harmonized — agents
+ * already branch on `error` for the coded tools. {@link toolError}
+ * produces either, which is why its `message` is optional.
  */
 
 import { CodedMeshError } from "../mesh/types.js";
@@ -22,16 +24,39 @@ import type { AgentToolResult } from "./types.js";
 import { errorMessage } from "@beevibe/core/domain/errors";
 
 /**
- * A named failure: `code` is the stable identifier the agent branches
- * on, `message` is for the human reading the transcript. `extra` merges
- * in structured context (ids, limits) alongside them.
+ * A failure envelope: `error` is what the agent reads first, `message` is
+ * for the human reading the transcript, and `extra` merges in structured
+ * context (ids, limits, counts) alongside them.
+ *
+ * `message` is optional because the existing wire contract has three live
+ * shapes, and this has to produce all of them byte-for-byte:
+ *
+ *   toolError("not_subordinate", "Cannot assign tasks to …")
+ *     → { error: <code>, message: <prose> }   the coded shape
+ *   toolError("task_not_found", undefined, { task_id })
+ *     → { error: <code>, task_id }            a code whose context IS the message
+ *   toolError("task_id required")
+ *     → { error: <prose> }                    the uncoded shape
+ *
+ * The third is what most of the argument validation in `hierarchy.ts` and
+ * `mesh.ts` returns: there is no stable code, so the prose sits in `error`
+ * itself. Harmonizing the three would be a wire change for agents that
+ * already branch on `error`, so this factors out the envelope only.
+ *
+ * `message` is omitted from `content` entirely when not passed, rather
+ * than serialized as `message: undefined` — `JSON.stringify` drops it
+ * either way, but an omitted key keeps the object identical to the
+ * literals this replaces under `toEqual`.
  */
 export function toolError(
-  code: string,
-  message: string,
+  error: string,
+  message?: string,
   extra: Record<string, unknown> = {},
 ): AgentToolResult {
-  return { content: { error: code, message, ...extra }, isError: true };
+  return {
+    content: { error, ...(message === undefined ? {} : { message }), ...extra },
+    isError: true,
+  };
 }
 
 /**
