@@ -6,7 +6,7 @@ import { AlertTriangle, Bot, LayoutGrid, List, Maximize2, Minus, Plus } from "lu
 import type { PanZoomTransform } from "@/lib/hooks/use-pan-zoom";
 import { useAgentNetwork } from "@/lib/hooks/use-agent-network";
 import { isApiConfigured } from "@/lib/api/config";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyPanel } from "@/components/list-gate";
 import { TeamOrbit } from "@/components/team-orbit";
 import { AgentDetailPanel } from "@/components/agents/agent-detail-panel";
 import { AgentsListView } from "@/components/agents/agents-list-view";
@@ -102,7 +102,7 @@ export function AgentsClient() {
         <CenteredShell
           icon={Bot}
           title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load agents."
+          description="Set NEXT_PUBLIC_BV_API_URL and run the API server to load agents."
         />
       ) : isError ? (
         <CenteredShell icon={AlertTriangle} title="Couldn't load the network" />
@@ -400,9 +400,12 @@ function CenteredShell({
 }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center p-6">
-      <div className="rounded-lg border border-dashed border-border w-full max-w-md">
-        <EmptyState icon={icon} title={title} description={description} />
-      </div>
+      <EmptyPanel
+        icon={icon}
+        title={title}
+        description={description}
+        className="w-full max-w-md"
+      />
     </div>
   );
 }
