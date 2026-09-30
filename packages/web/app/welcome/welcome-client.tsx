@@ -362,7 +362,7 @@ function RuntimeCard({
   runtime: {
     id: string;
     cli: string;
-    cli_version?: string;
+    cli_version: string | null;
     online: boolean;
     device: string;
   };

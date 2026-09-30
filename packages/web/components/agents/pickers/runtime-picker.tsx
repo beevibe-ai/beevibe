@@ -22,7 +22,8 @@ import type { AgentDisplay } from "@/lib/api/types";
 type RuntimeOption = {
   id: string;
   cli: string;
-  cli_version?: string;
+  /** Null when the daemon has not reported a version — as the api sends it. */
+  cli_version: string | null;
   online: boolean;
   device: string;
 };
