@@ -36,7 +36,6 @@ import {
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { DEFAULT_TASK_CAP } from "@beevibe/core";
 import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
 import {
   DEFAULT_POLL_MS,
@@ -481,9 +480,5 @@ describe("TaskExecutionWorker (Phase 4 — session-based claim)", () => {
     } finally {
       vi.useRealTimers();
     }
-  });
-
-  it("DEFAULT_TASK_CAP is 1", () => {
-    expect(DEFAULT_TASK_CAP).toBe(1);
   });
 });

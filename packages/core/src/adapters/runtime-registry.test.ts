@@ -6,22 +6,17 @@ import {
 } from "./runtime-registry.js";
 
 describe("createDefaultRuntimeRegistry", () => {
-  it("registers claude-code", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["claude"]).toBeDefined();
-    expect(registry["claude"]!.type).toBe("claude");
-  });
-
-  it("registers opencode", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["opencode"]).toBeDefined();
-    expect(registry["opencode"]!.type).toBe("opencode");
-  });
-
-  it("registers codex", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["codex"]).toBeDefined();
-    expect(registry["codex"]!.type).toBe("codex");
+  // Asserting the whole key set rather than one `it` per runtime: the
+  // per-runtime tests each re-asserted `registry[k].type === k`, which the
+  // loop below already covers for every entry, leaving "this key exists"
+  // as their only unique content. One equality catches a missing key and
+  // an unexpected extra one.
+  it("registers exactly the three CLI runtimes", () => {
+    expect(Object.keys(createDefaultRuntimeRegistry()).sort()).toEqual([
+      "claude",
+      "codex",
+      "opencode",
+    ]);
   });
 
   it("every registry value's .type matches its registry key (sanity check against typos)", () => {
