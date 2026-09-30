@@ -76,3 +76,81 @@ export function toAgentDisplay(row: AgentDisplayRow): AgentDisplay {
     preferred_runtime_id: row.preferred_runtime_id ?? undefined,
   };
 }
+
+// ── Shared SQL ────────────────────────────────────────────────────────
+//
+// The mapping above is only half the story: the four queries that feed
+// it (`agents.ts` LIST_SQL + DETAIL_SQL_AGENT, `agent-network.ts`
+// SELF_SQL + PEERS_SQL) had each spelled out the same ten-column list,
+// the same three derived columns and the same tier ordering by hand.
+// Adding a field to `AgentDisplayRow` meant editing four SELECTs across
+// two files and there was nothing to catch a miss — the row type is
+// structural, so a query that forgot a column type-checked fine and
+// failed at `toAgentDisplay` with `undefined`.
+//
+// The fragments below are the single source of truth for the
+// projection. Each query still owns its own FROM / WHERE / LIMIT and
+// its own `person` join, which is what genuinely differs between them:
+// the list left-joins `person` for `owner_label`, the peers query
+// inner-joins it (a peer without an owner row is not renderable), and
+// the self query skips it because the caller already is the owner.
+//
+// These are constants from this module, never caller input, so
+// interpolating them into a template literal is safe.
+
+/**
+ * The `agent` columns backing {@link AgentDisplayRow}, aliased off `a`.
+ * Selected verbatim by all four agent views.
+ */
+export const AGENT_BASE_COLUMNS = /* sql */ `
+  a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
+  a.review_policy, a.runtime_config, a.preferred_runtime_id,
+  a.created_at, a.updated_at`;
+
+/**
+ * The three derived columns of {@link AgentDisplayRow}, in the
+ * grouped-join form. Pairs with {@link AGENT_DERIVED_JOINS} — use both
+ * or neither.
+ */
+export const AGENT_DERIVED_COLUMNS = /* sql */ `
+  COALESCE(sc.n, 0)::int  AS sessions_count,
+  COALESCE(fc.n, 0)::int  AS facts_learned,
+  tl.content              AS tag_line`;
+
+/** Supplies `sc` / `fc` / `tl` for {@link AGENT_DERIVED_COLUMNS}. */
+export const AGENT_DERIVED_JOINS = /* sql */ `
+LEFT JOIN (SELECT agent_id, COUNT(*)::int AS n FROM session GROUP BY agent_id) sc
+  ON sc.agent_id = a.id
+LEFT JOIN (SELECT agent_id, COUNT(*)::int AS n FROM memory_fact GROUP BY agent_id) fc
+  ON fc.agent_id = a.id
+LEFT JOIN core_memory_block tl ON tl.agent_id = a.id AND tl.block_name = 'tag_line'`;
+
+/**
+ * The same three derived columns as correlated subqueries, for the
+ * single-row detail fetch.
+ *
+ * Deliberately a second form rather than a reuse of
+ * {@link AGENT_DERIVED_COLUMNS}: those joins aggregate `session` and
+ * `memory_fact` in full before the join, which is the right plan when
+ * the query returns every agent but wasteful when `WHERE a.id = $1`
+ * wants exactly one. Postgres can push the id predicate into a
+ * correlated subquery and cannot push it through the GROUP BY.
+ *
+ * Must stay column-for-column identical to
+ * {@link AGENT_DERIVED_COLUMNS} — same names, same types — since both
+ * feed {@link toAgentDisplay}.
+ */
+export const AGENT_DERIVED_SUBQUERIES = /* sql */ `
+  (SELECT COUNT(*)::int FROM session     WHERE agent_id = a.id) AS sessions_count,
+  (SELECT COUNT(*)::int FROM memory_fact WHERE agent_id = a.id) AS facts_learned,
+  (SELECT content FROM core_memory_block
+    WHERE agent_id = a.id AND block_name = 'tag_line' LIMIT 1)  AS tag_line`;
+
+/**
+ * Tier-then-name ordering: org agents first, then team, then ICs, with
+ * agents sorted by name inside each tier. Shared by the list and both
+ * network queries so the three surfaces agree on agent order.
+ */
+export const AGENT_TIER_ORDER = /* sql */ `
+  CASE a.hierarchy_level WHEN 'org' THEN 0 WHEN 'team' THEN 1 ELSE 2 END,
+  a.name ASC`;

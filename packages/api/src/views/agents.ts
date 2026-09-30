@@ -6,8 +6,16 @@
  */
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import type { HierarchyLevel, SessionStatus } from "@beevibe/core";
-import { toAgentDisplay } from "./agent-display.js";
+import type { SessionStatus } from "@beevibe/core";
+import {
+  AGENT_BASE_COLUMNS,
+  AGENT_DERIVED_COLUMNS,
+  AGENT_DERIVED_JOINS,
+  AGENT_DERIVED_SUBQUERIES,
+  AGENT_TIER_ORDER,
+  toAgentDisplay,
+  type AgentDisplayRow,
+} from "./agent-display.js";
 import { deriveShortId, formatRelativeShort, truncate } from "./format.js";
 import { CHAT_THREAD_TITLE_MAX } from "./types.js";
 import type {
@@ -20,51 +28,29 @@ import type {
   AgentMetrics,
 } from "./types.js";
 
-interface AgentRow {
-  id: string;
-  name: string;
-  owner_id: string;
+/**
+ * `AgentDisplayRow` plus the two columns only this file's queries select
+ * — the owner's display name and the archive timestamp, both of which
+ * ride alongside the shared projection rather than inside it.
+ */
+interface AgentRow extends AgentDisplayRow {
   owner_label: string | null;
-  parent_agent_id: string | null;
-  hierarchy_level: HierarchyLevel;
-  review_policy: string | null;
-  runtime_config: Record<string, unknown>;
-  preferred_runtime_id: string | null;
   archived_at: Date | null;
-  created_at: Date;
-  updated_at: Date;
-  sessions_count: string;
-  facts_learned: string;
-  tag_line: string | null;
 }
 
 const LIST_SQL = /* sql */ `
 SELECT
-  a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
-  a.review_policy, a.runtime_config, a.preferred_runtime_id, a.archived_at,
-  a.created_at, a.updated_at,
-  p.name                  AS owner_label,
-  COALESCE(sc.n, 0)::int  AS sessions_count,
-  COALESCE(fc.n, 0)::int  AS facts_learned,
-  tl.content              AS tag_line
+${AGENT_BASE_COLUMNS},
+  a.archived_at,
+  p.name AS owner_label,
+${AGENT_DERIVED_COLUMNS}
 FROM agent a
 LEFT JOIN person p ON p.id = a.owner_id
-LEFT JOIN (
-  SELECT agent_id, COUNT(*)::int AS n
-  FROM session
-  GROUP BY agent_id
-) sc ON sc.agent_id = a.id
-LEFT JOIN (
-  SELECT agent_id, COUNT(*)::int AS n
-  FROM memory_fact
-  GROUP BY agent_id
-) fc ON fc.agent_id = a.id
-LEFT JOIN core_memory_block tl ON tl.agent_id = a.id AND tl.block_name = 'tag_line'
+${AGENT_DERIVED_JOINS}
 WHERE ($1::text IS NULL OR a.owner_id = $1)
   AND a.archived_at IS NULL
 ORDER BY
-  CASE a.hierarchy_level WHEN 'org' THEN 0 WHEN 'team' THEN 1 ELSE 2 END,
-  a.name ASC
+${AGENT_TIER_ORDER}
 `;
 
 /** Shared mapping plus the two columns only this view selects. */
@@ -84,16 +70,15 @@ export async function listAgents(
   return rows.map(rowToAgentDisplay);
 }
 
+// Single-row fetch, so the derived columns come from the correlated
+// form — see AGENT_DERIVED_SUBQUERIES for why the list's joins are the
+// wrong plan here.
 const DETAIL_SQL_AGENT = /* sql */ `
 SELECT
-  a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
-  a.review_policy, a.runtime_config, a.preferred_runtime_id, a.archived_at,
-  a.created_at, a.updated_at,
+${AGENT_BASE_COLUMNS},
+  a.archived_at,
   p.name AS owner_label,
-  (SELECT COUNT(*)::int FROM session       WHERE agent_id = a.id) AS sessions_count,
-  (SELECT COUNT(*)::int FROM memory_fact   WHERE agent_id = a.id) AS facts_learned,
-  (SELECT content FROM core_memory_block
-    WHERE agent_id = a.id AND block_name = 'tag_line' LIMIT 1) AS tag_line
+${AGENT_DERIVED_SUBQUERIES}
 FROM agent a
 LEFT JOIN person p ON p.id = a.owner_id
 WHERE a.id = $1
