@@ -12,31 +12,12 @@ import { fileURLToPath } from "node:url";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { WorkProductType } from "@beevibe/core";
 import { deriveShortId } from "./format.js";
+import type { WorkProductDetail } from "./types.js";
 
-export interface WorkProductDetail {
-  id: string;
-  task_id: string;
-  task_short_id: string;
-  task_title: string;
-  agent_id: string;
-  agent_label: string;
-  type: WorkProductType;
-  title: string;
-  summary?: string;
-  url?: string;
-  provider?: string;
-  external_id?: string;
-  /**
-   * Full deliverable content. Sourced from `work_product.body` when set;
-   * otherwise falls back to reading a `file://` URL from disk. Truncated
-   * to 256 KB.
-   */
-  body?: string;
-  /** True when `url` is file:// — UI uses this to suppress an unclickable link. */
-  url_is_local: boolean;
-  created_at: string;
-  updated_at: string;
-}
+// The DTO itself lives in ./types.ts with the rest of the read contract,
+// so the web consumes this exact declaration rather than a copy. Kept
+// re-exported here for the call sites that import it alongside `getWorkProduct`.
+export type { WorkProductDetail };
 
 const SQL = /* sql */ `
 SELECT

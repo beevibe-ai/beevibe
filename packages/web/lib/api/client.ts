@@ -26,7 +26,26 @@ import type {
   DashboardSummary,
   MemoryActivitySummary,
   MeshOverview,
+  RoomMessageDetail as RoomMessage,
+  WorkProductDetail,
+  RuntimePanelEntry,
+  DaemonPanelEntry,
+  RuntimesListResponse,
 } from "./types";
+/**
+ * Wire DTOs owned by `@beevibe/api`. Re-exported under this module's
+ * existing names so the call sites that import them from the api client
+ * keep working, while the declaration stays on the server side.
+ * `RoomMessage` is the local name for the api's `RoomMessageDetail` —
+ * core's `RoomMessage` is the DB row, with a `Date` created_at.
+ */
+export type {
+  WorkProductDetail,
+  RuntimePanelEntry,
+  DaemonPanelEntry,
+  RuntimesListResponse,
+};
+export type { RoomMessage };
 import type { MeshWindow } from "@/lib/types/mesh";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { AgentDisplay } from "@/lib/types/agents";
@@ -145,22 +164,6 @@ export type RoomMemberDetail =
       owner_person_id: string;
     };
 
-export interface RoomMessage {
-  id: string;
-  room_id: string;
-  kind: "human" | "agent";
-  content: string;
-  sender_person_id?: string;
-  sender_agent_id?: string;
-  session_id?: string;
-  /** Entity ids the agent referenced in this message, hydrated as cards. */
-  view_refs?: string[];
-  open_view?: OpenView;
-  suggested_actions?: SuggestedAction[];
-  repo_cards?: RepoCard[];
-  created_at: string;
-}
-
 export interface RoomTypingStep {
   event_id: string;
   kind: "agent" | "tool_call" | "tool_result" | "summary";
@@ -185,61 +188,6 @@ export interface RoomDetail {
   messages: RoomMessage[];
   /** Agents currently working on a turn for this room. May be omitted by older server builds. */
   typing?: RoomTypingIndicator[];
-}
-
-export interface WorkProductDetail {
-  id: string;
-  task_id: string;
-  task_short_id: string;
-  task_title: string;
-  agent_id: string;
-  agent_label: string;
-  type:
-    | "pull_request"
-    | "branch"
-    | "commit"
-    | "document"
-    | "analysis"
-    | "report"
-    | "design"
-    | "artifact"
-    | "preview";
-  title: string;
-  summary?: string;
-  url?: string;
-  provider?: string;
-  external_id?: string;
-  /** Inlined file contents when url is file://. Render as markdown. */
-  body?: string;
-  url_is_local: boolean;
-  created_at: string;
-  updated_at: string;
-}
-
-export interface RuntimePanelEntry {
-  id: string;
-  cli: string;
-  cli_version?: string;
-  /** True when a live WebSocket from this runtime is connected. */
-  online: boolean;
-  /** ISO last_heartbeat timestamp; absent when the runtime has never beat. */
-  last_heartbeat?: string;
-}
-
-export interface DaemonPanelEntry {
-  id: string;
-  device_name?: string;
-  external_id: string;
-  /** ISO created_at. */
-  created_at: string;
-  /** ISO last_seen_at — when the daemon last hit /runtime/heartbeat. */
-  last_seen_at?: string;
-  runtimes: RuntimePanelEntry[];
-}
-
-export interface RuntimesListResponse {
-  ok: true;
-  daemons: DaemonPanelEntry[];
 }
 
 export interface SignupInput {

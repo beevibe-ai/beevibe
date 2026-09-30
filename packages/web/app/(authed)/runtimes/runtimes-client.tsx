@@ -3,7 +3,6 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
-  AlertTriangle,
   Cpu,
   HardDrive,
   Plus,
@@ -19,12 +18,11 @@ import {
   type RuntimesListResponse,
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
-import { describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
 import { CommandBlock } from "@/components/command-block";
 import { DaemonInstallInstructions } from "@/components/daemon-install";
-import { EmptyState } from "@/components/empty-state";
+import { ListGate } from "@/components/list-gate";
 import { Skeleton } from "@/components/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -54,60 +52,25 @@ export function RuntimesClient() {
         </div>
 
         <div className="max-w-3xl mx-auto">
-          <Body
-            data={query.data}
-            isLoading={query.isLoading}
-            isError={query.isError}
-            error={query.error}
-          />
+          <ListGate icon={Terminal} noun="runtimes" query={query} skeleton={<RuntimesSkeleton />}>
+            {(data) => <DaemonList daemons={data.daemons} />}
+          </ListGate>
         </div>
       </div>
     </div>
   );
 }
 
-function Body({
-  data,
-  isLoading,
-  isError,
-  error,
-}: {
-  data: RuntimesListResponse | undefined;
-  isLoading: boolean;
-  isError: boolean;
-  error: unknown;
-}) {
-  if (!isApiConfigured) {
-    return (
-      <div className="rounded-lg border border-dashed border-border">
-        <EmptyState
-          icon={Terminal}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the API server to load this page."
-        />
-      </div>
-    );
-  }
-  if (isLoading) {
-    return (
-      <div className="space-y-3">
-        <Skeleton className="h-32 w-full rounded-lg" />
-        <Skeleton className="h-32 w-full rounded-lg" />
-      </div>
-    );
-  }
-  if (isError) {
-    return (
-      <div className="rounded-lg border border-dashed border-border">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load runtimes"
-          description={describeError(error)}
-        />
-      </div>
-    );
-  }
-  const daemons = data?.daemons ?? [];
+function RuntimesSkeleton() {
+  return (
+    <div className="space-y-3">
+      <Skeleton className="h-32 w-full rounded-lg" />
+      <Skeleton className="h-32 w-full rounded-lg" />
+    </div>
+  );
+}
+
+function DaemonList({ daemons }: { daemons: DaemonPanelEntry[] }) {
   if (daemons.length === 0) {
     return <NoDaemonsState />;
   }

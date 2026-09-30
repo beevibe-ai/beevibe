@@ -17,12 +17,17 @@
 import type {
   Agent,
   HierarchyLevel,
+  OpenView,
+  RepoCard,
   SessionSpawnMode,
+  SuggestedAction,
   Task,
   TaskStatus,
   WorkProduct,
+  WorkProductType,
   FactType,
   MemoryScope,
+  RoomMessageKind,
   SessionEventKind,
   SessionStatus,
   SessionType,
@@ -791,6 +796,104 @@ export interface AgentNetwork {
   self: AgentDisplay[];
   /** Other people's agents the caller co-exists with via shared rooms. */
   peers: AgentPeerOwner[];
+}
+
+// ── Route-level wire DTOs ───────────────────────────────────────────────────
+//
+// The three below are response shapes owned by routes rather than by the
+// views layer, but they are read contracts the web consumes like any
+// other, and each had been declared twice — once on the route that
+// serves it and once by hand in `packages/web/lib/api/client.ts`. The
+// copies had drifted in exactly the way this module exists to prevent:
+// the web's runtime panel typed `cli_version` and `last_heartbeat` as
+// optional strings where the server sends `string | null`, and dropped
+// `capabilities` / `created_at` entirely.
+//
+// They live here so the same rule applies to them as to the views:
+// backend changes the shape, web's typecheck breaks.
+
+/**
+ * `GET /work-product/:id`. `type` is core's union rather than a literal
+ * list — the web copy had spelled the nine members out by hand.
+ */
+export interface WorkProductDetail {
+  id: string;
+  task_id: string;
+  task_short_id: string;
+  task_title: string;
+  agent_id: string;
+  agent_label: string;
+  type: WorkProductType;
+  title: string;
+  summary?: string;
+  url?: string;
+  provider?: string;
+  external_id?: string;
+  /**
+   * Full deliverable content. Sourced from `work_product.body` when set;
+   * otherwise falls back to reading a `file://` URL from disk. Truncated
+   * to 256 KB.
+   */
+  body?: string;
+  /** True when `url` is file:// — UI uses this to suppress an unclickable link. */
+  url_is_local: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+/**
+ * A room message as the room routes serve it — core's `RoomMessage` with
+ * `created_at` on the wire as ISO, and, for agent turns, the chat
+ * directives parsed out of `content` and surfaced as siblings.
+ */
+export interface RoomMessageDetail {
+  id: string;
+  room_id: string;
+  kind: RoomMessageKind;
+  /** Directives stripped out; render as markdown. */
+  content: string;
+  /** Set when kind='human'. */
+  sender_person_id?: string;
+  /** Set when kind='agent'. */
+  sender_agent_id?: string;
+  /** Set on agent messages — the AgentSession that produced this turn. */
+  session_id?: string;
+  /** Entity ids the agent referenced in this message, hydrated as cards. */
+  view_refs?: string[];
+  open_view?: OpenView;
+  suggested_actions?: SuggestedAction[];
+  repo_cards?: RepoCard[];
+  created_at: string;
+}
+
+/** One CLI a daemon registered, in `GET /runtimes`. */
+export interface RuntimePanelEntry {
+  id: string;
+  cli: string;
+  /** Null when the daemon has not reported a version for this CLI. */
+  cli_version: string | null;
+  /** ISO; null when the runtime has never beat. */
+  last_heartbeat: string | null;
+  /** True iff a daemon WS client subscribed to this runtime is connected. */
+  online: boolean;
+  capabilities: Record<string, unknown>;
+  created_at: string;
+}
+
+/** One machine running beevibe-daemon, in `GET /runtimes`. */
+export interface DaemonPanelEntry {
+  id: string;
+  device_name: string;
+  external_id: string;
+  /** ISO; null when the daemon has never hit /runtime/heartbeat. */
+  last_seen_at: string | null;
+  created_at: string;
+  runtimes: RuntimePanelEntry[];
+}
+
+export interface RuntimesListResponse {
+  ok: true;
+  daemons: DaemonPanelEntry[];
 }
 
 // ── Re-exports of ambient types that web imports alongside the DTOs ─────────

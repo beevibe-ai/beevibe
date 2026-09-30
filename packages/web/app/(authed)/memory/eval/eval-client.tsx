@@ -2,10 +2,9 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, ArrowLeft, BarChart3 } from "lucide-react";
+import { ArrowLeft, BarChart3 } from "lucide-react";
 import { useMemoryActivity } from "@/lib/hooks/use-memory-activity";
-import { isApiConfigured } from "@/lib/api/config";
-import { EmptyState } from "@/components/empty-state";
+import { ListGate } from "@/components/list-gate";
 import { Skeleton } from "@/components/skeleton";
 import { DatePicker, todayIso } from "@/components/date-picker";
 import type {
@@ -44,27 +43,11 @@ export function MemoryEvalClient() {
   // queryKey uses structural equality, so no useMemo wrap needed.
   const params = { weeks, since: since || undefined };
 
-  const { data, isLoading, isError } = useMemoryActivity(params);
+  const query = useMemoryActivity(params);
 
-  if (!isApiConfigured) {
-    return (
-      <EmptyState
-        icon={BarChart3}
-        title="Memory eval not connected"
-        description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load Layer A activity telemetry."
-      />
-    );
-  }
-  if (isError) {
-    return (
-      <EmptyState
-        icon={AlertTriangle}
-        title="Couldn't load memory activity"
-        description="Check that the api server is reachable."
-      />
-    );
-  }
-
+  // The header carries the week/date controls, so it stays mounted
+  // through every load state — a failed fetch leaves the user able to
+  // pick a different window rather than stranding them on an empty page.
   return (
     <div className="space-y-10">
       <Header
@@ -73,7 +56,14 @@ export function MemoryEvalClient() {
         since={since}
         onSinceChange={setSince}
       />
-      {isLoading || !data ? <LoadingState /> : <Body data={data} />}
+      <ListGate
+        icon={BarChart3}
+        noun="memory activity"
+        query={query}
+        skeleton={<LoadingState />}
+      >
+        {(data) => <Body data={data} />}
+      </ListGate>
     </div>
   );
 }

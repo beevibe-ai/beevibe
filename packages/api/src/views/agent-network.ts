@@ -18,7 +18,14 @@
  */
 
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import { toAgentDisplay, type AgentDisplayRow } from "./agent-display.js";
+import {
+  AGENT_BASE_COLUMNS,
+  AGENT_DERIVED_COLUMNS,
+  AGENT_DERIVED_JOINS,
+  AGENT_TIER_ORDER,
+  toAgentDisplay,
+  type AgentDisplayRow,
+} from "./agent-display.js";
 import type { AgentNetwork, AgentPeerOwner } from "./types.js";
 
 // Defensive cap on the peer fetch. The agent graph is one orbit per
@@ -28,25 +35,18 @@ import type { AgentNetwork, AgentPeerOwner } from "./types.js";
 // the UI is unusable with 100+ orbits anyway.
 const PEERS_LIMIT = 500;
 
+// No `person` join: these agents are the caller's own, so the UI already
+// knows the owner and never renders an `owner_label` for them.
 const SELF_SQL = /* sql */ `
 SELECT
-  a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
-  a.review_policy, a.runtime_config, a.preferred_runtime_id,
-  a.created_at, a.updated_at,
-  COALESCE(sc.n, 0)::int  AS sessions_count,
-  COALESCE(fc.n, 0)::int  AS facts_learned,
-  tl.content              AS tag_line
+${AGENT_BASE_COLUMNS},
+${AGENT_DERIVED_COLUMNS}
 FROM agent a
-LEFT JOIN (SELECT agent_id, COUNT(*)::int AS n FROM session GROUP BY agent_id) sc
-  ON sc.agent_id = a.id
-LEFT JOIN (SELECT agent_id, COUNT(*)::int AS n FROM memory_fact GROUP BY agent_id) fc
-  ON fc.agent_id = a.id
-LEFT JOIN core_memory_block tl ON tl.agent_id = a.id AND tl.block_name = 'tag_line'
+${AGENT_DERIVED_JOINS}
 WHERE a.owner_id = $1
   AND a.archived_at IS NULL
 ORDER BY
-  CASE a.hierarchy_level WHEN 'org' THEN 0 WHEN 'team' THEN 1 ELSE 2 END,
-  a.name ASC
+${AGENT_TIER_ORDER}
 `;
 
 // Peer agents — every non-archived agent owned by someone other than
@@ -56,25 +56,16 @@ ORDER BY
 // trail.
 const PEERS_SQL = /* sql */ `
 SELECT
-  a.id, a.name, a.owner_id, a.parent_agent_id, a.hierarchy_level,
-  a.review_policy, a.runtime_config, a.preferred_runtime_id,
-  a.created_at, a.updated_at,
+${AGENT_BASE_COLUMNS},
   p.name AS owner_label,
-  COALESCE(sc.n, 0)::int  AS sessions_count,
-  COALESCE(fc.n, 0)::int  AS facts_learned,
-  tl.content              AS tag_line
+${AGENT_DERIVED_COLUMNS}
 FROM agent a
 JOIN person p ON p.id = a.owner_id
-LEFT JOIN (SELECT agent_id, COUNT(*)::int AS n FROM session GROUP BY agent_id) sc
-  ON sc.agent_id = a.id
-LEFT JOIN (SELECT agent_id, COUNT(*)::int AS n FROM memory_fact GROUP BY agent_id) fc
-  ON fc.agent_id = a.id
-LEFT JOIN core_memory_block tl ON tl.agent_id = a.id AND tl.block_name = 'tag_line'
+${AGENT_DERIVED_JOINS}
 WHERE a.owner_id <> $1
   AND a.archived_at IS NULL
 ORDER BY a.owner_id,
-  CASE a.hierarchy_level WHEN 'org' THEN 0 WHEN 'team' THEN 1 ELSE 2 END,
-  a.name ASC
+${AGENT_TIER_ORDER}
 LIMIT ${PEERS_LIMIT}
 `;
 

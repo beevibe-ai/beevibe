@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,99 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * Everything `runCliSession` needs that differs between the three CLI
+ * runtimes. The provider-specific parts are the three callbacks; the
+ * rest is process-spawn input the runtime has already assembled.
+ */
+export interface CliSessionSpec<Event> {
+  /** Tag for the truncation warning — "CodexRuntime", "OpenCodeRuntime". */
+  runtimeTag: string;
+  /** The runtime's own `RuntimeContext`, for abort/step/spawn callbacks. */
+  context: RuntimeContext;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /** Piped to the CLI's stdin. Only Claude Code uses it. */
+  stdin?: string;
+  /** One NDJSON line → a provider event, or `null` to skip the line. */
+  parseLine: (line: string) => Event | null;
+  /** 0+ steps for the live transcript. Not called when `onStep` is unset. */
+  extractSteps: (event: Event) => RuntimeStep[];
+  /** The accumulated event stream → a result, once the process has settled. */
+  parseResult: (
+    events: Event[],
+    result: CliProcessResult,
+  ) => Omit<RuntimeResult, "process_pid" | "process_group_id">;
+  /**
+   * Best-effort teardown, run after the result is built and also on the
+   * abort path. Codex uses it to unlink its `--output-last-message` file;
+   * `parseResult` runs first, so that callback can still read the file.
+   */
+  cleanup?: () => void;
+}
+
+/**
+ * Spawn a CLI runtime, stream its NDJSON events, and map the outcome to a
+ * `RuntimeResult`.
+ *
+ * The three adapters (claude-code, codex, opencode) had each written this
+ * sequence out by hand. The steps are individually small but strictly
+ * ordered, and the ordering is what makes it worth having once:
+ *
+ *   1. accumulate parsed events while emitting live steps,
+ *   2. flush the line reader — a stream that ends without a trailing
+ *      newline loses its last event otherwise, and that last event is
+ *      usually the one carrying the final result,
+ *   3. warn on a truncated capture,
+ *   4. check `aborted` BEFORE parsing — a cancelled session must come back
+ *      as `cancelled`, not as whatever partial stream it managed to emit,
+ *   5. only then parse and merge in the process metadata.
+ *
+ * A runtime that gets step 2 or step 4 wrong still passes its own tests
+ * most of the time and drops results in production, so the sequence lives
+ * here and the adapters supply only the provider-specific callbacks.
+ */
+export async function runCliSession<Event>(
+  spec: CliSessionSpec<Event>,
+): Promise<RuntimeResult> {
+  const { context } = spec;
+  const events: Event[] = [];
+
+  const handleLine = (line: string): void => {
+    const event = spec.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of spec.extractSteps(event)) {
+      context.onStep(step);
+    }
+  };
+  const stdout = createStdoutLineReader(handleLine);
+
+  const result = await runCliProcess({
+    command: spec.command,
+    args: spec.args,
+    cwd: spec.cwd,
+    env: spec.env,
+    stdin: spec.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  stdout.flush();
+  warnIfTruncated(spec.runtimeTag, result);
+
+  try {
+    if (result.aborted) return cancelledResult(result);
+    return finalizeCliResult(spec.parseResult(events, result), result);
+  } finally {
+    spec.cleanup?.();
+  }
 }

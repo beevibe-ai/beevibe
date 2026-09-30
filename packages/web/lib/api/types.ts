@@ -6,6 +6,16 @@
  */
 
 export type {
+  // Route-level wire DTOs. These used to be hand-copied into
+  // `client.ts`; the copies had drifted (the runtime panel typed
+  // `cli_version` / `last_heartbeat` as optional strings where the
+  // server sends `string | null`), which is the failure mode this
+  // module exists to prevent.
+  WorkProductDetail,
+  RoomMessageDetail,
+  RuntimePanelEntry,
+  DaemonPanelEntry,
+  RuntimesListResponse,
   TaskDetail,
   TaskDetailSessionRow,
   AgentDetail,
