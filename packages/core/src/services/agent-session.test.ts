@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { makeAgentRepoFake, makeSessionRepoFake } from "../port-fakes.js";
 import type { Agent } from "../domain/agent.js";
 import type { Session } from "../domain/session.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
@@ -65,27 +66,8 @@ let memoryAgent: MemoryAgent;
 let service: AgentSession;
 
 beforeEach(() => {
-  agentRepo = {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findByLevel: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-  sessionRepo = {
-    findById: vi.fn(),
-    findLatestForTask: vi.fn(),
-    listForTask: vi.fn(),
-    listForAgent: vi.fn(),
-    countRunningByAgent: vi.fn(),
-    listRunningWithPid: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  };
+  agentRepo = makeAgentRepoFake();
+  sessionRepo = makeSessionRepoFake();
   sessionEventRepo = {
     append: vi.fn<SessionEventRepository["append"]>().mockResolvedValue({
       id: "evt_test",

@@ -121,6 +121,10 @@
     "./test-helpers": {
       "types": "./dist/test-helpers.d.ts",
       "default": "./dist/test-helpers.js"
+    },
+    "./port-fakes": {
+      "types": "./dist/port-fakes.d.ts",
+      "default": "./dist/port-fakes.js"
     }
   },
   "scripts": {
@@ -140,6 +144,7 @@
   "devDependencies": {
     "@types/node": "^20.16.0",
     "@types/pg": "^8.11.10",
-    "dotenv": "^17.4.2"
+    "dotenv": "^17.4.2",
+    "vitest": "^2.1.9"
   }
 }

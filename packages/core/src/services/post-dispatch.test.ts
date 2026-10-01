@@ -1,4 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  makeAgentRepoFake,
+  makeSessionRepoFake,
+  makeTaskRepoFake,
+} from "../port-fakes.js";
 import type { Agent } from "../domain/agent.js";
 import type { Session } from "../domain/session.js";
 import type { Task } from "../domain/task.js";
@@ -61,22 +66,7 @@ let agentRepo: AgentRepository;
 
 beforeEach(() => {
   vi.useFakeTimers();
-  taskRepo = {
-    findById: vi.fn(),
-    list: vi.fn(),
-    listByAssignee: vi.fn(),
-    listAssignable: vi.fn(),
-    claimById: vi.fn(),
-    listReviewQueue: vi.fn(),
-    countChildrenNotComplete: vi.fn(),
-    countChildren: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    updateProgress: vi.fn(),
-    markBlocked: vi.fn(),
-    clearBlocker: vi.fn(),
-    delete: vi.fn(),
-  };
+  taskRepo = makeTaskRepoFake();
   taskService = {
     checkAndCompleteParent: vi.fn(),
   } as unknown as TaskService;
@@ -86,22 +76,13 @@ beforeEach(() => {
       runtime_id: null,
     }),
   } as unknown as DispatchService;
-  sessionRepo = {
-    findById: vi.fn(),
-    findLatestForTask: vi.fn(),
-    listForTask: vi.fn(),
-    listForAgent: vi.fn(),
-    countRunningByAgent: vi.fn(),
-    listRunningWithPid: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  } as unknown as SessionRepository;
+  sessionRepo = makeSessionRepoFake();
   vi.mocked(sessionRepo.findLatestForTask).mockResolvedValue({
     id: "sess_orig",
   } as unknown as Session);
-  agentRepo = {
+  agentRepo = makeAgentRepoFake({
     findById: vi.fn(async () => makeAgent()),
-  } as unknown as AgentRepository;
+  });
 });
 
 afterEach(() => {
