@@ -9,7 +9,7 @@ vi.mock("@/lib/api/config", () => ({
   },
 }));
 
-import { DetailGate } from "./detail-gate";
+import { DetailFallback, DetailGate } from "./detail-gate";
 
 interface Row {
   name: string;
@@ -88,5 +88,35 @@ describe("DetailGate", () => {
     renderGate({ data: undefined, isLoading: true, isError: false }, nav).unmount();
     renderGate({ data: undefined, isLoading: false, isError: true }, nav);
     expect(screen.getByText("Back")).toBeInTheDocument();
+  });
+});
+
+/**
+ * The panels and the room page call `DetailFallback` directly, inside their
+ * own wrapper rather than a `DetailShell`. Those are the sites whose copy
+ * had drifted, so the prose is asserted here rather than only through the
+ * gate.
+ */
+describe("DetailFallback", () => {
+  it("names the API env var and the server to start when unconfigured", () => {
+    render(<DetailFallback state="unconfigured" noun="agent" />);
+    expect(screen.getByText("API not configured")).toBeInTheDocument();
+    expect(
+      screen.getByText("Set NEXT_PUBLIC_BV_API_URL and run the API server to load this agent."),
+    ).toBeInTheDocument();
+  });
+
+  it("capitalizes the noun and points at the API server logs on a failed fetch", () => {
+    render(<DetailFallback state="error" noun="task" id="task_7" />);
+    expect(screen.getByText("Couldn't load task")).toBeInTheDocument();
+    expect(
+      screen.getByText("Task task_7 could not be fetched. Check the API server logs."),
+    ).toBeInTheDocument();
+  });
+
+  it("capitalizes only the first word of a two-word noun", () => {
+    render(<DetailFallback state="error" noun="work product" id="wp_1" />);
+    expect(screen.getByText("Couldn't load work product")).toBeInTheDocument();
+    expect(screen.getByText(/^Work product wp_1 could not be fetched\./)).toBeInTheDocument();
   });
 });

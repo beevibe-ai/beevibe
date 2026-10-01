@@ -23,7 +23,7 @@ import { ChatMarkdown } from "@/components/chat/markdown";
 import { ToolStepList } from "@/components/chat/tool-step-list";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
 import { Skeleton } from "@/components/skeleton";
-import { EmptyState } from "@/components/empty-state";
+import { DetailFallback } from "@/components/detail/detail-gate";
 import { formatRelativeTime, idSuffix, sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -124,7 +124,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
   if (!isApiConfigured) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <EmptyState icon={Users} title="API not configured" />
+        <DetailFallback state="unconfigured" noun="room" icon={Users} />
       </div>
     );
   }
@@ -139,11 +139,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
   if (isError || !data) {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load room"
-          description={`Room ${roomId} could not be fetched.`}
-        />
+        <DetailFallback state="error" noun="room" id={roomId} />
       </div>
     );
   }
