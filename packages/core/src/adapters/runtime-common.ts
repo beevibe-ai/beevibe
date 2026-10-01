@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,92 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * Run one CLI-runtime session end to end: spawn the process, stream its
+ * NDJSON stdout into provider-specific events, forward live steps, and map
+ * the settled process to a `RuntimeResult`.
+ *
+ * All three CLI runtimes (claude-code, codex, opencode) had this exact
+ * sequence written out by hand in their `execute()`:
+ *
+ *   1. accumulate parsed events in an array while
+ *   2. forwarding each event's `RuntimeStep`s to `context.onStep`,
+ *   3. feed the chunks through `createStdoutLineReader`,
+ *   4. `runCliProcess`, then `flush()` the trailing partial line,
+ *   5. `warnIfTruncated`,
+ *   6. return `cancelledResult` when aborted,
+ *   7. otherwise `finalizeCliResult(parse(events, exitCode), result)`.
+ *
+ * Only steps 1-2's parse functions and step 7's `parse` differ per provider,
+ * so those are the parameters; the lifecycle is this function. Getting the
+ * order wrong is silent rather than loud — forgetting `flush()` drops the
+ * last event of a stream that ends without a newline, and checking `aborted`
+ * after parsing reports a user-cancelled session as a failure — which is
+ * exactly why it should only be written once.
+ *
+ * `parseResult` receives the whole `CliProcessResult` (not just `exitCode`)
+ * because codex reads its final assistant message out of an
+ * `--output-last-message` file that only exists once the process has
+ * settled. `cleanup` runs on every path, aborted included, for the same
+ * reason: that file is codex's to delete.
+ */
+export async function runCliSession<E>(opts: {
+  /** Tag used in the stdout-truncation warning, e.g. "CodexRuntime". */
+  runtimeTag: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env?: Record<string, string | undefined>;
+  /** Prompt piped over stdin (claude-code); omit when it rides on argv. */
+  stdin?: string;
+  /** Supplies `abort_signal`, `onSpawn` and `onStep`. */
+  context: RuntimeContext;
+  /** One NDJSON line → one provider event, or null to skip the line. */
+  parseLine: (line: string) => E | null;
+  /** Live transcript steps for one event; `[]` when it carries none. */
+  extractSteps: (event: E) => RuntimeStep[];
+  /** Whole-stream → result, minus the process metadata this adds. */
+  parseResult: (
+    events: E[],
+    result: CliProcessResult,
+  ) => Omit<RuntimeResult, "process_pid" | "process_group_id">;
+  /** Best-effort cleanup of per-spawn scratch files. Runs on every path. */
+  cleanup?: () => void;
+}): Promise<RuntimeResult> {
+  const { context } = opts;
+  const events: E[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const evt = opts.parseLine(line);
+    if (!evt) return;
+    events.push(evt);
+    if (!context.onStep) return;
+    for (const step of opts.extractSteps(evt)) context.onStep(step);
+  });
+
+  const result = await runCliProcess({
+    command: opts.command,
+    args: opts.args,
+    cwd: opts.cwd,
+    env: opts.env,
+    stdin: opts.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+  // Flush before parsing: a stream that ends without a trailing newline
+  // still has a whole final event sitting in the line buffer.
+  stdout.flush();
+
+  warnIfTruncated(opts.runtimeTag, result);
+
+  try {
+    if (result.aborted) return cancelledResult(result);
+    return finalizeCliResult(opts.parseResult(events, result), result);
+  } finally {
+    opts.cleanup?.();
+  }
 }

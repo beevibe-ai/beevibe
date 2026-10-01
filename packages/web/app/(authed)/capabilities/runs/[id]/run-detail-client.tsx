@@ -19,8 +19,7 @@ import { api, type RepoRun } from "@/lib/api/client";
 import { truncate } from "@/lib/format";
 import { slugify } from "@/lib/capabilities";
 import { normalizeToolName } from "@/lib/tool-format";
-import { DetailShell } from "@/components/detail/detail-shell";
-import { EmptyState } from "@/components/empty-state";
+import { DetailGate } from "@/components/detail/detail-gate";
 import { Skeleton } from "@/components/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -46,7 +45,7 @@ const CapabilitiesBackLink = () => (
  */
 export function RunDetailClient({ id }: { id: string }) {
   const qc = useQueryClient();
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError } = useQuery({
     queryKey: ["repo-run", id],
     queryFn: () => api.repoRuns.get(id),
     refetchInterval: (d) => {
@@ -59,39 +58,44 @@ export function RunDetailClient({ id }: { id: string }) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["repo-run", id] }),
   });
 
-  const run = data?.run;
+  // The page shows `data.run`, so the gate's query is projected onto it:
+  // a fetch that succeeds with no run is as empty as one that failed.
+  return (
+    <DetailGate
+      nav={<CapabilitiesBackLink />}
+      icon={Sparkles}
+      noun="run"
+      id={id}
+      query={{ data: data?.run, isLoading, isError }}
+      skeleton={
+        <>
+          <Skeleton className="h-7 w-1/3 mb-2" />
+          <Skeleton className="h-4 w-1/4 mb-6" />
+          <Skeleton className="h-20 w-full rounded-lg mb-4" />
+          <Skeleton className="h-32 w-full rounded-lg" />
+        </>
+      }
+    >
+      {(run) => <RunBody run={run} cancel={cancel} />}
+    </DetailGate>
+  );
+}
+
+function RunBody({
+  run,
+  cancel,
+}: {
+  run: RepoRun;
+  cancel: { mutate: () => void; isPending: boolean };
+}) {
   const isSettled =
-    run &&
-    (run.status === "succeeded" ||
-      run.status === "failed" ||
-      run.status === "cancelled" ||
-      run.status === "blocked");
-
-  if (isLoading) {
-    return (
-      <DetailShell nav={<CapabilitiesBackLink />}>
-        <Skeleton className="h-7 w-1/3 mb-2" />
-        <Skeleton className="h-4 w-1/4 mb-6" />
-        <Skeleton className="h-20 w-full rounded-lg mb-4" />
-        <Skeleton className="h-32 w-full rounded-lg" />
-      </DetailShell>
-    );
-  }
-
-  if (!run) {
-    return (
-      <DetailShell nav={<CapabilitiesBackLink />}>
-        <EmptyState
-          icon={Sparkles}
-          title="Run not found"
-          description={`Run ${id} couldn't be loaded. Check the daemon logs.`}
-        />
-      </DetailShell>
-    );
-  }
+    run.status === "succeeded" ||
+    run.status === "failed" ||
+    run.status === "cancelled" ||
+    run.status === "blocked";
 
   return (
-    <DetailShell nav={<CapabilitiesBackLink />}>
+    <>
       <header className="mb-6">
         <div className="flex items-center gap-2 flex-wrap mb-1.5">
           <Sparkles className="h-3.5 w-3.5 text-amber-400" />
@@ -114,7 +118,7 @@ export function RunDetailClient({ id }: { id: string }) {
         <TranscriptBlock run={run} />
         {isSettled ? <IterateBlock run={run} /> : null}
       </div>
-    </DetailShell>
+    </>
   );
 }
 

@@ -7,6 +7,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { makeAgentRepoFake, makeSessionRepoFake } from "@beevibe/core/port-fakes";
 import type {
   Agent,
   AgentRepository,
@@ -57,31 +58,8 @@ let fakeRuntime: AgentRuntime;
 let runSpy: ReturnType<typeof vi.spyOn>;
 
 beforeEach(() => {
-  agentRepo = {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findByLevel: vi.fn(),
-    findParent: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-  sessionRepo = {
-    findById: vi.fn(),
-    findLatestForTask: vi.fn(),
-    listForTask: vi.fn(),
-    listForAgent: vi.fn(),
-    countRunningByAgent: vi.fn(),
-    listRunningWithPid: vi.fn(),
-    claimNextForRuntime: vi.fn(),
-    claimNextForServerFallback: vi.fn(),
-    countOwnedByDaemon: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  };
+  agentRepo = makeAgentRepoFake();
+  sessionRepo = makeSessionRepoFake();
   sessionEventRepo = {
     append: vi.fn().mockResolvedValue(undefined),
     listBySession: vi.fn(),

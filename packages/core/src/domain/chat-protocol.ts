@@ -99,3 +99,34 @@ export interface ChatHistoryMessage extends ChatDirectives {
   /** Set on agent messages so the UI can link to the session detail page. */
   session_id?: string;
 }
+
+/**
+ * One room message as it goes over the wire.
+ *
+ * The persisted shape is `RoomMessage` in `./room.ts`; this is that row
+ * after `toMessageReply` has run the directive parser over it — visible
+ * content with the `<suggest_action>` / `<open_view>` XML stripped out and
+ * the parsed directives hoisted to siblings, plus `created_at` as the ISO
+ * string JSON actually carries rather than a `Date`.
+ *
+ * Declared here for the same reason the chat shapes above are: it was
+ * written out twice, as `MessageReply` in `packages/api/src/routes/room.ts`
+ * and as `RoomMessage` in `packages/web/lib/api/client.ts`, and both copies
+ * spelled out `ChatDirectives`' four fields by hand instead of extending it
+ * — so a fifth directive would have had to be added in three places, and
+ * the renderer would quietly ignore it if you missed one.
+ */
+export interface RoomWireMessage extends ChatDirectives {
+  id: string;
+  room_id: string;
+  kind: "human" | "agent";
+  content: string;
+  /** Set when kind='human'. */
+  sender_person_id?: string;
+  /** Set when kind='agent'. */
+  sender_agent_id?: string;
+  /** Set on agent messages — the AgentSession that produced this turn. */
+  session_id?: string;
+  /** ISO-8601; `Date` on the persisted row, a string once serialized. */
+  created_at: string;
+}

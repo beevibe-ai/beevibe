@@ -1,4 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  makeAgentRepoFake,
+  makeEscalationRepoFake,
+  makeNegotiationRepoFake,
+  makeNegotiationRoundRepoFake,
+  makeTaskRepoFake,
+} from "../port-fakes.js";
 import type { Escalation, Proposal } from "../domain/escalation.js";
 import type { Agent } from "../domain/agent.js";
 import type { Negotiation, NegotiationRound } from "../domain/negotiation.js";
@@ -63,33 +70,12 @@ let agentRepo: AgentRepository;
 let svc: EscalationService;
 
 beforeEach(() => {
-  escalationRepo = {
-    findById: vi.fn(),
-    findByNegotiation: vi.fn(),
-    listPending: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  };
-  negotiationRepo = {
-    findById: vi.fn(),
-    findActiveBetween: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  };
-  negotiationRoundRepo = {
-    listByNegotiation: vi.fn(),
-    findLatest: vi.fn(),
-    create: vi.fn(),
-  };
-  taskRepo = {
-    findById: vi.fn(),
-    list: vi.fn(),
-    listByAssignee: vi.fn(),
-    listAssignable: vi.fn(),
-    claimById: vi.fn(),
-    listReviewQueue: vi.fn(),
-    countChildrenNotComplete: vi.fn(),
-    countChildren: vi.fn(),
+  escalationRepo = makeEscalationRepoFake();
+  negotiationRepo = makeNegotiationRepoFake();
+  negotiationRoundRepo = makeNegotiationRoundRepoFake();
+  // `create`/`update` echo the input back; the service asserts on what it
+  // read out of them, so these two stay as overrides on the shared fake.
+  taskRepo = makeTaskRepoFake({
     create: vi.fn(async (input) => ({ ...input, status: input.status ?? "pending", priority: input.priority, created_at: new Date(), updated_at: new Date() }) as Task),
     update: vi.fn(async (id, patch) => ({
       id,
@@ -100,23 +86,8 @@ beforeEach(() => {
       updated_at: new Date(),
       ...patch,
     }) as Task),
-    updateProgress: vi.fn(),
-    markBlocked: vi.fn(),
-    clearBlocker: vi.fn(),
-    delete: vi.fn(),
-  };
-  agentRepo = {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findParent: vi.fn(),
-    findByLevel: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
+  });
+  agentRepo = makeAgentRepoFake();
   svc = new EscalationService({
     escalationRepo,
     negotiationRepo,

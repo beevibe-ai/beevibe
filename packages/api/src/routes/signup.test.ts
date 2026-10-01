@@ -11,6 +11,7 @@
 import express, { json } from "express";
 import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { makeAgentRepoFake, makePersonRepoFake } from "@beevibe/core/port-fakes";
 import type {
   Agent,
   AgentRepository,
@@ -24,34 +25,6 @@ import { hashPassword } from "@beevibe/core/auth";
 import { createSignupRouter } from "./signup.js";
 
 const PASSWORD = "correct-horse-battery";
-
-function makePersonRepo(): PersonRepository {
-  return {
-    findById: vi.fn(),
-    findByEmail: vi.fn(),
-    findByApiKey: vi.fn(),
-    findManyByIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-}
-
-function makeAgentRepo(): AgentRepository {
-  return {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findParent: vi.fn(),
-    findByLevel: vi.fn(),
-    findDescendantIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-}
 
 function makeCoreMemoryRepo(): CoreMemoryBlockRepository {
   return {
@@ -101,8 +74,8 @@ interface Fakes {
  * the input they were handed.
  */
 function makeFakes(): Fakes {
-  const personRepo = makePersonRepo();
-  const agentRepo = makeAgentRepo();
+  const personRepo = makePersonRepoFake();
+  const agentRepo = makeAgentRepoFake();
   vi.mocked(personRepo.create).mockImplementation(async (input: NewPerson) =>
     fakePerson({ ...input, id: input.id ?? "person_new" } as Partial<Person>),
   );

@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { makeSessionRepoFake, makeTaskRepoFake } from "../port-fakes.js";
 import type { Session } from "../domain/session.js";
 import type { Task } from "../domain/task.js";
 import type { SessionRepository } from "../ports/session-repo.js";
@@ -44,27 +45,14 @@ let onSessionReaped: ReturnType<typeof vi.fn>;
 let reaper: DaemonOrphanReaper;
 
 beforeEach(() => {
-  sessionRepo = {
-    findById: vi.fn(),
-    findLatestForTask: vi.fn(),
-    listForTask: vi.fn(),
-    listForAgent: vi.fn(),
-    listChatForAgent: vi.fn(),
-    countRunningByAgent: vi.fn(),
-    listRunningWithPid: vi.fn(),
+  sessionRepo = makeSessionRepoFake({
     listDaemonOrphaned: vi.fn(async () => []),
-    claimNextForRuntime: vi.fn(),
-    claimNextForServerFallback: vi.fn(),
-    countOwnedByDaemon: vi.fn(),
-    findLatestForAgentInRoom: vi.fn(),
-    listRunningInRoom: vi.fn(),
-    create: vi.fn(),
+
     update: vi.fn(async (id, patch) => fakeSession({ id, ...(patch as Partial<Session>) })),
-  } as unknown as SessionRepository;
-  taskRepo = {
+  });
+  taskRepo = makeTaskRepoFake({
     findById: vi.fn(async () => fakeTask()),
-    update: vi.fn(),
-  } as unknown as TaskRepository;
+  });
   dispatchService = {
     dispatchTask: vi.fn(async () => ({
       session: fakeSession({ id: "sess_recovery" }),

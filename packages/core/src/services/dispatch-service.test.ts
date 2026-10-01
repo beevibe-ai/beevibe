@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { makeAgentRepoFake, makeSessionRepoFake } from "../port-fakes.js";
 import type { Agent } from "../domain/agent.js";
 import type { Session } from "../domain/session.js";
 import type { Task } from "../domain/task.js";
@@ -41,30 +42,12 @@ let onSessionInserted: ReturnType<typeof vi.fn>;
 let svc: DispatchService;
 
 beforeEach(() => {
-  agentRepo = {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findParent: vi.fn(),
-    findByLevel: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-  sessionRepo = {
-    findById: vi.fn(),
-    findLatestForTask: vi.fn(),
-    listForTask: vi.fn(),
-    listForAgent: vi.fn(),
-    countRunningByAgent: vi.fn(),
-    listRunningWithPid: vi.fn(),
+  agentRepo = makeAgentRepoFake();
+  sessionRepo = makeSessionRepoFake({
     create: vi.fn().mockImplementation(async (input) =>
       makeSession({ id: input.id, agent_id: input.agent_id, ...input }),
     ),
-    update: vi.fn(),
-  };
+  });
   onSessionInserted = vi.fn().mockResolvedValue(undefined);
   svc = new DispatchService({ agentRepo, sessionRepo, onSessionInserted });
 });

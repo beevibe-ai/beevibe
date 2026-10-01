@@ -1,13 +1,13 @@
 "use client";
 
-import { AlertTriangle, Bot } from "lucide-react";
+import { Bot } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { DetailFallback } from "@/components/detail/detail-gate";
 import { PanelFooterField, PeekPanel } from "@/components/detail/peek-panel";
 import { CoreBlockCard } from "@/components/agents/core-block-card";
 import { RecentSessionRow } from "@/components/agents/recent-session-row";
 import { RecentChatThreadRow } from "@/components/agents/recent-chat-thread-row";
-import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
 import { isApiConfigured } from "@/lib/api/config";
@@ -44,14 +44,13 @@ export function AgentDetailPanel({
 function PanelBody({ agentId }: { agentId: string }) {
   const { data, isLoading, isError } = useAgent(agentId);
 
+  // Same three branches as a detail page, but inside the panel's own
+  // padding rather than a DetailShell — so the prose comes from
+  // DetailFallback while the wrapper stays the panel's.
   if (!isApiConfigured) {
     return (
       <div className="p-4">
-        <EmptyState
-          icon={Bot}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL to load this agent."
-        />
+        <DetailFallback state="unconfigured" noun="agent" icon={Bot} />
       </div>
     );
   }
@@ -69,11 +68,7 @@ function PanelBody({ agentId }: { agentId: string }) {
   if (isError || !data) {
     return (
       <div className="p-4">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load agent"
-          description={`Agent ${agentId} could not be fetched.`}
-        />
+        <DetailFallback state="error" noun="agent" id={agentId} />
       </div>
     );
   }

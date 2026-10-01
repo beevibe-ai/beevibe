@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { AlertTriangle, FileText, ListChecks, Terminal } from "lucide-react";
+import { FileText, ListChecks, Terminal } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { DetailFallback } from "@/components/detail/detail-gate";
 import { PanelFooterField, PeekPanel } from "@/components/detail/peek-panel";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
-import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
 import { isApiConfigured } from "@/lib/api/config";
@@ -56,14 +56,13 @@ export function TaskDetailPanel({
 function PanelBody({ taskId }: { taskId: string }) {
   const { data, isLoading, isError } = useTask(taskId);
 
+  // Same three branches as a detail page, but inside the panel's own
+  // padding rather than a DetailShell — so the prose comes from
+  // DetailFallback while the wrapper stays the panel's.
   if (!isApiConfigured) {
     return (
       <div className="p-4">
-        <EmptyState
-          icon={ListChecks}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL to load this task."
-        />
+        <DetailFallback state="unconfigured" noun="task" icon={ListChecks} />
       </div>
     );
   }
@@ -81,11 +80,7 @@ function PanelBody({ taskId }: { taskId: string }) {
   if (isError || !data) {
     return (
       <div className="p-4">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load task"
-          description={`Task ${taskId} could not be fetched.`}
-        />
+        <DetailFallback state="error" noun="task" id={taskId} />
       </div>
     );
   }

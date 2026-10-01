@@ -1,4 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  makeAgentRepoFake,
+  makeEscalationRepoFake,
+  makeNegotiationRepoFake,
+  makeNegotiationRoundRepoFake,
+} from "../port-fakes.js";
 import type { Agent } from "../domain/agent.js";
 import type { Escalation } from "../domain/escalation.js";
 import type { Negotiation, NegotiationRound } from "../domain/negotiation.js";
@@ -47,36 +53,10 @@ let escalationRepo: EscalationRepository;
 let svc: NegotiationService;
 
 beforeEach(() => {
-  negotiationRepo = {
-    findById: vi.fn(),
-    findActiveBetween: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  };
-  negotiationRoundRepo = {
-    listByNegotiation: vi.fn(),
-    findLatest: vi.fn(),
-    create: vi.fn(),
-  };
-  agentRepo = {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findParent: vi.fn(),
-    findByLevel: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-  escalationRepo = {
-    findById: vi.fn(),
-    findByNegotiation: vi.fn(),
-    listPending: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  };
+  negotiationRepo = makeNegotiationRepoFake();
+  negotiationRoundRepo = makeNegotiationRoundRepoFake();
+  agentRepo = makeAgentRepoFake();
+  escalationRepo = makeEscalationRepoFake();
   svc = new NegotiationService({
     negotiationRepo,
     negotiationRoundRepo,

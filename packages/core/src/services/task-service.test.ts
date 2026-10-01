@@ -1,4 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  makeAgentRepoFake,
+  makeSessionRepoFake,
+  makeTaskRepoFake,
+  makeWorkProductRepoFake,
+} from "../port-fakes.js";
 import type { Agent, ReviewPolicy } from "../domain/agent.js";
 import type { Task } from "../domain/task.js";
 import type { WorkProduct } from "../domain/work-product.js";
@@ -74,52 +80,12 @@ let sessionRepo: SessionRepository;
 let service: TaskService;
 
 beforeEach(() => {
-  taskRepo = {
-    findById: vi.fn(),
-    list: vi.fn(),
-    listByAssignee: vi.fn(),
-    listAssignable: vi.fn(),
-    claimById: vi.fn(),
-    listReviewQueue: vi.fn(),
-    countChildrenNotComplete: vi.fn(),
-    countChildren: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    updateProgress: vi.fn(),
-    markBlocked: vi.fn(),
-    clearBlocker: vi.fn(),
-    delete: vi.fn(),
-  };
-  workProductRepo = {
-    findById: vi.fn(),
-    listByTask: vi.fn(),
-    listByAgent: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-  agentRepo = {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findParent: vi.fn(),
-    findByLevel: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-  sessionRepo = {
-    findById: vi.fn(),
+  taskRepo = makeTaskRepoFake();
+  workProductRepo = makeWorkProductRepoFake();
+  agentRepo = makeAgentRepoFake();
+  sessionRepo = makeSessionRepoFake({
     findLatestForTask: vi.fn(async () => undefined),
-    listForTask: vi.fn(),
-    listForAgent: vi.fn(),
-    countRunningByAgent: vi.fn(),
-    listRunningWithPid: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-  };
+  });
   service = new TaskService({ taskRepo, workProductRepo, agentRepo, sessionRepo });
 });
 
@@ -594,7 +560,6 @@ describe("TaskService.createWorkProduct + listWorkProducts", () => {
     ).rejects.toBeInstanceOf(TaskNotFoundError);
     expect(workProductRepo.create).not.toHaveBeenCalled();
   });
-
 
   it("updateWorkProduct forwards the mutable patch to the repo", async () => {
     vi.mocked(workProductRepo.update).mockImplementation(async (id, patch) =>

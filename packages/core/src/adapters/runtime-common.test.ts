@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import type { CliProcessOptions, CliProcessResult } from "./claude-code/spawn.js";
+import * as spawnModule from "./claude-code/spawn.js";
+import type { RuntimeContext, RuntimeResult, RuntimeStep } from "../ports/runtime.js";
 import {
   cancelledResult,
   createStdoutLineReader,
   finalizeCliResult,
+  runCliSession,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -145,5 +147,149 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+/**
+ * `runCliSession` owns the lifecycle every CLI runtime shares, and the ways
+ * it can be wrong are silent rather than loud — a dropped trailing line, a
+ * cancelled session reported as a failure, a scratch file left behind. The
+ * three runtime suites exercise it through their own adapters; these cover
+ * the invariants directly so a regression names the helper.
+ */
+describe("runCliSession", () => {
+  interface Evt {
+    n: number;
+  }
+
+  function context(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
+    return {
+      intent: "do the thing",
+      system_prompt_append: "",
+      workspace: { path: "/tmp/ws", agent_id: "agent_1" },
+      ...overrides,
+    } as RuntimeContext;
+  }
+
+  /** Stub `runCliProcess`, feeding `stdout` through the caller's `onLog`. */
+  function stubSpawn(stdout: string, result: Partial<CliProcessResult> = {}) {
+    return vi
+      .spyOn(spawnModule, "runCliProcess")
+      .mockImplementation(async (opts: CliProcessOptions) => {
+        opts.onSpawn?.({ pid: 99, process_group_id: 99 });
+        opts.onLog?.("stdout", stdout);
+        return cliResult(result);
+      });
+  }
+
+  const session = (opts: Partial<Parameters<typeof runCliSession<Evt>>[0]> = {}) =>
+    runCliSession<Evt>({
+      runtimeTag: "TestRuntime",
+      command: "fake-cli",
+      args: [],
+      cwd: "/tmp/ws",
+      context: context(),
+      parseLine: (line) => (line.trim() ? (JSON.parse(line) as Evt) : null),
+      extractSteps: () => [],
+      parseResult: (events) => ({
+        status: "completed",
+        output: events.map((e) => e.n).join(","),
+      }),
+      ...opts,
+    });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("collects every event from a stream that ends with a newline", async () => {
+    stubSpawn('{"n":1}\n{"n":2}\n');
+    expect((await session()).output).toBe("1,2");
+  });
+
+  it("flushes the trailing partial line before parsing", async () => {
+    // No final \n — the last event only reaches the parser via flush().
+    stubSpawn('{"n":1}\n{"n":2}');
+    expect((await session()).output).toBe("1,2");
+  });
+
+  it("forwards each event's steps to context.onStep as they stream", async () => {
+    stubSpawn('{"n":1}\n{"n":2}\n');
+    const steps: RuntimeStep[] = [];
+    await session({
+      context: context({ onStep: (s) => steps.push(s) }),
+      extractSteps: (e) => [
+        { kind: "agent", description: `step ${e.n}`, timestamp: "2026-01-01T00:00:00.000Z" },
+      ],
+    });
+    expect(steps.map((s) => s.description)).toEqual(["step 1", "step 2"]);
+  });
+
+  it("skips lines the parser rejects rather than failing the run", async () => {
+    stubSpawn('{"n":1}\n\n{"n":2}\n');
+    expect((await session()).output).toBe("1,2");
+  });
+
+  it("merges the settled process's metadata into the parsed result", async () => {
+    stubSpawn('{"n":1}\n', { exitCode: 0, pid: 4242, process_group_id: 4242 });
+    const out = await session();
+    expect(out.process_pid).toBe(4242);
+    expect(out.process_group_id).toBe(4242);
+    expect(out.exit_code).toBe(0);
+  });
+
+  it("forwards the spawn metadata to context.onSpawn as soon as the pid exists", async () => {
+    stubSpawn('{"n":1}\n');
+    const onSpawn = vi.fn();
+    await session({ context: context({ onSpawn }) });
+    expect(onSpawn).toHaveBeenCalledWith({ process_pid: 99, process_group_id: 99 });
+  });
+
+  it("reports an aborted run as cancelled without parsing events", async () => {
+    stubSpawn('{"n":1}\n', { aborted: true });
+    const parseResult = vi.fn();
+    const out = await session({ parseResult });
+    expect(out.status).toBe("cancelled");
+    expect(parseResult).not.toHaveBeenCalled();
+  });
+
+  it("runs cleanup after a normal run", async () => {
+    stubSpawn('{"n":1}\n');
+    const cleanup = vi.fn();
+    await session({ cleanup });
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs cleanup after an aborted run too", async () => {
+    stubSpawn('{"n":1}\n', { aborted: true });
+    const cleanup = vi.fn();
+    await session({ cleanup });
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("parses before cleanup, so a scratch file is still readable", async () => {
+    stubSpawn('{"n":1}\n');
+    const order: string[] = [];
+    await session({
+      parseResult: () => {
+        order.push("parse");
+        return { status: "completed", output: "" };
+      },
+      cleanup: () => order.push("cleanup"),
+    });
+    expect(order).toEqual(["parse", "cleanup"]);
+  });
+
+  it("passes stdin through when the prompt rides there instead of argv", async () => {
+    const spy = stubSpawn('{"n":1}\n');
+    await session({ stdin: "piped prompt" });
+    expect(spy.mock.calls[0]![0].stdin).toBe("piped prompt");
+  });
+
+  it("warns once when stdout hit the capture cap", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    stubSpawn('{"n":1}\n', { truncated: true });
+    await session();
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("TestRuntime"));
   });
 });
