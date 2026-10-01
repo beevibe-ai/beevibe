@@ -54,3 +54,41 @@ export interface WorkProduct {
 export type WorkProductListItem = Omit<WorkProduct, "body"> & {
   body_bytes: number;
 };
+
+/**
+ * One work product as the detail endpoint serves it: the row plus the task
+ * and agent labels the page renders, with `created_at` / `updated_at` as
+ * the ISO strings JSON carries rather than `Date`s.
+ *
+ * Declared here because it was declared twice — as `WorkProductDetail` in
+ * `packages/api/src/views/work-product.ts` and again in
+ * `packages/web/lib/api/client.ts`, which had no way to import the api's
+ * copy. The web copy had to inline the nine-member `WorkProductType` union
+ * by hand, which is the drift this fixes: adding a tenth kind of
+ * deliverable would typecheck on the server and on the client's own list
+ * views, while the detail page silently rejected it.
+ */
+export interface WorkProductDetail {
+  id: string;
+  task_id: string;
+  task_short_id: string;
+  task_title: string;
+  agent_id: string;
+  agent_label: string;
+  type: WorkProductType;
+  title: string;
+  summary?: string;
+  url?: string;
+  provider?: string;
+  external_id?: string;
+  /**
+   * Full deliverable content. Sourced from `work_product.body` when set;
+   * otherwise falls back to reading a `file://` URL from disk. Truncated
+   * to 256 KB.
+   */
+  body?: string;
+  /** True when `url` is file:// — UI uses this to suppress an unclickable link. */
+  url_is_local: boolean;
+  created_at: string;
+  updated_at: string;
+}

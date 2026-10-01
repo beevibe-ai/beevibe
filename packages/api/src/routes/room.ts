@@ -32,15 +32,13 @@ import {
   roomMessageId as makeRoomMessageId,
   type Agent,
   type AgentRepository,
-  type OpenView,
   type PersonRepository,
-  type RepoCard,
   type RoomMessage,
   type RoomRepository,
+  type RoomWireMessage,
   type RuntimeRegistry,
   type SessionEventRepository,
   type SessionRepository,
-  type SuggestedAction,
   type WorkspaceManager,
 } from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
@@ -130,22 +128,7 @@ demo's point. Use this decision order:
 
 const MENTION_RE = /@([A-Za-z0-9_]+)/g;
 
-interface MessageReply {
-  id: string;
-  room_id: string;
-  kind: "human" | "agent";
-  content: string;
-  sender_person_id?: string;
-  sender_agent_id?: string;
-  session_id?: string;
-  view_refs?: string[];
-  open_view?: OpenView;
-  suggested_actions?: SuggestedAction[];
-  repo_cards?: RepoCard[];
-  created_at: string;
-}
-
-function toMessageReply(m: RoomMessage): MessageReply {
+function toMessageReply(m: RoomMessage): RoomWireMessage {
   // Agent messages may contain `<suggest_action>` / `<open_view>`
   // directives + inline entity refs. Strip them from the visible
   // content here so the markdown renderer never sees raw XML, and

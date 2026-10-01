@@ -10,33 +10,14 @@
 import { readFile, stat } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import type { WorkProductType } from "@beevibe/core";
+import type { WorkProductDetail, WorkProductType } from "@beevibe/core";
 import { deriveShortId } from "./format.js";
 
-export interface WorkProductDetail {
-  id: string;
-  task_id: string;
-  task_short_id: string;
-  task_title: string;
-  agent_id: string;
-  agent_label: string;
-  type: WorkProductType;
-  title: string;
-  summary?: string;
-  url?: string;
-  provider?: string;
-  external_id?: string;
-  /**
-   * Full deliverable content. Sourced from `work_product.body` when set;
-   * otherwise falls back to reading a `file://` URL from disk. Truncated
-   * to 256 KB.
-   */
-  body?: string;
-  /** True when `url` is file:// — UI uses this to suppress an unclickable link. */
-  url_is_local: boolean;
-  created_at: string;
-  updated_at: string;
-}
+/**
+ * Re-exported so this module stays the import site for its own callers; the
+ * declaration lives in core so the web client reads the same one.
+ */
+export type { WorkProductDetail };
 
 const SQL = /* sql */ `
 SELECT

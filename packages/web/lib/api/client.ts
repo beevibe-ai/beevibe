@@ -10,10 +10,12 @@ import type {
   RepoRun,
   RepoRunStatus,
   ReviewPolicy,
+  RoomWireMessage,
   SuggestedAction,
   Task,
+  WorkProductDetail,
 } from "@beevibe/core";
-export type { RepoRun, RepoRunStatus, LearnedSkill };
+export type { RepoRun, RepoRunStatus, LearnedSkill, WorkProductDetail };
 /**
  * Chat wire types come from `@beevibe/core` so the api server that emits
  * them and this client that renders them read one declaration. Re-exported
@@ -145,21 +147,12 @@ export type RoomMemberDetail =
       owner_person_id: string;
     };
 
-export interface RoomMessage {
-  id: string;
-  room_id: string;
-  kind: "human" | "agent";
-  content: string;
-  sender_person_id?: string;
-  sender_agent_id?: string;
-  session_id?: string;
-  /** Entity ids the agent referenced in this message, hydrated as cards. */
-  view_refs?: string[];
-  open_view?: OpenView;
-  suggested_actions?: SuggestedAction[];
-  repo_cards?: RepoCard[];
-  created_at: string;
-}
+/**
+ * Room messages share the chat wire contract, so the shape comes from
+ * `@beevibe/core` rather than being re-declared here. Aliased to the name
+ * this client's callers already use.
+ */
+export type RoomMessage = RoomWireMessage;
 
 export interface RoomTypingStep {
   event_id: string;
@@ -187,34 +180,6 @@ export interface RoomDetail {
   typing?: RoomTypingIndicator[];
 }
 
-export interface WorkProductDetail {
-  id: string;
-  task_id: string;
-  task_short_id: string;
-  task_title: string;
-  agent_id: string;
-  agent_label: string;
-  type:
-    | "pull_request"
-    | "branch"
-    | "commit"
-    | "document"
-    | "analysis"
-    | "report"
-    | "design"
-    | "artifact"
-    | "preview";
-  title: string;
-  summary?: string;
-  url?: string;
-  provider?: string;
-  external_id?: string;
-  /** Inlined file contents when url is file://. Render as markdown. */
-  body?: string;
-  url_is_local: boolean;
-  created_at: string;
-  updated_at: string;
-}
 
 export interface RuntimePanelEntry {
   id: string;
