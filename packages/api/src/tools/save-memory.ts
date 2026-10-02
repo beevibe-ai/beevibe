@@ -6,6 +6,7 @@ import {
   type FactType,
   type HierarchyLevel,
 } from "@beevibe/core";
+import { toolError } from "./errors.js";
 import type { AgentTool } from "./types.js";
 
 /**
@@ -97,19 +98,13 @@ export function createSaveMemoryTool(
       const content = input.content;
       const factType = input.fact_type;
       if (typeof content !== "string" || !content.trim()) {
-        return {
-          content: { error: "invalid_content", message: "content must be a non-empty string" },
-          isError: true,
-        };
+        return toolError("invalid_content", "content must be a non-empty string");
       }
       if (typeof factType !== "string" || !FACT_TYPES.includes(factType as FactType)) {
-        return {
-          content: {
-            error: "invalid_fact_type",
-            message: `fact_type must be one of: ${FACT_TYPES.join(", ")}`,
-          },
-          isError: true,
-        };
+        return toolError(
+          "invalid_fact_type",
+          `fact_type must be one of: ${FACT_TYPES.join(", ")}`,
+        );
       }
       const fact = await services.factStore.addOrMerge(
         ctx.agentId,

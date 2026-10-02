@@ -79,7 +79,10 @@ describe("DashboardClient", () => {
   it("renders the not-configured empty state and never fetches", () => {
     apiState.isApiConfigured = false;
     renderHome();
-    expect(screen.getByText("Dashboard not connected")).toBeInTheDocument();
+    expect(screen.getByText("API not configured")).toBeInTheDocument();
+    expect(
+      screen.getByText("Set NEXT_PUBLIC_BV_API_URL and run the API server to load the dashboard."),
+    ).toBeInTheDocument();
     expect(summaryMock).not.toHaveBeenCalled();
   });
 

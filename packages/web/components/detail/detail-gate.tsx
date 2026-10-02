@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { AlertTriangle, type LucideIcon } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
+import { apiNotConfiguredCopy, loadFailedCopy } from "@/lib/empty-copy";
 import { DetailShell } from "./detail-shell";
 import { EmptyState } from "@/components/empty-state";
 
@@ -41,16 +42,17 @@ interface Props<T> {
  * and half the pages ended the fetch error with "Check the MCP server logs"
  * while the other half dropped the hint. Both messages are derived from
  * `noun` here, so a page can't word them a fourth way.
+ *
+ * The wording itself lives in `lib/empty-copy.ts`, shared with `PageGate` —
+ * the overview pages' equivalent. The two differ on one branch: a detail
+ * page is about one row, so a settled-but-empty query is a failed fetch
+ * here, where on an overview page it is a transient empty list.
  */
 export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }: Props<T>) {
   if (!isApiConfigured) {
     return (
       <DetailShell nav={nav}>
-        <EmptyState
-          icon={icon}
-          title="API not configured"
-          description={`Set NEXT_PUBLIC_BV_API_URL and run the API server to load this ${noun}.`}
-        />
+        <EmptyState icon={icon} {...apiNotConfiguredCopy(`this ${noun}`)} />
       </DetailShell>
     );
   }
@@ -60,14 +62,9 @@ export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }
   }
 
   if (query.isError || !query.data) {
-    const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
     return (
       <DetailShell nav={nav}>
-        <EmptyState
-          icon={AlertTriangle}
-          title={`Couldn't load ${noun}`}
-          description={`${Noun} ${id} could not be fetched. Check the API server logs.`}
-        />
+        <EmptyState icon={AlertTriangle} {...loadFailedCopy(noun, id)} />
       </DetailShell>
     );
   }

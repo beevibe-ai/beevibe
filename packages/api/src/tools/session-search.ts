@@ -4,6 +4,7 @@ import {
   SessionSearchService,
 } from "@beevibe/core/services/session-search";
 import { SESSION_TYPES, SESSION_STATUSES } from "@beevibe/core";
+import { toolError } from "./errors.js";
 import type { AgentTool } from "./types.js";
 
 /**
@@ -250,15 +251,11 @@ export function createSessionSearchTool(
           currentSessionId: ctx.sessionId,
         });
         if (result === null) {
-          return {
-            content: {
-              error: "not_found_or_forbidden",
-              message:
-                "session_id is not in your scope, the anchor message id does not " +
-                "exist, or the anchor lives in your active conversation.",
-            },
-            isError: true,
-          };
+          return toolError(
+            "not_found_or_forbidden",
+            "session_id is not in your scope, the anchor message id does not " +
+              "exist, or the anchor lives in your active conversation.",
+          );
         }
         return { content: result as unknown as Record<string, unknown> };
       } catch (err) {
@@ -270,18 +267,12 @@ export function createSessionSearchTool(
           (err instanceof Error && err.name === "SessionSearchError");
         if (isSessionSearchError) {
           const e = err as SessionSearchError;
-          return {
-            content: { error: e.code, message: e.message },
-            isError: true,
-          };
+          return toolError(e.code, e.message);
         }
-        return {
-          content: {
-            error: "internal_error",
-            message: err instanceof Error ? err.message : String(err),
-          },
-          isError: true,
-        };
+        return toolError(
+          "internal_error",
+          err instanceof Error ? err.message : String(err),
+        );
       }
     },
   };

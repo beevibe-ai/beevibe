@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
 import { isApiConfigured } from "@/lib/api/config";
+import { apiNotConfiguredCopy, loadFailedCopy } from "@/lib/empty-copy";
 import { useTask } from "@/lib/hooks/use-tasks";
 import {
   useApproveTask,
@@ -59,11 +60,7 @@ function PanelBody({ taskId }: { taskId: string }) {
   if (!isApiConfigured) {
     return (
       <div className="p-4">
-        <EmptyState
-          icon={ListChecks}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL to load this task."
-        />
+        <EmptyState icon={ListChecks} {...apiNotConfiguredCopy("this task")} />
       </div>
     );
   }
@@ -81,11 +78,7 @@ function PanelBody({ taskId }: { taskId: string }) {
   if (isError || !data) {
     return (
       <div className="p-4">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load task"
-          description={`Task ${taskId} could not be fetched.`}
-        />
+        <EmptyState icon={AlertTriangle} {...loadFailedCopy("task", taskId)} />
       </div>
     );
   }
