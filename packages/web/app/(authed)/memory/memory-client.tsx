@@ -27,6 +27,7 @@ import { RichTextRender } from "@/components/rich-text";
 import { useMemoryFactCounts, useMemoryFacts } from "@/lib/hooks/use-memory";
 import { useSlashFocus } from "@/lib/hooks/use-slash-focus";
 import { isApiConfigured } from "@/lib/api/config";
+import { apiNotConfiguredCopy, loadFailedCopy } from "@/lib/empty-copy";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
@@ -140,11 +141,7 @@ function Body({
     return (
       <tr>
         <td colSpan={6}>
-          <EmptyState
-            icon={Sparkles}
-            title="No facts learned yet"
-            description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load memory."
-          />
+          <EmptyState icon={Sparkles} {...apiNotConfiguredCopy("memory")} />
         </td>
       </tr>
     );
@@ -154,7 +151,7 @@ function Body({
     return (
       <tr>
         <td colSpan={6}>
-          <EmptyState icon={AlertTriangle} title="Couldn't load memory" />
+          <EmptyState icon={AlertTriangle} {...loadFailedCopy("memory")} />
         </td>
       </tr>
     );

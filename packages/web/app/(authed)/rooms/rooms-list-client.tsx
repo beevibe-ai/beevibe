@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, MessageCircleMore, Plus, Users } from "lucide-react";
 import { api, type Room } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
+import { apiNotConfiguredCopy } from "@/lib/empty-copy";
 import { queryKeys } from "@/lib/hooks/keys";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
@@ -44,11 +45,7 @@ export function RoomsListClient() {
   if (!isApiConfigured) {
     return (
       <div className="p-6">
-        <EmptyState
-          icon={MessageCircleMore}
-          title="Web isn't configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the api server."
-        />
+        <EmptyState icon={MessageCircleMore} {...apiNotConfiguredCopy("rooms")} />
       </div>
     );
   }

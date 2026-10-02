@@ -11,6 +11,7 @@ import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
 import { isApiConfigured } from "@/lib/api/config";
+import { apiNotConfiguredCopy, loadFailedCopy } from "@/lib/empty-copy";
 import { useAgent } from "@/lib/hooks/use-agents";
 import { useIsOwner } from "@/lib/hooks/use-me";
 import { formatReviewPolicy } from "@/lib/format";
@@ -47,11 +48,7 @@ function PanelBody({ agentId }: { agentId: string }) {
   if (!isApiConfigured) {
     return (
       <div className="p-4">
-        <EmptyState
-          icon={Bot}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL to load this agent."
-        />
+        <EmptyState icon={Bot} {...apiNotConfiguredCopy("this agent")} />
       </div>
     );
   }
@@ -69,11 +66,7 @@ function PanelBody({ agentId }: { agentId: string }) {
   if (isError || !data) {
     return (
       <div className="p-4">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load agent"
-          description={`Agent ${agentId} could not be fetched.`}
-        />
+        <EmptyState icon={AlertTriangle} {...loadFailedCopy("agent", agentId)} />
       </div>
     );
   }

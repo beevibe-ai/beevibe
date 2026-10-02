@@ -9,6 +9,7 @@ import { EmptyState } from "@/components/empty-state";
 import { TaskDetailPanel } from "@/components/tasks/task-detail-panel";
 import { useTasks } from "@/lib/hooks/use-tasks";
 import { isApiConfigured } from "@/lib/api/config";
+import { apiNotConfiguredCopy, loadFailedCopy } from "@/lib/empty-copy";
 import { countArchivedTasks, groupTasks } from "@/lib/tasks-grouping";
 
 interface EmptyMessage {
@@ -127,19 +128,10 @@ function pickEmptyMessage(state: {
   hasQuery: boolean;
 }): EmptyMessage | null {
   if (state.isError) {
-    return {
-      icon: AlertTriangle,
-      title: "Couldn't load tasks",
-      description:
-        "The API is configured but unreachable. Check that the MCP server is running.",
-    };
+    return { icon: AlertTriangle, ...loadFailedCopy("tasks") };
   }
   if (!state.isApiConfigured) {
-    return {
-      icon: ListChecks,
-      title: "No tasks yet",
-      description: "Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load tasks.",
-    };
+    return { icon: ListChecks, ...apiNotConfiguredCopy("tasks") };
   }
   // Suppress the empty state while ANY fetch is in flight — including a
   // background refetch where `data === []` is cached. Without this guard,
