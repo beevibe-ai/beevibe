@@ -4,7 +4,7 @@ import {
   MeshCapacityError,
   MeshMaxRoundsError,
 } from "../mesh/types.js";
-import { toolError, toolErrorFromThrown } from "./errors.js";
+import { toolError, toolErrorFromThrown, toolErrorMessage } from "./errors.js";
 
 describe("toolError", () => {
   it("puts the code in `error` and the human text in `message`", () => {
@@ -71,5 +71,33 @@ describe("toolErrorFromThrown", () => {
     // carry a `code` too, and must not be reported as a mesh code.
     const pgLike = Object.assign(new Error("duplicate key"), { code: "23505" });
     expect(toolErrorFromThrown(pgLike).content).toEqual({ error: "duplicate key" });
+  });
+});
+
+describe("toolErrorMessage", () => {
+  // The argument-validation branches in hierarchy.ts / mesh.ts speak this
+  // shape: the human sentence sits in `error` and there is no `message`
+  // key at all. An agent branching on `error` sees the sentence, so the
+  // absence of `message` is the contract, not an oversight.
+  it("puts the text in `error` and omits `message` entirely", () => {
+    const result = toolErrorMessage("task_id required");
+    expect(result).toEqual({
+      content: { error: "task_id required" },
+      isError: true,
+    });
+    expect(result.content).not.toHaveProperty("message");
+  });
+
+  it("merges `extra` for the branches that say the rest structurally", () => {
+    expect(toolErrorMessage("task_not_found", { task_id: "task_7" })).toEqual({
+      content: { error: "task_not_found", task_id: "task_7" },
+      isError: true,
+    });
+  });
+
+  // Same envelope `toolErrorFromThrown` produces for an uncoded throw —
+  // the difference is only where the text came from.
+  it("matches the uncoded toolErrorFromThrown envelope for the same text", () => {
+    expect(toolErrorMessage("boom")).toEqual(toolErrorFromThrown(new Error("boom")));
   });
 });

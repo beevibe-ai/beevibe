@@ -52,7 +52,7 @@ import {
   buildIntent,
   type ResumeReason,
 } from "@beevibe/core/services/agent-session";
-import { toolErrorFromThrown } from "./errors.js";
+import { toolError, toolErrorFromThrown, toolErrorMessage } from "./errors.js";
 import type { AgentTool } from "./types.js";
 
 // ── Agent-callable status subsets ─────────────────────────────────────────
@@ -189,7 +189,7 @@ function searchContextTool(
       try {
         const query = String(input.query ?? "").trim();
         if (!query) {
-          return { content: { error: "query must be a non-empty string" }, isError: true };
+          return toolErrorMessage("query must be a non-empty string");
         }
         const archival = await services.memoryAgent.searchArchival(query);
         return { content: { archival } };
@@ -240,12 +240,9 @@ function updateProgressTool(
         const status = input.status as AgentEndStatus;
         const summary = String(input.summary ?? "");
         if (!AGENT_END_STATUSES.includes(status)) {
-          return {
-            content: {
-              error: `status must be one of: ${AGENT_END_STATUSES.join(", ")}`,
-            },
-            isError: true,
-          };
+          return toolErrorMessage(
+            `status must be one of: ${AGENT_END_STATUSES.join(", ")}`,
+          );
         }
         const updated = await services.taskService.updateProgress(taskId, status, summary);
         return {
@@ -304,7 +301,7 @@ function getAgentProfileTool(
     handler: async (input) => {
       try {
         const id = String(input.agent_id ?? "");
-        if (!id) return { content: { error: "agent_id required" }, isError: true };
+        if (!id) return toolErrorMessage("agent_id required");
         const agent = await services.agentRepo.findById(id);
         return { content: { agent: projectAgent(agent) } };
       } catch (err) {
@@ -334,7 +331,7 @@ function getTaskTool(
     handler: async (input) => {
       try {
         const id = String(input.task_id ?? "");
-        if (!id) return { content: { error: "task_id required" }, isError: true };
+        if (!id) return toolErrorMessage("task_id required");
         const task = await services.taskRepo.findById(id);
         return { content: { task: projectTask(task) } };
       } catch (err) {
@@ -387,16 +384,12 @@ function createWorkProductTool(
         const type = input.type;
         const title = String(input.title ?? "");
         if (!taskId || !title) {
-          return {
-            content: { error: "task_id and title required" },
-            isError: true,
-          };
+          return toolErrorMessage("task_id and title required");
         }
         if (!WORK_PRODUCT_TYPES.includes(type as (typeof WORK_PRODUCT_TYPES)[number])) {
-          return {
-            content: { error: `type must be one of: ${WORK_PRODUCT_TYPES.join(", ")}` },
-            isError: true,
-          };
+          return toolErrorMessage(
+            `type must be one of: ${WORK_PRODUCT_TYPES.join(", ")}`,
+          );
         }
         const wp = await services.taskService.createWorkProduct({
           id: makeWorkProductId(),
@@ -448,7 +441,7 @@ function listWorkProductsTool(
     handler: async (input) => {
       try {
         const taskId = String(input.task_id ?? "");
-        if (!taskId) return { content: { error: "task_id required" }, isError: true };
+        if (!taskId) return toolErrorMessage("task_id required");
         const wps = await services.taskService.listWorkProducts(taskId);
         return {
           content: {
@@ -492,10 +485,10 @@ function getWorkProductTool(
     handler: async (input) => {
       try {
         const id = String(input.id ?? "");
-        if (!id) return { content: { error: "id required" }, isError: true };
+        if (!id) return toolErrorMessage("id required");
         const wp = await services.taskService.getWorkProduct(id);
         if (!wp) {
-          return { content: { error: `work_product ${id} not found` }, isError: true };
+          return toolErrorMessage(`work_product ${id} not found`);
         }
         return {
           content: {
@@ -551,7 +544,7 @@ function updateWorkProductTool(
     handler: async (input) => {
       try {
         const id = String(input.id ?? "");
-        if (!id) return { content: { error: "id required" }, isError: true };
+        if (!id) return toolErrorMessage("id required");
         const updated = await services.taskService.updateWorkProduct(id, {
           summary: typeof input.summary === "string" ? input.summary : undefined,
           body: typeof input.body === "string" ? input.body : undefined,
@@ -676,30 +669,23 @@ function createTaskTool(
         const intent = String(input.intent ?? "");
         const targetId = String(input.agent_id ?? "");
         if (!intent || !targetId) {
-          return {
-            content: { error: "intent and agent_id required" },
-            isError: true,
-          };
+          return toolErrorMessage("intent and agent_id required");
         }
 
         // Authz: assignee must be one of caller's subordinates.
         const subs = await services.agentRepo.findSubordinates(ctx.agentId);
         if (!subs.some((s) => s.id === targetId)) {
-          return {
-            content: {
-              error: "not_subordinate",
-              message: `Cannot assign tasks to ${targetId} — not a direct subordinate of ${ctx.agentId}.`,
-            },
-            isError: true,
-          };
+          return toolError(
+            "not_subordinate",
+            `Cannot assign tasks to ${targetId} — not a direct subordinate of ${ctx.agentId}.`,
+          );
         }
 
         const priority = (input.priority as (typeof TASK_PRIORITIES)[number]) ?? "medium";
         if (!TASK_PRIORITIES.includes(priority)) {
-          return {
-            content: { error: `priority must be one of: ${TASK_PRIORITIES.join(", ")}` },
-            isError: true,
-          };
+          return toolErrorMessage(
+            `priority must be one of: ${TASK_PRIORITIES.join(", ")}`,
+          );
         }
 
         const created = await services.taskRepo.create({
@@ -781,19 +767,16 @@ function checkWorkStatusTool(
     handler: async (input) => {
       try {
         const targetId = String(input.agent_id ?? "");
-        if (!targetId) return { content: { error: "agent_id required" }, isError: true };
+        if (!targetId) return toolErrorMessage("agent_id required");
 
         // Authz: self or direct subordinate.
         if (targetId !== ctx.agentId) {
           const subs = await services.agentRepo.findSubordinates(ctx.agentId);
           if (!subs.some((s) => s.id === targetId)) {
-            return {
-              content: {
-                error: "unauthorized",
-                message: `Can only check work status for self or a direct subordinate.`,
-              },
-              isError: true,
-            };
+            return toolError(
+              "unauthorized",
+              `Can only check work status for self or a direct subordinate.`,
+            );
           }
         }
 
@@ -855,33 +838,27 @@ function reviseTaskTool(
         const taskId = String(input.task_id ?? "");
         const feedback = String(input.feedback ?? "");
         if (!taskId || !feedback) {
-          return { content: { error: "task_id and feedback required" }, isError: true };
+          return toolErrorMessage("task_id and feedback required");
         }
 
         const task = await services.taskRepo.findById(taskId);
         if (!task) {
-          return { content: { error: "task_not_found", task_id: taskId }, isError: true };
+          return toolErrorMessage("task_not_found", { task_id: taskId });
         }
         if (!task.assignee_id) {
-          return {
-            content: { error: "task_unassigned", message: "task has no assignee" },
-            isError: true,
-          };
+          return toolError("task_unassigned", "task has no assignee");
         }
 
         // Authz: caller must be the assignee's direct parent.
         const assignee = await services.agentRepo.findById(task.assignee_id);
         if (!assignee) {
-          return { content: { error: "assignee_not_found" }, isError: true };
+          return toolErrorMessage("assignee_not_found");
         }
         if (assignee.parent_agent_id !== ctx.agentId) {
-          return {
-            content: {
-              error: "not_parent",
-              message: `caller ${ctx.agentId} is not the parent of task assignee ${task.assignee_id}`,
-            },
-            isError: true,
-          };
+          return toolError(
+            "not_parent",
+            `caller ${ctx.agentId} is not the parent of task assignee ${task.assignee_id}`,
+          );
         }
 
         const updated = await services.taskService.reviseTask(taskId, feedback, {
@@ -921,7 +898,7 @@ function reviseTaskTool(
         };
       } catch (err) {
         if (err instanceof InvalidTaskTransitionError) {
-          return { content: { error: "invalid_transition", message: err.message }, isError: true };
+          return toolError("invalid_transition", err.message);
         }
         return toolErrorFromThrown(err);
       }
@@ -976,7 +953,7 @@ function addToEscalationTool(
       try {
         const escalationId = String(input.escalation_id ?? "");
         if (!escalationId) {
-          return { content: { error: "escalation_id required" }, isError: true };
+          return toolErrorMessage("escalation_id required");
         }
         const proposals = Array.isArray(input.proposals)
           ? (input.proposals as Array<{ title: string; description: string; tradeoffs?: string }>)
@@ -1134,14 +1111,10 @@ function createSubordinateAgentTool(
     handler: async (input) => {
       try {
         if (ctx.hierarchyLevel === "ic") {
-          return {
-            content: {
-              error: "ic_cannot_spawn",
-              message:
-                "Only team/org agents can spawn subordinates; you are an IC.",
-            },
-            isError: true,
-          };
+          return toolError(
+            "ic_cannot_spawn",
+            "Only team/org agents can spawn subordinates; you are an IC.",
+          );
         }
 
         const name = String(input.name ?? "").trim();
@@ -1151,43 +1124,29 @@ function createSubordinateAgentTool(
         const activeContext = String(input.active_context ?? "").trim();
         const constraints = String(input.constraints ?? "").trim();
         if (!name || !tagLine || !persona || !domain) {
-          return {
-            content: {
-              error: "missing_required_fields",
-              message: "name, tag_line, persona, and domain are all required",
-            },
-            isError: true,
-          };
+          return toolError(
+            "missing_required_fields",
+            "name, tag_line, persona, and domain are all required",
+          );
         }
         // Soft-enforce the tag_line limit so the UI's agent card line stays
         // legible. Hard limit is the column char_limit.
         if (tagLine.length > 100) {
-          return {
-            content: {
-              error: "tag_line_too_long",
-              message: "tag_line must be ≤100 chars",
-              actual: tagLine.length,
-            },
-            isError: true,
-          };
+          return toolError("tag_line_too_long", "tag_line must be ≤100 chars", {
+            actual: tagLine.length,
+          });
         }
         if (name.length > 80 || PROVISION_NAME_INVALID_RE.test(name)) {
-          return {
-            content: {
-              error: "invalid_name",
-              message: "name must be 1-80 chars and contain no control characters",
-            },
-            isError: true,
-          };
+          return toolError(
+            "invalid_name",
+            "name must be 1-80 chars and contain no control characters",
+          );
         }
 
         // Resolve the parent (caller) so we can inherit owner_id + runtime config.
         const parent = await services.agentRepo.findById(ctx.agentId);
         if (!parent) {
-          return {
-            content: { error: "parent_not_found", agent_id: ctx.agentId },
-            isError: true,
-          };
+          return toolErrorMessage("parent_not_found", { agent_id: ctx.agentId });
         }
 
         // Phase 9 per-parent daily cap. A runaway team agent could
@@ -1198,17 +1157,12 @@ function createSubordinateAgentTool(
           24 * 60 * 60,
         );
         if (recentSpawns >= SUBORDINATE_DAILY_CAP) {
-          return {
-            content: {
-              error: "subordinate_daily_cap",
-              message:
-                `Parent '${parent.name}' has spawned ${recentSpawns} subordinates in the last 24h ` +
-                `(cap: ${SUBORDINATE_DAILY_CAP}). Reuse an existing specialist or wait for the window to expire.`,
-              cap: SUBORDINATE_DAILY_CAP,
-              count: recentSpawns,
-            },
-            isError: true,
-          };
+          return toolError(
+            "subordinate_daily_cap",
+            `Parent '${parent.name}' has spawned ${recentSpawns} subordinates in the last 24h ` +
+              `(cap: ${SUBORDINATE_DAILY_CAP}). Reuse an existing specialist or wait for the window to expire.`,
+            { cap: SUBORDINATE_DAILY_CAP, count: recentSpawns },
+          );
         }
 
         // Inherit the parent's runtime so all the user's agents share the
