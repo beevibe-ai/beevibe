@@ -1,10 +1,8 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
-import { apiBaseUrl, getUserKey } from "@/lib/api/config";
-import { CommandBlock } from "@/components/command-block";
-import { SegmentedTabs, type SegmentedTabOption } from "@/components/segmented-tabs";
-import { cn } from "@/lib/utils";
+import { setupCommandContext } from "@/lib/api/config";
+import { type SegmentedTabOption } from "@/components/segmented-tabs";
+import { SetupChannels, type SetupBundle } from "@/components/setup-channels";
 
 export type CliChannel = "claude" | "codex" | "opencode" | "manual";
 
@@ -16,17 +14,6 @@ const CHANNEL_OPTIONS: readonly SegmentedTabOption<CliChannel>[] = [
 ];
 
 const MCP_SERVER_NAME = "beevibe";
-
-interface SetupStep {
-  label: string;
-  command: string;
-}
-
-interface SetupBundle {
-  prelude?: ReactNode;
-  steps: readonly SetupStep[];
-  epilogue?: ReactNode;
-}
 
 function buildBundle(channel: CliChannel, mcpUrl: string, token: string): SetupBundle {
   switch (channel) {
@@ -128,28 +115,16 @@ function buildBundle(channel: CliChannel, mcpUrl: string, token: string): SetupB
 }
 
 export function CliMcpInstructions({ className }: { className?: string }) {
-  const userKey = typeof window !== "undefined" ? getUserKey() : null;
-  const base = apiBaseUrl ?? "http://localhost:3000";
-  const mcpUrl = `${base}/mcp`;
-  const token = userKey ?? "<your-key>";
-
-  const [channel, setChannel] = useState<CliChannel>("claude");
-  const bundle = buildBundle(channel, mcpUrl, token);
-
+  const { baseUrl, token } = setupCommandContext();
   return (
-    <div className={cn("space-y-3", className)}>
-      <SegmentedTabs options={CHANNEL_OPTIONS} value={channel} onChange={setChannel} />
-      <div className="space-y-2">
-        {bundle.prelude}
-        {bundle.steps.map((step, i) => (
-          <CommandBlock
-            key={i}
-            label={bundle.steps.length > 1 ? `${i + 1}. ${step.label}` : step.label}
-            command={step.command}
-          />
-        ))}
-        {bundle.epilogue}
-      </div>
-    </div>
+    <SetupChannels
+      options={CHANNEL_OPTIONS}
+      initial="claude"
+      buildBundle={(channel) => buildBundle(channel, `${baseUrl}/mcp`, token)}
+      // Every channel but "manual" is a single command; numbering it "1."
+      // implies a step 2 that isn't coming.
+      numbering="multi-step"
+      className={className}
+    />
   );
 }

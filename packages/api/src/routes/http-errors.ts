@@ -150,3 +150,36 @@ export function makeErrorHandler(
     });
   };
 }
+
+/**
+ * The *other* 500 handler, for routers whose error envelope is a bare
+ * per-operation code rather than {@link makeErrorHandler}'s
+ * `internal_error` + reflected message.
+ *
+ * Seventeen handlers across `repo-runs`, `learned-skills`, `capabilities`,
+ * `find-repo` and `runtime/router` had each written the same two lines in a
+ * `catch`: log `[<router>/<op>]` with the error, then answer
+ * `500 { error: "<op>_failed" }`. The pair is what matters — the log tag and
+ * the wire code name the same operation — and writing them separately
+ * seventeen times is seventeen chances for them to disagree about which
+ * operation actually failed.
+ *
+ * `code` therefore *defaults* to `` `${op}_failed` ``, which is what fifteen
+ * of the seventeen used, and stays overridable for the two that don't
+ * (`capabilities`' `referenced-repos` answers `scan_failed`;
+ * `runtime`'s `skills` answers `skills_read_failed`). Those codes are in the
+ * wire contract and clients may branch on them, so this factors out the
+ * shape, not the codes — same call as `requireParam`'s.
+ *
+ * Deliberately does NOT reflect `err.message` to the client: none of the
+ * seventeen did. `learned-skills`' `publish` does, and keeps its own
+ * handler rather than having that behavior quietly generalized here.
+ */
+export function makeOpFailureHandler(
+  router: string,
+): (res: Response, op: string, err: unknown, code?: string) => void {
+  return (res, op, err, code) => {
+    console.error(`[${router}/${op}]`, err);
+    res.status(500).json({ error: code ?? `${op}_failed` });
+  };
+}

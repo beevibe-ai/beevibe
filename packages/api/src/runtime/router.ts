@@ -45,6 +45,7 @@ import {
 import { transitionTaskOnClaim } from "@beevibe/core/services/dispatch-service";
 import { requireDaemon, requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "./hub.js";
+import { makeOpFailureHandler } from "../routes/http-errors.js";
 
 export interface RuntimeRouterDeps {
   /** Required on every /runtime/* request. Resolves bv_u_ or bv_d_. */
@@ -91,6 +92,7 @@ export interface RuntimeRouterDeps {
  */
 export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
   const router = Router();
+  const fail = makeOpFailureHandler("runtime");
   router.use(deps.authMiddleware);
 
   router.post("/register", async (req, res) => {
@@ -123,8 +125,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
       };
       res.status(isNew ? 201 : 200).json(response);
     } catch (err) {
-      console.error("[runtime/register]", err);
-      res.status(500).json({ error: "register_failed" });
+      fail(res, "register", err);
     }
   });
 
@@ -147,8 +148,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
       };
       res.status(200).json(response);
     } catch (err) {
-      console.error("[runtime/sync]", err);
-      res.status(500).json({ error: "sync_failed" });
+      fail(res, "sync", err);
     }
   });
 
@@ -171,8 +171,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
       for (const id of runtimeIds) deps.hub.bumpLastSeen(id);
       res.status(204).send();
     } catch (err) {
-      console.error("[runtime/heartbeat]", err);
-      res.status(500).json({ error: "heartbeat_failed" });
+      fail(res, "heartbeat", err);
     }
   });
 
@@ -220,8 +219,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
       await transitionTaskOnClaim(claimed, { taskRepo: deps.taskRepo });
       res.status(200).json(payload);
     } catch (err) {
-      console.error("[runtime/claim]", err);
-      res.status(500).json({ error: "claim_failed" });
+      fail(res, "claim", err);
     }
   });
 
@@ -261,8 +259,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
       );
       res.status(204).send();
     } catch (err) {
-      console.error("[runtime/events]", err);
-      res.status(500).json({ error: "events_failed" });
+      fail(res, "events", err);
     }
   });
 
@@ -368,8 +365,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
       }
       res.status(204).send();
     } catch (err) {
-      console.error("[runtime/done]", err);
-      res.status(500).json({ error: "done_failed" });
+      fail(res, "done", err);
     }
   });
 
@@ -379,8 +375,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
       const response = await readSkills(deps.skillsSourceDir);
       res.status(200).json(response);
     } catch (err) {
-      console.error("[runtime/skills]", err);
-      res.status(500).json({ error: "skills_read_failed" });
+      fail(res, "skills", err, "skills_read_failed");
     }
   });
 

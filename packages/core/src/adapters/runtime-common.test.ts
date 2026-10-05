@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CliProcessOptions, CliProcessResult } from "./claude-code/spawn.js";
+import * as spawnModule from "./claude-code/spawn.js";
+import type { RuntimeResult, RuntimeStep } from "../ports/runtime.js";
 import {
   cancelledResult,
   createStdoutLineReader,
   finalizeCliResult,
+  runStreamingCliSession,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -145,5 +147,187 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+describe("runStreamingCliSession", () => {
+  /** A toy event schema standing in for a provider's NDJSON stream. */
+  interface FakeEvent {
+    say?: string;
+  }
+
+  let runCliSpy: ReturnType<typeof vi.spyOn>;
+  let lastOptions: CliProcessOptions | undefined;
+
+  function mockRunCli(result: CliProcessResult): void {
+    runCliSpy.mockImplementation(async (options) => {
+      lastOptions = options;
+      if (result.pid !== null) {
+        options.onSpawn?.({
+          pid: result.pid,
+          process_group_id: result.process_group_id ?? result.pid,
+        });
+      }
+      if (result.stdout) options.onLog?.("stdout", result.stdout);
+      return result;
+    });
+  }
+
+  function session(
+    overrides: {
+      result?: CliProcessResult;
+      onStep?: (step: RuntimeStep) => void;
+      cleanup?: () => void;
+      buildResult?: (events: FakeEvent[], exitCode: number | null) => RuntimeResult;
+    } = {},
+  ): Promise<RuntimeResult> {
+    mockRunCli(overrides.result ?? cliResult({ stdout: '{"say":"hi"}\n' }));
+    return runStreamingCliSession<FakeEvent>({
+      tag: "FakeRuntime",
+      spawn: { command: "fake-cli", args: ["--json"], cwd: "/tmp/ws" },
+      context: { onStep: overrides.onStep },
+      parseLine: (line) => (line.trim().startsWith("{") ? (JSON.parse(line) as FakeEvent) : null),
+      extractSteps: (event) =>
+        event.say ? [{ kind: "agent", description: event.say, timestamp: "T" }] : [],
+      buildResult:
+        overrides.buildResult ??
+        ((events, exitCode) => ({
+          status: exitCode === 0 ? "completed" : "failed",
+          output: events.map((e) => e.say).join(","),
+        })),
+      cleanup: overrides.cleanup,
+    });
+  }
+
+  beforeEach(() => {
+    lastOptions = undefined;
+    runCliSpy = vi.spyOn(spawnModule, "runCliProcess");
+  });
+
+  afterEach(() => {
+    runCliSpy.mockRestore();
+  });
+
+  it("passes the caller's spawn options through verbatim", async () => {
+    await session();
+    expect(lastOptions?.command).toBe("fake-cli");
+    expect(lastOptions?.args).toEqual(["--json"]);
+    expect(lastOptions?.cwd).toBe("/tmp/ws");
+  });
+
+  it("hands buildResult every parsed event, in stream order", async () => {
+    const result = await session({
+      result: cliResult({ stdout: '{"say":"a"}\n{"say":"b"}\n{"say":"c"}\n' }),
+    });
+    expect(result.output).toBe("a,b,c");
+  });
+
+  it("skips lines the parser rejects instead of failing the run", async () => {
+    const result = await session({
+      result: cliResult({ stdout: 'warning: not json\n{"say":"a"}\n\n' }),
+    });
+    expect(result.output).toBe("a");
+  });
+
+  it("streams a step per event while the process runs", async () => {
+    const steps: RuntimeStep[] = [];
+    await session({
+      result: cliResult({ stdout: '{"say":"a"}\n{"say":"b"}\n' }),
+      onStep: (s) => steps.push(s),
+    });
+    expect(steps.map((s) => s.description)).toEqual(["a", "b"]);
+  });
+
+  it("still collects events when the caller wants no live steps", async () => {
+    const result = await session({ result: cliResult({ stdout: '{"say":"a"}\n' }) });
+    expect(result.output).toBe("a");
+  });
+
+  it("parses a final line that arrived without a trailing newline", async () => {
+    const result = await session({ result: cliResult({ stdout: '{"say":"a"}\n{"say":"b"}' }) });
+    expect(result.output).toBe("a,b");
+  });
+
+  it("renames the spawn metadata onto the RuntimeContext shape", async () => {
+    const spawns: unknown[] = [];
+    mockRunCli(cliResult({ stdout: "" }));
+    await runStreamingCliSession<FakeEvent>({
+      tag: "FakeRuntime",
+      spawn: { command: "fake-cli", cwd: "/tmp/ws" },
+      context: { onSpawn: (meta) => spawns.push(meta) },
+      parseLine: () => null,
+      extractSteps: () => [],
+      buildResult: () => ({ status: "completed", output: "" }),
+    });
+    expect(spawns).toEqual([{ process_pid: 4242, process_group_id: 4242 }]);
+  });
+
+  it("forwards the caller's abort signal to the process", async () => {
+    const controller = new AbortController();
+    mockRunCli(cliResult({ stdout: "" }));
+    await runStreamingCliSession<FakeEvent>({
+      tag: "FakeRuntime",
+      spawn: { command: "fake-cli", cwd: "/tmp/ws" },
+      context: { abort_signal: controller.signal },
+      parseLine: () => null,
+      extractSteps: () => [],
+      buildResult: () => ({ status: "completed", output: "" }),
+    });
+    expect(lastOptions?.abortSignal).toBe(controller.signal);
+  });
+
+  it("merges the process metadata onto the parsed result", async () => {
+    const result = await session({ result: cliResult({ stdout: '{"say":"a"}\n', pid: 777, process_group_id: 777 }) });
+    expect(result.process_pid).toBe(777);
+    expect(result.process_group_id).toBe(777);
+    expect(result.exit_code).toBe(0);
+  });
+
+  it("reports cancelled — not failed — on an abort, without calling buildResult", async () => {
+    const buildResult = vi.fn(() => ({ status: "completed" as const, output: "unused" }));
+    const result = await session({
+      result: cliResult({ aborted: true, exitCode: null, stdout: '{"say":"a"}\n' }),
+      buildResult,
+    });
+    expect(result.status).toBe("cancelled");
+    expect(buildResult).not.toHaveBeenCalled();
+  });
+
+  it("runs cleanup on the happy path, after buildResult has read its file", async () => {
+    const order: string[] = [];
+    await session({
+      buildResult: (events) => {
+        order.push("build");
+        return { status: "completed", output: events.length.toString() };
+      },
+      cleanup: () => order.push("cleanup"),
+    });
+    expect(order).toEqual(["build", "cleanup"]);
+  });
+
+  it("runs cleanup on the abort path too", async () => {
+    const cleanup = vi.fn();
+    await session({ result: cliResult({ aborted: true, exitCode: null }), cleanup });
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  it("runs cleanup even when buildResult throws", async () => {
+    const cleanup = vi.fn();
+    await expect(
+      session({
+        buildResult: () => {
+          throw new Error("parser bug");
+        },
+        cleanup,
+      }),
+    ).rejects.toThrow("parser bug");
+    expect(cleanup).toHaveBeenCalledOnce();
+  });
+
+  it("warns under the caller's tag when stdout hit the capture cap", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    await session({ result: cliResult({ stdout: '{"say":"a"}\n', truncated: true }) });
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[FakeRuntime]"));
+    warn.mockRestore();
   });
 });

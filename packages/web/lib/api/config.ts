@@ -69,3 +69,24 @@ export const isApiConfigured: boolean = apiBaseUrl !== null;
 export function isWellFormedUserKey(key: string): boolean {
   return /^bv_u_[A-Za-z0-9]{16,}$/.test(key.trim());
 }
+
+/**
+ * The two values every copy-pasteable setup command needs: where the api
+ * lives and what to send as the bearer token.
+ *
+ * Both setup disclosures (`cli-mcp-instructions`, `daemon-install`) had
+ * derived these the same way — fall back to the local dev api, and show a
+ * `<your-key>` placeholder for a visitor who isn't signed in yet, so the
+ * command is still readable before they have a key. Spelling the
+ * placeholder out twice meant two chances to pick different wording for the
+ * thing users are told to substitute.
+ *
+ * Not a hook: `getUserKey` is already SSR-safe (null during pre-render), so
+ * both call sites' `typeof window !== "undefined"` guard was redundant.
+ */
+export function setupCommandContext(): { baseUrl: string; token: string } {
+  return {
+    baseUrl: apiBaseUrl ?? "http://localhost:3000",
+    token: getUserKey() ?? "<your-key>",
+  };
+}

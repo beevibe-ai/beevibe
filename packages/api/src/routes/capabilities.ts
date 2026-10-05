@@ -29,6 +29,7 @@ import { getReferencedRepos } from "@beevibe/core/services/referenced-repos";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { requireHuman } from "../auth/middleware.js";
 import { createUseRepoTool } from "../tools/use-repo.js";
+import { makeOpFailureHandler } from "./http-errors.js";
 
 export interface CapabilitiesRouterDeps {
   authMiddleware: RequestHandler;
@@ -44,6 +45,7 @@ export interface CapabilitiesRouterDeps {
 
 export function createCapabilitiesRouter(deps: CapabilitiesRouterDeps): Router {
   const router = Router();
+  const fail = makeOpFailureHandler("capabilities");
   router.use(deps.authMiddleware);
 
   // GET /capabilities/referenced-repos?task_id=...
@@ -86,8 +88,7 @@ export function createCapabilitiesRouter(deps: CapabilitiesRouterDeps): Router {
       });
       res.status(200).json({ repos });
     } catch (err) {
-      console.error("[capabilities/referenced-repos]", err);
-      res.status(500).json({ error: "scan_failed" });
+      fail(res, "referenced-repos", err, "scan_failed");
     }
   });
 
@@ -135,8 +136,7 @@ export function createCapabilitiesRouter(deps: CapabilitiesRouterDeps): Router {
       }
       res.status(202).json(result.content);
     } catch (err) {
-      console.error("[capabilities/use]", err);
-      res.status(500).json({ error: "use_failed" });
+      fail(res, "use", err);
     }
   });
 

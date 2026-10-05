@@ -19,7 +19,12 @@ import {
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { readArtifactBody } from "../views/work-product.js";
-import { invalidBody, loadOwned, requireParam } from "./http-errors.js";
+import {
+  invalidBody,
+  loadOwned,
+  makeOpFailureHandler,
+  requireParam,
+} from "./http-errors.js";
 
 export interface LearnedSkillsRouterDeps {
   authMiddleware: RequestHandler;
@@ -41,6 +46,7 @@ export interface LearnedSkillsRouterDeps {
 export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router {
   const router = Router();
   const repoRoot = resolve(deps.repoRoot ?? process.cwd());
+  const fail = makeOpFailureHandler("learned-skills");
   router.use(deps.authMiddleware);
 
   /**
@@ -63,8 +69,7 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
       const skills = await deps.learnedSkillRepo.listByOwner(req.caller!.personId);
       res.status(200).json({ skills });
     } catch (err) {
-      console.error("[learned-skills/list]", err);
-      res.status(500).json({ error: "list_failed" });
+      fail(res, "list", err);
     }
   });
 
@@ -141,8 +146,7 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
 
       res.status(201).json({ skill });
     } catch (err) {
-      console.error("[learned-skills/create]", err);
-      res.status(500).json({ error: "create_failed" });
+      fail(res, "create", err);
     }
   });
 
@@ -157,8 +161,7 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
       await deps.learnedSkillRepo.delete(id);
       res.status(204).send();
     } catch (err) {
-      console.error("[learned-skills/delete]", err);
-      res.status(500).json({ error: "delete_failed" });
+      fail(res, "delete", err);
     }
   });
 

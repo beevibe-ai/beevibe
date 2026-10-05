@@ -19,7 +19,7 @@ import type {
   SessionEventRepository,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
-import { requireParam } from "./http-errors.js";
+import { makeOpFailureHandler, requireParam } from "./http-errors.js";
 
 export interface RepoRunsRouterDeps {
   authMiddleware: RequestHandler;
@@ -56,6 +56,7 @@ function sessionEventToTranscriptKind(
 
 export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
   const router = Router();
+  const fail = makeOpFailureHandler("repo-runs");
   router.use(deps.authMiddleware);
 
   // GET /repo-runs — recent runs for the authenticated user's agents.
@@ -67,8 +68,7 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
       const runs = await deps.repoRunRepo.listRecent({ limit: 50 });
       res.status(200).json({ runs });
     } catch (err) {
-      console.error("[repo-runs/list]", err);
-      res.status(500).json({ error: "list_failed" });
+      fail(res, "list", err);
     }
   });
 
@@ -101,8 +101,7 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
       }
       res.status(200).json({ run: { ...run, transcript } });
     } catch (err) {
-      console.error("[repo-runs/get]", err);
-      res.status(500).json({ error: "get_failed" });
+      fail(res, "get", err);
     }
   });
 
@@ -133,8 +132,7 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
       });
       res.status(200).json({ run: updated });
     } catch (err) {
-      console.error("[repo-runs/cancel]", err);
-      res.status(500).json({ error: "cancel_failed" });
+      fail(res, "cancel", err);
     }
   });
 
@@ -187,8 +185,7 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
         task_id: run.task_id,
       });
     } catch (err) {
-      console.error("[repo-runs/artifact]", err);
-      res.status(500).json({ error: "artifact_failed" });
+      fail(res, "artifact", err);
     }
   });
 
