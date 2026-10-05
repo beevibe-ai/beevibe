@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { Supervisor } from "./supervisor.js";
+import { DEFAULT_MAX_CONCURRENT, Supervisor } from "./supervisor.js";
 
 describe("Supervisor", () => {
   it("respects maxConcurrent: hasCapacity flips to false at the cap", () => {
@@ -46,5 +46,69 @@ describe("Supervisor", () => {
     s.cancelAll();
     expect(abortCount).toBe(3);
     expect(s.inFlight()).toBe(0);
+  });
+});
+
+/**
+ * The no-arg constructor reads BEEVIBE_DAEMON_MAX_CONCURRENT. A bad
+ * value must not silently become a cap of 0 (which would wedge the
+ * daemon: hasCapacity() false forever, so nothing ever dispatches).
+ */
+describe("Supervisor — BEEVIBE_DAEMON_MAX_CONCURRENT", () => {
+  const KEY = "BEEVIBE_DAEMON_MAX_CONCURRENT";
+
+  function withEnv(value: string | undefined, fn: () => void): void {
+    const prev = process.env[KEY];
+    if (value === undefined) delete process.env[KEY];
+    else process.env[KEY] = value;
+    try {
+      fn();
+    } finally {
+      if (prev === undefined) delete process.env[KEY];
+      else process.env[KEY] = prev;
+    }
+  }
+
+  /** Fill to the cap to observe it, since maxConcurrent is private. */
+  function capacityOf(s: Supervisor): number {
+    let n = 0;
+    while (s.hasCapacity() && n < 100) {
+      s.start(`sess_${n}`);
+      n++;
+    }
+    return n;
+  }
+
+  it("defaults to DEFAULT_MAX_CONCURRENT when unset", () => {
+    withEnv(undefined, () => {
+      expect(capacityOf(new Supervisor())).toBe(DEFAULT_MAX_CONCURRENT);
+    });
+  });
+
+  it("honours a valid override", () => {
+    withEnv("3", () => {
+      expect(capacityOf(new Supervisor())).toBe(3);
+    });
+  });
+
+  it.each(["", "abc", "0", "-5"])(
+    "falls back to the default for the unusable value %o",
+    (raw) => {
+      withEnv(raw, () => {
+        expect(capacityOf(new Supervisor())).toBe(DEFAULT_MAX_CONCURRENT);
+      });
+    },
+  );
+
+  it("takes parseInt's truncation of a decimal override", () => {
+    withEnv("2.9", () => {
+      expect(capacityOf(new Supervisor())).toBe(2);
+    });
+  });
+
+  it("still lets an explicit constructor argument win over the env var", () => {
+    withEnv("3", () => {
+      expect(capacityOf(new Supervisor(1))).toBe(1);
+    });
   });
 });
