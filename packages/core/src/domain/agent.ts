@@ -26,7 +26,6 @@ export interface RuntimeConfig {
    */
   model?: string;
   max_turns?: number;
-  timeout_ms?: number;
   system_prompt_addition?: string;
 }
 

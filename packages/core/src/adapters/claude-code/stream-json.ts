@@ -46,8 +46,6 @@ export interface StreamJsonMessage {
   session_id?: string;
   cost_usd?: number;
   total_cost_usd?: number;
-  duration_ms?: number;
-  num_turns?: number;
   usage?: {
     input_tokens?: number;
     output_tokens?: number;
