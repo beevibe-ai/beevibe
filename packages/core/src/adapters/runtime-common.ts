@@ -1,6 +1,15 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
-import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
+import {
+  type CliProcessOptions,
+  type CliProcessResult,
+  runCliProcess,
+} from "./claude-code/spawn.js";
 
 /**
  * Shared helpers for the CLI-subprocess runtimes (claude-code, codex,
@@ -207,4 +216,85 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * Run one CLI session end to end: spawn the process, parse its NDJSON event
+ * stream line by line while it runs, forward the derived `RuntimeStep`s to
+ * `context.onStep`, then map the collected events to a `RuntimeResult`.
+ *
+ * All three CLI runtimes (claude-code, codex, opencode) had spelled out the
+ * same ~30-line tail of `execute()`: build a `handleLine` closure that parses
+ * a line / pushes it to an array / fans the extracted steps out to `onStep`,
+ * wrap it in a {@link createStdoutLineReader}, call `runCliProcess` with the
+ * same `onSpawn` pid-renaming shim, `flush()`, {@link warnIfTruncated},
+ * short-circuit on `result.aborted` via {@link cancelledResult}, and finally
+ * {@link finalizeCliResult} the parsed result. Only the event type and the
+ * three provider-specific functions ever differed, so they are the
+ * parameters here and everything else is shared.
+ *
+ * `parseLine`, `extractSteps` and `buildResult` stay injected rather than
+ * being looked up from a registry: they are the genuinely provider-specific
+ * half (each CLI has its own event schema) and keeping them as arguments
+ * means this helper needs no knowledge of which runtimes exist.
+ *
+ * `cleanup` runs after the process settles on *every* path — abort included —
+ * and after `buildResult`, so a runtime that reads a scratch file the CLI
+ * wrote (codex's `--output-last-message`) can read it in `buildResult` and
+ * still have it removed here.
+ */
+export async function runStreamingCliSession<E>(opts: {
+  /** Log prefix for the stdout-truncation warning, e.g. `"CodexRuntime"`. */
+  tag: string;
+  /** Everything `runCliProcess` needs that isn't derived from `context`. */
+  spawn: Omit<CliProcessOptions, "abortSignal" | "onLog" | "onSpawn">;
+  /** The live callbacks + abort signal for this session. */
+  context: Pick<RuntimeContext, "onStep" | "onSpawn" | "abort_signal">;
+  /** Parse one stdout line into a provider event, or `null` to skip it. */
+  parseLine: (line: string) => E | null;
+  /** Derive the live transcript steps a single event contributes. */
+  extractSteps: (event: E) => RuntimeStep[];
+  /** Map the collected event stream to a result (not called when aborted). */
+  buildResult: (
+    events: E[],
+    exitCode: number | null,
+  ) => Omit<RuntimeResult, "process_pid" | "process_group_id">;
+  /** Best-effort teardown, run on every path once the process has settled. */
+  cleanup?: () => void;
+}): Promise<RuntimeResult> {
+  const events: E[] = [];
+  // Parse incrementally during streaming rather than re-parsing the whole
+  // stdout after close; the line reader handles chunk boundaries (a single
+  // JSON event can arrive split across chunks).
+  const stdout = createStdoutLineReader((line) => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!opts.context.onStep) return;
+    for (const step of opts.extractSteps(event)) {
+      opts.context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    ...opts.spawn,
+    abortSignal: opts.context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      opts.context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+  // Emit any final partial line (a stream that ended without a trailing \n).
+  stdout.flush();
+
+  warnIfTruncated(opts.tag, result);
+
+  try {
+    if (result.aborted) return cancelledResult(result);
+    return finalizeCliResult(opts.buildResult(events, result.exitCode), result);
+  } finally {
+    // `finally` so a parser bug can't leak the scratch file the CLI left
+    // behind; `buildResult` has already read it by this point.
+    opts.cleanup?.();
+  }
 }

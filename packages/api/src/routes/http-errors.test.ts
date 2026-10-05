@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  makeOpFailureHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +218,52 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("makeOpFailureHandler", () => {
+  it("derives the error code from the operation name", () => {
+    const res = fakeRes();
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    makeOpFailureHandler("repo-runs")(res, "list", new Error("boom"));
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "list_failed" });
+    warn.mockRestore();
+  });
+
+  it("logs under [router/op] so the tag and the wire code agree", () => {
+    const res = fakeRes();
+    const err = new Error("boom");
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    makeOpFailureHandler("runtime")(res, "heartbeat", err);
+    expect(warn).toHaveBeenCalledWith("[runtime/heartbeat]", err);
+    warn.mockRestore();
+  });
+
+  it("lets a caller override a code that isn't <op>_failed", () => {
+    const res = fakeRes();
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    makeOpFailureHandler("capabilities")(res, "referenced-repos", new Error("x"), "scan_failed");
+    expect(res.body).toEqual({ error: "scan_failed" });
+    // The log tag still names the operation, not the overridden code.
+    expect(warn).toHaveBeenCalledWith("[capabilities/referenced-repos]", expect.any(Error));
+    warn.mockRestore();
+  });
+
+  it("does not reflect the error message to the client", () => {
+    const res = fakeRes();
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    makeOpFailureHandler("find-repo")(res, "search", new Error("postgres is down"));
+    expect(JSON.stringify(res.body)).not.toContain("postgres");
+    warn.mockRestore();
+  });
+
+  it("handles a thrown non-Error without stringifying it into the body", () => {
+    const res = fakeRes();
+    const warn = vi.spyOn(console, "error").mockImplementation(() => {});
+    makeOpFailureHandler("runtime")(res, "claim", "just a string");
+    expect(res.body).toEqual({ error: "claim_failed" });
+    expect(warn).toHaveBeenCalledWith("[runtime/claim]", "just a string");
+    warn.mockRestore();
   });
 });

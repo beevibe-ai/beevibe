@@ -1,5 +1,6 @@
 import type { RuntimeResult, RuntimeStep } from "../../ports/runtime.js";
 import { bareCliExitMessage } from "../claude-code/stream-json.js";
+import { CliTranscript } from "../cli-transcript.js";
 import { describeToolInput, parseNdjsonLine } from "../runtime-common.js";
 
 /**
@@ -195,7 +196,7 @@ export function parseCodexEvents(
   let assistantText = "";
   let turnFailed: string | undefined;
   let topLevelError: string | undefined;
-  const transcriptParts: string[] = [];
+  const transcript = new CliTranscript();
 
   for (const evt of events) {
     switch (evt.type) {
@@ -210,29 +211,25 @@ export function parseCodexEvents(
         break;
       case CODEX_EVENT_TYPE.Error:
         topLevelError = evt.message ?? topLevelError;
-        if (evt.message) transcriptParts.push(`[error] ${evt.message}\n`);
+        if (evt.message) transcript.error(evt.message);
         break;
       case CODEX_EVENT_TYPE.ItemCompleted: {
         const item = evt.item;
         if (!item || !item.type) break;
         if (item.type === CODEX_ITEM_TYPE.AgentMessage && item.text) {
           assistantText = item.text;
-          transcriptParts.push(`[assistant] ${item.text}\n`);
+          transcript.assistant(item.text);
         } else if (item.type === CODEX_ITEM_TYPE.McpToolCall) {
           const tool = item.tool ?? "unknown";
-          transcriptParts.push(`[tool_call] ${tool}\n`);
-          const resultSummary = summarizeMcpResult(item.result);
-          if (resultSummary || item.error?.message) {
-            transcriptParts.push(
-              `[tool_result from ${tool}] ${item.error?.message ?? resultSummary}\n`,
-            );
-          }
+          transcript.toolCall(tool);
+          // A completed MCP call with neither a result nor an error has
+          // nothing to report, and gets no `[tool_result]` line at all.
+          const detail = item.error?.message ?? summarizeMcpResult(item.result);
+          if (detail) transcript.toolResult(tool, detail);
         } else if (item.type === CODEX_ITEM_TYPE.CommandExecution) {
-          transcriptParts.push(`[tool_call] shell ${(item.command ?? "").slice(0, 200)}\n`);
+          transcript.toolCall("shell", item.command ?? "");
           if (item.aggregated_output) {
-            transcriptParts.push(
-              `[tool_result from shell] ${item.aggregated_output.slice(0, 200).replace(/\n/g, " ")}\n`,
-            );
+            transcript.toolResult("shell", item.aggregated_output);
           }
         }
         break;
@@ -260,7 +257,7 @@ export function parseCodexEvents(
   return {
     status: failed ? "failed" : "completed",
     output,
-    transcript: transcriptParts.join("") || undefined,
+    transcript: transcript.text(),
     cli_session_id: threadId,
     usage: usage
       ? {
@@ -276,12 +273,13 @@ export function parseCodexEvents(
 function summarizeMcpResult(result: { content?: unknown[] } | null | undefined): string {
   if (!result || !Array.isArray(result.content)) return "";
   // MCP result content is `[{ type: "text", text: string }, ...]`. Surface
-  // the first text block, trimmed; if none, fall back to a JSON snippet.
+  // the first text block; if none, fall back to the raw JSON. Flattening
+  // and truncation are CliTranscript's job, not this probe's.
   for (const block of result.content) {
     if (block && typeof block === "object" && (block as { type?: unknown }).type === "text") {
       const text = (block as { text?: unknown }).text;
-      if (typeof text === "string") return text.slice(0, 200).replace(/\n/g, " ");
+      if (typeof text === "string") return text;
     }
   }
-  return JSON.stringify(result.content).slice(0, 200);
+  return JSON.stringify(result.content);
 }
