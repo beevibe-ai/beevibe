@@ -100,36 +100,78 @@ function icCtx(
   return { caller, beevibeSid: "sess_test", spawnMode, capabilityNetworkEnabled };
 }
 
+/**
+ * Sorted tool names for a surface. Every assertion below compares one of
+ * these against an exact expected set rather than a `length` plus a
+ * handful of `names.has(...)` spot-checks: a magic count breaks on any
+ * tool addition while proving nothing about *which* tools are present,
+ * and spot-checks only ever covered a subset — neither can tell you a
+ * tool leaked into a surface it does not belong in, which is precisely
+ * what this file's header promises to pin.
+ */
+function toolNames(tools: ReturnType<typeof assembleTools>): string[] {
+  return tools.map((t) => t.name).sort();
+}
+
 describe("assembleTools — daemon (full surface)", () => {
-  it("team caller gets the full team surface (29 tools, includes find_repo + use_repo + watch_tasks/unwatch + session_search)", () => {
+  it("team caller gets the full team surface — task + escalation writes, spawn, capability network, watches, recall", () => {
     const tools = assembleTools(teamCtx(), buildMinimalServices());
-    expect(tools.length).toBe(29);
-    const names = new Set(tools.map((t) => t.name));
-    expect(names.has("create_task")).toBe(true);
-    expect(names.has("update_work_product")).toBe(true);
-    expect(names.has("get_work_product")).toBe(true);
-    expect(names.has("revise_task")).toBe(true);
-    expect(names.has("add_to_escalation")).toBe(true);
-    expect(names.has("create_subordinate_agent")).toBe(true);
-    expect(names.has("find_repo")).toBe(true);
-    expect(names.has("use_repo")).toBe(true);
-    expect(names.has("watch_tasks")).toBe(true);
-    expect(names.has("unwatch")).toBe(true);
-    expect(names.has("session_search")).toBe(true);
+    expect(toolNames(tools)).toEqual([
+      "add_to_escalation",
+      "ask",
+      "check_work_status",
+      "create_subordinate_agent",
+      "create_task",
+      "create_work_product",
+      "escalate_to_humans",
+      "find_peers",
+      "find_repo",
+      "find_subordinates",
+      "find_up",
+      "get_agent_profile",
+      "get_task",
+      "get_work_product",
+      "list_work_products",
+      "negotiate",
+      "report_blocker",
+      "respond_ask",
+      "respond_negotiate",
+      "revise_task",
+      "save_memory",
+      "search_context",
+      "session_search",
+      "unwatch",
+      "update_core_memory",
+      "update_progress",
+      "update_work_product",
+      "use_repo",
+      "watch_tasks",
+    ]);
   });
 
-  it("ic caller gets the IC surface (16 tools, includes find_repo + use_repo + session_search; NO watch_tasks)", () => {
+  it("ic caller gets the IC surface — capability network and recall, but no delegation, spawn or watches", () => {
     const tools = assembleTools(icCtx(), buildMinimalServices());
-    expect(tools.length).toBe(16);
-    const names = new Set(tools.map((t) => t.name));
-    expect(names.has("create_task")).toBe(false);
-    expect(names.has("respond_ask")).toBe(true);
-    expect(names.has("report_blocker")).toBe(true);
-    expect(names.has("find_repo")).toBe(true);
-    expect(names.has("use_repo")).toBe(true);
-    expect(names.has("session_search")).toBe(true);
-    expect(names.has("watch_tasks")).toBe(false);
-    expect(names.has("unwatch")).toBe(false);
+    // An IC has no subordinates to delegate to or watch for, so
+    // create_task, revise_task, create_subordinate_agent, ask/negotiate
+    // and watch_tasks/unwatch are all absent — the exact set proves it.
+    expect(toolNames(tools)).toEqual([
+      "create_work_product",
+      "find_repo",
+      "find_up",
+      "get_agent_profile",
+      "get_task",
+      "get_work_product",
+      "list_work_products",
+      "report_blocker",
+      "respond_ask",
+      "save_memory",
+      "search_context",
+      "session_search",
+      "update_core_memory",
+      "update_progress",
+      "update_work_product",
+      "use_repo",
+    ]);
   });
 
   it("owner with capability_network_enabled=false gets neither find_repo nor use_repo", () => {
@@ -149,49 +191,40 @@ describe("assembleTools — daemon (full surface)", () => {
 });
 
 describe("assembleTools — server_fallback_mesh (restricted surface)", () => {
-  it("strips mutating tools from a team caller", () => {
+  it("leaves a team caller exactly the response, read, escalation and memory tools", () => {
     const tools = assembleTools(
       teamCtx("server_fallback_mesh"),
       buildMinimalServices(),
     );
-    const names = new Set(tools.map((t) => t.name));
-    // Mutating tools — must NOT be present
-    expect(names.has("create_task")).toBe(false);
-    expect(names.has("update_work_product")).toBe(false);
-    expect(names.has("revise_task")).toBe(false);
-    expect(names.has("add_to_escalation")).toBe(false);
-    expect(names.has("create_subordinate_agent")).toBe(false);
-    expect(names.has("create_work_product")).toBe(false);
-  });
-
-  it("keeps response, read, escalation, and memory tools for a team caller", () => {
-    const tools = assembleTools(
-      teamCtx("server_fallback_mesh"),
-      buildMinimalServices(),
-    );
-    const names = new Set(tools.map((t) => t.name));
-    // Mesh response paths
-    expect(names.has("respond_ask")).toBe(true);
-    expect(names.has("respond_negotiate")).toBe(true);
-    // Escalation paths (they don't write to escalation, they just open one)
-    expect(names.has("report_blocker")).toBe(true);
-    expect(names.has("escalate_to_humans")).toBe(true);
-    // Read context
-    expect(names.has("search_context")).toBe(true);
-    expect(names.has("get_agent_profile")).toBe(true);
-    expect(names.has("get_task")).toBe(true);
-    expect(names.has("find_up")).toBe(true);
-    expect(names.has("find_subordinates")).toBe(true);
-    expect(names.has("find_peers")).toBe(true);
-    expect(names.has("list_work_products")).toBe(true);
-    expect(names.has("check_work_status")).toBe(true);
-    // Update progress on the in-flight session itself
-    expect(names.has("update_progress")).toBe(true);
-    // Memory writes are part of the conversation's record
-    expect(names.has("save_memory")).toBe(true);
-    expect(names.has("update_core_memory")).toBe(true);
-    // Layer-3 recall is read-only and scope-respected — safe under fallback
-    expect(names.has("session_search")).toBe(true);
+    // What survives and why: the mesh response paths (respond_ask,
+    // respond_negotiate), the escalation openers (report_blocker,
+    // escalate_to_humans — they open one rather than write to it), the
+    // read surface, update_progress on the in-flight session itself,
+    // memory writes as part of the conversation's record, and
+    // session_search (read-only and scope-respected). Everything that
+    // mutates state outside the conversation — create_task, revise_task,
+    // add_to_escalation, create_subordinate_agent, create_work_product,
+    // update_work_product, the capability network and the watch tools —
+    // is gone. An exact set is what makes that second half enforceable.
+    expect(toolNames(tools)).toEqual([
+      "check_work_status",
+      "escalate_to_humans",
+      "find_peers",
+      "find_subordinates",
+      "find_up",
+      "get_agent_profile",
+      "get_task",
+      "get_work_product",
+      "list_work_products",
+      "report_blocker",
+      "respond_ask",
+      "respond_negotiate",
+      "save_memory",
+      "search_context",
+      "session_search",
+      "update_core_memory",
+      "update_progress",
+    ]);
   });
 
   it("ic caller in server_fallback_mesh has no mutating tools either", () => {
@@ -199,9 +232,23 @@ describe("assembleTools — server_fallback_mesh (restricted surface)", () => {
       icCtx("server_fallback_mesh"),
       buildMinimalServices(),
     );
-    const names = new Set(tools.map((t) => t.name));
-    expect(names.has("create_task")).toBe(false);
-    expect(names.has("update_work_product")).toBe(false);
-    expect(names.has("respond_ask")).toBe(true);
+    // The team set above minus the tools an IC never had
+    // (respond_negotiate, find_subordinates, find_peers, check_work_status)
+    // and minus create_work_product/update_work_product, which the filter
+    // strips.
+    expect(toolNames(tools)).toEqual([
+      "find_up",
+      "get_agent_profile",
+      "get_task",
+      "get_work_product",
+      "list_work_products",
+      "report_blocker",
+      "respond_ask",
+      "save_memory",
+      "search_context",
+      "session_search",
+      "update_core_memory",
+      "update_progress",
+    ]);
   });
 });

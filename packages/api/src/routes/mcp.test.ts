@@ -198,25 +198,45 @@ describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
       const mcpSid = transport.sessionId;
       expect(mcpSid).toBeTruthy();
 
-      // tools/list — human caller, agent is team-tier → 29 tools.
+      // tools/list — human caller, agent is team-tier, so the surface is
+      // the full team set. `assembleTools` branches on hierarchyLevel,
+      // spawnMode and capability_network_enabled only, never on
+      // caller.source, so a bv_u_ caller sees exactly what a bv_a_
+      // team-tier caller sees — pinned as an exact set rather than a
+      // `length` plus spot-checks, which could not tell a swapped tool
+      // from the right one.
       const tools = await client.listTools();
-      const names = tools.tools.map((t) => t.name);
-      expect(names).toContain("save_memory");
-      expect(names).toContain("update_core_memory");
-      expect(names).toContain("find_subordinates");
-      expect(names).toContain("ask");
-      expect(names).toContain("negotiate");
-      expect(names).toContain("escalate_to_humans");
-      expect(names).toContain("add_to_escalation");
-      expect(names).toContain("revise_task");
-      expect(names).toContain("create_subordinate_agent");
-      expect(names).toContain("get_work_product");
-      expect(names).toContain("find_repo");
-      expect(names).toContain("use_repo");
-      expect(names).toContain("watch_tasks");
-      expect(names).toContain("unwatch");
-      expect(names).toContain("session_search");
-      expect(tools.tools.length).toBe(29);
+      expect(tools.tools.map((t) => t.name).sort()).toEqual([
+        "add_to_escalation",
+        "ask",
+        "check_work_status",
+        "create_subordinate_agent",
+        "create_task",
+        "create_work_product",
+        "escalate_to_humans",
+        "find_peers",
+        "find_repo",
+        "find_subordinates",
+        "find_up",
+        "get_agent_profile",
+        "get_task",
+        "get_work_product",
+        "list_work_products",
+        "negotiate",
+        "report_blocker",
+        "respond_ask",
+        "respond_negotiate",
+        "revise_task",
+        "save_memory",
+        "search_context",
+        "session_search",
+        "unwatch",
+        "update_core_memory",
+        "update_progress",
+        "update_work_product",
+        "use_repo",
+        "watch_tasks",
+      ]);
 
       // tools/call save_memory — should write a fact stamped with the auto-
       // created beevibe chat session id. We don't know the sid client-side;
