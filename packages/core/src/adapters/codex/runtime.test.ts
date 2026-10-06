@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import type { RuntimeContext, RuntimeStep } from "../../ports/runtime.js";
 import { CodexRuntime } from "./runtime.js";
@@ -253,6 +253,26 @@ describe("CodexRuntime.execute", () => {
     mockRunCli({ ...MOCK_OK, aborted: true, stdout: "" });
     const result = await new CodexRuntime().execute(ctx());
     expect(result.status).toBe("cancelled");
+  });
+
+  it("deletes the per-spawn last-message file on the cancelled path too", async () => {
+    // codex leaves `--output-last-message` behind, so an aborted session must
+    // still clean it up or every cancel litters the workspace.
+    mockRunCli({ ...MOCK_OK, aborted: true, stdout: "" });
+    await new CodexRuntime().execute(ctx());
+    const outputIdx = lastOptions?.args?.indexOf("--output-last-message") ?? -1;
+    const outputPath = outputIdx >= 0 ? lastOptions?.args?.[outputIdx + 1] : undefined;
+    expect(outputPath).toBeDefined();
+    expect(existsSync(outputPath!)).toBe(false);
+  });
+
+  it("deletes the per-spawn last-message file after a normal run", async () => {
+    mockRunCli();
+    await new CodexRuntime().execute(ctx());
+    const outputIdx = lastOptions?.args?.indexOf("--output-last-message") ?? -1;
+    const outputPath = outputIdx >= 0 ? lastOptions?.args?.[outputIdx + 1] : undefined;
+    expect(outputPath).toBeDefined();
+    expect(existsSync(outputPath!)).toBe(false);
   });
 
   it("surfaces stderr tail on failure so /runtime/done has something actionable", async () => {

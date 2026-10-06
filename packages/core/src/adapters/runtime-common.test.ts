@@ -1,10 +1,12 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { CliProcessOptions, CliProcessResult } from "./claude-code/spawn.js";
+import * as spawnModule from "./claude-code/spawn.js";
+import type { RuntimeContext, RuntimeResult, RuntimeStep } from "../ports/runtime.js";
 import {
   cancelledResult,
   createStdoutLineReader,
   finalizeCliResult,
+  runStreamingCliSession,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -145,5 +147,181 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+describe("runStreamingCliSession", () => {
+  interface FakeEvent {
+    n: number;
+  }
+
+  let runCliSpy: ReturnType<typeof vi.spyOn>;
+  let lastOptions: CliProcessOptions | undefined;
+
+  function mockRunCli(result: CliProcessResult): void {
+    runCliSpy.mockImplementation(async (options) => {
+      lastOptions = options;
+      if (result.pid !== null) {
+        options.onSpawn?.({
+          pid: result.pid,
+          process_group_id: result.process_group_id ?? result.pid,
+        });
+      }
+      if (result.stdout) options.onLog?.("stdout", result.stdout);
+      return result;
+    });
+  }
+
+  function context(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
+    return {
+      intent: "do the thing",
+      system_prompt_append: "",
+      workspace: { path: "/tmp/ws" },
+      ...overrides,
+    } as RuntimeContext;
+  }
+
+  /** Collects every event the helper parsed, so tests can assert on them. */
+  function session(
+    ctx: RuntimeContext,
+    extra: {
+      onSettled?: () => void;
+      extractSteps?: (e: FakeEvent) => RuntimeStep[];
+    } = {},
+  ): Promise<RuntimeResult> {
+    return runStreamingCliSession<FakeEvent>({
+      runtimeTag: "FakeRuntime",
+      context: ctx,
+      spawn: { command: "fake", args: ["--json"], cwd: "/tmp/ws" },
+      parseLine: (line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return null;
+        return { n: Number(trimmed) };
+      },
+      extractSteps: extra.extractSteps ?? (() => []),
+      onSettled: extra.onSettled,
+      buildResult: (events, exitCode) => ({
+        status: exitCode === 0 ? "completed" : "failed",
+        output: events.map((e) => e.n).join(","),
+      }),
+    });
+  }
+
+  beforeEach(() => {
+    lastOptions = undefined;
+    runCliSpy = vi.spyOn(spawnModule, "runCliProcess");
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
+  it("parses every streamed line and hands the events to buildResult", async () => {
+    mockRunCli(cliResult({ stdout: "1\n2\n3\n" }));
+    const result = await session(context());
+    expect(result.output).toBe("1,2,3");
+    expect(result.status).toBe("completed");
+  });
+
+  it("flushes a trailing partial line so the last event is not dropped", async () => {
+    // No trailing newline — the bug the shared helper exists to prevent.
+    mockRunCli(cliResult({ stdout: "1\n2" }));
+    expect((await session(context())).output).toBe("1,2");
+  });
+
+  it("emits steps through context.onStep as events stream", async () => {
+    mockRunCli(cliResult({ stdout: "1\n2\n" }));
+    const steps: RuntimeStep[] = [];
+    await session(context({ onStep: (s) => steps.push(s) }), {
+      extractSteps: (e) => [
+        { kind: "agent", description: `step ${e.n}`, timestamp: "t" },
+      ],
+    });
+    expect(steps.map((s) => s.description)).toEqual(["step 1", "step 2"]);
+  });
+
+  it("skips step extraction entirely when the caller passed no onStep", async () => {
+    mockRunCli(cliResult({ stdout: "1\n" }));
+    const extractSteps = vi.fn(() => []);
+    await session(context(), { extractSteps });
+    expect(extractSteps).not.toHaveBeenCalled();
+  });
+
+  it("forwards spawn metadata to context.onSpawn", async () => {
+    mockRunCli(cliResult({ pid: 777, process_group_id: 777 }));
+    const onSpawn = vi.fn();
+    await session(context({ onSpawn }));
+    expect(onSpawn).toHaveBeenCalledWith({ process_pid: 777, process_group_id: 777 });
+  });
+
+  it("wires the context abort signal into the spawn", async () => {
+    mockRunCli(cliResult());
+    const controller = new AbortController();
+    await session(context({ abort_signal: controller.signal }));
+    expect(lastOptions?.abortSignal).toBe(controller.signal);
+  });
+
+  it("passes the caller's spawn options straight through", async () => {
+    mockRunCli(cliResult());
+    await session(context());
+    expect(lastOptions?.command).toBe("fake");
+    expect(lastOptions?.args).toEqual(["--json"]);
+    expect(lastOptions?.cwd).toBe("/tmp/ws");
+  });
+
+  it("returns cancelled — not failed — when the caller aborted", async () => {
+    mockRunCli(cliResult({ aborted: true, exitCode: null, stdout: "1\n" }));
+    const result = await session(context());
+    expect(result.status).toBe("cancelled");
+    expect(result.output).toBe("Session cancelled.");
+  });
+
+  it("runs onSettled on the cancelled path too, so per-spawn files get cleaned up", async () => {
+    mockRunCli(cliResult({ aborted: true, exitCode: null }));
+    const onSettled = vi.fn();
+    await session(context(), { onSettled });
+    expect(onSettled).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs onSettled before buildResult on the normal path", async () => {
+    mockRunCli(cliResult({ stdout: "1\n" }));
+    const order: string[] = [];
+    await runStreamingCliSession<FakeEvent>({
+      runtimeTag: "FakeRuntime",
+      context: context(),
+      spawn: { command: "fake", cwd: "/tmp/ws" },
+      parseLine: (line) => (line.trim() ? { n: Number(line) } : null),
+      extractSteps: () => [],
+      onSettled: () => order.push("settled"),
+      buildResult: () => {
+        order.push("build");
+        return { status: "completed", output: "" };
+      },
+    });
+    expect(order).toEqual(["settled", "build"]);
+  });
+
+  it("merges process metadata and the stderr tail into the final result", async () => {
+    mockRunCli(cliResult({ exitCode: 1, stderr: "boom", stdout: "1\n" }));
+    const result = await session(context());
+    expect(result.status).toBe("failed");
+    expect(result.exit_code).toBe(1);
+    expect(result.stderr).toBe("boom");
+    expect(result.process_pid).toBe(4242);
+  });
+
+  it("warns once when the CLI's stdout was capped", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockRunCli(cliResult({ truncated: true }));
+    await session(context());
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toContain("[FakeRuntime]");
+  });
+
+  it("ignores stderr chunks when parsing the event stream", async () => {
+    runCliSpy.mockImplementation(async (options) => {
+      options.onLog?.("stderr", "99\n");
+      options.onLog?.("stdout", "1\n");
+      return cliResult();
+    });
+    expect((await session(context())).output).toBe("1");
   });
 });

@@ -1,6 +1,15 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
-import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
+import {
+  type CliProcessOptions,
+  type CliProcessResult,
+  runCliProcess,
+} from "./claude-code/spawn.js";
 
 /**
  * Shared helpers for the CLI-subprocess runtimes (claude-code, codex,
@@ -207,4 +216,91 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * The provider-specific pieces of a streaming CLI session, plus the spawn
+ * options the helper doesn't own.
+ *
+ * `TEvent` is the adapter's own NDJSON event type; this helper never inspects
+ * it, it only collects events and hands them back to {@link buildResult}.
+ */
+export interface StreamingCliSessionOptions<TEvent> {
+  /** Log tag for the truncation warning, e.g. `"CodexRuntime"`. */
+  runtimeTag: string;
+  /**
+   * Spawn options for {@link runCliProcess}. `abortSignal`, `onSpawn` and
+   * `onLog` are omitted deliberately — this helper wires all three from
+   * `context` so no adapter can forget one.
+   */
+  spawn: Omit<CliProcessOptions, "abortSignal" | "onSpawn" | "onLog">;
+  context: RuntimeContext;
+  /** One NDJSON line → one event, or `null` to skip the line. */
+  parseLine: (line: string) => TEvent | null;
+  /** One event → 0+ live-transcript steps. Only called when `onStep` is set. */
+  extractSteps: (event: TEvent) => RuntimeStep[];
+  /** Collected events + exit code → the parsed result. */
+  buildResult: (
+    events: TEvent[],
+    exitCode: number | null,
+  ) => Omit<RuntimeResult, "process_pid" | "process_group_id">;
+  /**
+   * Runs once the process has settled and stdout has been flushed, on BOTH
+   * the cancelled and the normal path, before `buildResult`. Codex uses it to
+   * read and delete its per-spawn `--output-last-message` file, which must be
+   * cleaned up even when the caller aborted.
+   */
+  onSettled?: (result: CliProcessResult) => void;
+}
+
+/**
+ * Run one CLI session end to end: spawn the process, parse its NDJSON stdout
+ * incrementally, emit live steps, and map the outcome to a `RuntimeResult`.
+ *
+ * This is the execute() skeleton every CLI runtime had written out by hand —
+ * spawn, buffer stdout into lines, flush the trailing partial line, warn on
+ * truncation, return `cancelled` on abort, else finalize with the process
+ * metadata. Three copies meant a fix to any step (the flush in particular is
+ * easy to omit, and silently drops the last event when a stream ends without
+ * a newline) had to land three times. Only the provider-specific callbacks
+ * differ, so they are parameters.
+ *
+ * Events are parsed as they stream rather than re-parsed from the captured
+ * stdout after close, so a long session doesn't pay for its transcript twice.
+ */
+export async function runStreamingCliSession<TEvent>(
+  opts: StreamingCliSessionOptions<TEvent>,
+): Promise<RuntimeResult> {
+  const { context } = opts;
+  const events: TEvent[] = [];
+
+  const stdout = createStdoutLineReader((line) => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of opts.extractSteps(event)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    ...opts.spawn,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Flush any final partial line (a stream that ended without a trailing \n).
+  stdout.flush();
+
+  warnIfTruncated(opts.runtimeTag, result);
+
+  opts.onSettled?.(result);
+
+  if (result.aborted) return cancelledResult(result);
+
+  return finalizeCliResult(opts.buildResult(events, result.exitCode), result);
 }
