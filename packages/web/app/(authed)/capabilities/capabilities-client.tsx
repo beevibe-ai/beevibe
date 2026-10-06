@@ -44,9 +44,7 @@ interface TrendingRepo {
   rank: number;
 }
 interface TrendingSnapshot {
-  fetched_at: string;
   period: TrendingWindow;
-  source: string;
   repos: TrendingRepo[];
 }
 
