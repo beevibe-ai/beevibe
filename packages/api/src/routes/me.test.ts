@@ -19,6 +19,7 @@ import type {
   RuntimeRegistry,
 } from "@beevibe/core";
 import { createMeRouter } from "./me.js";
+import { makeStubAuth } from "./test-helpers.js";
 
 const PERSON = "person_1";
 
@@ -91,21 +92,7 @@ function makeEmbed(impl: () => Promise<number[]>): EmbeddingService {
   } as unknown as EmbeddingService;
 }
 
-function stubAuth(source: "human" | "agent" | "none" = "human") {
-  return (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    if (source === "human") {
-      req.caller = {
-        source: "human",
-        agentId: "agent_a",
-        hierarchyLevel: "team",
-        personId: PERSON,
-      };
-    } else if (source === "agent") {
-      req.caller = { source: "agent", agentId: "agent_a", hierarchyLevel: "ic" };
-    }
-    next();
-  };
-}
+const stubAuth = makeStubAuth({ agentId: "agent_a", personId: PERSON });
 
 interface AppOpts {
   personRepo?: PersonRepository;
