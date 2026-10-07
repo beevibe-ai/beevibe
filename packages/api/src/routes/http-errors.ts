@@ -150,3 +150,54 @@ export function makeErrorHandler(
     });
   };
 }
+
+/**
+ * A domain error class and the HTTP response it maps to.
+ *
+ * `error` is matched with `instanceof`, so order matters when two
+ * classes in the list are in the same prototype chain — the first match
+ * wins, exactly as the hand-written `if` chains did.
+ */
+export interface ServiceErrorMapping {
+  /** Abstract-constructor type so both `class X extends Error` and abstract bases fit. */
+  error: abstract new (...args: never[]) => Error;
+  status: number;
+  /** Stable `error` code in the response body; clients branch on it. */
+  code: string;
+}
+
+/**
+ * {@link makeErrorHandler} plus a table of domain-error → HTTP mappings.
+ *
+ * `task`, `escalation`, `negotiation` and `view` all turn a service-layer
+ * throw into a response the same way: a chain of
+ * `if (err instanceof SomeNotFoundError) res.status(404).json({ error:
+ * "...", message: err.message })`, then a 500 for anything unrecognised.
+ * Only `view` reached for `makeErrorHandler` on that last branch; the
+ * other three had re-inlined the identical 500 envelope, so the one
+ * place the error shape lives had three stale copies next to it.
+ *
+ * This factors out the chain and reuses `makeErrorHandler` for the
+ * fallback, so the mapped branches stay a declarative list while the 500
+ * keeps its single definition. `context` is forwarded to the fallback
+ * unchanged — `view` passes a per-call-site label, the others don't.
+ *
+ * `message` on a mapped branch is always `err.message`, which is what
+ * all four routers already sent. A route that needs to say something
+ * else on a specific error keeps writing that branch by hand.
+ */
+export function makeServiceErrorHandler(
+  tag: string,
+  mappings: readonly ServiceErrorMapping[],
+): (err: unknown, res: Response, context?: string) => void {
+  const fallback = makeErrorHandler(tag);
+  return (err, res, context) => {
+    for (const mapping of mappings) {
+      if (err instanceof mapping.error) {
+        res.status(mapping.status).json({ error: mapping.code, message: err.message });
+        return;
+      }
+    }
+    fallback(err, res, context);
+  };
+}
