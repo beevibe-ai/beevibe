@@ -34,6 +34,7 @@ import type {
   WorkspaceManager,
 } from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
+import { makeStubAuth } from "./test-helpers.js";
 
 // ── AgentSession stub ────────────────────────────────────────────────────
 // `runMentionedAgents` news up an AgentSession and calls `.run()`. Mock
@@ -207,21 +208,7 @@ function makePorts(overrides: Partial<Ports> = {}): Ports {
  * against Postgres; these tests only care about the caller shape
  * `requireHuman` gates on, so the source is set per-app.
  */
-function stubAuth(source: "human" | "agent" | "none") {
-  return (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    if (source === "human") {
-      req.caller = {
-        source: "human",
-        agentId: TEAM_AGENT,
-        hierarchyLevel: "team",
-        personId: PERSON,
-      };
-    } else if (source === "agent") {
-      req.caller = { source: "agent", agentId: TEAM_AGENT, hierarchyLevel: "ic" };
-    }
-    next();
-  };
-}
+const stubAuth = makeStubAuth({ agentId: TEAM_AGENT, personId: PERSON });
 
 function makeApp(ports: Ports, source: "human" | "agent" | "none" = "human") {
   const app = express();

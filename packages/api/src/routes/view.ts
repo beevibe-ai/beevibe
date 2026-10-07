@@ -64,12 +64,25 @@ import {
   invalidBody,
   loadOwned,
   makeErrorHandler,
+  makeServiceErrorHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
 
 /** Every handler below passes a per-call context, e.g. `[view route: task list]`. */
 const handleError = makeErrorHandler("view route");
+
+// Two handlers in this router layer domain errors on top of the generic
+// 500. Declared next to `handleError` so all three error contracts for
+// `view` read in one place.
+const handleCoreMemoryError = makeServiceErrorHandler("view route", [
+  { error: BlockNotFoundError, status: 404, code: "block_not_found" },
+  { error: BlockCharLimitExceededError, status: 400, code: "char_limit_exceeded" },
+]);
+
+const handleShortIdError = makeServiceErrorHandler("view route", [
+  { error: AmbiguousShortIdError, status: 409, code: "ambiguous_short_id" },
+]);
 
 export interface ViewRoutesDeps {
   authMiddleware: RequestHandler;
@@ -345,15 +358,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       await deps.coreMemory.setContent(id, blockName, body.content);
       res.json({ ok: true });
     } catch (err) {
-      if (err instanceof BlockNotFoundError) {
-        res.status(404).json({ error: "block_not_found", message: err.message });
-        return;
-      }
-      if (err instanceof BlockCharLimitExceededError) {
-        res.status(400).json({ error: "char_limit_exceeded", message: err.message });
-        return;
-      }
-      handleError(err, res, "agent core_memory update");
+      handleCoreMemoryError(err, res, "agent core_memory update");
     }
   });
 
@@ -402,11 +407,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
         }
         res.json(result);
       } catch (err) {
-        if (err instanceof AmbiguousShortIdError) {
-          res.status(409).json({ error: "ambiguous_short_id", message: err.message });
-          return;
-        }
-        handleError(err, res, errorLabel);
+        handleShortIdError(err, res, errorLabel);
       }
     };
 

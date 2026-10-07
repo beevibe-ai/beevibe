@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  makeServiceErrorHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +218,71 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("makeServiceErrorHandler", () => {
+  class NotFound extends Error {}
+  class WrongState extends Error {}
+  class SubclassOfNotFound extends NotFound {}
+
+  const handle = makeServiceErrorHandler("widget route", [
+    { error: NotFound, status: 404, code: "widget_not_found" },
+    { error: WrongState, status: 409, code: "invalid_state" },
+  ]);
+
+  it("maps a listed error to its status + code, with the error's own message", () => {
+    const res = fakeRes();
+    handle(new NotFound("no widget 7"), res);
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "widget_not_found", message: "no widget 7" });
+  });
+
+  it("picks the right entry when several are listed", () => {
+    const res = fakeRes();
+    handle(new WrongState("already shipped"), res);
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({ error: "invalid_state", message: "already shipped" });
+  });
+
+  it("matches a subclass via instanceof, first entry wins", () => {
+    const res = fakeRes();
+    handle(new SubclassOfNotFound("still missing"), res);
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "widget_not_found", message: "still missing" });
+  });
+
+  it("falls back to the generic 500 for an unlisted error", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    handle(new Error("pool exhausted"), res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "pool exhausted" });
+    expect(spy).toHaveBeenCalledWith("[widget route]", expect.any(Error));
+    spy.mockRestore();
+  });
+
+  it("forwards `context` to the fallback's log tag", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    handle(new Error("boom"), fakeRes(), "widget detail");
+    expect(spy).toHaveBeenCalledWith("[widget route: widget detail]", expect.any(Error));
+    spy.mockRestore();
+  });
+
+  it("stringifies a non-Error throw on the fallback branch", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    handle("just a string", res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "just a string" });
+    spy.mockRestore();
+  });
+
+  it("an empty mapping list is just the generic handler", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeServiceErrorHandler("bare", [])(new NotFound("x"), res);
+    expect(res.statusCode).toBe(500);
+    spy.mockRestore();
   });
 });

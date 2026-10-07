@@ -25,6 +25,7 @@ import {
   BlockCharLimitExceededError,
   BlockNotFoundError,
 } from "@beevibe/core/services/memory";
+import { makeStubAuth } from "./test-helpers.js";
 
 // ── View-composer mocks ──────────────────────────────────────────────────
 // Each is pure SQL over the pool; the router's job is deciding *what* to
@@ -145,21 +146,7 @@ function makePorts(overrides: Partial<Ports> = {}): Ports {
   };
 }
 
-function stubAuth(source: "human" | "agent" | "none") {
-  return (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    if (source === "human") {
-      req.caller = {
-        source: "human",
-        agentId: AGENT,
-        hierarchyLevel: "team",
-        personId: PERSON,
-      };
-    } else if (source === "agent") {
-      req.caller = { source: "agent", agentId: AGENT, hierarchyLevel: "ic" };
-    }
-    next();
-  };
-}
+const stubAuth = makeStubAuth({ agentId: AGENT, personId: PERSON });
 
 function makeApp(ports: Ports = makePorts(), source: "human" | "agent" | "none" = "human") {
   const app = express();
