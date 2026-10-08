@@ -18,6 +18,7 @@ import {
   type TaskWatchMode,
 } from "../domain/index.js";
 import type { Pool } from "../adapters/postgres/client.js";
+import { defineNotFoundError, defineServiceError } from "./service-errors.js";
 import type { SessionRepository } from "../ports/session-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
 import type { TaskWatchRepository } from "../ports/task-watch-repo.js";
@@ -49,26 +50,14 @@ export interface UnwatchInput {
 
 const TERMINAL_SET = new Set<string>(TERMINAL_TASK_STATUSES);
 
-export class WatchAuthError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "WatchAuthError";
-  }
-}
+export const WatchAuthError = defineServiceError("WatchAuthError");
+export type WatchAuthError = InstanceType<typeof WatchAuthError>;
 
-export class WatchValidationError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = "WatchValidationError";
-  }
-}
+export const WatchValidationError = defineServiceError("WatchValidationError");
+export type WatchValidationError = InstanceType<typeof WatchValidationError>;
 
-export class WatchNotFoundError extends Error {
-  constructor(id: string) {
-    super(`task_watch ${id} not found`);
-    this.name = "WatchNotFoundError";
-  }
-}
+export const WatchNotFoundError = defineNotFoundError("WatchNotFoundError", "task_watch");
+export type WatchNotFoundError = InstanceType<typeof WatchNotFoundError>;
 
 export class WatchService {
   constructor(private deps: WatchServiceDeps) {}

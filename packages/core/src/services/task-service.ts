@@ -13,22 +13,20 @@ import type {
   WorkProductRepository,
 } from "../ports/work-product-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
+import { defineNotFoundError, defineServiceError } from "./service-errors.js";
 
-export class TaskNotFoundError extends Error {
-  readonly code = "TASK_NOT_FOUND";
-  constructor(taskId: string) {
-    super(`Task ${taskId} not found`);
-    this.name = "TaskNotFoundError";
-  }
-}
+export const TaskNotFoundError = defineNotFoundError(
+  "TaskNotFoundError",
+  "Task",
+  "TASK_NOT_FOUND",
+);
+export type TaskNotFoundError = InstanceType<typeof TaskNotFoundError>;
 
-export class InvalidTaskTransitionError extends Error {
-  readonly code = "INVALID_TASK_TRANSITION";
-  constructor(message: string) {
-    super(message);
-    this.name = "InvalidTaskTransitionError";
-  }
-}
+export const InvalidTaskTransitionError = defineServiceError(
+  "InvalidTaskTransitionError",
+  "INVALID_TASK_TRANSITION",
+);
+export type InvalidTaskTransitionError = InstanceType<typeof InvalidTaskTransitionError>;
 
 // ── Per-method accepted-from sets (M6.4 split) ────────────────────────────
 //
