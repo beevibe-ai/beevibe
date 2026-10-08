@@ -1,7 +1,7 @@
 import type { Person } from "../../domain/person.js";
 import type { PersonRepository, NewPerson, PersonPatch } from "../../ports/person-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById, updateRowById } from "./pg-helpers.js";
+import { deleteRowById, findRowById, updateRowById } from "./pg-helpers.js";
 import type { PersonRow } from "./row-types.js";
 
 export class PostgresPersonRepository implements PersonRepository {
@@ -72,7 +72,7 @@ export class PostgresPersonRepository implements PersonRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.pool.query(`DELETE FROM person WHERE id = $1`, [id]);
+    await deleteRowById(this.pool, "person", id);
   }
 }
 

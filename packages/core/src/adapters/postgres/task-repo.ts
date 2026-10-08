@@ -11,7 +11,7 @@ import type {
   TaskListFilter,
 } from "../../ports/task-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById, taskPriorityRankSql, updateRowById } from "./pg-helpers.js";
+import { deleteRowById, findRowById, taskPriorityRankSql, updateRowById } from "./pg-helpers.js";
 import type { TaskRow } from "./row-types.js";
 
 export class PostgresTaskRepository implements TaskRepository {
@@ -252,7 +252,7 @@ export class PostgresTaskRepository implements TaskRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.pool.query(`DELETE FROM task WHERE id = $1`, [id]);
+    await deleteRowById(this.pool, "task", id);
   }
 }
 

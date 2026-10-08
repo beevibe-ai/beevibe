@@ -1,7 +1,7 @@
 import type { Agent, HierarchyLevel, ReviewPolicy, RuntimeConfig } from "../../domain/agent.js";
 import type { AgentRepository, NewAgent, AgentPatch } from "../../ports/agent-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById, updateRowById } from "./pg-helpers.js";
+import { deleteRowById, findRowById, updateRowById } from "./pg-helpers.js";
 import type { AgentRow } from "./row-types.js";
 
 export class PostgresAgentRepository implements AgentRepository {
@@ -147,7 +147,7 @@ export class PostgresAgentRepository implements AgentRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.pool.query(`DELETE FROM agent WHERE id = $1`, [id]);
+    await deleteRowById(this.pool, "agent", id);
   }
 }
 

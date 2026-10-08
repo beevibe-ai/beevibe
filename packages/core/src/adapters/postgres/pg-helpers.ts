@@ -64,6 +64,24 @@ export async function findRowById<Row extends QueryResultRow, T>(
   return rows[0] ? map(rows[0]) : undefined;
 }
 
+/**
+ * Delete a row by primary key. Completes the `findRowById` / `updateRowById`
+ * family — six repositories (`agent`, `memory_fact`, `person`,
+ * `learned_skill`, `task`, `work_product`) each ended their `delete` with
+ * this exact one-liner.
+ *
+ * Like its siblings, `table` is always a literal from this package, never
+ * caller input, so interpolating it is safe.
+ *
+ * Deliberately does NOT report whether a row was actually removed: all six
+ * call sites discard the result, and every one of their ports declares
+ * `delete(id): Promise<void>` — deleting an absent id is a no-op, not an
+ * error. A caller that needs the distinction should read first.
+ */
+export async function deleteRowById(pool: Pool, table: string, id: string): Promise<void> {
+  await pool.query(`DELETE FROM ${table} WHERE id = $1`, [id]);
+}
+
 export interface UpdateRowOptions<Row extends QueryResultRow, Patch extends object, T> {
   pool: Pool;
   /** Table name — a literal from this package, interpolated into the SQL. */
