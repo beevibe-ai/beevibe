@@ -52,3 +52,54 @@ export function defaultTryGoal(opts: {
   const trimmed = desc.length > 160 ? desc.slice(0, 157) + "…" : desc;
   return `${head} Context: ${trimmed}`;
 }
+
+/**
+ * Split a GitHub repo URL into its path segments.
+ *
+ * Three call sites across `/capabilities` had each written
+ * `url.replace("https://github.com/", "").split("/")` inline and then picked
+ * different segments out of it — including two different functions both
+ * called `repoName`, in sibling files, returning different strings for the
+ * same input. The accessors below name what each one actually wanted.
+ *
+ * Only the `github.com` prefix is stripped, so a bare `"owner/repo"` or a
+ * single `"repo"` still splits usefully. A URL on another host does not —
+ * it keeps its scheme and splits on those slashes too, which makes the
+ * accessors below return nonsense for it. Every `repo_url` on the wire is a
+ * github.com link, so this preserves what the inline copies did rather than
+ * fixing it in passing; `capabilities.test.ts` pins the actual behavior.
+ */
+function repoPathParts(url: string): string[] {
+  return url.replace("https://github.com/", "").split("/");
+}
+
+/**
+ * The repo segment alone — `…/facebook/react` → `"react"`.
+ *
+ * Used where the owner is rendered separately (the skill and candidate rows
+ * pair this with {@link repoOwner}). Falls back to the first segment, then to
+ * the input, for a URL with no owner/repo pair.
+ */
+export function repoShortName(url: string): string {
+  const parts = repoPathParts(url);
+  return parts[1] ?? parts[0] ?? url;
+}
+
+/** The owner segment alone — `…/facebook/react` → `"facebook"`. */
+export function repoOwner(url: string): string {
+  return repoPathParts(url)[0] ?? "";
+}
+
+/**
+ * The `owner/repo` slug — `…/facebook/react` → `"facebook/react"`.
+ *
+ * This is the standalone label form, used where there is no separate owner
+ * field to pair with (the run rows under /capabilities). Deliberately a
+ * different function from {@link repoShortName} rather than a flag: the two
+ * were the latent disagreement that motivated moving them here, and a run
+ * row saying `facebook/react` where a skill row says `react` is a
+ * deliberate difference in those two layouts, not a bug to normalize.
+ */
+export function repoSlug(url: string): string {
+  return repoPathParts(url).slice(0, 2).join("/");
+}

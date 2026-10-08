@@ -24,7 +24,13 @@ import {
 } from "@/lib/api/client";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
-import { cleanRepoDescription, defaultTryGoal, formatStars } from "@/lib/capabilities";
+import {
+  cleanRepoDescription,
+  defaultTryGoal,
+  formatStars,
+  repoOwner,
+  repoShortName,
+} from "@/lib/capabilities";
 import { useMe } from "@/lib/hooks/use-me";
 import { EmptyState } from "@/components/empty-state";
 import { RunCard } from "./run-card";
@@ -59,11 +65,6 @@ async function fetchTrending(period: TrendingWindow): Promise<TrendingSnapshot> 
   });
   if (!res.ok) throw new Error(`trending fetch ${res.status}`);
   return (await res.json()) as TrendingSnapshot;
-}
-
-function repoName(url: string) {
-  const parts = url.replace("https://github.com/", "").split("/");
-  return parts[1] ?? parts[0] ?? url;
 }
 
 /**
@@ -318,7 +319,7 @@ function YoursTab({
 }
 
 function SkillRow({ skill }: { skill: LearnedSkill }) {
-  const name = repoName(skill.repo_url);
+  const name = repoShortName(skill.repo_url);
   const draft = `Use the "${skill.name}" capability to ${skill.goal_pattern}`;
   return (
     <Link
@@ -603,8 +604,8 @@ function SearchResults({
 }
 
 function CandidateRow({ candidate }: { candidate: FindRepoCandidate }) {
-  const name = repoName(candidate.repo_url);
-  const owner = candidate.repo_url.replace("https://github.com/", "").split("/")[0] ?? "";
+  const name = repoShortName(candidate.repo_url);
+  const owner = repoOwner(candidate.repo_url);
   const cleanedDesc = cleanRepoDescription(candidate.description);
   return (
     <TryRow
