@@ -20,7 +20,7 @@ import type {
   SkillOutcomeStats,
 } from "../../ports/repo-run-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById } from "./pg-helpers.js";
+import { deleteRowById, findRowById } from "./pg-helpers.js";
 
 interface RepoRunRow {
   id: string;
@@ -278,7 +278,7 @@ export class PostgresLearnedSkillRepository implements LearnedSkillRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.pool.query(`DELETE FROM learned_skill WHERE id = $1`, [id]);
+    await deleteRowById(this.pool, "learned_skill", id);
   }
 }
 

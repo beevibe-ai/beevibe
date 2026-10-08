@@ -18,30 +18,23 @@ import type { TaskRepository } from "../ports/task-repo.js";
 import { buildIntent, type ResumeReason } from "./agent-session.js";
 import type { DispatchService } from "./dispatch-service.js";
 import { NegotiationNotFoundError } from "./negotiation-service.js";
+import { defineNotFoundError, defineServiceError } from "./service-errors.js";
 
-export class EscalationNotFoundError extends Error {
-  readonly code = "ESCALATION_NOT_FOUND";
-  constructor(id: string) {
-    super(`Escalation ${id} not found`);
-    this.name = "EscalationNotFoundError";
-  }
-}
+export const EscalationNotFoundError = defineNotFoundError(
+  "EscalationNotFoundError",
+  "Escalation",
+  "ESCALATION_NOT_FOUND",
+);
+export type EscalationNotFoundError = InstanceType<typeof EscalationNotFoundError>;
 
-export class EscalationStateError extends Error {
-  readonly code = "ESCALATION_STATE_ERROR";
-  constructor(message: string) {
-    super(message);
-    this.name = "EscalationStateError";
-  }
-}
+export const EscalationStateError = defineServiceError(
+  "EscalationStateError",
+  "ESCALATION_STATE_ERROR",
+);
+export type EscalationStateError = InstanceType<typeof EscalationStateError>;
 
-export class NotPartyError extends Error {
-  readonly code = "NOT_PARTY";
-  constructor(message: string) {
-    super(message);
-    this.name = "NotPartyError";
-  }
-}
+export const NotPartyError = defineServiceError("NotPartyError", "NOT_PARTY");
+export type NotPartyError = InstanceType<typeof NotPartyError>;
 
 export interface EscalationServiceDeps {
   escalationRepo: EscalationRepository;

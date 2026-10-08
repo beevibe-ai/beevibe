@@ -9,7 +9,7 @@ import type {
   WorkProductPatch,
 } from "../../ports/work-product-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById } from "./pg-helpers.js";
+import { deleteRowById, findRowById } from "./pg-helpers.js";
 import type { WorkProductListRow, WorkProductRow } from "./row-types.js";
 
 // List queries skip the (potentially huge) body and surface its byte size via
@@ -100,7 +100,7 @@ export class PostgresWorkProductRepository implements WorkProductRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.pool.query(`DELETE FROM work_product WHERE id = $1`, [id]);
+    await deleteRowById(this.pool, "work_product", id);
   }
 }
 

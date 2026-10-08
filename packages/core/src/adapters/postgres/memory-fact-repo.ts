@@ -7,6 +7,7 @@ import type {
 } from "../../ports/memory-fact-repo.js";
 import type { Pool } from "./client.js";
 import type { MemoryFactRow } from "./row-types.js";
+import { deleteRowById } from "./pg-helpers.js";
 
 const FACT_COLUMNS =
   "id, agent_id, scope, fact_type, content, embedding::text AS embedding, source_session_ids, created_at";
@@ -103,7 +104,7 @@ export class PostgresMemoryFactRepository implements MemoryFactRepository {
   }
 
   async delete(id: string): Promise<void> {
-    await this.pool.query(`DELETE FROM memory_fact WHERE id = $1`, [id]);
+    await deleteRowById(this.pool, "memory_fact", id);
   }
 
   async searchByVector(params: VectorSearchParams): Promise<MemoryFact[]> {

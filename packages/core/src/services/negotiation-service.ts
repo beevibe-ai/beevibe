@@ -5,13 +5,13 @@ import type {
   NegotiationRepository,
   NegotiationRoundRepository,
 } from "../ports/negotiation-repo.js";
-export class NegotiationNotFoundError extends Error {
-  readonly code = "NEGOTIATION_NOT_FOUND";
-  constructor(id: string) {
-    super(`Negotiation ${id} not found`);
-    this.name = "NegotiationNotFoundError";
-  }
-}
+import { defineNotFoundError } from "./service-errors.js";
+export const NegotiationNotFoundError = defineNotFoundError(
+  "NegotiationNotFoundError",
+  "Negotiation",
+  "NEGOTIATION_NOT_FOUND",
+);
+export type NegotiationNotFoundError = InstanceType<typeof NegotiationNotFoundError>;
 
 export interface NegotiationServiceDeps {
   negotiationRepo: NegotiationRepository;
