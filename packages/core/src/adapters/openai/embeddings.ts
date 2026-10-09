@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import type { EmbeddingService } from "../../ports/embedding-service.js";
+import { requireApiKey } from "../provider-common.js";
 
 const MODEL = "text-embedding-3-small";
 const DIMENSIONS = 1536;
@@ -27,14 +28,8 @@ export class OpenAIEmbeddingService implements EmbeddingService {
   private client: OpenAI;
 
   constructor(config: OpenAIEmbeddingServiceConfig = {}) {
-    const apiKey = config.apiKey ?? process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error(
-        "OpenAIEmbeddingService: OPENAI_API_KEY missing (pass apiKey or set env var)",
-      );
-    }
     this.client = new OpenAI({
-      apiKey,
+      apiKey: requireApiKey("OpenAIEmbeddingService", "OPENAI_API_KEY", config.apiKey),
       timeout: config.timeoutMs ?? 15_000,
       maxRetries: 0, // we handle retries ourselves
     });

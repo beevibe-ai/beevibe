@@ -7,6 +7,7 @@ import type {
   LlmStructuredResponse,
   LlmUsage,
 } from "../../ports/llm-provider.js";
+import { requireApiKey } from "../provider-common.js";
 
 const DEFAULT_MODEL = "gpt-4o-mini";
 
@@ -29,12 +30,8 @@ export class OpenAILlmProvider implements LlmProvider {
   private defaultModel: string;
 
   constructor(config: OpenAILlmProviderConfig = {}) {
-    const apiKey = config.apiKey ?? process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      throw new Error("OpenAILlmProvider: OPENAI_API_KEY missing");
-    }
     this.client = new OpenAI({
-      apiKey,
+      apiKey: requireApiKey("OpenAILlmProvider", "OPENAI_API_KEY", config.apiKey),
       timeout: config.timeoutMs ?? 30_000,
     });
     this.defaultModel = config.defaultModel ?? DEFAULT_MODEL;
