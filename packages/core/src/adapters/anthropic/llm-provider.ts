@@ -7,6 +7,7 @@ import type {
   LlmStructuredResponse,
   LlmUsage,
 } from "../../ports/llm-provider.js";
+import { requireApiKey } from "../provider-common.js";
 
 /**
  * Default model for the memory subsystem. Haiku is cheap + fast and more than
@@ -39,12 +40,8 @@ export class AnthropicLlmProvider implements LlmProvider {
   private defaultModel: string;
 
   constructor(config: AnthropicLlmProviderConfig = {}) {
-    const apiKey = config.apiKey ?? process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      throw new Error("AnthropicLlmProvider: ANTHROPIC_API_KEY missing");
-    }
     this.client = new Anthropic({
-      apiKey,
+      apiKey: requireApiKey("AnthropicLlmProvider", "ANTHROPIC_API_KEY", config.apiKey),
       timeout: config.timeoutMs ?? 30_000,
     });
     this.defaultModel = config.defaultModel ?? DEFAULT_MODEL;

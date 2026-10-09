@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, KeyRound, Loader2, LogIn } from "lucide-react";
+import { KeyRound, LogIn } from "lucide-react";
 import { SIGNIN_NO_PASSWORD_SET } from "@beevibe/core/auth/constants";
 import { api } from "@/lib/api/client";
 import { asApiError } from "@/lib/api/http";
@@ -13,6 +13,15 @@ import {
   isWellFormedUserKey,
   setUserKey,
 } from "@/lib/api/config";
+import {
+  API_NOT_CONFIGURED_MESSAGE,
+  AuthCard,
+  AuthCardFooter,
+  AuthCardHeader,
+  AuthError,
+  AuthField,
+  AuthSubmitButton,
+} from "@/components/auth/auth-card";
 
 type Mode = "password" | "key";
 
@@ -52,7 +61,7 @@ export function SignInClient() {
   const submitPassword = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isApiConfigured) {
-      setError("Web isn't configured to talk to an api server.");
+      setError(API_NOT_CONFIGURED_MESSAGE);
       return;
     }
     setError(null);
@@ -87,7 +96,7 @@ export function SignInClient() {
   const submitKey = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isApiConfigured) {
-      setError("Web isn't configured to talk to an api server.");
+      setError(API_NOT_CONFIGURED_MESSAGE);
       return;
     }
     const key = keyDraft.trim();
@@ -113,134 +122,100 @@ export function SignInClient() {
     }
   };
 
+  const passwordMode = mode === "password";
+
   return (
-    <main className="min-h-screen flex items-center justify-center px-6 bg-background">
-      <form
-        onSubmit={mode === "password" ? submitPassword : submitKey}
-        className="w-full max-w-sm bg-card border border-border rounded-lg p-6 shadow-sm"
-      >
-        <header className="mb-5">
-          <div className="inline-flex items-center justify-center h-10 w-10 rounded-md bg-primary text-primary-foreground mb-3">
-            {mode === "password" ? (
-              <LogIn className="h-5 w-5" />
-            ) : (
-              <KeyRound className="h-5 w-5" />
-            )}
-          </div>
-          <h1 className="text-lg font-semibold tracking-tight">Sign in to beevibe</h1>
-          <p className="mt-1 text-xs text-muted-foreground leading-relaxed">
-            {mode === "password" ? (
-              <>Email + password. Your <span className="font-mono">bv_u_</span> key is generated server-side and never leaves the browser after.</>
-            ) : (
-              <>Paste your <span className="font-mono">bv_u_</span> key — for legacy accounts or CLI-provisioned users.</>
-            )}
-          </p>
-        </header>
-
-        {mode === "password" ? (
-          <>
-            <label className="block text-xs font-medium text-foreground mb-1.5" htmlFor="email">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              inputMode="email"
-              autoFocus
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="alice@example.com"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              disabled={submitting}
-            />
-
-            <label className="block text-xs font-medium text-foreground mb-1.5 mt-3" htmlFor="password">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-              disabled={submitting}
-            />
-          </>
-        ) : (
-          <>
-            <label className="block text-xs font-medium text-foreground mb-1.5" htmlFor="key">
-              User API key
-            </label>
-            <input
-              id="key"
-              type="password"
-              autoComplete="off"
-              autoFocus
-              spellCheck={false}
-              value={keyDraft}
-              onChange={(e) => setKeyDraft(e.target.value)}
-              placeholder="bv_u_..."
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
-              disabled={submitting}
-            />
-          </>
-        )}
-
-        {error ? (
-          <div className="mt-3 flex items-start gap-1.5 text-xs text-status-failed">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
-
-        <button
-          type="submit"
-          disabled={
-            submitting ||
-            (mode === "password"
-              ? email.trim().length === 0 || password.length === 0
-              : keyDraft.trim().length === 0)
-          }
-          className="mt-5 w-full inline-flex items-center justify-center gap-1.5 h-9 rounded text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {submitting ? (
-            <>
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              {mode === "password" ? "Signing in…" : "Verifying…"}
-            </>
+    <AuthCard onSubmit={passwordMode ? submitPassword : submitKey}>
+      <AuthCardHeader
+        icon={passwordMode ? LogIn : KeyRound}
+        title="Sign in to beevibe"
+        blurb={
+          passwordMode ? (
+            <>Email + password. Your <span className="font-mono">bv_u_</span> key is generated server-side and never leaves the browser after.</>
           ) : (
-            <>
-              <LogIn className="h-3.5 w-3.5" />
-              Sign in
-            </>
-          )}
-        </button>
+            <>Paste your <span className="font-mono">bv_u_</span> key — for legacy accounts or CLI-provisioned users.</>
+          )
+        }
+      />
 
-        <button
-          type="button"
-          onClick={() => {
-            setMode((m) => (m === "password" ? "key" : "password"));
-            setError(null);
-          }}
+      {passwordMode ? (
+        <>
+          <AuthField
+            first
+            id="email"
+            label="Email"
+            type="email"
+            autoComplete="email"
+            inputMode="email"
+            autoFocus
+            value={email}
+            onChange={setEmail}
+            placeholder="alice@example.com"
+            disabled={submitting}
+          />
+          <AuthField
+            id="password"
+            label="Password"
+            type="password"
+            autoComplete="current-password"
+            value={password}
+            onChange={setPassword}
+            placeholder="••••••••"
+            disabled={submitting}
+          />
+        </>
+      ) : (
+        <AuthField
+          first
+          mono
+          id="key"
+          label="User API key"
+          type="password"
+          autoComplete="off"
+          autoFocus
+          spellCheck={false}
+          value={keyDraft}
+          onChange={setKeyDraft}
+          placeholder="bv_u_..."
           disabled={submitting}
-          className="mt-3 w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:opacity-50"
-        >
-          {mode === "password"
-            ? "Or sign in with your bv_u_ key"
-            : "Or sign in with email + password"}
-        </button>
+        />
+      )}
 
-        <footer className="mt-5 pt-4 border-t border-border/60 text-[11px] text-muted-foreground leading-relaxed">
-          New here?{" "}
-          <Link href="/sign-up" className="text-foreground/80 hover:underline">
-            Sign up
-          </Link>{" "}
-          — takes about 5 seconds.
-        </footer>
-      </form>
-    </main>
+      <AuthError message={error} />
+
+      <AuthSubmitButton
+        submitting={submitting}
+        disabled={
+          passwordMode
+            ? email.trim().length === 0 || password.length === 0
+            : keyDraft.trim().length === 0
+        }
+        icon={LogIn}
+        label="Sign in"
+        busyLabel={passwordMode ? "Signing in…" : "Verifying…"}
+      />
+
+      <button
+        type="button"
+        onClick={() => {
+          setMode((m) => (m === "password" ? "key" : "password"));
+          setError(null);
+        }}
+        disabled={submitting}
+        className="mt-3 w-full text-[11px] text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:opacity-50"
+      >
+        {passwordMode
+          ? "Or sign in with your bv_u_ key"
+          : "Or sign in with email + password"}
+      </button>
+
+      <AuthCardFooter>
+        New here?{" "}
+        <Link href="/sign-up" className="text-foreground/80 hover:underline">
+          Sign up
+        </Link>{" "}
+        — takes about 5 seconds.
+      </AuthCardFooter>
+    </AuthCard>
   );
 }
