@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,109 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * Build the environment for a spawned CLI subprocess: the executor's own
+ * environment, minus the vars that would hijack the CLI's auth or trip its
+ * nesting guard, plus the per-session vars from `context.env`.
+ *
+ * Order is load-bearing. `strip` runs before `context.env` is merged, so a
+ * dispatch that deliberately sets one of the stripped vars still wins —
+ * stripping only removes what leaked in from the executor's own shell.
+ */
+export function buildCliEnv(
+  context: RuntimeContext,
+  strip: readonly string[] = [],
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = { ...process.env };
+  for (const key of strip) delete env[key];
+  if (context.env) Object.assign(env, context.env);
+  return env;
+}
+
+/**
+ * The per-spawn half of a CLI runtime's `execute()` — everything except the
+ * argv and env, which is all that is genuinely provider-specific.
+ *
+ * `parseLine` / `extractSteps` / `buildResult` are the three seams into each
+ * adapter's own `stream-json.ts`; the rest of the pipeline (line buffering,
+ * step fan-out, truncation warning, abort handling, process metadata) was
+ * written out identically in all three adapters.
+ */
+export interface CliStreamingRun<TEvent> {
+  /** Log tag for the truncation warning, e.g. `"CodexRuntime"`. */
+  runtimeTag: string;
+  command: string;
+  args: string[];
+  env: Record<string, string | undefined>;
+  /** Piped to the CLI's stdin. Claude Code feeds the intent this way. */
+  stdin?: string;
+  /** Parse one NDJSON line into a provider event, or `null` to skip it. */
+  parseLine: (line: string) => TEvent | null;
+  /** Live-transcript steps for one event. */
+  extractSteps: (event: TEvent) => RuntimeStep[];
+  buildResult: (
+    events: TEvent[],
+    exitCode: number | null,
+  ) => Omit<RuntimeResult, "process_pid" | "process_group_id">;
+  /**
+   * Per-spawn cleanup, if the runtime left anything on disk. Runs after
+   * `buildResult` on the normal path — codex's result is partly read out of
+   * the `--output-last-message` file this deletes — and immediately on the
+   * abort path, where no result is built.
+   */
+  cleanup?: () => void;
+}
+
+/**
+ * Spawn a CLI, stream its NDJSON stdout into events + live steps, and map the
+ * outcome to a `RuntimeResult`.
+ *
+ * Events are parsed incrementally as lines arrive rather than from the
+ * accumulated stdout at close, so `context.onStep` can drive the live
+ * transcript while the session is still running.
+ *
+ * An abort returns `cancelledResult` without parsing: the executor marks the
+ * session `cancelled`, so a partial result would only be misleading.
+ */
+export async function runCliStreamingSession<TEvent>(
+  context: RuntimeContext,
+  run: CliStreamingRun<TEvent>,
+): Promise<RuntimeResult> {
+  const events: TEvent[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = run.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of run.extractSteps(event)) context.onStep(step);
+  });
+
+  const result = await runCliProcess({
+    command: run.command,
+    args: run.args,
+    cwd: context.workspace.path,
+    env: run.env,
+    stdin: run.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Emit any trailing partial line — a stream that ended without a newline.
+  stdout.flush();
+
+  warnIfTruncated(run.runtimeTag, result);
+
+  if (result.aborted) {
+    run.cleanup?.();
+    return cancelledResult(result);
+  }
+
+  const parsed = run.buildResult(events, result.exitCode);
+  run.cleanup?.();
+  return finalizeCliResult(parsed, result);
 }
