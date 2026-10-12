@@ -3,10 +3,11 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, Loader2, Sparkles, UserPlus } from "lucide-react";
+import { Loader2, Sparkles, UserPlus } from "lucide-react";
 import { PASSWORD_MIN_LENGTH } from "@beevibe/core/auth/constants";
 import { api } from "@/lib/api/client";
 import { asApiError } from "@/lib/api/http";
+import { FIELD_INPUT_CLASS, FormError } from "@/components/form-error";
 import { getUserKey, isApiConfigured, setUserKey } from "@/lib/api/config";
 
 /**
@@ -115,7 +116,7 @@ export function SignUpClient() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Alice"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={FIELD_INPUT_CLASS}
           disabled={submitting}
         />
 
@@ -130,7 +131,7 @@ export function SignUpClient() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="alice@example.com"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={FIELD_INPUT_CLASS}
           disabled={submitting}
         />
 
@@ -145,16 +146,11 @@ export function SignUpClient() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder={`at least ${PASSWORD_MIN_LENGTH} characters`}
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={FIELD_INPUT_CLASS}
           disabled={submitting}
         />
 
-        {error ? (
-          <div className="mt-3 flex items-start gap-1.5 text-xs text-status-failed">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
+        {error ? <FormError className="mt-3">{error}</FormError> : null}
 
         <button
           type="submit"

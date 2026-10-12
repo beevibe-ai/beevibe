@@ -3,10 +3,12 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { AlertTriangle, KeyRound, Loader2, LogIn } from "lucide-react";
+import { KeyRound, Loader2, LogIn } from "lucide-react";
 import { SIGNIN_NO_PASSWORD_SET } from "@beevibe/core/auth/constants";
 import { api } from "@/lib/api/client";
 import { asApiError } from "@/lib/api/http";
+import { FIELD_INPUT_CLASS, FormError } from "@/components/form-error";
+import { cn } from "@/lib/utils";
 import {
   getUserKey,
   isApiConfigured,
@@ -151,7 +153,7 @@ export function SignInClient() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="alice@example.com"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className={FIELD_INPUT_CLASS}
               disabled={submitting}
             />
 
@@ -165,7 +167,7 @@ export function SignInClient() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className={FIELD_INPUT_CLASS}
               disabled={submitting}
             />
           </>
@@ -183,18 +185,13 @@ export function SignInClient() {
               value={keyDraft}
               onChange={(e) => setKeyDraft(e.target.value)}
               placeholder="bv_u_..."
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+              className={cn(FIELD_INPUT_CLASS, "font-mono")}
               disabled={submitting}
             />
           </>
         )}
 
-        {error ? (
-          <div className="mt-3 flex items-start gap-1.5 text-xs text-status-failed">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
+        {error ? <FormError className="mt-3">{error}</FormError> : null}
 
         <button
           type="submit"
