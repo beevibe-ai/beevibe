@@ -251,6 +251,33 @@ touching it.
 | `GET /activity` → `api/src/views/activity.ts` | No caller anywhere in the monorepo, but it's a **documented public endpoint** (`packages/api/README.md`). Retiring it is a product call. The web side is fully gone: the client stub (`api.activity.list`) went with #273, and `queryKeys.activity` + its no-op `lib/sse.ts` invalidations went with #283. |
 | `SkillOutcomeRepository.listBySkill` / `.statsForSkill`, `AgentProvisionEventRepository.listByParent` | Uncalled **read** halves of audit trails whose write side is live and accumulating rows (`skill_outcome` via `recordCapabilityOutcome`, `agent_provision_event` via `create_subordinate_agent`). Same call as the promotion repo below — the consumers (discovery-ranker feedback, agents-page audit panel) are unbuilt, not removed. Deleting the queries makes finishing them harder. |
 | `PostgresMemoryPromotionEventRepository` | Never constructed — `bootstrap.ts` builds the MemoryAgent without `promotionEventRepo`, so the M8.D promotion audit log never writes even though the port, the service branch, its tests and the read-side `views/promotions.ts` all exist. That's **unfinished wiring, not dead code**; deleting the adapter makes finishing it harder. |
+| `CODEX_EVENT_TYPE.ItemUpdated` (and the rest of `adapters/codex/stream-json.ts`'s constant tables) | Deliberate mirror of upstream's protocol surface — the doc at the top of the file commits to all 8 `ThreadEvent` variants. `item.updated` is *explicitly* skipped by the parser; the constant documents that choice. Mirrors stay complete. |
+| Next.js file-routed default exports under `packages/web/app/**` | `page.tsx` / `layout.tsx` / `error.tsx` / `not-found.tsx` have no import site by design — the framework routes them by path. A by-name sweep reports all 21 as unused. |
+| `packages/sandbox/src/scripts/*`, `packages/api/src/views/test-helpers.ts`, `packages/core/src/auth/test-fakes.ts`, `packages/web/test/setup.ts` | The only files an import-graph pass can't reach from an entry point. The first are hand-run ops utilities (already noted above); the rest are test infrastructure (`web/test/setup.ts` is wired through `vitest.config.ts`, which the pass doesn't parse). |
+
+### Uncalled repository reads — examined, deliberately left (sweep of 2026-10-12)
+
+Fourteen port methods have **no production call site** anywhere in the
+monorepo; each is exercised only by its own adapter test. They were traced
+one by one and left in place — unlike the legacy task-queue trio
+(`listAssignable` / `claimById` / `listReviewQueue`) removed in the same
+sweep, none of them has a successor that makes the method *wrong* to keep, and
+each is either an unbuilt consumer (same call as the audit-trail rows
+above) or a generic repo finder whose product surface currently reads
+through a `views/*.ts` SQL query instead. Re-deciding these is a product
+call, not a sweep's:
+
+`AgentRepository.findByLevel`, `EscalationRepository.listPending`,
+`MemoryFactRepository.listByAgentScope` (also a probe in
+`api/src/routes/mcp.test.ts`), `NegotiationRepository.findActiveBetween`,
+`NegotiationRoundRepository.findLatest`, `PersonRepository.findManyByIds`,
+`RepoRunRepository.listByAgent`, `WorkProductRepository.listByAgent`,
+`RuntimeRepository.listByOwnerAndCli`, `SessionRepository.listForAgent`,
+`TaskWatchRepository.listByWaiterSession` / `.listWaitingForTask` (watch
+firing lives in the `bv_event` trigger, see `views/watch-fire.db.test.ts`),
+`WorkspaceManager.removeWorkspace` (workspace GC is unbuilt),
+`AgentRuntime.shutdown` (port lifecycle contract; all three runtimes
+implement it, nothing invokes it).
 
 ## Deploying
 
