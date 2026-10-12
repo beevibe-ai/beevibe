@@ -10,6 +10,7 @@ import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { FIELD_INPUT_CLASS, FormError } from "@/components/form-error";
 import { formatRelativeTime, shortId } from "@/lib/format";
 
 export function RoomsListClient() {
@@ -79,7 +80,7 @@ export function RoomsListClient() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Plan the M9 launch"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className={FIELD_INPUT_CLASS}
               disabled={create.isPending}
             />
           </div>
@@ -92,12 +93,7 @@ export function RoomsListClient() {
             Create
           </button>
         </form>
-        {error ? (
-          <div className="mb-4 flex items-start gap-1.5 text-xs text-status-failed">
-            <AlertTriangle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-            <span>{error}</span>
-          </div>
-        ) : null}
+        {error ? <FormError className="mb-4">{error}</FormError> : null}
 
         <h2 className="text-[11px] uppercase tracking-wider text-muted-foreground mb-2 font-medium">
           Your rooms
