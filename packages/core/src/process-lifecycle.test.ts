@@ -94,7 +94,7 @@ describe("installShutdownHandlers", () => {
   });
 
   it("handles SIGINT and SIGTERM alike", async () => {
-    const exit = vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
+    vi.spyOn(process, "exit").mockImplementation((() => undefined) as never);
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const shutdown = vi.fn().mockResolvedValue(undefined);
 
