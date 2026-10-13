@@ -158,6 +158,7 @@ describe("getTask", () => {
           type: "pull_request",
           title: "PR #42",
           summary: null,
+          body: "the deliverable",
           url: "https://github.com/foo/bar/pull/42",
           provider: "github",
           external_id: "42",
@@ -174,5 +175,13 @@ describe("getTask", () => {
     expect(detail?.sessions[0]?.duration_label).toBe("30m");
     expect(detail?.work_products).toHaveLength(1);
     expect(detail?.work_products[0]?.title).toBe("PR #42");
+    // The row → domain mapping is core's `rowToWorkProduct`, shared with
+    // the repository. Pin the two parts of its contract the view depends
+    // on: every column arrives (`body` is the one only this query selects)
+    // and a NULL column becomes `undefined`, not `null`.
+    expect(detail?.work_products[0]?.body).toBe("the deliverable");
+    expect(detail?.work_products[0]?.external_id).toBe("42");
+    expect(detail?.work_products[0]?.summary).toBeUndefined();
+    expect(detail?.work_products[0]?.metadata).toBeUndefined();
   });
 });

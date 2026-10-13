@@ -1,16 +1,19 @@
 "use client";
 
-import { AlertTriangle, Bot } from "lucide-react";
+import { Bot } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
-import { PanelFooterField, PeekPanel } from "@/components/detail/peek-panel";
+import {
+  PanelFooterField,
+  PanelGate,
+  PanelSection,
+  PeekPanel,
+} from "@/components/detail/peek-panel";
 import { CoreBlockCard } from "@/components/agents/core-block-card";
 import { RecentSessionRow } from "@/components/agents/recent-session-row";
 import { RecentChatThreadRow } from "@/components/agents/recent-chat-thread-row";
-import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
-import { isApiConfigured } from "@/lib/api/config";
 import { useAgent } from "@/lib/hooks/use-agents";
 import { useIsOwner } from "@/lib/hooks/use-me";
 import { formatReviewPolicy } from "@/lib/format";
@@ -42,43 +45,24 @@ export function AgentDetailPanel({
 }
 
 function PanelBody({ agentId }: { agentId: string }) {
-  const { data, isLoading, isError } = useAgent(agentId);
-
-  if (!isApiConfigured) {
-    return (
-      <div className="p-4">
-        <EmptyState
-          icon={Bot}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL to load this agent."
-        />
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="p-5 space-y-4">
-        <Skeleton className="h-14 w-full" />
-        <Skeleton className="h-24 w-full rounded-lg" />
-        <Skeleton className="h-32 w-full rounded-lg" />
-      </div>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <div className="p-4">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load agent"
-          description={`Agent ${agentId} could not be fetched.`}
-        />
-      </div>
-    );
-  }
-
-  return <PanelLoaded agent={data} />;
+  const query = useAgent(agentId);
+  return (
+    <PanelGate
+      icon={Bot}
+      noun="agent"
+      id={agentId}
+      query={query}
+      skeleton={
+        <>
+          <Skeleton className="h-14 w-full" />
+          <Skeleton className="h-24 w-full rounded-lg" />
+          <Skeleton className="h-32 w-full rounded-lg" />
+        </>
+      }
+    >
+      {(agent) => <PanelLoaded agent={agent} />}
+    </PanelGate>
+  );
 }
 
 function PanelLoaded({ agent }: { agent: AgentDetail }) {
@@ -123,7 +107,7 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
         </div>
       </header>
 
-      <Section
+      <PanelSection
         title="Core memory"
         count={agent.core_blocks.length}
         empty="No core blocks."
@@ -140,9 +124,9 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
             ))}
           </div>
         ) : null}
-      </Section>
+      </PanelSection>
 
-      <Section
+      <PanelSection
         title="Recent sessions"
         count={agent.recent_sessions.length}
         empty="No recent sessions."
@@ -154,9 +138,9 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
             ))}
           </ul>
         ) : null}
-      </Section>
+      </PanelSection>
 
-      <Section
+      <PanelSection
         title="Recent chats"
         count={agent.recent_chat_threads.length}
         empty="No recent chats."
@@ -168,10 +152,10 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
             ))}
           </ul>
         ) : null}
-      </Section>
+      </PanelSection>
 
       {agent.outgoing_mesh_hints.length > 0 ? (
-        <Section title="Outgoing mesh" count={agent.outgoing_mesh_hints.length}>
+        <PanelSection title="Outgoing mesh" count={agent.outgoing_mesh_hints.length}>
           <ul className="space-y-2">
             {agent.outgoing_mesh_hints.map((hint, i) => (
               <li key={i} className="text-xs">
@@ -183,7 +167,7 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
               </li>
             ))}
           </ul>
-        </Section>
+        </PanelSection>
       ) : null}
 
       <footer className="mt-6 pt-4 border-t border-border/60 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
@@ -200,32 +184,6 @@ function PanelLoaded({ agent }: { agent: AgentDetail }) {
         </PanelFooterField>
       </footer>
     </div>
-  );
-}
-
-function Section({
-  title,
-  count,
-  empty,
-  children,
-}: {
-  title: string;
-  count: number;
-  empty?: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <section className="mt-6">
-      <h3 className="text-[10px] uppercase tracking-wider text-muted-foreground mb-2 font-semibold">
-        {title}{" "}
-        <span className="text-muted-foreground/70 tabular-nums">{count}</span>
-      </h3>
-      {count === 0 && empty ? (
-        <p className="text-xs text-muted-foreground italic">{empty}</p>
-      ) : (
-        children
-      )}
-    </section>
   );
 }
 
