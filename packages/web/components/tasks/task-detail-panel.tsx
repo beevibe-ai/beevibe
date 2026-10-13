@@ -2,15 +2,18 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { AlertTriangle, FileText, ListChecks, Terminal } from "lucide-react";
+import { FileText, ListChecks, Terminal } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
-import { PanelFooterField, PeekPanel } from "@/components/detail/peek-panel";
+import {
+  PanelFooterField,
+  PanelGate,
+  PanelSection,
+  PeekPanel,
+} from "@/components/detail/peek-panel";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
-import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
-import { isApiConfigured } from "@/lib/api/config";
 import { useTask } from "@/lib/hooks/use-tasks";
 import {
   useApproveTask,
@@ -20,7 +23,6 @@ import {
 import { TaskLifecycleActions } from "./task-lifecycle-actions";
 import { formatRelativeTime, shortId } from "@/lib/format";
 import { richTextToMarkdown, type RichText } from "@/components/rich-text";
-import { cn } from "@/lib/utils";
 import type { TaskDetail, TaskDetailSessionRow } from "@/lib/api/types";
 import type { WorkProduct } from "@beevibe/core";
 
@@ -54,43 +56,24 @@ export function TaskDetailPanel({
 }
 
 function PanelBody({ taskId }: { taskId: string }) {
-  const { data, isLoading, isError } = useTask(taskId);
-
-  if (!isApiConfigured) {
-    return (
-      <div className="p-4">
-        <EmptyState
-          icon={ListChecks}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL to load this task."
-        />
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="p-5 space-y-4">
-        <Skeleton className="h-7 w-3/4" />
-        <Skeleton className="h-20 w-full rounded-lg" />
-        <Skeleton className="h-32 w-full rounded-lg" />
-      </div>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <div className="p-4">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load task"
-          description={`Task ${taskId} could not be fetched.`}
-        />
-      </div>
-    );
-  }
-
-  return <PanelLoaded task={data} />;
+  const query = useTask(taskId);
+  return (
+    <PanelGate
+      icon={ListChecks}
+      noun="task"
+      id={taskId}
+      query={query}
+      skeleton={
+        <>
+          <Skeleton className="h-7 w-3/4" />
+          <Skeleton className="h-20 w-full rounded-lg" />
+          <Skeleton className="h-32 w-full rounded-lg" />
+        </>
+      }
+    >
+      {(task) => <PanelLoaded task={task} />}
+    </PanelGate>
+  );
 }
 
 function PanelLoaded({ task }: { task: TaskDetail }) {
@@ -134,23 +117,23 @@ function PanelLoaded({ task }: { task: TaskDetail }) {
       {isInReview ? <ReviewActions task={task} /> : null}
 
       {task.status === "blocked" && task.blocker_reason ? (
-        <Section title="Blocked" tone="blocked">
+        <PanelSection title="Blocked" tone="blocked">
           <p className="text-sm text-foreground">{task.blocker_reason}</p>
-        </Section>
+        </PanelSection>
       ) : null}
 
       <DescriptionSection description={task.description} />
 
       {task.result_summary ? (
-        <Section title="Result summary">
+        <PanelSection title="Result summary">
           <div className="text-foreground/85">
             <ChatMarkdown content={richTextToMarkdown(task.result_summary)} />
           </div>
-        </Section>
+        </PanelSection>
       ) : null}
 
       {activeSession ? (
-        <Section title="Active session">
+        <PanelSection title="Active session">
           <Link
             href={`/tasks/${task.id}/sessions/${activeSession.short_id}`}
             className="flex items-center gap-2 rounded-md border border-border/70 bg-background/40 px-2.5 py-1.5 hover:bg-secondary/30 transition-colors"
@@ -162,10 +145,10 @@ function PanelLoaded({ task }: { task: TaskDetail }) {
               {activeSession.elapsed}
             </span>
           </Link>
-        </Section>
+        </PanelSection>
       ) : null}
 
-      <Section
+      <PanelSection
         title="Work products"
         count={task.work_products.length}
         empty="No work products yet."
@@ -177,9 +160,9 @@ function PanelLoaded({ task }: { task: TaskDetail }) {
             ))}
           </ul>
         ) : null}
-      </Section>
+      </PanelSection>
 
-      <Section
+      <PanelSection
         title="Sessions"
         count={task.sessions.length}
         empty="No sessions yet."
@@ -191,7 +174,7 @@ function PanelLoaded({ task }: { task: TaskDetail }) {
             ))}
           </ul>
         ) : null}
-      </Section>
+      </PanelSection>
 
       <footer className="mt-6 pt-4 border-t border-border/60 grid grid-cols-2 gap-x-4 gap-y-2 text-[11px] text-muted-foreground">
         <PanelFooterField label="ID">
@@ -239,7 +222,7 @@ function DescriptionSection({ description }: { description: RichText[] | undefin
       : markdown;
 
   return (
-    <Section title="Description">
+    <PanelSection title="Description">
       {markdown ? (
         <>
           <div className="text-foreground/85">
@@ -258,55 +241,11 @@ function DescriptionSection({ description }: { description: RichText[] | undefin
       ) : (
         <p className="text-sm text-muted-foreground italic">No description.</p>
       )}
-    </Section>
+    </PanelSection>
   );
 }
 
-// ── Sections + helpers ───────────────────────────────────────────────
-
-function Section({
-  title,
-  count,
-  empty,
-  tone,
-  children,
-}: {
-  title: string;
-  count?: number;
-  empty?: string;
-  tone?: "blocked";
-  children: React.ReactNode;
-}) {
-  const isEmpty = count === 0;
-  return (
-    <section
-      className={cn(
-        "mt-5",
-        tone === "blocked" && "rounded-md border border-status-blocked/40 bg-status-blocked/5 p-3 -mx-1",
-      )}
-    >
-      <h3
-        className={cn(
-          "text-[10px] uppercase tracking-wider mb-2 font-semibold",
-          tone === "blocked" ? "text-status-blocked" : "text-muted-foreground/85",
-        )}
-      >
-        {title}
-        {count !== undefined ? (
-          <span className="ml-1 text-muted-foreground/70 tabular-nums font-normal">
-            {count}
-          </span>
-        ) : null}
-      </h3>
-      {isEmpty && empty ? (
-        <p className="text-xs text-muted-foreground italic">{empty}</p>
-      ) : (
-        children
-      )}
-    </section>
-  );
-}
-
+// ── Helpers ──────────────────────────────────────────────────────────
 
 function WorkProductRow({ wp }: { wp: WorkProduct }) {
   return (

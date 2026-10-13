@@ -104,7 +104,18 @@ export class PostgresWorkProductRepository implements WorkProductRepository {
   }
 }
 
-function rowToWorkProduct(row: WorkProductRow): WorkProduct {
+/**
+ * `work_product` row → domain `WorkProduct`.
+ *
+ * Exported because the api's task-detail view runs its own
+ * `SELECT * FROM work_product` (one query, joined into the detail payload
+ * alongside the task and its sessions) and had grown a second copy of this
+ * mapping — spelled against `Record<string, unknown>`, so every field went
+ * through a `String(...)` or an `as` cast and a newly-added column would be
+ * silently absent from that view with nothing to flag it. One mapper, one
+ * place to add the column.
+ */
+export function rowToWorkProduct(row: WorkProductRow): WorkProduct {
   return {
     id: row.id,
     task_id: row.task_id,

@@ -2,9 +2,11 @@
 
 import Link from "next/link";
 import { useRef, type ReactNode } from "react";
-import { ExternalLink, X } from "lucide-react";
+import { ExternalLink, X, type LucideIcon } from "lucide-react";
+import { isApiConfigured } from "@/lib/api/config";
 import { useDismissOnOutside } from "@/lib/hooks/use-dismiss";
 import { cn } from "@/lib/utils";
+import { ApiNotConfiguredState, LoadFailedState } from "./gate-states";
 
 /**
  * The Notion-style peek panel shell, shared by the agent peek (over the
@@ -98,5 +100,121 @@ export function PanelFooterField({
       </div>
       <div className="text-foreground/85 truncate">{children}</div>
     </div>
+  );
+}
+
+/**
+ * The three-branch preamble both peek panels open with — API not
+ * configured, still loading, failed to load — and the panel padding each
+ * branch sits in.
+ *
+ * This is `DetailGate` for a panel instead of a page: the branches and
+ * their copy are the same (shared via `gate-states.tsx`), only the
+ * wrapper differs — `p-4` around an empty state, `p-5 space-y-4` around
+ * the skeleton, and nothing around the loaded body, which owns its own
+ * padding. Both panels had written all three out by hand, with their own
+ * wording for the two failures.
+ *
+ * `skeleton` stays per-panel for the reason `DetailGate` gives: it
+ * mirrors the layout it stands in for, so a shared one would jump on
+ * hydration.
+ */
+export function PanelGate<T>({
+  icon,
+  noun,
+  id,
+  query,
+  skeleton,
+  children,
+}: {
+  /** Icon for the "API not configured" state. The error state is always AlertTriangle. */
+  icon?: LucideIcon;
+  /** Lowercase singular of what the panel shows — "task", "agent". */
+  noun: string;
+  /** Id echoed back in the error message so a failed fetch is identifiable. */
+  id: string;
+  query: { data: T | undefined; isLoading: boolean; isError: boolean };
+  skeleton: ReactNode;
+  children: (data: T) => ReactNode;
+}) {
+  if (!isApiConfigured) {
+    return (
+      <div className="p-4">
+        <ApiNotConfiguredState noun={noun} icon={icon} />
+      </div>
+    );
+  }
+
+  if (query.isLoading) {
+    return <div className="p-5 space-y-4">{skeleton}</div>;
+  }
+
+  if (query.isError || !query.data) {
+    return (
+      <div className="p-4">
+        <LoadFailedState noun={noun} id={id} />
+      </div>
+    );
+  }
+
+  return <>{children(query.data)}</>;
+}
+
+/**
+ * One titled, optionally-counted block in a peek panel's body.
+ *
+ * Both panels stack their body out of these, and both had their own copy.
+ * The copies had drifted apart on spacing (`mt-6` vs `mt-5`) and on the
+ * heading's shade (`text-muted-foreground` vs `/85`) without either
+ * reading as a deliberate difference; this keeps the task panel's values,
+ * which are the later of the two. The `tone` knob — a boxed, amber-ish
+ * treatment for a blocked task's reason — came with that copy and is
+ * unused by the agent panel.
+ *
+ * `count` is optional: omitting it renders a bare heading and suppresses
+ * the empty-state swap, which is what a section holding a single row
+ * (the active-session link) wants.
+ */
+export function PanelSection({
+  title,
+  count,
+  empty,
+  tone,
+  children,
+}: {
+  title: string;
+  count?: number;
+  /** Shown in place of `children` when `count` is 0. */
+  empty?: string;
+  tone?: "blocked";
+  children: ReactNode;
+}) {
+  return (
+    <section
+      className={cn(
+        "mt-5",
+        tone === "blocked" &&
+          "rounded-md border border-status-blocked/40 bg-status-blocked/5 p-3 -mx-1",
+      )}
+    >
+      <h3
+        className={cn(
+          "text-[10px] uppercase tracking-wider mb-2 font-semibold",
+          tone === "blocked" ? "text-status-blocked" : "text-muted-foreground/85",
+        )}
+      >
+        {title}
+        {count !== undefined ? (
+          <span className="ml-1 text-muted-foreground/70 tabular-nums font-normal">
+            {count}
+          </span>
+        ) : null}
+      </h3>
+      {count === 0 && empty ? (
+        <p className="text-xs text-muted-foreground italic">{empty}</p>
+      ) : (
+        children
+      )}
+    </section>
   );
 }

@@ -1,10 +1,10 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { AlertTriangle, type LucideIcon } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
 import { DetailShell } from "./detail-shell";
-import { EmptyState } from "@/components/empty-state";
+import { ApiNotConfiguredState, LoadFailedState } from "./gate-states";
 
 interface Props<T> {
   /**
@@ -39,18 +39,19 @@ interface Props<T> {
  * copy had drifted: the same condition variously said "run the API server",
  * "run the api server" and "run the MCP server" (one process, three names),
  * and half the pages ended the fetch error with "Check the MCP server logs"
- * while the other half dropped the hint. Both messages are derived from
- * `noun` here, so a page can't word them a fourth way.
+ * while the other half dropped the hint.
+ *
+ * The two failure branches' markup and prose now live in `gate-states.tsx`,
+ * shared with the peek panels' `PanelGate` — the panels had been hand-rolling
+ * the same three branches with their own wording. What stays here is the page
+ * flavour: every state wrapped in `DetailShell` so the nav survives a failed
+ * fetch.
  */
 export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }: Props<T>) {
   if (!isApiConfigured) {
     return (
       <DetailShell nav={nav}>
-        <EmptyState
-          icon={icon}
-          title="API not configured"
-          description={`Set NEXT_PUBLIC_BV_API_URL and run the API server to load this ${noun}.`}
-        />
+        <ApiNotConfiguredState noun={noun} icon={icon} />
       </DetailShell>
     );
   }
@@ -60,14 +61,9 @@ export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }
   }
 
   if (query.isError || !query.data) {
-    const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
     return (
       <DetailShell nav={nav}>
-        <EmptyState
-          icon={AlertTriangle}
-          title={`Couldn't load ${noun}`}
-          description={`${Noun} ${id} could not be fetched. Check the API server logs.`}
-        />
+        <LoadFailedState noun={noun} id={id} />
       </DetailShell>
     );
   }
