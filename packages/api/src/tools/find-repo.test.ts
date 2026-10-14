@@ -569,3 +569,366 @@ describe("find_repo tool — output shape", () => {
     ]);
   });
 });
+
+// ── Default HTTP clients ─────────────────────────────────────────────────
+//
+// Every test above injects a fake `communityRegistry` / `trending`, so the
+// clients that actually run in production were never exercised. They are
+// the module's whole network boundary: a 5s abort, an hour-long cache, a
+// negative cache so an outage doesn't become a hot loop, and shape guards
+// on JSON fetched from a public repo. Reached here by building the tool
+// with only `fetcher` overridden, which is how production wires it.
+
+describe("find_repo — default community registry client", () => {
+  function servicesWithFetcher(fetcher: typeof fetch) {
+    // No communityRegistry / trending override: the real HTTP clients.
+    return {
+      agentRepo: fakeAgentRepo(),
+      learnedSkillRepo: fakeLearnedSkillRepo(),
+      embeddings: fakeEmbeddingsAllMatch(),
+      fetcher,
+    };
+  }
+
+  function registryFetcher(
+    responses: Array<{ ok: boolean; body?: unknown } | "throw">,
+  ): { fetcher: typeof fetch; calls: string[] } {
+    const calls: string[] = [];
+    let i = 0;
+    const fetcher = vi.fn(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes("api.github.com")) return { ok: true, json: async () => ({ items: [] }) };
+      calls.push(u);
+      const r = responses[Math.min(i++, responses.length - 1)]!;
+      if (r === "throw") throw new Error("ENOTFOUND raw.githubusercontent.com");
+      return { ok: r.ok, json: async () => r.body };
+    }) as unknown as typeof fetch;
+    return { fetcher, calls };
+  }
+
+  it("fetches the registry once and serves the rest of the hour from cache", async () => {
+    const { fetcher, calls } = registryFetcher([
+      { ok: true, body: { skills: [{ repo_url: CAMELOT, goal_pattern: "extract tables" }] } },
+    ]);
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, servicesWithFetcher(fetcher));
+
+    await tool.handler({ goal: "extract tables from a PDF" });
+    const afterFirst = calls.filter((u) => u.includes("registry.json")).length;
+    expect(afterFirst).toBe(1);
+
+    // Second call inside the TTL must not hit the network again — the
+    // client is per-tool-instance, so this is the same cache.
+    await tool.handler({ goal: "extract tables from a PDF" });
+    expect(calls.filter((u) => u.includes("registry.json")).length).toBe(1);
+  });
+
+  it("notes the registry as unavailable on a non-2xx without failing the search", async () => {
+    const { fetcher } = registryFetcher([{ ok: false }]);
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, servicesWithFetcher(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+    expect((result.content as { notes: string[] }).notes).toContain(
+      "community registry unavailable (proceeding without Tier 1)",
+    );
+  });
+
+  it("treats a registry payload without a skills array as unavailable", async () => {
+    // The file is fetched from a public repo, so a bad deploy there must
+    // degrade rather than throw inside the ranker.
+    for (const body of [undefined, null, {}, { skills: "not-an-array" }]) {
+      const { fetcher } = registryFetcher([{ ok: true, body }]);
+      const tool = createFindRepoTool({ agentId: AGENT_ID }, servicesWithFetcher(fetcher));
+      const result = await tool.handler({ goal: "extract tables from a PDF" });
+      expect(result.isError).toBeFalsy();
+      expect((result.content as { notes: string[] }).notes).toContain(
+        "community registry unavailable (proceeding without Tier 1)",
+      );
+    }
+  });
+
+  it("swallows a transport failure (including the 5s abort) as unavailable", async () => {
+    const { fetcher } = registryFetcher(["throw"]);
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, servicesWithFetcher(fetcher));
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect((result.content as { notes: string[] }).notes).toContain(
+      "community registry unavailable (proceeding without Tier 1)",
+    );
+  });
+
+  it("passes an abort signal so a hung registry can't stall the tool", async () => {
+    const seen: Array<AbortSignal | undefined> = [];
+    const fetcher = vi.fn(async (url: unknown, init?: { signal?: AbortSignal }) => {
+      if (String(url).includes("registry.json")) seen.push(init?.signal);
+      return { ok: true, json: async () => ({ skills: [] }) };
+    }) as unknown as typeof fetch;
+
+    await createFindRepoTool({ agentId: AGENT_ID }, servicesWithFetcher(fetcher)).handler({
+      goal: "extract tables from a PDF",
+    });
+    expect(seen[0]).toBeInstanceOf(AbortSignal);
+    expect(seen[0]!.aborted).toBe(false);
+  });
+});
+
+describe("find_repo — default trending client", () => {
+  function servicesWithFetcher(fetcher: typeof fetch) {
+    return {
+      agentRepo: fakeAgentRepo(),
+      learnedSkillRepo: fakeLearnedSkillRepo(),
+      embeddings: fakeEmbeddingsAllMatch(),
+      fetcher,
+      // Keep the registry out of the way; trending is what's under test.
+      communityRegistry: emptyCommunityRegistry(),
+    };
+  }
+
+  function trendingFetcher(
+    handler: (period: string) => { ok: boolean; body?: unknown } | "throw",
+  ) {
+    const periods: string[] = [];
+    const fetcher = vi.fn(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes("api.github.com")) return { ok: true, json: async () => ({ items: [] }) };
+      const m = u.match(/trending-(\w+)\.json/);
+      if (!m) return { ok: false, json: async () => ({}) };
+      periods.push(m[1]!);
+      const r = handler(m[1]!);
+      if (r === "throw") throw new Error("socket hang up");
+      return { ok: r.ok, json: async () => r.body };
+    }) as unknown as typeof fetch;
+    return { fetcher, periods };
+  }
+
+  it("boosts a candidate that appears in the fetched snapshot", async () => {
+    // owner/name/description are what the haystack embeds — an entry
+    // with only a URL has no text to embed and is skipped by design.
+    const { fetcher } = trendingFetcher(() => ({
+      ok: true,
+      body: {
+        period: "daily",
+        repos: [
+          {
+            repo_url: CAMELOT,
+            owner: "camelot-dev",
+            name: "camelot",
+            description: "PDF table extraction",
+            stars_gained: 400,
+          },
+        ],
+      },
+    }));
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, servicesWithFetcher(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    // The snapshot entry is injected even though GitHub search returned
+    // nothing — that is the point of the inject pass.
+    expect(candidates.some((c) => normalizeForTest(c.repo_url) === normalizeForTest(CAMELOT))).toBe(
+      true,
+    );
+  });
+
+  it("caches each period separately for the hour", async () => {
+    const { fetcher, periods } = trendingFetcher(() => ({
+      ok: true,
+      body: { period: "daily", repos: [] },
+    }));
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, servicesWithFetcher(fetcher));
+
+    await tool.handler({ goal: "extract tables from a PDF" });
+    const first = [...periods];
+    expect(first.length).toBeGreaterThan(0);
+
+    await tool.handler({ goal: "extract tables from a PDF" });
+    // Same periods, no new fetches.
+    expect(periods).toEqual(first);
+  });
+
+  it("negative-caches a non-2xx so an outage is not a hot loop", async () => {
+    const { fetcher, periods } = trendingFetcher(() => ({ ok: false }));
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, servicesWithFetcher(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+    const afterFirst = periods.length;
+
+    await tool.handler({ goal: "extract tables from a PDF" });
+    // The empty result is cached under the same TTL, so the second search
+    // does not re-hit raw.githubusercontent during the outage.
+    expect(periods.length).toBe(afterFirst);
+  });
+
+  it("negative-caches a transport throw too", async () => {
+    const { fetcher, periods } = trendingFetcher(() => "throw");
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, servicesWithFetcher(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+    const afterFirst = periods.length;
+    await tool.handler({ goal: "extract tables from a PDF" });
+    expect(periods.length).toBe(afterFirst);
+  });
+
+  it("tolerates a snapshot whose repos field isn't an array", async () => {
+    const { fetcher } = trendingFetcher(() => ({
+      ok: true,
+      body: { period: "daily", repos: { not: "an array" } },
+    }));
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, servicesWithFetcher(fetcher));
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+    expect((result.content as { candidates: FindRepoCandidate[] }).candidates).toEqual([]);
+  });
+});
+
+// ── Remaining degradation paths ──────────────────────────────────────────
+
+describe("find_repo — degradation", () => {
+  it("skips the semantic tiers and says so when embedding the goal fails", async () => {
+    // Without the note the agent can't tell a thin result set from a
+    // provider outage that silently dropped trending + community.
+    const embeddings = {
+      type: "fake:broken",
+      embed: vi.fn(async () => {
+        throw new Error("openai 503");
+      }),
+      embedBatch: vi.fn(async (texts: string[]) => texts.map(() => [1, 0])),
+    } as unknown as EmbeddingService;
+
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      { ...BASE_SERVICES(), embeddings },
+    );
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+
+    expect(result.isError).toBeFalsy();
+    expect((result.content as { notes: string[] }).notes).toContain(
+      "embedding goal failed (semantic tiers skipped): openai 503",
+    );
+  });
+
+  it("notes a GitHub search that answers non-2xx", async () => {
+    const fetcher = vi.fn(async () => ({
+      ok: false,
+      status: 403,
+      json: async () => ({ message: "rate limit exceeded" }),
+    })) as unknown as typeof fetch;
+
+    const tool = createFindRepoTool(
+      { agentId: AGENT_ID },
+      { ...BASE_SERVICES(), fetcher },
+    );
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+
+    expect(result.isError).toBeFalsy();
+    // The status is carried through so a 403 (rate limit) is
+    // distinguishable from a 422 (bad query) in the transcript.
+    expect((result.content as { notes: string[] }).notes).toContain(
+      "GitHub search failed: GitHub search 403",
+    );
+  });
+});
+
+describe("find_repo — trending embedding cache", () => {
+  it("embeds a snapshot entry once and reuses the vector on later searches", async () => {
+    // Snapshots that predate the precomputed-embedding field arrive with
+    // no `embedding`, so every entry would otherwise be re-embedded on
+    // each search — a paid provider call per repo per call.
+    const UNCACHED = "https://github.com/cache-probe/widget";
+    const fetcher = vi.fn(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes("api.github.com")) return { ok: true, json: async () => ({ items: [] }) };
+      if (u.includes("trending-daily.json")) {
+        return {
+          ok: true,
+          json: async () => ({
+            period: "daily",
+            repos: [
+              {
+                repo_url: UNCACHED,
+                owner: "cache-probe",
+                name: "widget",
+                description: "extract tables from documents",
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({ period: "weekly", repos: [] }) };
+    }) as unknown as typeof fetch;
+
+    const embeddings = fakeEmbeddingsAllMatch();
+    const services = {
+      agentRepo: fakeAgentRepo(),
+      learnedSkillRepo: fakeLearnedSkillRepo(),
+      embeddings,
+      fetcher,
+      communityRegistry: emptyCommunityRegistry(),
+    };
+
+    // Two separate tool instances, so the snapshot is fetched afresh and
+    // only the module-level embedding cache can prevent the second embed.
+    await createFindRepoTool({ agentId: AGENT_ID }, services).handler({
+      goal: "extract tables from a PDF",
+    });
+    const afterFirst = vi.mocked(embeddings.embedBatch).mock.calls.length;
+    expect(afterFirst).toBeGreaterThan(0);
+
+    await createFindRepoTool({ agentId: AGENT_ID }, services).handler({
+      goal: "extract tables from a PDF",
+    });
+    expect(vi.mocked(embeddings.embedBatch).mock.calls.length).toBe(afterFirst);
+  });
+
+  it("uses an entry's precomputed embedding instead of calling the provider", async () => {
+    // fetch-trending.ts writes `embedding` into the snapshot so the read
+    // path costs no provider calls at all. A regression here turns every
+    // find_repo into one embed per trending repo.
+    const PRECOMPUTED = "https://github.com/precomputed/repo";
+    const fetcher = vi.fn(async (url: unknown) => {
+      const u = String(url);
+      if (u.includes("api.github.com")) return { ok: true, json: async () => ({ items: [] }) };
+      if (u.includes("trending-daily.json")) {
+        return {
+          ok: true,
+          json: async () => ({
+            period: "daily",
+            repos: [
+              {
+                repo_url: PRECOMPUTED,
+                owner: "precomputed",
+                name: "repo",
+                description: "extract tables from documents",
+                // Same vector the fake embedder returns for the goal, so
+                // it clears SIM_THRESHOLD and gets injected.
+                embedding: [1, 0],
+              },
+            ],
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({ period: "weekly", repos: [] }) };
+    }) as unknown as typeof fetch;
+
+    const embeddings = fakeEmbeddingsAllMatch();
+    const result = await createFindRepoTool(
+      { agentId: AGENT_ID },
+      {
+        agentRepo: fakeAgentRepo(),
+        learnedSkillRepo: fakeLearnedSkillRepo(),
+        embeddings,
+        fetcher,
+        communityRegistry: emptyCommunityRegistry(),
+      },
+    ).handler({ goal: "extract tables from a PDF" });
+
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(
+      candidates.some((c) => normalizeForTest(c.repo_url) === normalizeForTest(PRECOMPUTED)),
+    ).toBe(true);
+    // The goal still needs one embed; the entry itself needs none.
+    expect(embeddings.embedBatch).not.toHaveBeenCalled();
+  });
+});
