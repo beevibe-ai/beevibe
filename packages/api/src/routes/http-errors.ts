@@ -138,11 +138,38 @@ export async function loadOwned<T>(
  * logs. That is a real divergence in what we expose, not an accident of
  * copy-paste, so chat keeps its own handler and this factory preserves the
  * existing behavior of the other four rather than quietly changing it.
+ *
+ * `mappings` turns a router's domain errors into their documented status +
+ * code before the 500 fallback. `task`, `escalation` and `negotiation` each
+ * had this as a hand-written `instanceof` ladder ending in a verbatim copy
+ * of the fallback above; expressing the ladder as data keeps the envelope in
+ * one place while the per-router codes stay explicit at the call site.
+ *
+ * A mapped error is NOT logged — matching the previous ladders, where the
+ * early `return` on a domain error meant only unmapped (genuinely
+ * unexpected) errors reached `console.error`. Order matters: the first
+ * matching entry wins, so list a subclass ahead of its base class.
  */
+export interface DomainErrorMapping {
+  /** Error constructor to match with `instanceof`. */
+  error: new (...args: never[]) => Error;
+  /** HTTP status for this error. */
+  status: number;
+  /** Wire `error` code — part of the client contract, so always explicit. */
+  code: string;
+}
+
 export function makeErrorHandler(
   tag: string,
+  mappings: readonly DomainErrorMapping[] = [],
 ): (err: unknown, res: Response, context?: string) => void {
   return (err, res, context) => {
+    for (const mapping of mappings) {
+      if (err instanceof mapping.error) {
+        res.status(mapping.status).json({ error: mapping.code, message: err.message });
+        return;
+      }
+    }
     console.error(context ? `[${tag}: ${context}]` : `[${tag}]`, err);
     res.status(500).json({
       error: "internal_error",

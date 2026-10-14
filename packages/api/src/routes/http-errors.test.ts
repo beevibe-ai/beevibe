@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  makeErrorHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +218,93 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("makeErrorHandler", () => {
+  class NotFound extends Error {}
+  class BadState extends Error {}
+  class SubclassOfNotFound extends NotFound {}
+
+  it("500s with the internal_error envelope when nothing is mapped", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeErrorHandler("task route")(new Error("boom"), res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "boom" });
+    spy.mockRestore();
+  });
+
+  it("stringifies a non-Error throw rather than returning undefined", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeErrorHandler("task route")("just a string", res);
+    expect(res.body).toEqual({ error: "internal_error", message: "just a string" });
+    spy.mockRestore();
+  });
+
+  it("maps a domain error to its own status and code", () => {
+    const res = fakeRes();
+    const handle = makeErrorHandler("task route", [
+      { error: NotFound, status: 404, code: "task_not_found" },
+      { error: BadState, status: 409, code: "invalid_transition" },
+    ]);
+    handle(new BadState("cannot go from done to running"), res);
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({
+      error: "invalid_transition",
+      message: "cannot go from done to running",
+    });
+  });
+
+  it("does not log a mapped error", () => {
+    // The hand-written ladders this replaced returned before their
+    // console.error, so only unexpected errors ever reached the log.
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeErrorHandler("task route", [{ error: NotFound, status: 404, code: "nope" }])(
+      new NotFound("x"),
+      res,
+    );
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("logs an unmapped error with the router tag", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    const err = new Error("boom");
+    makeErrorHandler("task route", [{ error: NotFound, status: 404, code: "nope" }])(err, res);
+    expect(spy).toHaveBeenCalledWith("[task route]", err);
+    spy.mockRestore();
+  });
+
+  it("includes the per-call context in the log tag when given", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    const err = new Error("boom");
+    makeErrorHandler("view route")(err, res, "task detail");
+    expect(spy).toHaveBeenCalledWith("[view route: task detail]", err);
+    spy.mockRestore();
+  });
+
+  it("takes the first matching entry, so a subclass must be listed first", () => {
+    const res = fakeRes();
+    makeErrorHandler("route", [
+      { error: SubclassOfNotFound, status: 410, code: "gone" },
+      { error: NotFound, status: 404, code: "not_found" },
+    ])(new SubclassOfNotFound("x"), res);
+    expect(res.statusCode).toBe(410);
+    expect(res.body).toEqual({ error: "gone", message: "x" });
+  });
+
+  it("falls through to the base-class entry for the base error", () => {
+    const res = fakeRes();
+    makeErrorHandler("route", [
+      { error: SubclassOfNotFound, status: 410, code: "gone" },
+      { error: NotFound, status: 404, code: "not_found" },
+    ])(new NotFound("y"), res);
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "not_found", message: "y" });
   });
 });

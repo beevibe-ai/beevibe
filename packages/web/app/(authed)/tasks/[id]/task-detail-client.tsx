@@ -4,7 +4,6 @@ import Link from "next/link";
 import { useState } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import {
-  ArrowLeft,
   AlertTriangle,
   FileText,
   ListChecks,
@@ -19,11 +18,13 @@ import {
   useRejectTask,
   useReviseTask,
 } from "@/lib/hooks/use-task-mutations";
+import { SessionRow } from "@/components/tasks/session-row";
 import { TaskLifecycleActions } from "@/components/tasks/task-lifecycle-actions";
 import { isTerminalTaskStatus } from "@/lib/task-status";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
+import { BackLink } from "@/components/detail/back-link";
 import { DetailGate } from "@/components/detail/detail-gate";
 import { FooterField } from "@/components/detail/footer-field";
 import { HierChip } from "@/components/hier-chip";
@@ -31,26 +32,16 @@ import { Skeleton } from "@/components/skeleton";
 import { richTextToMarkdown } from "@/components/rich-text";
 import { formatRelativeTime, shortId } from "@/lib/format";
 import { slugify } from "@/lib/capabilities";
-import type { TaskDetail, TaskDetailSessionRow } from "@/lib/api/types";
+import type { TaskDetail } from "@/lib/api/types";
 import type { ReferencedRepo } from "@/lib/api/client";
 import type { WorkProduct } from "@beevibe/core";
-
-const TasksBackLink = () => (
-  <Link
-    href="/tasks"
-    className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors mb-3"
-  >
-    <ArrowLeft className="h-3 w-3" />
-    Tasks
-  </Link>
-);
 
 export function TaskDetailClient({ taskId }: { taskId: string }) {
   const query = useTask(taskId);
 
   return (
     <DetailGate
-      nav={<TasksBackLink />}
+      nav={<BackLink href="/tasks" label="Tasks" />}
       icon={ListChecks}
       noun="task"
       id={taskId}
@@ -262,7 +253,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
             ) : (
               <ul className="space-y-2">
                 {task.sessions.map((s) => (
-                  <SessionRow key={s.id} session={s} taskId={task.id} />
+                  <SessionRow key={s.id} session={s} taskId={task.id} variant="comfortable" />
                 ))}
               </ul>
             )}
@@ -700,29 +691,5 @@ function SaveAsCapabilityModal({
         )}
       </div>
     </div>
-  );
-}
-
-function SessionRow({ session, taskId }: { session: TaskDetailSessionRow; taskId: string }) {
-  return (
-    <li>
-      <Link
-        href={`/tasks/${taskId}/sessions/${session.short_id}`}
-        className="block rounded-lg border border-border bg-card p-3 hover:bg-secondary/30 transition-colors"
-      >
-        <div className="flex items-center gap-2 mb-1">
-          <Terminal className="h-3.5 w-3.5 text-muted-foreground" />
-          <span className="font-mono text-xs">{session.short_id}</span>
-          <span className="text-xs text-muted-foreground">{session.agent_label}</span>
-          <SessionStatusPill status={session.status} className="ml-auto" />
-        </div>
-        {session.result_summary ? (
-          <p className="text-xs text-muted-foreground line-clamp-2 mt-1">{session.result_summary}</p>
-        ) : null}
-        <div className="mt-1.5 text-[11px] text-muted-foreground/70 tabular-nums">
-          {session.duration_label} · {formatRelativeTime(session.started_at)}
-        </div>
-      </Link>
-    </li>
   );
 }
