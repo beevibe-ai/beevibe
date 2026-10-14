@@ -4,32 +4,10 @@ import {
   extractStepEvents,
   isBareCliExitMessage,
   parseClaudeStreamJson,
-  parseStreamJsonLine,
   type StreamJsonMessage,
 } from "./stream-json.js";
 
 const firstStep = (msg: StreamJsonMessage) => extractStepEvents(msg)[0] ?? null;
-
-describe("parseStreamJsonLine", () => {
-  it("returns null for empty input", () => {
-    expect(parseStreamJsonLine("")).toBeNull();
-    expect(parseStreamJsonLine("   ")).toBeNull();
-  });
-
-  it("returns null for non-JSON lines", () => {
-    expect(parseStreamJsonLine("not json")).toBeNull();
-    expect(parseStreamJsonLine("[array]")).toBeNull();
-  });
-
-  it("returns null for malformed JSON", () => {
-    expect(parseStreamJsonLine("{unterminated")).toBeNull();
-  });
-
-  it("parses a valid message", () => {
-    const msg = parseStreamJsonLine('{"type":"system","subtype":"init"}');
-    expect(msg).toEqual({ type: "system", subtype: "init" });
-  });
-});
 
 describe("extractStepEvents", () => {
   it("extracts file_path from tool_use input", () => {

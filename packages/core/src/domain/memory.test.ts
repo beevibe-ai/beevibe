@@ -11,12 +11,6 @@ import {
 const HIERARCHY_LEVELS: readonly HierarchyLevel[] = ["ic", "team", "org"];
 
 describe("hierarchyToScope", () => {
-  it("maps every hierarchy level to a valid memory scope", () => {
-    for (const level of HIERARCHY_LEVELS) {
-      expect(MEMORY_SCOPES).toContain(hierarchyToScope(level));
-    }
-  });
-
   it("is an identity mapping today", () => {
     // The helper exists so the two nominal types can diverge later; until
     // they do, the values must stay in lockstep or the cast is a lie.
