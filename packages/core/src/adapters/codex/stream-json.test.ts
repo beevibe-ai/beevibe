@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import {
   CODEX_EVENT_TYPE,
   CODEX_ITEM_TYPE,
-  parseCodexEventLine,
   extractCodexStepEvents,
   parseCodexEvents,
   type CodexEvent,
@@ -38,23 +37,6 @@ const AGENT_MESSAGE_COMPLETED: CodexEvent = {
     text: "Here is the fix.",
   },
 };
-
-describe("parseCodexEventLine", () => {
-  it("parses valid NDJSON", () => {
-    const evt = parseCodexEventLine(JSON.stringify(THREAD_STARTED));
-    expect(evt).toEqual(THREAD_STARTED);
-  });
-
-  it("returns null for non-JSON lines (defensive — codex's stdout is supposed to be pure NDJSON)", () => {
-    expect(parseCodexEventLine("WARN something")).toBeNull();
-    expect(parseCodexEventLine("")).toBeNull();
-    expect(parseCodexEventLine("   ")).toBeNull();
-  });
-
-  it("returns null for malformed JSON", () => {
-    expect(parseCodexEventLine("{not json")).toBeNull();
-  });
-});
 
 describe("extractCodexStepEvents", () => {
   it("emits an agent step on item.completed for agent_message", () => {

@@ -5,6 +5,7 @@ import {
   cancelledResult,
   createStdoutLineReader,
   finalizeCliResult,
+  parseNdjsonLine,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -21,6 +22,45 @@ function cliResult(overrides: Partial<CliProcessResult> = {}): CliProcessResult 
     ...overrides,
   };
 }
+
+/**
+ * The three adapters' `parse*EventLine` functions are one-line delegations to
+ * this helper, so its behavior is pinned here once rather than three times
+ * through wrappers. The wrappers themselves stay covered end-to-end by each
+ * adapter's runtime test, which feeds raw NDJSON through `onLog("stdout", …)`.
+ */
+describe("parseNdjsonLine", () => {
+  it("parses a complete JSON object line", () => {
+    expect(parseNdjsonLine('{"type":"system","subtype":"init"}')).toEqual({
+      type: "system",
+      subtype: "init",
+    });
+  });
+
+  it("tolerates surrounding whitespace", () => {
+    expect(parseNdjsonLine('  {"type":"system"}\t')).toEqual({ type: "system" });
+  });
+
+  it("returns null for blank lines", () => {
+    expect(parseNdjsonLine("")).toBeNull();
+    expect(parseNdjsonLine("   ")).toBeNull();
+  });
+
+  it("returns null for interleaved non-JSON log noise", () => {
+    // The runtimes tolerate a CLI writing warnings to stdout mid-stream.
+    expect(parseNdjsonLine("WARN provider rate limited")).toBeNull();
+  });
+
+  it("returns null for a JSON array — only objects are events", () => {
+    // The `startsWith("{")` guard: a valid-JSON array would otherwise parse
+    // and get cast to the caller's event type, which no field access survives.
+    expect(parseNdjsonLine("[1,2,3]")).toBeNull();
+  });
+
+  it("returns null for malformed JSON", () => {
+    expect(parseNdjsonLine("{unterminated")).toBeNull();
+  });
+});
 
 describe("createStdoutLineReader", () => {
   it("emits one call per complete line", () => {

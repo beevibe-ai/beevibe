@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
   OPENCODE_EVENT_TYPE,
-  parseOpenCodeEventLine,
   extractOpenCodeStepEvents,
   parseOpenCodeEvents,
   type OpenCodeEvent,
@@ -80,19 +79,6 @@ const STEP_FINISH: OpenCodeEvent = {
     },
   },
 };
-
-describe("parseOpenCodeEventLine", () => {
-  it("parses valid NDJSON wrapper events", () => {
-    const evt = parseOpenCodeEventLine(JSON.stringify(TEXT_PART_COMPLETED));
-    expect(evt).toEqual(TEXT_PART_COMPLETED);
-  });
-
-  it("returns null for empty / non-JSON lines", () => {
-    expect(parseOpenCodeEventLine("")).toBeNull();
-    expect(parseOpenCodeEventLine("   ")).toBeNull();
-    expect(parseOpenCodeEventLine("WARN provider rate limited")).toBeNull();
-  });
-});
 
 describe("extractOpenCodeStepEvents", () => {
   it("emits an agent step on text events with part.text", () => {
