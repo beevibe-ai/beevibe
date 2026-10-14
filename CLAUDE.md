@@ -204,12 +204,26 @@ table before deleting anything a tool reports as unused.
 | `migrations/*.js` | Applied migration history. **Never** delete a migration file. |
 | `scripts/provision-demo.ts`, `pre-deploy-fix-migration-names.cjs` | Invoked from `scripts/dev.sh` and `scripts/start-api.sh` — shell call sites are invisible to knip. |
 | `scripts/seed-session-search-demo.ts`, `test-session-search.ts`, `packages/sandbox/src/scripts/*` | Documented manual dev/ops utilities, run by hand via `pnpm tsx …`. |
+| `scripts/test-watch-tasks.sh` | Same class: a DB-level E2E smoke for the `task_watch` trigger, run by hand against the `pnpm dev` stack. Its own header documents the prereqs. Nothing references it by design. |
 | `OwnerLookup.singleOwnerSet` / `.meshOwners` | Called by the module-level `RESOLVERS` table, so they must stay public. Knip only checks cross-module use. |
 | `@beevibe/core/{domain,adapters/codex,adapters/opencode,services/skills,auth/constants}` subpath exports | Deliberate library surface. The codex/opencode runtimes are wired through `runtime-registry.ts`, which imports `./codex/runtime.js` directly rather than the barrel. |
 
 Most "unused export" hits are symbols used *within their own file* — the
 `export` is redundant, not dead. Leave them alone unless you're already
 editing the file.
+
+Two more shapes that read as dead to a grep but are not:
+
+- **Lookup tables consumed by index access.** `TASK_STATUSES_BY_LIFECYCLE`,
+  `TASK_STATUSES_BY_VIEW`, `STREAM_TYPE`, `BLOCK_TYPE`, `CODEX_ITEM_TYPE`,
+  `FACT_TYPE_DESCRIPTIONS`, `DEFAULT_BLOCK_TEMPLATES` are all read as
+  `TABLE[key]`, so no individual member ever appears as `TABLE.member`.
+  Grepping member names finds nothing; the table is fully live. Check how
+  the table is *read* before trusting a per-member result.
+- **Call chains broken across lines.** `api.sessions.tree` is invoked as
+  `api.sessions\n  .tree(...)`, so `git grep 'api.sessions.tree'` returns
+  zero hits on live code. Grep the last segment alone (`\.tree\b`) before
+  concluding a method is uncalled.
 
 The checks that do find real dead code here:
 
