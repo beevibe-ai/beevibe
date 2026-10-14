@@ -17,11 +17,12 @@ import {
   useRejectTask,
   useReviseTask,
 } from "@/lib/hooks/use-task-mutations";
+import { SessionRow } from "./session-row";
 import { TaskLifecycleActions } from "./task-lifecycle-actions";
 import { formatRelativeTime, shortId } from "@/lib/format";
 import { richTextToMarkdown, type RichText } from "@/components/rich-text";
 import { cn } from "@/lib/utils";
-import type { TaskDetail, TaskDetailSessionRow } from "@/lib/api/types";
+import type { TaskDetail } from "@/lib/api/types";
 import type { WorkProduct } from "@beevibe/core";
 
 /**
@@ -187,7 +188,7 @@ function PanelLoaded({ task }: { task: TaskDetail }) {
         {task.sessions.length > 0 ? (
           <ul className="space-y-1.5">
             {task.sessions.map((s) => (
-              <SessionRow key={s.id} session={s} taskId={task.id} />
+              <SessionRow key={s.id} session={s} taskId={task.id} variant="compact" />
             ))}
           </ul>
         ) : null}
@@ -327,40 +328,6 @@ function WorkProductRow({ wp }: { wp: WorkProduct }) {
         <span className="text-[9px] uppercase tracking-wider text-muted-foreground shrink-0 mt-0.5">
           {wp.type.replace(/_/g, " ")}
         </span>
-      </Link>
-    </li>
-  );
-}
-
-function SessionRow({
-  session,
-  taskId,
-}: {
-  session: TaskDetailSessionRow;
-  taskId: string;
-}) {
-  return (
-    <li>
-      <Link
-        href={`/tasks/${taskId}/sessions/${session.short_id}`}
-        className="block rounded-md border border-border/70 bg-background/40 px-2.5 py-1.5 hover:bg-secondary/30 transition-colors"
-      >
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <Terminal className="h-3 w-3 text-muted-foreground" />
-          <span className="font-mono text-[11px]">{session.short_id}</span>
-          <span className="text-[11px] text-muted-foreground truncate">
-            {session.agent_label}
-          </span>
-          <SessionStatusPill status={session.status} className="ml-auto" />
-        </div>
-        {session.result_summary ? (
-          <p className="text-[11px] text-muted-foreground line-clamp-2 mt-1">
-            {session.result_summary}
-          </p>
-        ) : null}
-        <div className="mt-1 text-[10px] text-muted-foreground/70 tabular-nums">
-          {session.duration_label} · {formatRelativeTime(session.started_at)}
-        </div>
       </Link>
     </li>
   );
