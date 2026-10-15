@@ -24,6 +24,7 @@ import { ToolStepList } from "@/components/chat/tool-step-list";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
+import { resolveDetailState } from "@/components/detail/detail-state";
 import { formatRelativeTime, idSuffix, sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +34,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
   const [draft, setDraft] = useState("");
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
-  const { data, isLoading, isError } = useQuery<RoomDetail>({
+  const query = useQuery<RoomDetail>({
     queryKey: queryKeys.rooms.detail(roomId),
     queryFn: ({ signal }) => api.rooms.get(roomId, { signal }),
     enabled: isApiConfigured && !!roomId,
@@ -119,16 +120,11 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
       top: transcriptRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [data?.messages.length, send.isPending]);
+  }, [query.data?.messages.length, send.isPending]);
 
-  if (!isApiConfigured) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <EmptyState icon={Users} title="API not configured" />
-      </div>
-    );
-  }
-  if (isLoading) {
+  const state = resolveDetailState("room", roomId, query);
+
+  if (state.kind === "loading") {
     return (
       <div className="flex-1 px-6 py-6">
         <Skeleton className="h-12 w-1/2 mb-4" />
@@ -136,17 +132,23 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
       </div>
     );
   }
-  if (isError || !data) {
+
+  if (state.kind !== "ready") {
     return (
       <div className="flex-1 flex items-center justify-center">
         <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load room"
-          description={`Room ${roomId} could not be fetched.`}
+          icon={state.kind === "unconfigured" ? Users : AlertTriangle}
+          title={state.title}
+          description={state.description}
         />
       </div>
     );
   }
+
+  // Past the gate the row is non-optional, so the transcript below reads it
+  // directly. Kept under the name `data` the rest of the component already
+  // uses, rather than renaming ~10 call sites for no behavioural gain.
+  const data = state.data;
 
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
