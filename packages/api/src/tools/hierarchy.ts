@@ -53,6 +53,11 @@ import {
   type ResumeReason,
 } from "@beevibe/core/services/agent-session";
 import { toolErrorFromThrown } from "./errors.js";
+import {
+  escalationOpenQuestionsSchema,
+  escalationProposalsSchema,
+  readEscalationContribution,
+} from "./escalation-input.js";
 import type { AgentTool } from "./types.js";
 
 // ── Agent-callable status subsets ─────────────────────────────────────────
@@ -951,24 +956,12 @@ function addToEscalationTool(
           type: "string",
           description: "The escalation id (from the 'escalated' sentinel).",
         },
-        proposals: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              title: { type: "string" },
-              description: { type: "string" },
-              tradeoffs: { type: "string" },
-            },
-            required: ["title", "description"],
-          },
-          description: "Your proposals for the human (different from initiator's).",
-        },
-        open_questions: {
-          type: "array",
-          items: { type: "string" },
-          description: "Questions in your domain that humans should know about.",
-        },
+        proposals: escalationProposalsSchema(
+          "Your proposals for the human (different from initiator's).",
+        ),
+        open_questions: escalationOpenQuestionsSchema(
+          "Questions in your domain that humans should know about.",
+        ),
       },
       required: ["escalation_id"],
     },
@@ -978,12 +971,7 @@ function addToEscalationTool(
         if (!escalationId) {
           return { content: { error: "escalation_id required" }, isError: true };
         }
-        const proposals = Array.isArray(input.proposals)
-          ? (input.proposals as Array<{ title: string; description: string; tradeoffs?: string }>)
-          : undefined;
-        const openQuestions = Array.isArray(input.open_questions)
-          ? (input.open_questions as string[]).filter((q) => typeof q === "string")
-          : undefined;
+        const { proposals, openQuestions } = readEscalationContribution(input);
 
         const updated = await services.escalationService.addContribution({
           escalationId,
