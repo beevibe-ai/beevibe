@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -10,6 +15,12 @@ import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
  * adapters live here so there is a single source of truth; the provider-
  * specific event schemas and their `switch`-based parsers stay in each
  * adapter's own `stream-json.ts` (they are genuinely different and must).
+ *
+ * {@link runCliSession} is the entry point: it owns the whole spawn →
+ * stream-parse → finalize sequence, so an adapter's `execute` is reduced to
+ * building argv and naming its parsers. The smaller helpers below are the
+ * steps of that sequence, still exported because their unit tests drive them
+ * directly and a future runtime may need a step without the whole.
  */
 
 /**
@@ -207,4 +218,110 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+
+/**
+ * Build the environment for a CLI subprocess: the executor's own env, minus
+ * the vars this provider must not inherit, plus the per-session overrides
+ * from `context.env`.
+ *
+ * `stripVars` is what differs between the runtimes, and the order matters:
+ * the strip happens before `context.env` is merged, so a var the caller sets
+ * deliberately survives even when the same name is being stripped from the
+ * ambient env. Claude Code strips its nesting guards and Anthropic auth,
+ * codex strips OpenAI auth, opencode strips nothing — it routes on those
+ * keys. See each adapter's constant for why.
+ */
+export function cliEnv(
+  context: RuntimeContext,
+  stripVars: readonly string[] = [],
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = { ...process.env };
+  for (const key of stripVars) delete env[key];
+  if (context.env) Object.assign(env, context.env);
+  return env;
+}
+
+export interface CliSessionSpec<E> {
+  /** Tag for the truncation warning, e.g. `"CodexRuntime"`. */
+  tag: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /** Piped to the CLI's stdin. Claude Code feeds the intent this way. */
+  stdin?: string;
+  /** Parse one NDJSON line into a provider event; `null` skips the line. */
+  parseLine: (line: string) => E | null;
+  /** Fan one parsed event out to live-transcript steps. */
+  extractSteps: (event: E) => RuntimeStep[];
+  /** Map the collected events to a result once the process has settled. */
+  parseResult: (events: E[], exitCode: number | null) => RuntimeResult;
+  /**
+   * Runs after the stream is flushed and before the abort check, on every
+   * path. Codex uses it to read and delete its `--output-last-message` file;
+   * doing so on the aborted path too is harmless (the value is discarded)
+   * and means the temp file is never left behind.
+   */
+  onSettled?: (result: CliProcessResult) => void;
+}
+
+/**
+ * Run one CLI session end to end: spawn, stream-parse stdout, fan steps out
+ * to the live transcript, and map the outcome to a `RuntimeResult`.
+ *
+ * This is the orchestration all three CLI runtimes had written out
+ * identically — collect events off a line reader, call `onStep` per step,
+ * flush, warn on truncation, branch on abort, finalize. Only the pieces on
+ * {@link CliSessionSpec} actually differ between them, so they pass those
+ * and share the sequence. The provider-specific event schemas and their
+ * parsers stay in each adapter's own `stream-json.ts`.
+ *
+ * The `onSpawn` adapter is part of the shared sequence: `runCliProcess`
+ * reports `{ pid, process_group_id }` and `RuntimeContext` wants
+ * `{ process_pid, process_group_id }`, a rename each adapter was doing by
+ * hand.
+ */
+export async function runCliSession<E>(
+  context: RuntimeContext,
+  spec: CliSessionSpec<E>,
+): Promise<RuntimeResult> {
+  // Parse incrementally during streaming rather than re-reading stdout after
+  // close. The line reader handles chunk boundaries — a single JSON event can
+  // arrive split across chunks, or several can share one.
+  const events: E[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = spec.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of spec.extractSteps(event)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: spec.command,
+    args: spec.args,
+    cwd: spec.cwd,
+    env: spec.env,
+    stdin: spec.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Emit any trailing partial line (a stream that ended without a newline).
+  stdout.flush();
+
+  warnIfTruncated(spec.tag, result);
+
+  spec.onSettled?.(result);
+
+  if (result.aborted) return cancelledResult(result);
+
+  return finalizeCliResult(spec.parseResult(events, result.exitCode), result);
 }
