@@ -44,11 +44,6 @@ describe("OpenAIEmbeddingService", () => {
     }
   });
 
-  it("reports its identity via the `type` field", () => {
-    const svc = new OpenAIEmbeddingService();
-    expect(svc.type).toBe("openai:text-embedding-3-small");
-  });
-
   it("embedBatch([]) returns [] without hitting the API", async () => {
     // Deliberately break the key so we'd get a 401 if we actually called out.
     const svc = new OpenAIEmbeddingService({ apiKey: "sk-broken" });

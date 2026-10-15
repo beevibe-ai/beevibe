@@ -6,22 +6,12 @@ import {
 } from "./runtime-registry.js";
 
 describe("createDefaultRuntimeRegistry", () => {
-  it("registers claude-code", () => {
+  // Exact set rather than three per-runtime presence checks: this also fails
+  // when a fourth runtime is wired in without the composition roots and the
+  // daemon's CLI detection being updated to match.
+  it("registers exactly claude, codex and opencode", () => {
     const registry = createDefaultRuntimeRegistry();
-    expect(registry["claude"]).toBeDefined();
-    expect(registry["claude"]!.type).toBe("claude");
-  });
-
-  it("registers opencode", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["opencode"]).toBeDefined();
-    expect(registry["opencode"]!.type).toBe("opencode");
-  });
-
-  it("registers codex", () => {
-    const registry = createDefaultRuntimeRegistry();
-    expect(registry["codex"]).toBeDefined();
-    expect(registry["codex"]!.type).toBe("codex");
+    expect(Object.keys(registry).sort()).toEqual(["claude", "codex", "opencode"]);
   });
 
   it("every registry value's .type matches its registry key (sanity check against typos)", () => {
