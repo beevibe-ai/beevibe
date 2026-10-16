@@ -8,14 +8,10 @@ import type {
   RuntimeWorkspaceContext,
   Workspace,
 } from "../../ports/runtime.js";
-import { runCliProcess } from "../claude-code/spawn.js";
 import {
-  cancelledResult,
   cliVersionHealthCheck,
   composePrompt,
-  createStdoutLineReader,
-  finalizeCliResult,
-  warnIfTruncated,
+  runCliSession,
 } from "../runtime-common.js";
 import {
   extractOpenCodeStepEvents,
@@ -76,36 +72,19 @@ export class OpenCodeRuntime implements AgentRuntime {
     const env: Record<string, string | undefined> = { ...process.env };
     if (context.env) Object.assign(env, context.env);
 
-    const events: OpenCodeEvent[] = [];
-    const handleLine = (line: string): void => {
-      const evt = parseOpenCodeEventLine(line);
-      if (!evt) return;
-      events.push(evt);
-      if (!context.onStep) return;
-      for (const step of extractOpenCodeStepEvents(evt)) {
-        context.onStep(step);
-      }
-    };
-    const stdout = createStdoutLineReader(handleLine);
-
-    const result = await runCliProcess({
-      command: this.config.command ?? "opencode",
-      args,
-      cwd: context.workspace.path,
-      env,
-      abortSignal: context.abort_signal,
-      onSpawn: ({ pid, process_group_id }) => {
-        context.onSpawn?.({ process_pid: pid, process_group_id });
+    return runCliSession<OpenCodeEvent>({
+      tag: "OpenCodeRuntime",
+      context,
+      spawn: {
+        command: this.config.command ?? "opencode",
+        args,
+        cwd: context.workspace.path,
+        env,
       },
-      onLog: stdout.onLog,
+      parseLine: parseOpenCodeEventLine,
+      extractSteps: extractOpenCodeStepEvents,
+      parseResult: (events, result) => parseOpenCodeEvents(events, result.exitCode),
     });
-    stdout.flush();
-
-    warnIfTruncated("OpenCodeRuntime", result);
-
-    if (result.aborted) return cancelledResult(result);
-
-    return finalizeCliResult(parseOpenCodeEvents(events, result.exitCode), result);
   }
 
   async healthCheck(): Promise<RuntimeHealth> {

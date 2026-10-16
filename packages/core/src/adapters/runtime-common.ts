@@ -1,6 +1,15 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
-import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
+import {
+  type CliProcessOptions,
+  type CliProcessResult,
+  runCliProcess,
+} from "./claude-code/spawn.js";
 
 /**
  * Shared helpers for the CLI-subprocess runtimes (claude-code, codex,
@@ -207,4 +216,88 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+export interface CliSessionSpec<Event> {
+  /** Runtime tag for the truncation warning — `"CodexRuntime"`, etc. */
+  tag: string;
+  /** The session being executed; supplies `abort_signal`, `onSpawn`, `onStep`. */
+  context: RuntimeContext;
+  /**
+   * Everything that varies about the subprocess itself. `abortSignal`,
+   * `onSpawn` and `onLog` are not accepted — this driver owns all three,
+   * and each adapter wired them identically anyway.
+   */
+  spawn: Omit<CliProcessOptions, "abortSignal" | "onSpawn" | "onLog">;
+  /** Parse one stdout line into a provider event, or `null` to skip it. */
+  parseLine: (line: string) => Event | null;
+  /** Steps to stream for one event. Called only when `context.onStep` is set. */
+  extractSteps: (event: Event) => RuntimeStep[];
+  /** Map the collected events to a result. Not called on an aborted run. */
+  parseResult: (events: Event[], result: CliProcessResult) => RuntimeResult;
+  /**
+   * Ran once the process has settled, on both the aborted and the parsed
+   * path — after `parseResult`, so a parser may still read what it removes.
+   * Codex uses it to delete its `--output-last-message` scratch file.
+   */
+  cleanup?: () => void;
+}
+
+/**
+ * Drive one CLI session end to end: spawn the process, stream its NDJSON
+ * stdout through `parseLine`, fan each event out to `context.onStep`, then
+ * map the collected events to a `RuntimeResult`.
+ *
+ * All three CLI runtimes (claude-code, codex, opencode) spelled this
+ * sequence out by hand — the event accumulator and its `onStep` closure,
+ * the `runCliProcess` call with the same `abortSignal`/`onSpawn`/`onLog`
+ * bindings, then `flush` → `warnIfTruncated` → abort check →
+ * `finalizeCliResult`. The individual steps already lived in this module;
+ * what stayed duplicated was the order they run in, which is the part that
+ * matters: dropping `flush()` loses the last event of a stream that ends
+ * without a newline, and checking `aborted` after parsing reports a
+ * cancelled session as a failure. One copy means a fourth runtime gets that
+ * ordering for free.
+ *
+ * What genuinely differs per provider — the argv, the stripped auth env
+ * vars, the event schema and its parsers — stays in each adapter.
+ */
+export async function runCliSession<Event>(
+  spec: CliSessionSpec<Event>,
+): Promise<RuntimeResult> {
+  const { context } = spec;
+
+  // Parse incrementally while the process streams, so stdout isn't
+  // re-walked after close. The line reader handles chunk boundaries.
+  const events: Event[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = spec.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of spec.extractSteps(event)) context.onStep(step);
+  });
+
+  const result = await runCliProcess({
+    ...spec.spawn,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Emit any final partial line (stream that ended without a trailing \n).
+  stdout.flush();
+
+  warnIfTruncated(spec.tag, result);
+
+  if (result.aborted) {
+    spec.cleanup?.();
+    return cancelledResult(result);
+  }
+
+  const parsed = spec.parseResult(events, result);
+  spec.cleanup?.();
+  return finalizeCliResult(parsed, result);
 }

@@ -12,10 +12,10 @@ import { api, type WorkProductDetail } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
 import { DetailGate } from "@/components/detail/detail-gate";
+import { DetailFooter, FooterLink } from "@/components/detail/detail-footer";
 import { EmptyState } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { ChatMarkdown } from "@/components/chat/markdown";
-import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { FooterField } from "@/components/detail/footer-field";
 import { formatRelativeTime, shortId } from "@/lib/format";
 
@@ -125,17 +125,9 @@ function Body({ wp }: { wp: WorkProductDetail }) {
         />
       )}
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
-        <FooterField label="ID">
-          <ClickToCopyId id={wp.id} />
-        </FooterField>
+      <DetailFooter id={wp.id}>
         <FooterField label="Task" truncate>
-          <Link
-            href={`/tasks/${wp.task_id}`}
-            className="font-mono hover:text-foreground transition-colors"
-          >
-            {shortId(wp.task_id)}
-          </Link>
+          <FooterLink href={`/tasks/${wp.task_id}`}>{shortId(wp.task_id)}</FooterLink>
         </FooterField>
         {wp.url ? (
           <FooterField label={wp.url_is_local ? "Stored at (host)" : "URL"} truncate>
@@ -143,7 +135,7 @@ function Body({ wp }: { wp: WorkProductDetail }) {
           </FooterField>
         ) : null}
         {wp.provider ? <FooterField label="Provider">{wp.provider}</FooterField> : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }
