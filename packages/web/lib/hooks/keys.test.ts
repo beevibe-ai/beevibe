@@ -26,9 +26,41 @@ describe("queryKeys", () => {
     expect(a).not.toEqual(b);
   });
 
-  it("structural equality across separate calls with the same arg shape", () => {
-    const a = queryKeys.tasks.list({ view: "mine" });
-    const b = queryKeys.tasks.list({ view: "mine" });
-    expect(a).toEqual(b);
+  // The chat keys are the only ones in the table with derivation rather
+  // than a literal, and both halves are load-bearing for SSE recovery.
+  //
+  // `history(undefined)` must collapse to a stable sentinel: `use-chat`
+  // writes the "latest conversation" slot through that call
+  // (`handLatestSlot`) while the query itself reads `history(cacheId)`.
+  // A raw `undefined` tail would still be a usable key, so the sentinel
+  // is only observable here.
+  it("history(undefined) collapses to the <latest> sentinel slot", () => {
+    expect(queryKeys.chat.history(undefined)).toEqual(["chat", "history", "<latest>"]);
+    expect(queryKeys.chat.history("conv_1")).toEqual(["chat", "history", "conv_1"]);
+  });
+
+  // `lib/sse.ts` invalidates `historyAll` on `session.updated` to refetch
+  // EVERY per-conversation slot at once. React Query matches by key
+  // prefix, so that fan-out only works while `historyAll` is a strict
+  // prefix of whatever `history()` returns — including the sentinel slot.
+  it("historyAll is a prefix of every history() slot (so SSE fan-out matches)", () => {
+    const prefix = queryKeys.chat.historyAll;
+    for (const slot of [
+      queryKeys.chat.history(undefined),
+      queryKeys.chat.history("conv_1"),
+      queryKeys.chat.history("__fresh__"),
+    ]) {
+      expect(slot.slice(0, prefix.length)).toEqual([...prefix]);
+      expect(slot.length).toBeGreaterThan(prefix.length);
+    }
+  });
+
+  // Sibling namespaces must not collide under that same prefix matching:
+  // `chat.conversations` is deliberately NOT swept up by a historyAll
+  // invalidation (see the comment on `session.updated` in lib/sse.ts).
+  it("chat.conversations sits outside the historyAll prefix", () => {
+    const prefix = queryKeys.chat.historyAll;
+    const conversations = queryKeys.chat.conversations();
+    expect(conversations.slice(0, prefix.length)).not.toEqual([...prefix]);
   });
 });

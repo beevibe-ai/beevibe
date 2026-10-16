@@ -3,6 +3,7 @@ import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspa
 import type WebSocket from "ws";
 import type { ApiClient } from "./api-client.js";
 import { Claimer } from "./claimer.js";
+import { warn } from "./logger.js";
 import { Supervisor } from "./supervisor.js";
 import type { DispatchPayload } from "./spawner.js";
 
@@ -422,12 +423,39 @@ describe("Claimer ws push handling", () => {
     await claimer.stop();
   });
 
+  // The `error` handler's whole body is one `warn`, and the two things it
+  // has to get right are exactly the two this test used to only name:
+  // that the reason reaches the log, and that it does NOT reconnect. `ws`
+  // always follows an `error` with a `close`, and `scheduleWsReconnect`
+  // lives there — a reconnect here as well would open two sockets per
+  // failure and double the daemon's claim traffic on a flapping link.
+  // Asserting neither (the old `not.toThrow()`) left both regressions
+  // free to land.
+  //
+  // Fake timers are what give the second half teeth: the reconnect a
+  // regression would schedule only fires after a backoff, so the window
+  // has to be advanced past it (10ms cap here) while staying short of
+  // the 1s ping tick, whose own no-pong terminate would open a socket
+  // for a legitimate reason and mask the bug.
   it("logs a ws error without reconnecting — close drives that", async () => {
-    const { claimer, socket } = connected(makeApi());
+    vi.useFakeTimers();
+    const { claimer, sockets } = startClaimerWithFakeWs();
+    try {
+      sockets[0]!.fire("open");
+      vi.mocked(warn).mockClear();
 
-    expect(() => socket.fire("error", new Error("ECONNRESET"))).not.toThrow();
+      sockets[0]!.fire("error", new Error("ECONNRESET"));
+      vi.advanceTimersByTime(50);
 
-    await claimer.stop();
+      expect(vi.mocked(warn).mock.calls).toContainEqual([
+        "[daemon] ws error:",
+        "ECONNRESET",
+      ]);
+      expect(sockets).toHaveLength(1);
+    } finally {
+      await claimer.stop();
+      vi.useRealTimers();
+    }
   });
 
   it("does not reconnect after stop()", async () => {
