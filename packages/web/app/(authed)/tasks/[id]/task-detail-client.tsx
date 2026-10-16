@@ -23,8 +23,8 @@ import { TaskLifecycleActions } from "@/components/tasks/task-lifecycle-actions"
 import { isTerminalTaskStatus } from "@/lib/task-status";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
 import { ChatMarkdown } from "@/components/chat/markdown";
-import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { DetailGate } from "@/components/detail/detail-gate";
+import { DetailFooter, FooterLink } from "@/components/detail/detail-footer";
 import { FooterField } from "@/components/detail/footer-field";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
@@ -293,10 +293,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         </aside>
       </div>
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
-        <FooterField label="ID">
-          <ClickToCopyId id={task.id} />
-        </FooterField>
+      <DetailFooter id={task.id}>
         <FooterField label="Priority">{task.priority}</FooterField>
         <FooterField label="Created">{formatRelativeTime(task.created_at)}</FooterField>
         <FooterField label="Updated">{formatRelativeTime(task.updated_at)}</FooterField>
@@ -308,15 +305,12 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         ) : null}
         {task.parent_task_id ? (
           <FooterField label="Parent">
-            <Link
-              href={`/tasks/${task.parent_task_id}`}
-              className="font-mono hover:text-foreground transition-colors"
-            >
+            <FooterLink href={`/tasks/${task.parent_task_id}`}>
               {shortId(task.parent_task_id)}
-            </Link>
+            </FooterLink>
           </FooterField>
         ) : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }

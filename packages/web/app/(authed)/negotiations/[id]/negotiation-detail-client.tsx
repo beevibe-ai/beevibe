@@ -5,8 +5,8 @@ import { MessagesSquare, Scale } from "lucide-react";
 import { MeshBackLink } from "@/components/detail/mesh-back-link";
 import { useNegotiation } from "@/lib/hooks/use-negotiations";
 import { ChatMarkdown } from "@/components/chat/markdown";
-import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { DetailGate } from "@/components/detail/detail-gate";
+import { DetailFooter, FooterLink } from "@/components/detail/detail-footer";
 import { FooterField } from "@/components/detail/footer-field";
 import { NegotiationStatusPill } from "@/components/detail/status-pill";
 import { Skeleton } from "@/components/skeleton";
@@ -120,18 +120,10 @@ function NegotiationDetailLoaded({ neg }: { neg: NegotiationReviewDetail }) {
         )}
       </section>
 
-      <footer className="mt-10 pt-5 border-t border-border/60 grid grid-cols-2 md:grid-cols-4 gap-x-6 gap-y-3 text-xs text-muted-foreground">
-        <FooterField label="ID">
-          <ClickToCopyId id={neg.id} />
-        </FooterField>
+      <DetailFooter id={neg.id}>
         {neg.task_id ? (
           <FooterField label="Task">
-            <Link
-              href={`/tasks/${neg.task_id}`}
-              className="font-mono hover:text-foreground transition-colors"
-            >
-              {neg.task_id}
-            </Link>
+            <FooterLink href={`/tasks/${neg.task_id}`}>{neg.task_id}</FooterLink>
           </FooterField>
         ) : null}
         <FooterField label="Rounds">
@@ -141,7 +133,7 @@ function NegotiationDetailLoaded({ neg }: { neg: NegotiationReviewDetail }) {
         {neg.updated_at !== neg.created_at ? (
           <FooterField label="Updated">{formatRelativeTime(neg.updated_at)}</FooterField>
         ) : null}
-      </footer>
+      </DetailFooter>
     </>
   );
 }
