@@ -252,6 +252,39 @@ touching it.
 | `SkillOutcomeRepository.listBySkill` / `.statsForSkill`, `AgentProvisionEventRepository.listByParent` | Uncalled **read** halves of audit trails whose write side is live and accumulating rows (`skill_outcome` via `recordCapabilityOutcome`, `agent_provision_event` via `create_subordinate_agent`). Same call as the promotion repo below — the consumers (discovery-ranker feedback, agents-page audit panel) are unbuilt, not removed. Deleting the queries makes finishing them harder. |
 | `PostgresMemoryPromotionEventRepository` | Never constructed — `bootstrap.ts` builds the MemoryAgent without `promotionEventRepo`, so the M8.D promotion audit log never writes even though the port, the service branch, its tests and the read-side `views/promotions.ts` all exist. That's **unfinished wiring, not dead code**; deleting the adapter makes finishing it harder. |
 
+### Sweeping CSS and Tailwind
+
+`knip`, `depcheck` and `tsc` only see TypeScript, so `packages/web/app/globals.css`
+and `packages/web/tailwind.config.ts` accumulate definitions nothing applies. There
+is no safelist and `content` is limited to `app/`, `components/` and `lib/`, so a
+plain grep is authoritative:
+
+```bash
+# custom classes defined but never applied
+grep -oE '^\s*\.[a-zA-Z0-9_-]+' packages/web/app/globals.css | tr -d ' .' | sort -u \
+  | while read -r c; do \
+      n=$(git grep -c -- "$c" -- packages/web/app packages/web/components packages/web/lib \
+          | grep -v globals.css | wc -l); \
+      [ "$n" -eq 0 ] && echo "DEAD $c"; \
+    done
+
+# same shape works for @keyframes names and for `--custom-props`
+# (a prop is live if something says var(--x) OR tailwind.config.ts maps it)
+```
+
+Two traps:
+
+- A Tailwind `animation` entry generates `animate-<name>`, so grep the
+  **`animate-` prefixed** form, not the bare keyframe name. A dead animation is
+  three places: the `keyframes` block, the `animation` block, and usually a
+  `prefers-reduced-motion` override in `globals.css`.
+- `--popover` / `--popover-foreground` read as dead — nothing says
+  `var(--popover)` and `tailwind.config.ts` has no `popover` color. But
+  `room-detail-client.tsx` applies `bg-popover`, which silently resolves to
+  nothing because of that missing mapping. That's **a missing mapping, not dead
+  code** — deleting the variables cements the bug. Leave them.
+
+
 ## Deploying
 
 ```bash
