@@ -28,8 +28,10 @@ import {
 import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
 import {
   createAuthMiddleware,
+  createStreamAuthMiddleware,
   requireDaemon,
   requireHuman,
+  streamTokenAdapter,
 } from "./middleware.js";
 
 describe("auth middleware — integration", () => {
@@ -269,6 +271,54 @@ describe("auth middleware — integration", () => {
     expect(res.body.error).toBe("human_required");
   });
 
+  it("requireHuman allows a bv_u_ caller through to the handler", async () => {
+    const alice = await provisionUser(
+      { personRepo },
+      { id: personId(), name: "Alice", email: "alice@example.com" },
+    );
+    const team = await provisionAgent(
+      { agentRepo, coreMemoryRepo },
+      {
+        id: agentId(),
+        name: "Alice's Team Agent",
+        owner_id: alice.person.id,
+        hierarchy_level: "team",
+        runtime_config: DEFAULT_RUNTIME_CONFIG,
+      },
+    );
+
+    const res = await request(makeApp())
+      .get("/human-only")
+      .set("Authorization", `Bearer ${alice.apiKey}`);
+    expect(res.status).toBe(200);
+    expect(res.body.caller.source).toBe("human");
+    expect(res.body.caller.personId).toBe(alice.person.id);
+    expect(res.body.caller.agentId).toBe(team.agent.id);
+  });
+
+  it("requireHuman rejects an agent caller", async () => {
+    const alice = await provisionUser(
+      { personRepo },
+      { id: personId(), name: "Alice", email: "alice@example.com" },
+    );
+    const team = await provisionAgent(
+      { agentRepo, coreMemoryRepo },
+      {
+        id: agentId(),
+        name: "Alice's Team Agent",
+        owner_id: alice.person.id,
+        hierarchy_level: "team",
+        runtime_config: DEFAULT_RUNTIME_CONFIG,
+      },
+    );
+
+    const res = await request(makeApp())
+      .get("/human-only")
+      .set("Authorization", `Bearer ${team.apiKey}`);
+    expect(res.status).toBe(403);
+    expect(res.body.error).toBe("human_required");
+  });
+
   it("revoked daemon tokens fail with 401 invalid_token", async () => {
     const alice = await provisionUser(
       { personRepo },
@@ -290,5 +340,124 @@ describe("auth middleware — integration", () => {
       .set("Authorization", `Bearer ${token}`);
     expect(res.status).toBe(401);
     expect(res.body.error).toBe("invalid_token");
+  });
+});
+
+/**
+ * `?token=` → `Authorization: Bearer` adapter. EventSource can't set
+ * headers, so /api/stream carries the token in the query string; the
+ * adapter is what lets the header-only auth middleware behind it work
+ * unchanged. Pure request rewriting — no DB needed.
+ */
+describe("streamTokenAdapter", () => {
+  function adapterApp() {
+    const app = express();
+    app.use(streamTokenAdapter);
+    app.get("/echo", (req, res) => {
+      res.json({ authorization: req.headers.authorization ?? null });
+    });
+    return app;
+  }
+
+  it("copies ?token= into the Authorization header", async () => {
+    const res = await request(adapterApp()).get("/echo?token=bv_u_abc");
+    expect(res.body.authorization).toBe("Bearer bv_u_abc");
+  });
+
+  it("leaves an existing Authorization header alone", async () => {
+    const res = await request(adapterApp())
+      .get("/echo?token=bv_u_from_query")
+      .set("Authorization", "Bearer bv_u_from_header");
+    expect(res.body.authorization).toBe("Bearer bv_u_from_header");
+  });
+
+  it("is a no-op with no token and no header", async () => {
+    const res = await request(adapterApp()).get("/echo");
+    expect(res.body.authorization).toBeNull();
+  });
+
+  it("ignores a repeated token= (express parses it as an array)", async () => {
+    const res = await request(adapterApp()).get("/echo?token=a&token=b");
+    expect(res.body.authorization).toBeNull();
+  });
+});
+
+describe("createStreamAuthMiddleware — integration", () => {
+  let pool: Pool;
+  let agentRepo: PostgresAgentRepository;
+  let personRepo: PostgresPersonRepository;
+  let daemonRepo: PostgresDaemonRepository;
+  let coreMemoryRepo: PostgresCoreMemoryRepository;
+
+  beforeAll(() => {
+    pool = createTestPool();
+    agentRepo = new PostgresAgentRepository(pool);
+    personRepo = new PostgresPersonRepository(pool);
+    daemonRepo = new PostgresDaemonRepository(pool);
+    coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
+  });
+
+  beforeEach(async () => {
+    await truncateAll(pool);
+  });
+
+  afterAll(async () => {
+    await pool.end();
+  });
+
+  function streamApp() {
+    const app = express();
+    app.use(createStreamAuthMiddleware({ agentRepo, personRepo, daemonRepo }));
+    app.get("/stream", (req, res) => {
+      res.json({ caller: req.caller });
+    });
+    return app;
+  }
+
+  async function seedHuman() {
+    const alice = await provisionUser(
+      { personRepo },
+      { id: personId(), name: "Alice", email: "alice@example.com" },
+    );
+    await provisionAgent(
+      { agentRepo, coreMemoryRepo },
+      {
+        id: agentId(),
+        name: "Alice's Team Agent",
+        owner_id: alice.person.id,
+        hierarchy_level: "team",
+        runtime_config: DEFAULT_RUNTIME_CONFIG,
+      },
+    );
+    return alice;
+  }
+
+  it("authenticates an EventSource request carrying ?token=", async () => {
+    const alice = await seedHuman();
+    const res = await request(streamApp()).get(`/stream?token=${alice.apiKey}`);
+    expect(res.status).toBe(200);
+    expect(res.body.caller.source).toBe("human");
+    expect(res.body.caller.personId).toBe(alice.person.id);
+  });
+
+  it("still accepts the header form", async () => {
+    const alice = await seedHuman();
+    const res = await request(streamApp())
+      .get("/stream")
+      .set("Authorization", `Bearer ${alice.apiKey}`);
+    expect(res.status).toBe(200);
+    expect(res.body.caller.source).toBe("human");
+  });
+
+  it("401s a query token that resolves to nobody", async () => {
+    const res = await request(streamApp()).get("/stream?token=bv_u_nope");
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe("invalid_token");
+  });
+
+  it("401s with neither header nor query token", async () => {
+    const res = await request(streamApp()).get("/stream");
+    expect(res.status).toBe(401);
+    expect(res.body.error).toBe("missing_authorization");
   });
 });

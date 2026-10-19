@@ -1,3 +1,6 @@
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { RuntimeContext, RuntimeStep } from "../../ports/runtime.js";
 import { OpenCodeRuntime, buildOpenCodeConfig } from "./runtime.js";
@@ -246,5 +249,52 @@ describe("buildOpenCodeConfig", () => {
     expect(parsed.mcp.beevibe.headers["X-Beevibe-Session"]).toBe(
       "{env:BEEVIBE_SESSION_ID}",
     );
+  });
+});
+
+describe("OpenCodeRuntime workspace handling", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "bv-opencode-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  const context = () => ({
+    workspace: { path: dir },
+    agentApiKey: "bv_a_test",
+    mcpServerUrl: "http://api.test/mcp",
+  });
+
+  it("skillsDir points at opencode's own skills location", () => {
+    expect(new OpenCodeRuntime().skillsDir({ path: "/ws/agent_1" })).toBe(
+      "/ws/agent_1/.opencode/skills",
+    );
+  });
+
+  it("prepareWorkspace writes opencode.json 0600 with the MCP wiring", () => {
+    new OpenCodeRuntime().prepareWorkspace(context());
+
+    const path = join(dir, "opencode.json");
+    const parsed = JSON.parse(readFileSync(path, "utf8"));
+    expect(parsed.mcp.beevibe.url).toBe("http://api.test/mcp");
+    expect(parsed.mcp.beevibe.headers.Authorization).toBe("Bearer bv_a_test");
+    // The file holds the agent's API key, so it must not be group- or
+    // world-readable.
+    expect(statSync(path).mode & 0o777).toBe(0o600);
+  });
+
+  it("prepareWorkspace leaves an existing opencode.json untouched", () => {
+    const path = join(dir, "opencode.json");
+    writeFileSync(path, '{"mine":true}');
+    new OpenCodeRuntime().prepareWorkspace(context());
+    expect(readFileSync(path, "utf8")).toBe('{"mine":true}');
+  });
+
+  it("shutdown resolves — each session is its own process", async () => {
+    await expect(new OpenCodeRuntime().shutdown()).resolves.toBeUndefined();
   });
 });

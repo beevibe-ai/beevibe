@@ -3,6 +3,7 @@ import {
   AmbiguousShortIdError,
   getConversationByShortId,
   getSessionByShortId,
+  getSessionTree,
   toSessionUsageDisplay,
 } from "./sessions.js";
 import { makeMockPool } from "./test-helpers.js";
@@ -311,3 +312,115 @@ function sampleRow(id: string) {
     usage: null,
   };
 }
+
+/**
+ * Hydration fallback for useChatStreamTree. The recursive CTE and its
+ * depth-10 guard are the DB's business; what's checked here is the
+ * mapping and the two "don't serve this" guards — an empty result and a
+ * first row that isn't the requested root (which would mean the query
+ * returned a subtree rooted elsewhere).
+ */
+describe("getSessionTree", () => {
+  const treeRow = (
+    id: string,
+    overrides: Record<string, unknown> = {},
+  ): Record<string, unknown> => ({
+    id,
+    parent_session_id: null,
+    agent_id: "agent_aaaaaa01",
+    agent_label: "Alpha",
+    agent_hier: "team",
+    task_id: null,
+    task_title: null,
+    type: "chat",
+    status: "succeeded",
+    intent: "ship the thing",
+    started_at: new Date("2024-05-01T10:00:00.000Z"),
+    completed_at: new Date("2024-05-01T10:05:00.000Z"),
+    depth: 0,
+    ...overrides,
+  });
+
+  it("returns undefined when the root session doesn't exist", async () => {
+    const pool = makeMockPool([]);
+    expect(await getSessionTree(pool, "sess_missing")).toBeUndefined();
+  });
+
+  it("maps the root row, deriving short ids and ISO timestamps", async () => {
+    const pool = makeMockPool([treeRow("sess_root000001")]);
+    const tree = await getSessionTree(pool, "sess_root000001");
+
+    expect(pool._spy.mock.calls[0]![1]).toEqual(["sess_root000001"]);
+    expect(tree?.descendants).toEqual([]);
+    expect(tree?.root).toEqual({
+      id: "sess_root000001",
+      short_id: "root00",
+      parent_session_id: null,
+      agent_id: "agent_aaaaaa01",
+      agent_label: "Alpha",
+      agent_hierarchy: "team",
+      task_id: null,
+      task_short_id: null,
+      task_title: null,
+      type: "chat",
+      status: "succeeded",
+      intent: "ship the thing",
+      started_at: "2024-05-01T10:00:00.000Z",
+      completed_at: "2024-05-01T10:05:00.000Z",
+    });
+  });
+
+  it("splits the first row off as root and keeps the rest as descendants in order", async () => {
+    const pool = makeMockPool([
+      treeRow("sess_root000001"),
+      treeRow("sess_child00001", {
+        parent_session_id: "sess_root000001",
+        type: "task",
+        depth: 1,
+      }),
+      treeRow("sess_grand000001", {
+        parent_session_id: "sess_child00001",
+        type: "task",
+        depth: 2,
+      }),
+    ]);
+    const tree = await getSessionTree(pool, "sess_root000001");
+
+    expect(tree?.root.id).toBe("sess_root000001");
+    expect(tree?.descendants.map((n) => n.id)).toEqual([
+      "sess_child00001",
+      "sess_grand000001",
+    ]);
+    expect(tree?.descendants[0]!.parent_session_id).toBe("sess_root000001");
+  });
+
+  it("derives task_short_id only when the session carries a task", async () => {
+    const pool = makeMockPool([
+      treeRow("sess_root000001", {
+        task_id: "task_abcdef0123",
+        task_title: "Bill rewrite",
+      }),
+    ]);
+    const tree = await getSessionTree(pool, "sess_root000001");
+    expect(tree?.root.task_short_id).toBe("abcdef");
+    expect(tree?.root.task_title).toBe("Bill rewrite");
+  });
+
+  it("nulls the timestamps for a session that never started", async () => {
+    const pool = makeMockPool([
+      treeRow("sess_root000001", {
+        status: "pending",
+        started_at: null,
+        completed_at: null,
+      }),
+    ]);
+    const tree = await getSessionTree(pool, "sess_root000001");
+    expect(tree?.root.started_at).toBeNull();
+    expect(tree?.root.completed_at).toBeNull();
+  });
+
+  it("refuses a result whose first row isn't the requested root", async () => {
+    const pool = makeMockPool([treeRow("sess_someoneelse")]);
+    expect(await getSessionTree(pool, "sess_root000001")).toBeUndefined();
+  });
+});

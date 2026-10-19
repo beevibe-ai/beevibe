@@ -483,6 +483,151 @@ describe("TaskExecutionWorker (Phase 4 — session-based claim)", () => {
     }
   });
 
+  it("status() reports the polling snapshot the health endpoint serves", async () => {
+    const { worker } = makeWorker();
+
+    const before = worker.status();
+    expect(before).toEqual({
+      running: false,
+      lastPollAt: null,
+      inFlightCount: 0,
+      pollIntervalMs: 60_000,
+    });
+
+    await worker.start();
+    const after = worker.status();
+    expect(after.running).toBe(true);
+    expect(after.lastPollAt).toBeInstanceOf(Date);
+    expect(after.inFlightCount).toBe(0);
+
+    await worker.stop();
+    expect(worker.status().running).toBe(false);
+  });
+
+  it("status() counts an in-flight dispatch", async () => {
+    const agent = await seedAgent();
+    await seedPendingSession(agent.id);
+    let release: () => void = () => undefined;
+    const dispatchTask = vi
+      .fn()
+      .mockImplementation(() => new Promise<void>((r) => { release = r; }));
+
+    const { worker } = makeWorker(dispatchTask);
+    await worker.start();
+    await new Promise((r) => setTimeout(r, 30));
+    expect(worker.status().inFlightCount).toBe(1);
+
+    release();
+    await worker.stop();
+  });
+
+  it("status() reports the default poll interval when none is configured", () => {
+    const worker = new TaskExecutionWorker({
+      agentRepo: agents,
+      taskRepo: tasks,
+      sessionRepo: sessions,
+      workspaceManager,
+      dispatchTask: vi.fn().mockResolvedValue(undefined),
+    });
+    expect(worker.status().pollIntervalMs).toBe(DEFAULT_POLL_MS);
+  });
+
+  it("fails the session when the claimed agent has vanished, and dispatches nothing", async () => {
+    const agent = await seedAgent();
+    const session = await seedPendingSession(agent.id);
+
+    // A claim can win the race against an agent delete. The FK would
+    // cascade the session away, so stub the lookup instead of deleting.
+    const dispatchTask = vi.fn().mockResolvedValue(undefined);
+    const worker = new TaskExecutionWorker({
+      agentRepo: { ...agents, findById: async () => undefined } as typeof agents,
+      taskRepo: tasks,
+      sessionRepo: sessions,
+      workspaceManager,
+      dispatchTask,
+      pollIntervalMs: 60_000,
+    });
+    await worker.start();
+    await worker.stop();
+
+    expect(dispatchTask).not.toHaveBeenCalled();
+    const reread = await sessions.findById(session.id);
+    expect(reread?.status).toBe("failed");
+    expect(reread?.error).toBe("agent_missing_at_claim");
+    expect(reread?.completed_at).toBeInstanceOf(Date);
+  });
+
+  it("routes a dispatch rejection to onError and frees the in-flight slot", async () => {
+    const agent = await seedAgent();
+    await seedPendingSession(agent.id);
+    const onError = vi.fn();
+    const worker = new TaskExecutionWorker({
+      agentRepo: agents,
+      taskRepo: tasks,
+      sessionRepo: sessions,
+      workspaceManager,
+      dispatchTask: vi.fn().mockRejectedValue(new Error("cli not found")),
+      pollIntervalMs: 60_000,
+      onError,
+    });
+    await worker.start();
+    await new Promise((r) => setTimeout(r, 30));
+    await worker.stop();
+
+    expect(onError).toHaveBeenCalledTimes(1);
+    expect(onError.mock.calls[0]![0]).toBeInstanceOf(Error);
+    expect((onError.mock.calls[0]![0] as Error).message).toBe("cli not found");
+    expect(worker.status().inFlightCount).toBe(0);
+  });
+
+  it("wraps a non-Error dispatch rejection before handing it to onError", async () => {
+    const agent = await seedAgent();
+    await seedPendingSession(agent.id);
+    const onError = vi.fn();
+    const worker = new TaskExecutionWorker({
+      agentRepo: agents,
+      taskRepo: tasks,
+      sessionRepo: sessions,
+      workspaceManager,
+      dispatchTask: vi.fn().mockRejectedValue("spawn EACCES"),
+      pollIntervalMs: 60_000,
+      onError,
+    });
+    await worker.start();
+    await new Promise((r) => setTimeout(r, 30));
+    await worker.stop();
+
+    const err = onError.mock.calls[0]![0] as Error;
+    expect(err).toBeInstanceOf(Error);
+    expect(err.message).toBe("spawn EACCES");
+  });
+
+  it("falls back to console.error when no onError is configured", async () => {
+    const agent = await seedAgent();
+    await seedPendingSession(agent.id);
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const worker = new TaskExecutionWorker({
+        agentRepo: agents,
+        taskRepo: tasks,
+        sessionRepo: sessions,
+        workspaceManager,
+        dispatchTask: vi.fn().mockRejectedValue(new Error("boom")),
+        pollIntervalMs: 60_000,
+      });
+      await worker.start();
+      await new Promise((r) => setTimeout(r, 30));
+      await worker.stop();
+
+      expect(spy).toHaveBeenCalledWith(
+        "[worker] dispatch error:",
+        expect.objectContaining({ message: "boom" }),
+      );
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("DEFAULT_TASK_CAP is 1", () => {
     expect(DEFAULT_TASK_CAP).toBe(1);
   });
