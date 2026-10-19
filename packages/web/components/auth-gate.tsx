@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { getUserKey, subscribeToUserKey } from "@/lib/api/config";
+import { clearUserKey, getUserKey, subscribeToUserKey } from "@/lib/api/config";
 import { setOnUnauthorized } from "@/lib/api/http";
 
 /**
@@ -43,9 +43,7 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     setOnUnauthorized(() => {
       // Clear via the proper helper so subscribers (SSE etc.) get the
       // reset signal.
-      if (typeof window !== "undefined") {
-        window.localStorage.removeItem("bv:user_key");
-      }
+      clearUserKey();
       const next = pathname ? `?next=${encodeURIComponent(pathname)}` : "";
       router.replace(`/sign-in${next}`);
     });

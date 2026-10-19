@@ -8,6 +8,7 @@ import { SIGNIN_NO_PASSWORD_SET } from "@beevibe/core/auth/constants";
 import { api } from "@/lib/api/client";
 import { asApiError } from "@/lib/api/http";
 import {
+  clearUserKey,
   getUserKey,
   isApiConfigured,
   isWellFormedUserKey,
@@ -102,7 +103,7 @@ export function SignInClient() {
       await api.me.self();
       router.replace(next);
     } catch (err) {
-      window.localStorage.removeItem("bv:user_key");
+      clearUserKey();
       setError(
         asApiError(err)?.status === 401
           ? "Key wasn't recognized. Double-check it or ask your admin to provision a new one."
