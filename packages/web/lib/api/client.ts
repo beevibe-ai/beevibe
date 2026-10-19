@@ -41,12 +41,18 @@ import type { PromotionEvent } from "@/lib/types/promotion-events";
 import type { InboxItem } from "@/lib/types/inbox";
 import type { EscalationReviewDetail } from "@/lib/types/escalations";
 import type { NegotiationReviewDetail } from "@/lib/types/negotiations";
-import type { Lifecycle } from "@/lib/tasks-grouping";
+import type { TaskWireLifecycle } from "@beevibe/core/domain/task-lifecycle";
 
 export type TaskView = "all" | "mine";
 
 export interface TaskListFilter {
-  lifecycle?: Lifecycle;
+  /**
+   * The api validates this against its own four-key vocabulary and drops
+   * anything else, so the wire type — not the six board lanes — is what
+   * belongs here. Typed as the lane union, `lifecycle: "blocked"` compiled
+   * and was silently discarded server-side.
+   */
+  lifecycle?: TaskWireLifecycle;
   assignee_id?: string;
   view?: TaskView;
 }

@@ -30,6 +30,10 @@
       "types": "./dist/domain/format.d.ts",
       "default": "./dist/domain/format.js"
     },
+    "./domain/task-lifecycle": {
+      "types": "./dist/domain/task-lifecycle.d.ts",
+      "default": "./dist/domain/task-lifecycle.js"
+    },
     "./adapters/postgres": {
       "types": "./dist/adapters/postgres/index.d.ts",
       "default": "./dist/adapters/postgres/index.js"
