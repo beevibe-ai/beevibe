@@ -150,3 +150,45 @@ export function makeErrorHandler(
     });
   };
 }
+
+/** A domain error class, as `makeServiceErrorHandler` matches against. */
+type ErrorClass = new (...args: never[]) => Error;
+
+export interface ServiceErrorMapping {
+  /** The domain error class to match with `instanceof`. */
+  error: ErrorClass;
+  status: number;
+  /** The `error` code in the response envelope. */
+  code: string;
+}
+
+/**
+ * {@link makeErrorHandler} plus a table of domain errors that aren't 500s.
+ *
+ * `task`, `escalation` and `negotiation` each had the same handler: a run
+ * of `if (err instanceof SomeNotFoundError) { res.status(404).json({ error:
+ * "...", message: err.message }); return; }` branches, then — byte for
+ * byte — the 500 that `makeErrorHandler` already owned. Three copies of a
+ * dispatch loop whose only real content is the mappings, which is now all
+ * a caller writes.
+ *
+ * Mappings are tried in order, so a subclass must be listed before its
+ * base. Anything unmatched falls through to the 500, which keeps logging
+ * the error server-side; mapped errors are deliberately *not* logged —
+ * they're expected outcomes (a stale id, a double-resolve), not faults.
+ */
+export function makeServiceErrorHandler(
+  tag: string,
+  mappings: readonly ServiceErrorMapping[],
+): (err: unknown, res: Response, context?: string) => void {
+  const handleUnexpected = makeErrorHandler(tag);
+  return (err, res, context) => {
+    for (const mapping of mappings) {
+      if (err instanceof mapping.error) {
+        res.status(mapping.status).json({ error: mapping.code, message: err.message });
+        return;
+      }
+    }
+    handleUnexpected(err, res, context);
+  };
+}
