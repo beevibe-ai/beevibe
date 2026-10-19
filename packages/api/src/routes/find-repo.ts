@@ -17,6 +17,7 @@ import type {
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { createFindRepoTool } from "../tools/find-repo.js";
+import { runToolAsPrimaryAgent } from "./tool-bridge.js";
 
 export interface FindRepoRouterDeps {
   authMiddleware: RequestHandler;
@@ -42,31 +43,23 @@ export function createFindRepoRouter(deps: FindRepoRouterDeps): Router {
 
     try {
       // The ranker scopes learned_skill lookups to the calling agent's
-      // owner. The HTTP caller is a human (bv_u_), so we resolve their
-      // primary team agent and use its id. If they have no agent at
-      // all, the ranker just gets zero learned-skill matches and the
-      // other 3 tiers still work.
-      const personId = req.caller!.personId;
-      const agent = await deps.agentRepo.findTopLevelForOwner(personId);
-      if (!agent) {
-        res.status(404).json({ error: "no_agent", message: "Caller has no primary agent." });
-        return;
-      }
-
-      const tool = createFindRepoTool(
-        { agentId: agent.id },
-        {
-          agentRepo: deps.agentRepo,
-          learnedSkillRepo: deps.learnedSkillRepo,
-          embeddings: deps.embeddings,
-        },
-      );
-      const result = await tool.handler({ goal, limit });
-      if (result.isError) {
-        res.status(400).json(result.content);
-        return;
-      }
-      res.status(200).json(result.content);
+      // owner, so this runs as the caller's primary team agent. If they
+      // have no agent at all the bridge 404s; a caller who has one but no
+      // learned skills just gets zero Tier-2 matches and the other 3
+      // tiers still work.
+      await runToolAsPrimaryAgent(req, res, deps.agentRepo, {
+        makeTool: (agentId) =>
+          createFindRepoTool(
+            { agentId },
+            {
+              agentRepo: deps.agentRepo,
+              learnedSkillRepo: deps.learnedSkillRepo,
+              embeddings: deps.embeddings,
+            },
+          ),
+        input: { goal, limit },
+        okStatus: 200,
+      });
     } catch (err) {
       console.error("[find-repo/search]", err);
       res.status(500).json({ error: "search_failed" });
