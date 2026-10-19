@@ -13,6 +13,11 @@
  * shows as 1). A follow-up trigger-backed event table would close that gap.
  */
 
+// node-postgres parses `::date` columns as a JS Date at LOCAL midnight, so
+// every day label below reads the local calendar fields rather than going
+// through UTC. `toLocalDateString` is shared with the web's date picker,
+// which produces the `since` string these buckets are compared against.
+import { toLocalDateString } from "@beevibe/core/domain/format";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import type {
   AgentRatioRow,
@@ -109,7 +114,7 @@ async function queryWeeklyArchival(
     [interval],
   );
   return rows.map((r) => ({
-    week: localDate(r.week),
+    week: toLocalDateString(r.week),
     total: Number(r.total),
     belief: Number(r.belief),
     pattern: Number(r.pattern),
@@ -178,7 +183,7 @@ async function queryTopAgents(pool: Pool): Promise<AgentActivityRow[]> {
     tier: r.tier,
     writes_30d: Number(r.writes_30d),
     type_variety: Number(r.type_variety),
-    last_write: localDate(r.last_write),
+    last_write: toLocalDateString(r.last_write),
   }));
 }
 
@@ -209,8 +214,8 @@ async function queryDormantAgents(pool: Pool): Promise<DormantAgentRow[]> {
     agent_id: r.id,
     name: r.name,
     tier: r.tier,
-    last_write_ever: r.last_write_ever ? localDate(r.last_write_ever) : null,
-    agent_created: localDate(r.agent_created),
+    last_write_ever: r.last_write_ever ? toLocalDateString(r.last_write_ever) : null,
+    agent_created: toLocalDateString(r.agent_created),
   }));
 }
 
@@ -413,14 +418,3 @@ function clampInt(value: number, min: number, max: number, fallback: number): nu
   return Math.min(Math.max(Math.trunc(value), min), max);
 }
 
-/**
- * node-postgres parses `::date` columns as JS Date at LOCAL midnight, so
- * `.toISOString()` (UTC) would shift the day by the local offset. Read the
- * local components and emit "YYYY-MM-DD".
- */
-function localDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}

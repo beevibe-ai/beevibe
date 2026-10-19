@@ -128,6 +128,30 @@ export function formatDurationLabel(
 }
 
 /**
+ * A `Date` rendered as "YYYY-MM-DD" from its **local** calendar fields.
+ *
+ * `toISOString().slice(0, 10)` is the obvious one-liner and is wrong here:
+ * it converts to UTC first, so any local offset west of Greenwich shifts
+ * the day backwards (a local-midnight Date becomes the previous date).
+ *
+ * Both ends of the memory-activity contract need this exact rule and had
+ * their own copy of it — `localDate` in `api/src/views/memory-activity.ts`,
+ * which labels the day buckets node-postgres parses out of `::date`
+ * columns at local midnight, and `toIsoDate` in the web's `date-picker`,
+ * which produces the `since` string the dashboard sends back. The web copy
+ * carried a comment asking that it be kept in step with the api's. Same
+ * drift-by-comment arrangement `deriveShortId` is here to prevent, and the
+ * same failure mode: the two disagreeing puts the picked day and the
+ * bucketed day one apart.
+ */
+export function toLocalDateString(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
  * First non-empty line of a multi-line block, for deriving a one-line
  * UI headline (an agent's `specialization` from its `tag_line` block)
  * out of text that may be empty, whitespace-only, or multi-line.

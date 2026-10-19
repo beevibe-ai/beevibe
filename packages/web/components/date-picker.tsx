@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Calendar, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { toLocalDateString } from "@beevibe/core/domain/format";
 import { ChipPopover } from "@/components/agents/pickers/chip-popover";
 import { cn } from "@/lib/utils";
 
@@ -48,7 +49,7 @@ export function DatePicker({
       >
         {(close) => (
           <CalendarGrid
-            value={value || toIsoDate(new Date())}
+            value={value || toLocalDateString(new Date())}
             onPick={(next) => {
               onChange(next);
               close();
@@ -88,7 +89,7 @@ function CalendarGrid({
     const d = parseIso(value);
     return new Date(d.getFullYear(), d.getMonth(), 1);
   });
-  const today = toIsoDate(new Date());
+  const today = toLocalDateString(new Date());
   const monthLabel = view.toLocaleString(undefined, {
     month: "long",
     year: "numeric",
@@ -126,7 +127,7 @@ function CalendarGrid({
       <div className="grid grid-cols-7 gap-0.5">
         {days.map((d, i) => {
           const inMonth = d.getMonth() === view.getMonth();
-          const iso = toIsoDate(d);
+          const iso = toLocalDateString(d);
           const isSelected = iso === value;
           const isToday = iso === today;
           return (
@@ -166,16 +167,10 @@ function CalendarGrid({
 }
 
 // ─────────────────────────────────────────────────────────────────────────
-// Date helpers — local components, no UTC drift (matches localDate() in
-// packages/api/src/views/memory-activity.ts).
+// Date helpers — local components, no UTC drift. The Date → "YYYY-MM-DD"
+// direction is `toLocalDateString` from core's domain layer, shared with
+// the api view that buckets these days server-side.
 // ─────────────────────────────────────────────────────────────────────────
-
-function toIsoDate(d: Date): string {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
-}
 
 function parseIso(s: string): Date {
   // Local-midnight construction to match the rest of the system. Callers
@@ -211,5 +206,5 @@ function formatDisplay(iso: string): string {
 
 /** Exported for callers that want "today" without re-deriving. */
 export function todayIso(): string {
-  return toIsoDate(new Date());
+  return toLocalDateString(new Date());
 }

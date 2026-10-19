@@ -2,11 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   AlertTriangle,
   ArrowRight,
@@ -17,10 +13,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
-import { api, type RuntimesListResponse } from "@/lib/api/client";
+import { api } from "@/lib/api/client";
 import { DaemonInstallInstructions } from "@/components/daemon-install";
 import { queryKeys } from "@/lib/hooks/keys";
 import { useMe } from "@/lib/hooks/use-me";
+import { useRuntimes } from "@/lib/hooks/use-runtimes";
 import { cn } from "@/lib/utils";
 
 type Step = "intro" | "install" | "pick" | "ready";
@@ -181,12 +178,7 @@ function IntroStep({ onNext }: { onNext: () => void }) {
 
 function InstallStep({ onDaemonReady }: { onDaemonReady: () => void }) {
   // Poll /runtimes every 3s until at least one daemon shows up.
-  const query = useQuery<RuntimesListResponse>({
-    queryKey: queryKeys.runtimes.list(),
-    queryFn: ({ signal }) => api.runtimes.list({ signal }),
-    refetchInterval: 3_000,
-    refetchIntervalInBackground: true,
-  });
+  const query = useRuntimes({ poll: true });
   const daemonCount = query.data?.daemons.length ?? 0;
   const hasDaemon = daemonCount > 0;
 
@@ -252,15 +244,10 @@ function PickRuntimeStep({
   onPicked: (runtimeId: string) => void;
 }) {
   const queryClient = useQueryClient();
-  // Same refetch cadence as InstallStep — both use the shared
-  // queryKeys.runtimes.list() key so React Query dedupes the in-flight
-  // request, but mismatched intervals would still cause refetch thrash
-  // on step transition.
-  const query = useQuery<RuntimesListResponse>({
-    queryKey: queryKeys.runtimes.list(),
-    queryFn: ({ signal }) => api.runtimes.list({ signal }),
-    refetchInterval: 3_000,
-  });
+  // Same hook, same cadence as InstallStep — one option set for the
+  // shared queryKeys.runtimes.list() key, so stepping between the two
+  // can't cause refetch thrash.
+  const query = useRuntimes({ poll: true });
 
   const allRuntimes = useMemo(
     () =>
