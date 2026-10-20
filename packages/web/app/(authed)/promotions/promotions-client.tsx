@@ -1,7 +1,7 @@
 "use client";
 
-import { AlertTriangle, Info, TrendingUp, type LucideIcon } from "lucide-react";
-import { EmptyState } from "@/components/empty-state";
+import { AlertTriangle, Info, TrendingUp } from "lucide-react";
+import { EmptyPanel } from "@/components/empty-state";
 import { PromotionEventSkeleton } from "@/components/skeletons";
 import { PromotionEventRow } from "@/components/promotions/event-row";
 import { usePromotions } from "@/lib/hooks/use-promotions";
@@ -53,7 +53,7 @@ function Body({
 }) {
   if (!isApiConfigured) {
     return (
-      <EmptyWrapper
+      <EmptyPanel
         icon={TrendingUp}
         title="No promotions yet"
         description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load promotion events."
@@ -62,7 +62,7 @@ function Body({
   }
 
   if (isError) {
-    return <EmptyWrapper icon={AlertTriangle} title="Couldn't load promotions" />;
+    return <EmptyPanel icon={AlertTriangle} title="Couldn't load promotions" />;
   }
 
   if (isLoading) {
@@ -77,7 +77,7 @@ function Body({
 
   if (!data || data.length === 0) {
     return (
-      <EmptyWrapper
+      <EmptyPanel
         icon={TrendingUp}
         title="No promotions yet"
         description="Promotion decisions appear here as agents accumulate facts across sessions."
@@ -90,14 +90,6 @@ function Body({
       {data.map((event) => (
         <PromotionEventRow key={event.id} event={event} />
       ))}
-    </div>
-  );
-}
-
-function EmptyWrapper(props: { icon: LucideIcon; title: string; description?: string }) {
-  return (
-    <div className="rounded-lg border border-dashed border-border">
-      <EmptyState {...props} />
     </div>
   );
 }
