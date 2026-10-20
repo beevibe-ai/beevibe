@@ -569,3 +569,193 @@ describe("find_repo tool — output shape", () => {
     ]);
   });
 });
+
+/**
+ * Everything above injects fake registry / trending clients. These cover
+ * the default HTTP implementations `createFindRepoTool` builds when the
+ * caller omits them — the TTL caches, and the "swallow and carry on"
+ * behaviour that keeps a capabilities-repo outage from failing find_repo.
+ */
+describe("find_repo tool — default HTTP data clients", () => {
+  const REGISTRY_URL =
+    "https://raw.githubusercontent.com/beevibe-ai/beevibe-capabilities/main/data/registry.json";
+  const TRENDING_DAILY =
+    "https://raw.githubusercontent.com/beevibe-ai/beevibe-capabilities/main/data/trending-daily.json";
+  const TRENDING_WEEKLY =
+    "https://raw.githubusercontent.com/beevibe-ai/beevibe-capabilities/main/data/trending-weekly.json";
+
+  /**
+   * Routes the three capabilities-repo URLs to canned payloads; anything
+   * else (i.e. the GitHub search call) returns no items.
+   */
+  function capabilitiesFetcher(
+    routes: Record<string, { ok?: boolean; json?: () => Promise<unknown> }>,
+  ): ReturnType<typeof vi.fn> {
+    return vi.fn(async (url: unknown) => {
+      const hit = typeof url === "string" ? routes[url] : undefined;
+      if (hit) return { ok: hit.ok ?? true, json: hit.json ?? (async () => ({})) };
+      return { ok: true, json: async () => ({ items: [] }) };
+    });
+  }
+
+  /** Services with NO registry/trending override — the HTTP clients get built. */
+  function httpServices(fetcher: ReturnType<typeof vi.fn>) {
+    return {
+      agentRepo: fakeAgentRepo(),
+      learnedSkillRepo: fakeLearnedSkillRepo(),
+      embeddings: fakeEmbeddingsAllMatch(),
+      fetcher: fetcher as unknown as typeof fetch,
+    };
+  }
+
+  function urlsFetched(fetcher: ReturnType<typeof vi.fn>): string[] {
+    return fetcher.mock.calls.map((c) => String(c[0]));
+  }
+
+  it("fetches the registry and both trending periods from the capabilities repo", async () => {
+    const fetcher = capabilitiesFetcher({
+      [REGISTRY_URL]: { json: async () => ({ skills: [] }) },
+      [TRENDING_DAILY]: { json: async () => ({ period: "daily", repos: [] }) },
+      [TRENDING_WEEKLY]: { json: async () => ({ period: "weekly", repos: [] }) },
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+    const fetched = urlsFetched(fetcher);
+    expect(fetched).toContain(REGISTRY_URL);
+    expect(fetched).toContain(TRENDING_DAILY);
+    expect(fetched).toContain(TRENDING_WEEKLY);
+  });
+
+  it("scores a registry hit through the real HTTP client", async () => {
+    const fetcher = capabilitiesFetcher({
+      [REGISTRY_URL]: {
+        json: async () => ({
+          skills: [{ repo_url: PDFPLUMBER, goal_pattern: "extract tables from pdf documents" }],
+        }),
+      },
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates[0]!.repo_url).toBe(PDFPLUMBER);
+    expect(candidates[0]!.source).toBe("community");
+  });
+
+  it("caches a successful registry response for the TTL", async () => {
+    const fetcher = capabilitiesFetcher({
+      [REGISTRY_URL]: { json: async () => ({ skills: [] }) },
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpServices(fetcher));
+
+    await tool.handler({ goal: "extract tables from a PDF" });
+    await tool.handler({ goal: "extract tables from a PDF" });
+    expect(urlsFetched(fetcher).filter((u) => u === REGISTRY_URL)).toHaveLength(1);
+  });
+
+  it("treats a non-ok registry response as no registry, without caching it", async () => {
+    const fetcher = capabilitiesFetcher({
+      [REGISTRY_URL]: { ok: false },
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpServices(fetcher));
+
+    const first = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(first.isError).toBeFalsy();
+    await tool.handler({ goal: "extract tables from a PDF" });
+    // Nothing was cached, so the second call retries the fetch.
+    expect(urlsFetched(fetcher).filter((u) => u === REGISTRY_URL)).toHaveLength(2);
+  });
+
+  it("rejects a registry payload whose `skills` isn't an array", async () => {
+    const fetcher = capabilitiesFetcher({
+      [REGISTRY_URL]: { json: async () => ({ skills: "nope" }) },
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    expect(candidates.every((c) => c.source !== "community")).toBe(true);
+  });
+
+  it("survives a thrown registry fetch", async () => {
+    const fetcher = vi.fn(async (url: unknown) => {
+      if (typeof url === "string" && url === REGISTRY_URL) throw new Error("ECONNRESET");
+      return { ok: true, json: async () => ({ items: [] }) };
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+  });
+
+  it("bumps a candidate that the real trending client reports", async () => {
+    const fetcher = vi.fn(async (url: unknown) => {
+      const u = String(url);
+      if (u === TRENDING_DAILY) {
+        return {
+          ok: true,
+          json: async () => ({
+            period: "daily",
+            repos: [{ repo_url: PDFPLUMBER, description: "plumb your PDFs" }],
+          }),
+        };
+      }
+      if (u.includes("api.github.com/search/repositories")) {
+        return {
+          ok: true,
+          json: async () => ({
+            items: [{ html_url: PDFPLUMBER, description: "plumb your PDFs", stargazers_count: 10 }],
+          }),
+        };
+      }
+      return { ok: true, json: async () => ({ items: [] }) };
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    const candidates = (result.content as { candidates: FindRepoCandidate[] }).candidates;
+    const hit = candidates.find((c) => c.repo_url === PDFPLUMBER);
+    expect(hit?.sources).toContain("trending");
+  });
+
+  it("caches a trending miss so an outage isn't re-hammered", async () => {
+    const fetcher = capabilitiesFetcher({
+      [TRENDING_DAILY]: { ok: false },
+      [TRENDING_WEEKLY]: { ok: false },
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpServices(fetcher));
+
+    await tool.handler({ goal: "extract tables from a PDF" });
+    await tool.handler({ goal: "extract tables from a PDF" });
+    const fetched = urlsFetched(fetcher);
+    expect(fetched.filter((u) => u === TRENDING_DAILY)).toHaveLength(1);
+    expect(fetched.filter((u) => u === TRENDING_WEEKLY)).toHaveLength(1);
+  });
+
+  it("caches a thrown trending fetch too", async () => {
+    const fetcher = vi.fn(async (url: unknown) => {
+      if (String(url).includes("trending-")) throw new Error("ETIMEDOUT");
+      return { ok: true, json: async () => ({ items: [] }) };
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpServices(fetcher));
+
+    const first = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(first.isError).toBeFalsy();
+    await tool.handler({ goal: "extract tables from a PDF" });
+    expect(urlsFetched(fetcher).filter((u) => u.includes("trending-"))).toHaveLength(2);
+  });
+
+  it("tolerates a trending snapshot with no `repos` array", async () => {
+    const fetcher = capabilitiesFetcher({
+      [TRENDING_DAILY]: { json: async () => ({ period: "daily" }) },
+      [TRENDING_WEEKLY]: { json: async () => ({ period: "weekly", repos: null }) },
+    });
+    const tool = createFindRepoTool({ agentId: AGENT_ID }, httpServices(fetcher));
+
+    const result = await tool.handler({ goal: "extract tables from a PDF" });
+    expect(result.isError).toBeFalsy();
+  });
+});
