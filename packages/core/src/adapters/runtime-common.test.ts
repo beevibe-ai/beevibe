@@ -2,10 +2,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CliProcessResult } from "./claude-code/spawn.js";
 import type { RuntimeContext, RuntimeResult, RuntimeStep } from "../ports/runtime.js";
 import {
+  bareCliExitMessage,
   cancelledResult,
   createStdoutLineReader,
+  createTranscript,
   finalizeCliResult,
+  resolveCliOutput,
   streamCliEvents,
+  transcriptSnippet,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -249,4 +253,90 @@ describe("streamCliEvents", () => {
       expect(result.aborted).toBe(true);
     },
   );
+});
+
+describe("transcriptSnippet", () => {
+  it("collapses newlines so one event stays one transcript line", () => {
+    expect(transcriptSnippet("a\nb\nc")).toBe("a b c");
+  });
+
+  it("caps at 200 chars", () => {
+    expect(transcriptSnippet("x".repeat(500))).toHaveLength(200);
+  });
+});
+
+describe("createTranscript", () => {
+  it("is undefined until something is recorded", () => {
+    expect(createTranscript().build()).toBeUndefined();
+  });
+
+  it("writes the tagged line format the summarizers key off", () => {
+    const t = createTranscript();
+    t.assistant("hello");
+    t.toolCall("Read");
+    t.toolCall("shell", "ls -la");
+    t.toolResult("Read", "file contents");
+    t.toolResult("Read");
+    t.toolResult(undefined, "orphaned");
+    t.error("boom");
+    expect(t.build()).toBe(
+      "[assistant] hello\n" +
+        "[tool_call] Read\n" +
+        "[tool_call] shell ls -la\n" +
+        "[tool_result from Read] file contents\n" +
+        "[tool_result from Read]\n" +
+        "[tool_result]\n" +
+        "[error] boom\n",
+    );
+  });
+});
+
+describe("resolveCliOutput", () => {
+  it("prefers the provider's failure message on the failed path", () => {
+    expect(
+      resolveCliOutput({
+        failed: true,
+        exitCode: 1,
+        failureMessage: "rate limited",
+        assistantText: "partial",
+      }),
+    ).toBe("rate limited");
+  });
+
+  it("falls back to the assistant text, then to the bare exit message", () => {
+    expect(resolveCliOutput({ failed: true, exitCode: 2, assistantText: "partial" })).toBe(
+      "partial",
+    );
+    expect(resolveCliOutput({ failed: true, exitCode: 2, assistantText: "" })).toBe(
+      bareCliExitMessage(2),
+    );
+  });
+
+  it("prefers the provider's canonical final text on the success path", () => {
+    expect(
+      resolveCliOutput({
+        failed: false,
+        exitCode: 0,
+        assistantText: "streamed",
+        preferredOutput: "from file",
+      }),
+    ).toBe("from file");
+  });
+
+  it("falls through an empty preferred output rather than returning it", () => {
+    expect(
+      resolveCliOutput({
+        failed: false,
+        exitCode: 0,
+        assistantText: "streamed",
+        preferredOutput: "",
+      }),
+    ).toBe("streamed");
+  });
+
+  it("ends at a neutral completion message when the run said nothing", () => {
+    expect(resolveCliOutput({ failed: false, exitCode: 0, assistantText: "" })).toBe(
+      "Session completed.",
+    );
+  });
 });
