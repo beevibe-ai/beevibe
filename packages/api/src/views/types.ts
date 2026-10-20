@@ -17,7 +17,12 @@
 import type {
   Agent,
   HierarchyLevel,
+  OpenView,
+  RepoCard,
+  Room,
+  RoomMessage,
   SessionSpawnMode,
+  SuggestedAction,
   Task,
   TaskStatus,
   WorkProduct,
@@ -791,6 +796,94 @@ export interface AgentNetwork {
   self: AgentDisplay[];
   /** Other people's agents the caller co-exists with via shared rooms. */
   peers: AgentPeerOwner[];
+}
+
+// ── Rooms — multi-tenant chat surface ────────────────────────────
+//
+// Wire forms of core's `Room` / `RoomMessage`, produced by
+// `packages/api/src/routes/room.ts` and rendered by the web room view.
+// Two things differ from the domain types: timestamps arrive as ISO
+// strings (what `res.json` emits for a `Date`), and agent messages have
+// their `<suggest_action>` / `<open_view>` directives parsed out of the
+// raw content into sibling fields.
+
+export interface RoomSummary extends Omit<Room, "created_at" | "updated_at"> {
+  created_at: string;
+  updated_at: string;
+}
+
+/** A room member with its label hydrated — person name+email, agent name+hierarchy. */
+export type RoomMemberDetail =
+  | { kind: "person"; id: string; name: string; email: string | null }
+  | {
+      kind: "agent";
+      id: string;
+      name: string;
+      hierarchy: HierarchyLevel;
+      owner_person_id: string;
+    };
+
+export interface RoomMessageDetail
+  extends Omit<RoomMessage, "created_at" | "content"> {
+  /** Directive XML stripped — safe to hand straight to the markdown renderer. */
+  content: string;
+  /** Entity ids the agent referenced in this message, hydrated as cards. */
+  view_refs?: string[];
+  open_view?: OpenView;
+  suggested_actions?: SuggestedAction[];
+  repo_cards?: RepoCard[];
+  created_at: string;
+}
+
+/** One step of a running agent turn, for the live typing transcript. */
+export interface RoomTypingStep {
+  event_id: string;
+  kind: SessionEventKind;
+  tool_name: string | null;
+  content: string;
+}
+
+export interface RoomTypingIndicator {
+  session_id: string;
+  agent_id: string;
+  agent_name: string;
+  started_at: string;
+  /** Last ~6 tool calls for this session, polled. SSE may add more on top. */
+  recent_steps: RoomTypingStep[];
+  total_steps: number;
+}
+
+export interface RoomDetail {
+  ok: true;
+  room: RoomSummary;
+  members: RoomMemberDetail[];
+  messages: RoomMessageDetail[];
+  /** Agents currently working on a turn for this room. May be omitted by older server builds. */
+  typing?: RoomTypingIndicator[];
+}
+
+// ── Work products ──────────────────────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Single work product, as served by `views/work-product.ts` for the
+ * dedicated detail page — the domain row plus the joined task/agent
+ * labels and the `file://` fallback flag.
+ */
+export interface WorkProductDetail
+  extends Omit<WorkProduct, "metadata" | "created_at" | "updated_at"> {
+  task_short_id: string;
+  task_title: string;
+  agent_label: string;
+  /**
+   * Full deliverable content. Sourced from `work_product.body` when set;
+   * otherwise falls back to reading a `file://` URL from disk. Truncated
+   * to 256 KB.
+   */
+  body?: string;
+  /** True when `url` is file:// — UI uses this to suppress an unclickable link. */
+  url_is_local: boolean;
+  created_at: string;
+  updated_at: string;
 }
 
 // ── Re-exports of ambient types that web imports alongside the DTOs ─────────

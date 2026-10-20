@@ -21,4 +21,11 @@ export type {
   CoreSnapshotRow,
   AgentRatioRow,
   BeforeAfterData,
+  RoomSummary,
+  RoomMemberDetail,
+  RoomMessageDetail,
+  RoomTypingStep,
+  RoomTypingIndicator,
+  RoomDetail,
+  WorkProductDetail,
 } from "@beevibe/api/views/types";

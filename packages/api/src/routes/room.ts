@@ -32,19 +32,24 @@ import {
   roomMessageId as makeRoomMessageId,
   type Agent,
   type AgentRepository,
-  type OpenView,
   type PersonRepository,
-  type RepoCard,
+  type Room,
   type RoomMessage,
   type RoomRepository,
   type RuntimeRegistry,
   type SessionEventRepository,
   type SessionRepository,
-  type SuggestedAction,
   type WorkspaceManager,
 } from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
 import { requireHuman } from "../auth/middleware.js";
+import type {
+  RoomDetail,
+  RoomMemberDetail,
+  RoomMessageDetail,
+  RoomSummary,
+  RoomTypingIndicator,
+} from "../views/types.js";
 import { makeErrorHandler } from "./http-errors.js";
 import { processResponse } from "./directives.js";
 
@@ -130,22 +135,12 @@ demo's point. Use this decision order:
 
 const MENTION_RE = /@([A-Za-z0-9_]+)/g;
 
-interface MessageReply {
-  id: string;
-  room_id: string;
-  kind: "human" | "agent";
-  content: string;
-  sender_person_id?: string;
-  sender_agent_id?: string;
-  session_id?: string;
-  view_refs?: string[];
-  open_view?: OpenView;
-  suggested_actions?: SuggestedAction[];
-  repo_cards?: RepoCard[];
-  created_at: string;
-}
-
-function toMessageReply(m: RoomMessage): MessageReply {
+/**
+ * Wire form of a persisted room message. The shape lives in
+ * `views/types.ts` with the rest of the read contract so the web room
+ * view and this route read one declaration.
+ */
+function toMessageReply(m: RoomMessage): RoomMessageDetail {
   // Agent messages may contain `<suggest_action>` / `<open_view>`
   // directives + inline entity refs. Strip them from the visible
   // content here so the markdown renderer never sees raw XML, and
@@ -178,6 +173,20 @@ function toMessageReply(m: RoomMessage): MessageReply {
   };
 }
 
+/**
+ * Wire form of a room row. `res.json` already serializes a `Date` via
+ * `toJSON()` (which is `toISOString()`), so mapping explicitly changes
+ * no bytes on the wire — it just lets the shared `RoomSummary` DTO
+ * typecheck the handler instead of describing it from a distance.
+ */
+function toRoomSummary(room: Room): RoomSummary {
+  return {
+    ...room,
+    created_at: room.created_at.toISOString(),
+    updated_at: room.updated_at.toISOString(),
+  };
+}
+
 const handleError = makeErrorHandler("room route");
 
 export function createRoomRouter(deps: RoomRoutesDeps): Router {
@@ -202,7 +211,7 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
       });
       await deps.roomRepo.addPersonMember(room.id, req.caller.personId);
       if (team) await deps.roomRepo.addAgentMember(room.id, team.id);
-      res.json({ ok: true, room });
+      res.json({ ok: true, room: toRoomSummary(room) });
     } catch (err) {
       handleError(err, res);
     }
@@ -213,7 +222,7 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
     if (!requireHuman(req, res)) return;
     try {
       const rooms = await deps.roomRepo.listForPerson(req.caller.personId);
-      res.json({ ok: true, rooms });
+      res.json({ ok: true, rooms: rooms.map(toRoomSummary) });
     } catch (err) {
       handleError(err, res);
     }
@@ -245,7 +254,7 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
         Promise.all(personIds.map((pid) => deps.personRepo.findById(pid))),
         Promise.all(agentIds.map((aid) => deps.agentRepo.findById(aid))),
       ]);
-      const memberDetail = [
+      const memberDetail: RoomMemberDetail[] = [
         ...persons.filter((p) => p).map((p) => ({
           kind: "person" as const,
           id: p!.id,
@@ -270,7 +279,7 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
       const eventsBySession = await Promise.all(
         typingRunning.map((s) => deps.sessionEventRepo.listBySession(s.id, 20)),
       );
-      const typing = typingRunning.map((s, idx) => {
+      const typing: RoomTypingIndicator[] = typingRunning.map((s, idx) => {
         const evs = eventsBySession[idx] ?? [];
         return {
           session_id: s.id,
@@ -287,13 +296,14 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
         };
       });
 
-      res.json({
+      const detail: RoomDetail = {
         ok: true,
-        room,
+        room: toRoomSummary(room),
         members: memberDetail,
         messages: messages.map(toMessageReply),
         typing,
-      });
+      };
+      res.json(detail);
     } catch (err) {
       handleError(err, res);
     }
@@ -315,7 +325,7 @@ export function createRoomRouter(deps: RoomRoutesDeps): Router {
       await deps.roomRepo.addPersonMember(id, req.caller.personId);
       const team = await deps.agentRepo.findTopLevelForOwner(req.caller.personId);
       if (team) await deps.roomRepo.addAgentMember(id, team.id);
-      res.json({ ok: true, room });
+      res.json({ ok: true, room: toRoomSummary(room) });
     } catch (err) {
       handleError(err, res);
     }
