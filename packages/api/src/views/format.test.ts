@@ -1,12 +1,12 @@
 import { describe, it, expect } from "vitest";
-import { computeCacheHitRatio, formatRelativeShort } from "./format.js";
+import { clampLimit, computeCacheHitRatio, formatRelativeShort } from "./format.js";
 
 // `deriveShortId`, `formatDurationLabel`, `firstNonEmptyLine` and
 // `truncate` are re-exported here verbatim from
 // `@beevibe/core/domain/format` and are covered by that module's own
 // suite. This file tests the two things that are actually this
-// package's: the suffix-less relative-time form the wire uses, and the
-// cache-hit ratio.
+// package's: the suffix-less relative-time form the wire uses, the
+// cache-hit ratio, and the shared list-limit clamp.
 
 describe("formatRelativeShort", () => {
   const now = new Date("2026-04-30T12:00:00Z");
@@ -58,5 +58,24 @@ describe("computeCacheHitRatio", () => {
 
   it("returns 0 rather than NaN when there is no input to score against", () => {
     expect(computeCacheHitRatio({ input: 0, cacheCreation: 0, cacheRead: 0 })).toBe(0);
+  });
+});
+
+describe("clampLimit", () => {
+  const bounds = { default: 50, max: 200 };
+
+  it("defaults when the caller passed nothing", () => {
+    expect(clampLimit(undefined, bounds)).toBe(50);
+  });
+
+  it("passes an in-band limit through", () => {
+    expect(clampLimit(25, bounds)).toBe(25);
+    expect(clampLimit(200, bounds)).toBe(200);
+  });
+
+  it("clamps to the nearest legal page rather than rejecting", () => {
+    expect(clampLimit(0, bounds)).toBe(1);
+    expect(clampLimit(-5, bounds)).toBe(1);
+    expect(clampLimit(9999, bounds)).toBe(200);
   });
 });

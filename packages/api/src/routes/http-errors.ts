@@ -1,4 +1,6 @@
 import type { Request, Response } from "express";
+import type { Agent, AgentRepository } from "@beevibe/core";
+import type { AgentToolResult } from "../tools/types.js";
 
 /**
  * Read a required route param, 400-ing when Express hands back an empty
@@ -149,4 +151,49 @@ export function makeErrorHandler(
       message: err instanceof Error ? err.message : String(err),
     });
   };
+}
+
+/**
+ * Resolve the human caller's primary team agent, 404-ing when they have
+ * none.
+ *
+ * The REST wrappers around the agent-facing MCP tools (`/find-repo`,
+ * `/capabilities/use`) all run the tool under the caller's team agent:
+ * the tools scope their lookups to `caller.agentId`, and the rows they
+ * create (container task, repo_run, work_product) should be owned by
+ * that agent, matching the agent-driven flow. Each wrapper had written
+ * the lookup, the 404 and its wording out by hand.
+ *
+ * Returns `undefined` after responding, so the caller's next line is
+ * `if (!agent) return;`.
+ */
+export async function requirePrimaryAgent(
+  res: Response,
+  personId: string,
+  agentRepo: Pick<AgentRepository, "findTopLevelForOwner">,
+): Promise<Agent | undefined> {
+  const agent = await agentRepo.findTopLevelForOwner(personId);
+  if (!agent) {
+    res.status(404).json({ error: "no_agent", message: "Caller has no primary agent." });
+    return undefined;
+  }
+  return agent;
+}
+
+/**
+ * Forward an MCP tool's result to an HTTP caller.
+ *
+ * `AgentToolResult` carries its own error flag rather than throwing, so
+ * the REST wrappers each turned `isError` into a 400 with the tool's
+ * structured content as the body and the success case into their own
+ * 2xx. `successStatus` stays a parameter because it differs by endpoint
+ * — `/find-repo` answers 200 with results, `/capabilities/use` answers
+ * 202 for a run it only just queued.
+ */
+export function sendToolResult(
+  res: Response,
+  result: AgentToolResult,
+  successStatus: number,
+): void {
+  res.status(result.isError ? 400 : successStatus).json(result.content);
 }
