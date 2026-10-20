@@ -5,7 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, MessageCircleMore, Plus, Users } from "lucide-react";
-import { api, type Room } from "@/lib/api/client";
+import { api, type RoomSummary } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
 import { Skeleton } from "@/components/skeleton";
@@ -18,7 +18,7 @@ export function RoomsListClient() {
   const [name, setName] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const { data, isLoading, isError } = useQuery<{ ok: true; rooms: Room[] }>({
+  const { data, isLoading, isError } = useQuery<{ ok: true; rooms: RoomSummary[] }>({
     queryKey: queryKeys.rooms.list(),
     queryFn: ({ signal }) => api.rooms.list({ signal }),
     enabled: isApiConfigured,

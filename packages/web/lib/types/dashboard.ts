@@ -1,5 +1,7 @@
 import type { TaskStatus } from "@beevibe/core";
-import type { LegendBucket } from "@beevibe/api/views/types";
+// The two names this file also binds against locally; the rest of the
+// backend's dashboard DTOs are re-exported verbatim at the bottom.
+import type { LegendBucket, UsageSummaryData } from "@beevibe/api/views/types";
 
 // ── Display shapes the home page binds against ─────────────────────────────
 //
@@ -98,5 +100,3 @@ export type {
   UsageSummaryData,
   UsageAgentBreakdown,
 } from "@beevibe/api/views/types";
-
-import type { UsageSummaryData } from "@beevibe/api/views/types";

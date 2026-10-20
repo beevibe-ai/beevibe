@@ -3,7 +3,7 @@
 import { AlertTriangle, LayoutDashboard } from "lucide-react";
 import { useDashboard } from "@/lib/hooks/use-dashboard";
 import { isApiConfigured } from "@/lib/api/config";
-import { EmptyState } from "@/components/empty-state";
+import { EmptyPanel } from "@/components/empty-state";
 import { Skeleton } from "@/components/skeleton";
 import { KpiTileSkeleton } from "@/components/skeletons";
 import { KpiTile } from "@/components/home/kpi-tile";
@@ -36,25 +36,21 @@ function Body({
 }) {
   if (!isApiConfigured) {
     return (
-      <div className="rounded-lg border border-dashed border-border">
-        <EmptyState
-          icon={LayoutDashboard}
-          title="Dashboard not connected"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load KPIs and fleet status."
-        />
-      </div>
+      <EmptyPanel
+        icon={LayoutDashboard}
+        title="Dashboard not connected"
+        description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load KPIs and fleet status."
+      />
     );
   }
 
   if (isError) {
     return (
-      <div className="rounded-lg border border-dashed border-border">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load dashboard"
-          description="Check that the MCP server is reachable."
-        />
-      </div>
+      <EmptyPanel
+        icon={AlertTriangle}
+        title="Couldn't load dashboard"
+        description="Check that the MCP server is reachable."
+      />
     );
   }
 

@@ -1,10 +1,13 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Request, Response } from "express";
+import type { Agent } from "@beevibe/core";
 import {
   invalidBody,
   loadOwned,
   requireNullableString,
   requireParam,
+  requirePrimaryAgent,
+  sendToolResult,
 } from "./http-errors.js";
 
 function fakeRes(): Response & { statusCode?: number; body?: unknown } {
@@ -217,5 +220,44 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("requirePrimaryAgent", () => {
+  const agent = { id: "agent_team", owner_id: "per_w" } as Agent;
+
+  it("returns the caller's team agent and answers nothing", async () => {
+    const res = fakeRes();
+    const repo = { findTopLevelForOwner: vi.fn().mockResolvedValue(agent) };
+    await expect(requirePrimaryAgent(res, "per_w", repo)).resolves.toBe(agent);
+    expect(repo.findTopLevelForOwner).toHaveBeenCalledWith("per_w");
+    expect(res.statusCode).toBeUndefined();
+  });
+
+  it("404s with no_agent when the caller has no team agent", async () => {
+    const res = fakeRes();
+    const repo = { findTopLevelForOwner: vi.fn().mockResolvedValue(undefined) };
+    await expect(requirePrimaryAgent(res, "per_w", repo)).resolves.toBeUndefined();
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({
+      error: "no_agent",
+      message: "Caller has no primary agent.",
+    });
+  });
+});
+
+describe("sendToolResult", () => {
+  it("answers the endpoint's success status with the tool's content", () => {
+    const res = fakeRes();
+    sendToolResult(res, { content: { repo_run_id: "rr_1" } }, 202);
+    expect(res.statusCode).toBe(202);
+    expect(res.body).toEqual({ repo_run_id: "rr_1" });
+  });
+
+  it("turns the tool's own error flag into a 400, content intact", () => {
+    const res = fakeRes();
+    sendToolResult(res, { content: { error: "bad_repo_url" }, isError: true }, 202);
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: "bad_repo_url" });
   });
 });

@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -206,5 +211,187 @@ export function finalizeCliResult(
     process_group_id: result.process_group_id ?? undefined,
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
+  };
+}
+
+/**
+ * How one CLI runtime differs from the others: which binary to spawn,
+ * with what argv/env, and how to turn a line of its NDJSON stdout into
+ * an event and that event into transcript steps.
+ */
+export interface CliStreamSpec<E> {
+  /** Runtime tag for the truncation warning, e.g. `"CodexRuntime"`. */
+  tag: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /**
+   * Piped to the CLI's stdin. Claude Code takes the prompt this way;
+   * codex and opencode pass it on argv and leave this unset.
+   */
+  stdin?: string;
+  /** Provider-specific NDJSON line parser from the adapter's `stream-json.ts`. */
+  parseLine: (line: string) => E | null;
+  /** Provider-specific event → `RuntimeStep[]` mapper, for the live transcript. */
+  extractSteps: (event: E) => RuntimeStep[];
+}
+
+export interface CliStreamOutcome<E> {
+  /** Every event parsed off stdout, in arrival order. */
+  events: E[];
+  result: CliProcessResult;
+}
+
+/**
+ * Run a CLI runtime's subprocess, collecting its event stream.
+ *
+ * Every CLI adapter's `execute` had the same body around its own
+ * `parse*EventLine` / `extract*StepEvents` pair: accumulate events while
+ * forwarding steps to `context.onStep`, spawn through a line reader,
+ * flush the trailing partial line, warn on truncation. The parts that
+ * genuinely differ are the argv/env build-up and the parsers, which stay
+ * in each adapter; this owns the process lifecycle.
+ *
+ * Callers still map the outcome themselves — `result.aborted` →
+ * {@link cancelledResult}, otherwise their own `parse*Events` wrapped in
+ * {@link finalizeCliResult} — because the success path differs per
+ * provider (codex also reads its `--output-last-message` file).
+ */
+export async function streamCliEvents<E>(
+  context: RuntimeContext,
+  spec: CliStreamSpec<E>,
+): Promise<CliStreamOutcome<E>> {
+  // Parse incrementally during streaming rather than re-reading the whole
+  // of stdout after close. The line reader handles chunk boundaries — a
+  // single event can arrive split across chunks, or several per chunk.
+  const events: E[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = spec.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of spec.extractSteps(event)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: spec.command,
+    args: spec.args,
+    cwd: spec.cwd,
+    env: spec.env,
+    stdin: spec.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Emit any final line that arrived without a trailing newline.
+  stdout.flush();
+  warnIfTruncated(spec.tag, result);
+
+  return { events, result };
+}
+
+/**
+ * The placeholder `output` a parser returns when the CLI exited non-zero
+ * with no final message to surface. Exported so downstream consumers (the
+ * chat route's user-facing failure mapping) can detect this exact string
+ * and replace it with something more actionable instead of pattern-matching
+ * across package boundaries.
+ */
+export function bareCliExitMessage(exitCode: number | null): string {
+  return `CLI exited with code ${exitCode}`;
+}
+
+/**
+ * Matches strings produced by {@link bareCliExitMessage} — the only
+ * "useless" stand-in this layer emits on failure. Consumers that want to
+ * swap a bare exit for a friendlier diagnostic gate on this predicate so
+ * the coupling stays in one place.
+ */
+export function isBareCliExitMessage(s: string): boolean {
+  return /^CLI exited with code (-?\d+|null)$/.test(s);
+}
+
+/**
+ * The `output` field, resolved the way every CLI parser resolves it.
+ *
+ * On failure: the provider's own error message, else whatever the agent
+ * last said, else {@link bareCliExitMessage}. On success:
+ * `preferredOutput` (a provider's canonical final text — codex writes one
+ * to `--output-last-message`), else the assistant text, else a neutral
+ * "Session completed.".
+ *
+ * `||` throughout, not `??`: an empty string must fall through to the next
+ * branch rather than short-circuit as a present-but-blank answer.
+ */
+export function resolveCliOutput(opts: {
+  failed: boolean;
+  exitCode: number | null;
+  /** Provider's failure reason, when the event stream carried one. */
+  failureMessage?: string | undefined;
+  /** Last (or joined) assistant text seen in the stream. */
+  assistantText: string;
+  /** Preferred final text on the success path, when the provider has one. */
+  preferredOutput?: string | undefined;
+}): string {
+  if (opts.failed) {
+    return opts.failureMessage || opts.assistantText || bareCliExitMessage(opts.exitCode);
+  }
+  return opts.preferredOutput || opts.assistantText || "Session completed.";
+}
+
+/** Single-line, 200-char form of a tool payload, for the persisted transcript. */
+export function transcriptSnippet(text: string): string {
+  return text.slice(0, 200).replace(/\n/g, " ");
+}
+
+/**
+ * Accumulator for the persisted transcript — the
+ * `[assistant] … [tool_call] … [tool_result from X] … [error] …` line
+ * format all three CLI parsers emit.
+ *
+ * The format is a cross-provider contract: transcript summarizers and the
+ * session-search indexer key off these tags, so it lives here rather than
+ * being spelled out once per adapter where the tags could drift apart.
+ */
+export interface TranscriptWriter {
+  assistant: (text: string) => void;
+  /** `detail` is appended after the tool name when the provider has one (codex's shell command). */
+  toolCall: (tool: string, detail?: string) => void;
+  /**
+   * `tool` is `undefined` when the stream didn't let us correlate the
+   * result back to its call; the line then carries no "from" clause.
+   */
+  toolResult: (tool: string | undefined, detail?: string) => void;
+  error: (message: string) => void;
+  /** `undefined` when nothing was recorded — `RuntimeResult.transcript` is optional. */
+  build: () => string | undefined;
+}
+
+export function createTranscript(): TranscriptWriter {
+  const parts: string[] = [];
+  return {
+    assistant: (text) => {
+      parts.push(`[assistant] ${text}\n`);
+    },
+    toolCall: (tool, detail) => {
+      parts.push(detail ? `[tool_call] ${tool} ${detail}\n` : `[tool_call] ${tool}\n`);
+    },
+    toolResult: (tool, detail) => {
+      if (!tool) {
+        parts.push("[tool_result]\n");
+        return;
+      }
+      parts.push(detail ? `[tool_result from ${tool}] ${detail}\n` : `[tool_result from ${tool}]\n`);
+    },
+    error: (message) => {
+      parts.push(`[error] ${message}\n`);
+    },
+    build: () => parts.join("") || undefined,
   };
 }

@@ -29,6 +29,7 @@ import { getReferencedRepos } from "@beevibe/core/services/referenced-repos";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { requireHuman } from "../auth/middleware.js";
 import { createUseRepoTool } from "../tools/use-repo.js";
+import { requirePrimaryAgent, sendToolResult } from "./http-errors.js";
 
 export interface CapabilitiesRouterDeps {
   authMiddleware: RequestHandler;
@@ -108,16 +109,12 @@ export function createCapabilitiesRouter(deps: CapabilitiesRouterDeps): Router {
     }
 
     try {
-      // Same pattern as /find-repo: resolve caller's primary team agent
-      // and run the use_repo tool under that agent's identity. The
-      // resulting container task + repo_run + work_product are owned by
-      // the team agent, which matches the existing agent-driven flow.
-      const personId = req.caller!.personId;
-      const agent = await deps.agentRepo.findTopLevelForOwner(personId);
-      if (!agent) {
-        res.status(404).json({ error: "no_agent", message: "Caller has no primary agent." });
-        return;
-      }
+      // Same pattern as /find-repo: run the use_repo tool under the
+      // caller's primary team agent, so the resulting container task +
+      // repo_run + work_product are owned by it the way they are in the
+      // agent-driven flow.
+      const agent = await requirePrimaryAgent(res, req.caller.personId, deps.agentRepo);
+      if (!agent) return;
 
       const tool = createUseRepoTool(
         { agentId: agent.id },
@@ -128,12 +125,8 @@ export function createCapabilitiesRouter(deps: CapabilitiesRouterDeps): Router {
           dispatchService: deps.dispatchService,
         },
       );
-      const result = await tool.handler({ goal, repo_url: repoUrl });
-      if (result.isError) {
-        res.status(400).json(result.content);
-        return;
-      }
-      res.status(202).json(result.content);
+      // 202, not 200: the run is only queued here, not finished.
+      sendToolResult(res, await tool.handler({ goal, repo_url: repoUrl }), 202);
     } catch (err) {
       console.error("[capabilities/use]", err);
       res.status(500).json({ error: "use_failed" });

@@ -41,3 +41,26 @@ export function EmptyState({ icon: Icon, title, description, cta, className }: P
     </div>
   );
 }
+
+/**
+ * `EmptyState` inside the dashed-border card the list pages frame it in.
+ *
+ * Every list surface wraps its empty / error / not-configured state in
+ * the same `rounded-lg border border-dashed border-border` div —
+ * mesh, dashboard and runtimes inline it twice each, the mesh activity
+ * feed once, and promotions and the agents orbit had each grown their
+ * own private one-line wrapper around it. Eight copies of one border
+ * recipe is eight ways for a list page to end up framed differently
+ * from its neighbours.
+ *
+ * `panelClassName` targets the card; `className` still reaches the
+ * `EmptyState` inside it, so the two are not interchangeable (the
+ * agents orbit constrains the card's width, not the content's).
+ */
+export function EmptyPanel({ panelClassName, ...props }: Props & { panelClassName?: string }) {
+  return (
+    <div className={cn("rounded-lg border border-dashed border-border", panelClassName)}>
+      <EmptyState {...props} />
+    </div>
+  );
+}

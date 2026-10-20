@@ -1,6 +1,11 @@
 import type { RuntimeResult, RuntimeStep } from "../../ports/runtime.js";
-import { bareCliExitMessage } from "../claude-code/stream-json.js";
-import { describeToolInput, parseNdjsonLine } from "../runtime-common.js";
+import {
+  createTranscript,
+  describeToolInput,
+  parseNdjsonLine,
+  resolveCliOutput,
+  transcriptSnippet,
+} from "../runtime-common.js";
 
 /**
  * Parser for `codex exec --json` output.
@@ -195,7 +200,7 @@ export function parseCodexEvents(
   let assistantText = "";
   let turnFailed: string | undefined;
   let topLevelError: string | undefined;
-  const transcriptParts: string[] = [];
+  const transcript = createTranscript();
 
   for (const evt of events) {
     switch (evt.type) {
@@ -210,29 +215,25 @@ export function parseCodexEvents(
         break;
       case CODEX_EVENT_TYPE.Error:
         topLevelError = evt.message ?? topLevelError;
-        if (evt.message) transcriptParts.push(`[error] ${evt.message}\n`);
+        if (evt.message) transcript.error(evt.message);
         break;
       case CODEX_EVENT_TYPE.ItemCompleted: {
         const item = evt.item;
         if (!item || !item.type) break;
         if (item.type === CODEX_ITEM_TYPE.AgentMessage && item.text) {
           assistantText = item.text;
-          transcriptParts.push(`[assistant] ${item.text}\n`);
+          transcript.assistant(item.text);
         } else if (item.type === CODEX_ITEM_TYPE.McpToolCall) {
           const tool = item.tool ?? "unknown";
-          transcriptParts.push(`[tool_call] ${tool}\n`);
+          transcript.toolCall(tool);
           const resultSummary = summarizeMcpResult(item.result);
           if (resultSummary || item.error?.message) {
-            transcriptParts.push(
-              `[tool_result from ${tool}] ${item.error?.message ?? resultSummary}\n`,
-            );
+            transcript.toolResult(tool, item.error?.message ?? resultSummary);
           }
         } else if (item.type === CODEX_ITEM_TYPE.CommandExecution) {
-          transcriptParts.push(`[tool_call] shell ${(item.command ?? "").slice(0, 200)}\n`);
+          transcript.toolCall("shell", (item.command ?? "").slice(0, 200));
           if (item.aggregated_output) {
-            transcriptParts.push(
-              `[tool_result from shell] ${item.aggregated_output.slice(0, 200).replace(/\n/g, " ")}\n`,
-            );
+            transcript.toolResult("shell", transcriptSnippet(item.aggregated_output));
           }
         }
         break;
@@ -245,22 +246,21 @@ export function parseCodexEvents(
   }
 
   const failed = exitCode !== 0 || !!turnFailed || !!topLevelError;
-  const trimmedLast = lastMessage.trim();
-  const failureMessage = turnFailed ?? topLevelError;
-  // Success: prefer the file-backed last message (codex writes the canonical
-  // final assistant text there); fall back to the event-stream's last
-  // agent_message; final fallback bareCliExitMessage so the chat-route's
-  // failure-mapping helper can swap it for stderr/daemon-pointer. `||`
-  // not `??` — empty assistantText must fall through to the next branch,
-  // not short-circuit there.
-  const output = failed
-    ? failureMessage || assistantText || bareCliExitMessage(exitCode)
-    : trimmedLast || assistantText || "Session completed.";
+  // On success prefer the file-backed last message — codex writes the
+  // canonical final assistant text there — over the event stream's last
+  // agent_message.
+  const output = resolveCliOutput({
+    failed,
+    exitCode,
+    failureMessage: turnFailed ?? topLevelError,
+    assistantText,
+    preferredOutput: lastMessage.trim(),
+  });
 
   return {
     status: failed ? "failed" : "completed",
     output,
-    transcript: transcriptParts.join("") || undefined,
+    transcript: transcript.build(),
     cli_session_id: threadId,
     usage: usage
       ? {
@@ -280,7 +280,7 @@ function summarizeMcpResult(result: { content?: unknown[] } | null | undefined):
   for (const block of result.content) {
     if (block && typeof block === "object" && (block as { type?: unknown }).type === "text") {
       const text = (block as { text?: unknown }).text;
-      if (typeof text === "string") return text.slice(0, 200).replace(/\n/g, " ");
+      if (typeof text === "string") return transcriptSnippet(text);
     }
   }
   return JSON.stringify(result.content).slice(0, 200);
