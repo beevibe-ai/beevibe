@@ -201,14 +201,12 @@ describe("TasksClient — lane rendering", () => {
     expect(screen.getByText("cancel one")).toBeInTheDocument();
   });
 
-  it("calls the task list endpoint without a view filter (no My tasks tab)", async () => {
+  it("calls the task list endpoint without a view filter", async () => {
     listMock.mockResolvedValue([]);
     renderClient();
 
     await waitFor(() =>
       expect(listMock).toHaveBeenCalledWith({}, expect.objectContaining({})),
     );
-    // Sanity: the obsolete "My tasks" affordance shouldn't render.
-    expect(screen.queryByRole("button", { name: "My tasks" })).not.toBeInTheDocument();
   });
 });

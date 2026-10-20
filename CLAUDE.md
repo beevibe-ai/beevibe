@@ -105,8 +105,10 @@ DATABASE_URL=postgresql://beevibe:beevibe@localhost:5433/beevibe
 ## Running tests
 
 `pnpm test` is **not** hermetic — integration tests need a real Postgres
-and the adapter tests make live provider calls. There is no
-`describe.skipIf`: missing prerequisites fail loudly by design.
+and the adapter tests make live provider calls. Missing prerequisites
+fail loudly by design — the only `describe.skipIf` gates are the two
+opt-in suites (`RUN_CLAUDE_SMOKE`, and `HAS_LIVE_API_KEYS` in
+`packages/api/src/routes/mcp.test.ts`); everything else throws.
 
 ```bash
 docker compose up -d --wait postgres
@@ -157,10 +159,16 @@ than expecting green:
 
 | Package | Result |
 | --- | --- |
-| `@beevibe/api` | 27 files pass, 9 fail (308 tests pass) |
-| `@beevibe/core` | 9 tests fail, 415 pass |
-| `@beevibe/scheduler` | 2 files pass, 2 fail (10 tests pass) |
-| `@beevibe/sandbox` | exits 0 — its only suite is Docker-gated and skips |
+| `@beevibe/api` | 43 files pass, 9 fail, 1 skip (820 tests pass, 110 skip) |
+| `@beevibe/core` | 39 files pass, 20 fail, 1 skip (7 tests fail, 609 pass, 269 skip) |
+| `@beevibe/scheduler` | 2 files pass, 2 fail (10 tests pass, 17 skip) |
+| `@beevibe/daemon` | exits 0 — 12 files pass, 1 skip (156 tests pass) |
+| `@beevibe/sandbox` | exits 0 — 4 files pass, 1 skip (109 tests pass); the Docker-gated suite skips |
+| `@beevibe/web` | exits 0 — 24 files pass (203 tests pass) |
+| `scripts/` | exits 0 — 1 file pass (11 tests pass) |
+
+The "skip" counts are not `.skip` markers: when a DB-gated `beforeAll`
+throws, vitest reports that suite's remaining cases as skipped.
 
 `typecheck`, `lint`, and `build` need none of this and should always be
 clean — use them as the real gate when the DB isn't available.
