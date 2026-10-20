@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,86 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * How one CLI runtime differs from the others: which binary to spawn,
+ * with what argv/env, and how to turn a line of its NDJSON stdout into
+ * an event and that event into transcript steps.
+ */
+export interface CliStreamSpec<E> {
+  /** Runtime tag for the truncation warning, e.g. `"CodexRuntime"`. */
+  tag: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /**
+   * Piped to the CLI's stdin. Claude Code takes the prompt this way;
+   * codex and opencode pass it on argv and leave this unset.
+   */
+  stdin?: string;
+  /** Provider-specific NDJSON line parser from the adapter's `stream-json.ts`. */
+  parseLine: (line: string) => E | null;
+  /** Provider-specific event → `RuntimeStep[]` mapper, for the live transcript. */
+  extractSteps: (event: E) => RuntimeStep[];
+}
+
+export interface CliStreamOutcome<E> {
+  /** Every event parsed off stdout, in arrival order. */
+  events: E[];
+  result: CliProcessResult;
+}
+
+/**
+ * Run a CLI runtime's subprocess, collecting its event stream.
+ *
+ * Every CLI adapter's `execute` had the same body around its own
+ * `parse*EventLine` / `extract*StepEvents` pair: accumulate events while
+ * forwarding steps to `context.onStep`, spawn through a line reader,
+ * flush the trailing partial line, warn on truncation. The parts that
+ * genuinely differ are the argv/env build-up and the parsers, which stay
+ * in each adapter; this owns the process lifecycle.
+ *
+ * Callers still map the outcome themselves — `result.aborted` →
+ * {@link cancelledResult}, otherwise their own `parse*Events` wrapped in
+ * {@link finalizeCliResult} — because the success path differs per
+ * provider (codex also reads its `--output-last-message` file).
+ */
+export async function streamCliEvents<E>(
+  context: RuntimeContext,
+  spec: CliStreamSpec<E>,
+): Promise<CliStreamOutcome<E>> {
+  // Parse incrementally during streaming rather than re-reading the whole
+  // of stdout after close. The line reader handles chunk boundaries — a
+  // single event can arrive split across chunks, or several per chunk.
+  const events: E[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = spec.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of spec.extractSteps(event)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: spec.command,
+    args: spec.args,
+    cwd: spec.cwd,
+    env: spec.env,
+    stdin: spec.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Emit any final line that arrived without a trailing newline.
+  stdout.flush();
+  warnIfTruncated(spec.tag, result);
+
+  return { events, result };
 }

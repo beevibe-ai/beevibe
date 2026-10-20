@@ -1,10 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import type { RuntimeContext, RuntimeResult, RuntimeStep } from "../ports/runtime.js";
 import {
   cancelledResult,
   createStdoutLineReader,
   finalizeCliResult,
+  streamCliEvents,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -146,4 +147,106 @@ describe("finalizeCliResult", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
   });
+});
+
+// streamCliEvents owns process lifecycle, so these drive a real `node -e`
+// subprocess rather than a mock — same reasoning as spawn.test.ts.
+
+interface Evt {
+  n: number;
+}
+
+function ctx(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
+  return {
+    intent: "do the thing",
+    workspace: { path: process.cwd() },
+    system_prompt_append: "",
+    ...overrides,
+  };
+}
+
+function emitter(script: string) {
+  return {
+    tag: "TestRuntime",
+    command: process.execPath,
+    args: ["-e", script],
+    cwd: process.cwd(),
+    env: {},
+    parseLine: (line: string): Evt | null => {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith("{")) return null;
+      return JSON.parse(trimmed) as Evt;
+    },
+    extractSteps: (e: Evt): RuntimeStep[] => [
+      { kind: "agent" as const, description: `n=${e.n}`, timestamp: "T" },
+    ],
+  };
+}
+
+describe("streamCliEvents", () => {
+  it.skipIf(process.platform === "win32")(
+    "collects parsed events in arrival order and forwards steps",
+    async () => {
+      const steps: RuntimeStep[] = [];
+      const { events, result } = await streamCliEvents(
+        ctx({ onStep: (s) => steps.push(s) }),
+        emitter('process.stdout.write(\'{"n":1}\\n{"n":2}\\n\')'),
+      );
+      expect(events).toEqual([{ n: 1 }, { n: 2 }]);
+      expect(steps.map((s) => s.description)).toEqual(["n=1", "n=2"]);
+      expect(result.exitCode).toBe(0);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "skips unparseable lines and keeps the trailing one without a newline",
+    async () => {
+      const { events } = await streamCliEvents(
+        ctx(),
+        emitter('process.stdout.write(\'noise\\n{"n":7}\')'),
+      );
+      expect(events).toEqual([{ n: 7 }]);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "pipes `stdin` to the child",
+    async () => {
+      const { events } = await streamCliEvents(ctx(), {
+        ...emitter(
+          "let b='';process.stdin.on('data',c=>b+=c)" +
+            ".on('end',()=>process.stdout.write(JSON.stringify({n:b.length})))",
+        ),
+        stdin: "abcd",
+      });
+      expect(events).toEqual([{ n: 4 }]);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "reports the subprocess pid through onSpawn",
+    async () => {
+      const spawns: Array<{ process_pid: number }> = [];
+      const { result } = await streamCliEvents(
+        ctx({ onSpawn: (m) => spawns.push(m) }),
+        emitter("process.stdout.write('')"),
+      );
+      expect(spawns).toHaveLength(1);
+      expect(spawns[0]!.process_pid).toBe(result.pid);
+    },
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "marks the result aborted when the context signal fires",
+    async () => {
+      const controller = new AbortController();
+      const run = streamCliEvents(
+        ctx({ abort_signal: controller.signal }),
+        emitter("setTimeout(() => {}, 10_000)"),
+      );
+      setTimeout(() => controller.abort(), 50);
+      const { result } = await run;
+      expect(result.aborted).toBe(true);
+    },
+  );
 });
