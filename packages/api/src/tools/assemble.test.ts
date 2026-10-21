@@ -205,3 +205,49 @@ describe("assembleTools — server_fallback_mesh (restricted surface)", () => {
     expect(names.has("respond_ask")).toBe(true);
   });
 });
+
+describe("escalation argument schemas", () => {
+  /** The `proposals` / `open_questions` sub-schema of a tool, by name. */
+  function argSchemas(name: string): Record<string, unknown> {
+    const tool = assembleTools(teamCtx(), buildMinimalServices()).find((t) => t.name === name);
+    if (!tool) throw new Error(`no such tool: ${name}`);
+    const props = (tool.schema as { properties: Record<string, unknown> }).properties;
+    return { proposals: props.proposals, open_questions: props.open_questions };
+  }
+
+  /** Strip the human-facing text, which is deliberately per-tool. */
+  function shape(schema: unknown): unknown {
+    if (Array.isArray(schema)) return schema.map(shape);
+    if (!schema || typeof schema !== "object") return schema;
+    return Object.fromEntries(
+      Object.entries(schema as Record<string, unknown>)
+        .filter(([k]) => k !== "description")
+        .map(([k, v]) => [k, shape(v)]),
+    );
+  }
+
+  it("escalate_to_humans and add_to_escalation take the same proposals shape", () => {
+    // Both write into the same escalation row's role-tagged slots, so the
+    // shape the agent is held to has to be one shape. They share
+    // `proposalsSchema` / `openQuestionsSchema` for exactly this reason;
+    // this pins it so a future inline edit to one of them fails here.
+    expect(shape(argSchemas("escalate_to_humans"))).toEqual(
+      shape(argSchemas("add_to_escalation")),
+    );
+  });
+
+  it("the proposals item schema matches core's Proposal", () => {
+    expect(argSchemas("escalate_to_humans").proposals).toMatchObject({
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          title: { type: "string" },
+          description: { type: "string" },
+          tradeoffs: { type: "string" },
+        },
+        required: ["title", "description"],
+      },
+    });
+  });
+});

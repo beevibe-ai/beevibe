@@ -53,7 +53,7 @@ import {
   type ResumeReason,
 } from "@beevibe/core/services/agent-session";
 import { defineTool, toolError, toolErrorFromThrown } from "./errors.js";
-import type { AgentTool } from "./types.js";
+import { openQuestionsSchema, proposalsSchema, type AgentTool } from "./types.js";
 
 // ── Agent-callable status subsets ─────────────────────────────────────────
 //
@@ -898,24 +898,12 @@ function addToEscalationTool(
           type: "string",
           description: "The escalation id (from the 'escalated' sentinel).",
         },
-        proposals: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              title: { type: "string" },
-              description: { type: "string" },
-              tradeoffs: { type: "string" },
-            },
-            required: ["title", "description"],
-          },
-          description: "Your proposals for the human (different from initiator's).",
-        },
-        open_questions: {
-          type: "array",
-          items: { type: "string" },
-          description: "Questions in your domain that humans should know about.",
-        },
+        proposals: proposalsSchema(
+          "Your proposals for the human (different from initiator's).",
+        ),
+        open_questions: openQuestionsSchema(
+          "Questions in your domain that humans should know about.",
+        ),
       },
       required: ["escalation_id"],
     },

@@ -16,7 +16,7 @@ import type {
 } from "@beevibe/core/services/escalation-service";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import { defineTool } from "./errors.js";
-import type { AgentTool } from "./types.js";
+import { openQuestionsSchema, proposalsSchema, type AgentTool } from "./types.js";
 import type { McpCaller } from "./assemble.js";
 import type { MeshServer } from "../mesh/server.js";
 import type {
@@ -349,24 +349,8 @@ function escalateToHumansTool(
           description:
             "Single shared problem statement. Neutral phrasing — \"We're stuck on X; root disagreement is Y.\" Becomes the escalation row's summary; immutable thereafter (peer's add_to_escalation can't change it).",
         },
-        proposals: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              title: { type: "string" },
-              description: { type: "string" },
-              tradeoffs: { type: "string" },
-            },
-            required: ["title", "description"],
-          },
-          description: "Your concrete options for the human (2-3 typical).",
-        },
-        open_questions: {
-          type: "array",
-          items: { type: "string" },
-          description: "Things the human might know that you don't.",
-        },
+        proposals: proposalsSchema("Your concrete options for the human (2-3 typical)."),
+        open_questions: openQuestionsSchema("Things the human might know that you don't."),
       },
       required: ["negotiation_id", "summary"],
     },

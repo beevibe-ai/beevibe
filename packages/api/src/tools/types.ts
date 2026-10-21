@@ -24,3 +24,34 @@ export interface AgentToolResult {
   /** When true, the MCP response is marked `isError: true`. */
   isError?: boolean;
 }
+
+/**
+ * JSON Schema for a `proposals` argument — the wire shape of core's
+ * `Proposal` ({ title, description, tradeoffs? }).
+ *
+ * `escalate_to_humans` (mesh.ts) and `add_to_escalation` (hierarchy.ts) both
+ * take the same array and each spelled out the same eleven-line `items`
+ * block, so the schema the agent is held to could drift from `Proposal`, or
+ * between the two tools, without anything failing. Only the human-facing
+ * `description` differs, so that is the argument.
+ */
+export function proposalsSchema(description: string): Record<string, unknown> {
+  return {
+    type: "array",
+    items: {
+      type: "object",
+      properties: {
+        title: { type: "string" },
+        description: { type: "string" },
+        tradeoffs: { type: "string" },
+      },
+      required: ["title", "description"],
+    },
+    description,
+  };
+}
+
+/** JSON Schema for the `open_questions` string array both tools take. */
+export function openQuestionsSchema(description: string): Record<string, unknown> {
+  return { type: "array", items: { type: "string" }, description };
+}
