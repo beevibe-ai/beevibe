@@ -15,7 +15,7 @@ import type {
   CreateEscalationInput,
 } from "@beevibe/core/services/escalation-service";
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import { toolErrorFromThrown } from "./errors.js";
+import { defineTool } from "./errors.js";
 import type { AgentTool } from "./types.js";
 import type { McpCaller } from "./assemble.js";
 import type { MeshServer } from "../mesh/server.js";
@@ -74,7 +74,7 @@ function projectNegotiateResponse(
 // ── ask + respond_ask ────────────────────────────────────────────────────
 
 function askTool(ctx: MeshToolContext, services: MeshToolServices): AgentTool {
-  return {
+  return defineTool({
     name: "ask",
     description:
       "Ask another agent a one-shot question that requires their reasoning, " +
@@ -94,29 +94,25 @@ function askTool(ctx: MeshToolContext, services: MeshToolServices): AgentTool {
       required: ["target_agent_id", "question"],
     },
     handler: async (input) => {
-      try {
-        const target = String(input.target_agent_id ?? "");
-        const question = String(input.question ?? "");
-        if (!target || !question) {
-          return { content: { error: "target_agent_id and question required" }, isError: true };
-        }
-        const requestId = randomUUID();
-        const response = await services.mesh.sendAsk(
-          requestId,
-          ctx.caller.agentId,
-          target,
-          question,
-        );
-        return { content: projectAskResponse(response) };
-      } catch (err) {
-        return toolErrorFromThrown(err);
+      const target = String(input.target_agent_id ?? "");
+      const question = String(input.question ?? "");
+      if (!target || !question) {
+        return { content: { error: "target_agent_id and question required" }, isError: true };
       }
+      const requestId = randomUUID();
+      const response = await services.mesh.sendAsk(
+        requestId,
+        ctx.caller.agentId,
+        target,
+        question,
+      );
+      return { content: projectAskResponse(response) };
     },
-  };
+  });
 }
 
 function respondAskTool(ctx: MeshToolContext, services: MeshToolServices): AgentTool {
-  return {
+  return defineTool({
     name: "respond_ask",
     description:
       "Respond to an ask request. Terminal — your session typically exits " +
@@ -132,29 +128,25 @@ function respondAskTool(ctx: MeshToolContext, services: MeshToolServices): Agent
       required: ["request_id", "answer"],
     },
     handler: async (input) => {
-      try {
-        const requestId = String(input.request_id ?? "");
-        const answer = String(input.answer ?? "");
-        if (!requestId || !answer) {
-          return { content: { error: "request_id and answer required" }, isError: true };
-        }
-        services.mesh.respondAsk(requestId, {
-          request_id: requestId,
-          from_agent_id: ctx.caller.agentId,
-          answer,
-        });
-        return { content: { responded: true, request_id: requestId } };
-      } catch (err) {
-        return toolErrorFromThrown(err);
+      const requestId = String(input.request_id ?? "");
+      const answer = String(input.answer ?? "");
+      if (!requestId || !answer) {
+        return { content: { error: "request_id and answer required" }, isError: true };
       }
+      services.mesh.respondAsk(requestId, {
+        request_id: requestId,
+        from_agent_id: ctx.caller.agentId,
+        answer,
+      });
+      return { content: { responded: true, request_id: requestId } };
     },
-  };
+  });
 }
 
 // ── negotiate + respond_negotiate ────────────────────────────────────────
 
 function negotiateTool(ctx: MeshToolContext, services: MeshToolServices): AgentTool {
-  return {
+  return defineTool({
     name: "negotiate",
     description:
       "Start a negotiation with a peer agent (round 1 only). Spawns the peer " +
@@ -177,31 +169,27 @@ function negotiateTool(ctx: MeshToolContext, services: MeshToolServices): AgentT
       required: ["peer_id", "proposal"],
     },
     handler: async (input) => {
-      try {
-        const peerId = String(input.peer_id ?? "");
-        const proposal = String(input.proposal ?? "");
-        const taskId =
-          typeof input.task_id === "string" && input.task_id ? input.task_id : undefined;
-        if (!peerId || !proposal) {
-          return { content: { error: "peer_id and proposal required" }, isError: true };
-        }
-
-        const response = await services.mesh.sendNegotiate(
-          ctx.caller.agentId,
-          peerId,
-          proposal,
-          { taskId, initiatorSessionId: ctx.beevibeSid },
-        );
-        return { content: projectNegotiateResponse(response) };
-      } catch (err) {
-        return toolErrorFromThrown(err);
+      const peerId = String(input.peer_id ?? "");
+      const proposal = String(input.proposal ?? "");
+      const taskId =
+        typeof input.task_id === "string" && input.task_id ? input.task_id : undefined;
+      if (!peerId || !proposal) {
+        return { content: { error: "peer_id and proposal required" }, isError: true };
       }
+
+      const response = await services.mesh.sendNegotiate(
+        ctx.caller.agentId,
+        peerId,
+        proposal,
+        { taskId, initiatorSessionId: ctx.beevibeSid },
+      );
+      return { content: projectNegotiateResponse(response) };
     },
-  };
+  });
 }
 
 function respondNegotiateTool(ctx: MeshToolContext, services: MeshToolServices): AgentTool {
-  return {
+  return defineTool({
     name: "respond_negotiate",
     description:
       "Respond in a negotiation round. Used by both sides after round 1. " +
@@ -227,59 +215,55 @@ function respondNegotiateTool(ctx: MeshToolContext, services: MeshToolServices):
       required: ["negotiation_id", "decision", "message"],
     },
     handler: async (input) => {
-      try {
-        const negId = String(input.negotiation_id ?? "");
-        const decision = input.decision as (typeof NEGOTIATE_DECISIONS)[number];
-        const message = String(input.message ?? "");
-        const counter =
-          typeof input.counter_proposal === "string" ? input.counter_proposal : undefined;
+      const negId = String(input.negotiation_id ?? "");
+      const decision = input.decision as (typeof NEGOTIATE_DECISIONS)[number];
+      const message = String(input.message ?? "");
+      const counter =
+        typeof input.counter_proposal === "string" ? input.counter_proposal : undefined;
 
-        if (!negId || !message) {
-          return { content: { error: "negotiation_id and message required" }, isError: true };
-        }
-        if (!NEGOTIATE_DECISIONS.includes(decision)) {
-          return {
-            content: { error: `decision must be one of: ${NEGOTIATE_DECISIONS.join(", ")}` },
-            isError: true,
-          };
-        }
-        if (decision === "counter" && !counter) {
-          return {
-            content: { error: "counter_proposal required when decision='counter'" },
-            isError: true,
-          };
-        }
-
-        // The server computes the round number internally from
-        // negotiation.rounds_completed; agents don't pass it.
-        const result = await services.mesh.respondNegotiate(
-          negId,
-          {
-            negotiation_id: negId,
-            from_agent_id: ctx.caller.agentId,
-            decision,
-            message,
-            counter_proposal: counter,
-          },
-          ctx.beevibeSid,
-        );
-
-        if (result === null) {
-          // Terminal — accept/reject. Caller exits.
-          return { content: { negotiation_id: negId, decision, terminal: true } };
-        }
-        return { content: projectNegotiateResponse(result) };
-      } catch (err) {
-        return toolErrorFromThrown(err);
+      if (!negId || !message) {
+        return { content: { error: "negotiation_id and message required" }, isError: true };
       }
+      if (!NEGOTIATE_DECISIONS.includes(decision)) {
+        return {
+          content: { error: `decision must be one of: ${NEGOTIATE_DECISIONS.join(", ")}` },
+          isError: true,
+        };
+      }
+      if (decision === "counter" && !counter) {
+        return {
+          content: { error: "counter_proposal required when decision='counter'" },
+          isError: true,
+        };
+      }
+
+      // The server computes the round number internally from
+      // negotiation.rounds_completed; agents don't pass it.
+      const result = await services.mesh.respondNegotiate(
+        negId,
+        {
+          negotiation_id: negId,
+          from_agent_id: ctx.caller.agentId,
+          decision,
+          message,
+          counter_proposal: counter,
+        },
+        ctx.beevibeSid,
+      );
+
+      if (result === null) {
+        // Terminal — accept/reject. Caller exits.
+        return { content: { negotiation_id: negId, decision, terminal: true } };
+      }
+      return { content: projectNegotiateResponse(result) };
     },
-  };
+  });
 }
 
 // ── report_blocker (fire-and-forget) ─────────────────────────────────────
 
 function reportBlockerTool(ctx: MeshToolContext, services: MeshToolServices): AgentTool {
-  return {
+  return defineTool({
     name: "report_blocker",
     description:
       "Report a blocker to your direct parent agent. Marks the task as " +
@@ -298,47 +282,43 @@ function reportBlockerTool(ctx: MeshToolContext, services: MeshToolServices): Ag
       required: ["task_id", "description"],
     },
     handler: async (input) => {
-      try {
-        const taskId = String(input.task_id ?? "");
-        const description = String(input.description ?? "");
-        if (!taskId || !description) {
-          return {
-            content: { error: "task_id and description required" },
-            isError: true,
-          };
-        }
+      const taskId = String(input.task_id ?? "");
+      const description = String(input.description ?? "");
+      if (!taskId || !description) {
+        return {
+          content: { error: "task_id and description required" },
+          isError: true,
+        };
+      }
 
-        // Server derives parent from caller's hierarchy. Direct parent only.
-        const parent = await services.agentRepo.findParent(ctx.caller.agentId);
-        if (!parent) {
-          return {
-            content: {
-              error: "no_parent_to_block",
-              message:
-                "Top-level agents have no parent to report blockers to. Use escalate_to_humans or update_progress('failed') instead.",
-            },
-            isError: true,
-          };
-        }
-
-        // Mark the task blocked + record the blocker_agent_id + reason.
-        await services.taskService.markBlocked(taskId, ctx.caller.agentId, description);
-
-        // Fire-and-forget spawn parent's session.
-        services.mesh.reportBlocker(parent.id, ctx.caller.agentId, taskId, description);
-
+      // Server derives parent from caller's hierarchy. Direct parent only.
+      const parent = await services.agentRepo.findParent(ctx.caller.agentId);
+      if (!parent) {
         return {
           content: {
-            reported: true,
-            parent_agent_id: parent.id,
-            task_id: taskId,
+            error: "no_parent_to_block",
+            message:
+              "Top-level agents have no parent to report blockers to. Use escalate_to_humans or update_progress('failed') instead.",
           },
+          isError: true,
         };
-      } catch (err) {
-        return toolErrorFromThrown(err);
       }
+
+      // Mark the task blocked + record the blocker_agent_id + reason.
+      await services.taskService.markBlocked(taskId, ctx.caller.agentId, description);
+
+      // Fire-and-forget spawn parent's session.
+      services.mesh.reportBlocker(parent.id, ctx.caller.agentId, taskId, description);
+
+      return {
+        content: {
+          reported: true,
+          parent_agent_id: parent.id,
+          task_id: taskId,
+        },
+      };
     },
-  };
+  });
 }
 
 // ── escalate_to_humans ───────────────────────────────────────────────────
@@ -347,7 +327,7 @@ function escalateToHumansTool(
   ctx: MeshToolContext,
   services: MeshToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "escalate_to_humans",
     description:
       "Initiate an escalation — hand off a stuck negotiation to humans for " +
@@ -391,48 +371,44 @@ function escalateToHumansTool(
       required: ["negotiation_id", "summary"],
     },
     handler: async (input) => {
-      try {
-        const negotiationId = String(input.negotiation_id ?? "");
-        const summary = String(input.summary ?? "");
-        if (!negotiationId || !summary) {
-          return { content: { error: "negotiation_id and summary required" }, isError: true };
-        }
-
-        const proposals = Array.isArray(input.proposals)
-          ? (input.proposals as CreateEscalationInput["proposals"])
-          : undefined;
-        const openQuestions = Array.isArray(input.open_questions)
-          ? (input.open_questions as string[]).filter((q) => typeof q === "string")
-          : undefined;
-
-        const escalation = await services.escalationService.create({
-          negotiationId,
-          callerAgentId: ctx.caller.agentId,
-          summary,
-          proposals,
-          openQuestions,
-        });
-
-        // Sentinel-unblock the peer's pending respond_negotiate (if any).
-        services.mesh.unblockOnEscalate(negotiationId, escalation.id);
-
-        // pg_notify for future M8 web UI subscribers (zero cost in M6).
-        await services.pool.query(`SELECT pg_notify('escalation_created', $1)`, [
-          escalation.id,
-        ]);
-
-        return {
-          content: {
-            escalation_id: escalation.id,
-            status: escalation.status,
-            negotiation_id: escalation.negotiation_id,
-          },
-        };
-      } catch (err) {
-        return toolErrorFromThrown(err);
+      const negotiationId = String(input.negotiation_id ?? "");
+      const summary = String(input.summary ?? "");
+      if (!negotiationId || !summary) {
+        return { content: { error: "negotiation_id and summary required" }, isError: true };
       }
+
+      const proposals = Array.isArray(input.proposals)
+        ? (input.proposals as CreateEscalationInput["proposals"])
+        : undefined;
+      const openQuestions = Array.isArray(input.open_questions)
+        ? (input.open_questions as string[]).filter((q) => typeof q === "string")
+        : undefined;
+
+      const escalation = await services.escalationService.create({
+        negotiationId,
+        callerAgentId: ctx.caller.agentId,
+        summary,
+        proposals,
+        openQuestions,
+      });
+
+      // Sentinel-unblock the peer's pending respond_negotiate (if any).
+      services.mesh.unblockOnEscalate(negotiationId, escalation.id);
+
+      // pg_notify for future M8 web UI subscribers (zero cost in M6).
+      await services.pool.query(`SELECT pg_notify('escalation_created', $1)`, [
+        escalation.id,
+      ]);
+
+      return {
+        content: {
+          escalation_id: escalation.id,
+          status: escalation.status,
+          negotiation_id: escalation.negotiation_id,
+        },
+      };
     },
-  };
+  });
 }
 
 // ── Assemble mesh tool sets ──────────────────────────────────────────────

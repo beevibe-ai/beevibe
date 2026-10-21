@@ -17,7 +17,7 @@ import {
   WatchValidationError,
   type WatchService,
 } from "@beevibe/core/services/watch-service";
-import { toolError } from "./errors.js";
+import { defineTool, toolError } from "./errors.js";
 import type { AgentTool, AgentToolResult } from "./types.js";
 
 export interface WatchToolContext {
@@ -54,7 +54,7 @@ function buildWatchTasksTool(
   ctx: WatchToolContext,
   services: WatchToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "watch_tasks",
     description:
       "Register a wake-up for one or more tasks you dispatched. When the " +
@@ -96,53 +96,49 @@ function buildWatchTasksTool(
       required: ["task_ids"],
     },
     handler: async (input) => {
-      try {
-        const taskIds = Array.isArray(input.task_ids)
-          ? input.task_ids.filter((x): x is string => typeof x === "string")
-          : [];
-        if (taskIds.length === 0) {
-          return toolError(
-            "watch_validation",
-            "task_ids must be a non-empty array of strings",
-          );
-        }
-        const mode: TaskWatchMode = isMode(input.mode) ? input.mode : "all";
-        const reason =
-          typeof input.reason === "string" && input.reason.trim().length > 0
-            ? input.reason.trim()
-            : undefined;
-        if (!ctx.sessionId) {
-          return toolError(
-            "watch_validation",
-            "watch_tasks must be called inside a session context",
-          );
-        }
-
-        const result = await services.watchService.watchTasks({
-          callerAgentId: ctx.agentId,
-          callerSessionId: ctx.sessionId,
-          taskIds,
-          mode,
-          reason,
-        });
-        return {
-          content: {
-            watch_id: result.watchId,
-            fired_immediately: result.firedImmediately,
-          },
-        };
-      } catch (err) {
-        return caughtError(err);
+      const taskIds = Array.isArray(input.task_ids)
+        ? input.task_ids.filter((x): x is string => typeof x === "string")
+        : [];
+      if (taskIds.length === 0) {
+        return toolError(
+          "watch_validation",
+          "task_ids must be a non-empty array of strings",
+        );
       }
+      const mode: TaskWatchMode = isMode(input.mode) ? input.mode : "all";
+      const reason =
+        typeof input.reason === "string" && input.reason.trim().length > 0
+          ? input.reason.trim()
+          : undefined;
+      if (!ctx.sessionId) {
+        return toolError(
+          "watch_validation",
+          "watch_tasks must be called inside a session context",
+        );
+      }
+
+      const result = await services.watchService.watchTasks({
+        callerAgentId: ctx.agentId,
+        callerSessionId: ctx.sessionId,
+        taskIds,
+        mode,
+        reason,
+      });
+      return {
+        content: {
+          watch_id: result.watchId,
+          fired_immediately: result.firedImmediately,
+        },
+      };
     },
-  };
+  }, caughtError);
 }
 
 function buildUnwatchTool(
   ctx: WatchToolContext,
   services: WatchToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "unwatch",
     description:
       "Cancel a pending task_watch you previously registered. Use when " +
@@ -160,25 +156,21 @@ function buildUnwatchTool(
       required: ["watch_id"],
     },
     handler: async (input) => {
-      try {
-        const watchId =
-          typeof input.watch_id === "string" ? input.watch_id : "";
-        if (!watchId) {
-          return toolError(
-            "watch_validation",
-            "watch_id must be a non-empty string",
-          );
-        }
-        await services.watchService.unwatch({
-          callerAgentId: ctx.agentId,
-          watchId,
-        });
-        return { content: { ok: true } };
-      } catch (err) {
-        return caughtError(err);
+      const watchId =
+        typeof input.watch_id === "string" ? input.watch_id : "";
+      if (!watchId) {
+        return toolError(
+          "watch_validation",
+          "watch_id must be a non-empty string",
+        );
       }
+      await services.watchService.unwatch({
+        callerAgentId: ctx.agentId,
+        watchId,
+      });
+      return { content: { ok: true } };
     },
-  };
+  }, caughtError);
 }
 
 export function buildWatchTools(

@@ -18,7 +18,7 @@
  */
 
 import { CodedMeshError } from "../mesh/types.js";
-import type { AgentToolResult } from "./types.js";
+import type { AgentTool, AgentToolResult } from "./types.js";
 
 /**
  * A named failure: `code` is the stable identifier the agent branches
@@ -57,5 +57,39 @@ export function toolErrorFromThrown(
       ...extra,
     },
     isError: true,
+  };
+}
+
+/**
+ * Wrap a tool definition so an exception out of its handler comes back as an
+ * `AgentToolResult` rather than propagating.
+ *
+ * Every tool in `hierarchy.ts`, `mesh.ts` and `watch.ts` opened its handler
+ * with `try {` and closed it with the same three lines — 23 copies of the
+ * same envelope, and a 24th tool would have been one `try` away from
+ * crashing out of the handler instead of answering. `/mcp`'s
+ * `CallToolRequest` handler does catch a throw, but it flattens it to
+ * `{ error: message }`, losing the code and meta a {@link CodedMeshError}
+ * carries — so the per-tool envelope is load-bearing, not redundant.
+ *
+ * `onThrown` defaults to {@link toolErrorFromThrown}. Pass a mapper for a
+ * module that narrows its own error types first (`watch.ts` maps its four
+ * `Watch*Error` classes to coded results; `revise_task` maps
+ * `InvalidTaskTransitionError`) — the mapper owns the whole catch, so it
+ * should delegate to `toolErrorFromThrown` for anything it doesn't name.
+ */
+export function defineTool(
+  tool: AgentTool,
+  onThrown: (err: unknown) => AgentToolResult = toolErrorFromThrown,
+): AgentTool {
+  return {
+    ...tool,
+    handler: async (input) => {
+      try {
+        return await tool.handler(input);
+      } catch (err) {
+        return onThrown(err);
+      }
+    },
   };
 }

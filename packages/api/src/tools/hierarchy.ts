@@ -52,7 +52,7 @@ import {
   buildIntent,
   type ResumeReason,
 } from "@beevibe/core/services/agent-session";
-import { toolErrorFromThrown } from "./errors.js";
+import { defineTool, toolError, toolErrorFromThrown } from "./errors.js";
 import type { AgentTool } from "./types.js";
 
 // ── Agent-callable status subsets ─────────────────────────────────────────
@@ -164,7 +164,7 @@ function searchContextTool(
   _ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "search_context",
     description:
       "Search your archival memory by semantic similarity. Use when the " +
@@ -186,25 +186,21 @@ function searchContextTool(
       required: ["query"],
     },
     handler: async (input) => {
-      try {
-        const query = String(input.query ?? "").trim();
-        if (!query) {
-          return { content: { error: "query must be a non-empty string" }, isError: true };
-        }
-        const archival = await services.memoryAgent.searchArchival(query);
-        return { content: { archival } };
-      } catch (err) {
-        return toolErrorFromThrown(err);
+      const query = String(input.query ?? "").trim();
+      if (!query) {
+        return { content: { error: "query must be a non-empty string" }, isError: true };
       }
+      const archival = await services.memoryAgent.searchArchival(query);
+      return { content: { archival } };
     },
-  };
+  });
 }
 
 function updateProgressTool(
   _ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "update_progress",
     description:
       "Set a task's FINAL status. Call this when you are DONE with the task. " +
@@ -235,38 +231,34 @@ function updateProgressTool(
       required: ["task_id", "status", "summary"],
     },
     handler: async (input) => {
-      try {
-        const taskId = String(input.task_id ?? "");
-        const status = input.status as AgentEndStatus;
-        const summary = String(input.summary ?? "");
-        if (!AGENT_END_STATUSES.includes(status)) {
-          return {
-            content: {
-              error: `status must be one of: ${AGENT_END_STATUSES.join(", ")}`,
-            },
-            isError: true,
-          };
-        }
-        const updated = await services.taskService.updateProgress(taskId, status, summary);
+      const taskId = String(input.task_id ?? "");
+      const status = input.status as AgentEndStatus;
+      const summary = String(input.summary ?? "");
+      if (!AGENT_END_STATUSES.includes(status)) {
         return {
           content: {
-            updated: true,
-            task_id: updated.id,
-            status: updated.status,
+            error: `status must be one of: ${AGENT_END_STATUSES.join(", ")}`,
           },
+          isError: true,
         };
-      } catch (err) {
-        return toolErrorFromThrown(err);
       }
+      const updated = await services.taskService.updateProgress(taskId, status, summary);
+      return {
+        content: {
+          updated: true,
+          task_id: updated.id,
+          status: updated.status,
+        },
+      };
     },
-  };
+  });
 }
 
 function findUpTool(
   ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "find_up",
     description:
       "Find your direct parent agent in the hierarchy. Returns null for " +
@@ -274,21 +266,17 @@ function findUpTool(
       "calling report_blocker.",
     schema: { type: "object", properties: {} },
     handler: async () => {
-      try {
-        const parent = await services.agentRepo.findParent(ctx.agentId);
-        return { content: { parent: projectAgent(parent) } };
-      } catch (err) {
-        return toolErrorFromThrown(err);
-      }
+      const parent = await services.agentRepo.findParent(ctx.agentId);
+      return { content: { parent: projectAgent(parent) } };
     },
-  };
+  });
 }
 
 function getAgentProfileTool(
   _ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "get_agent_profile",
     description:
       "Look up a specific agent's profile by id. Returns null if the agent " +
@@ -302,23 +290,19 @@ function getAgentProfileTool(
       required: ["agent_id"],
     },
     handler: async (input) => {
-      try {
-        const id = String(input.agent_id ?? "");
-        if (!id) return { content: { error: "agent_id required" }, isError: true };
-        const agent = await services.agentRepo.findById(id);
-        return { content: { agent: projectAgent(agent) } };
-      } catch (err) {
-        return toolErrorFromThrown(err);
-      }
+      const id = String(input.agent_id ?? "");
+      if (!id) return { content: { error: "agent_id required" }, isError: true };
+      const agent = await services.agentRepo.findById(id);
+      return { content: { agent: projectAgent(agent) } };
     },
-  };
+  });
 }
 
 function getTaskTool(
   _ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "get_task",
     description:
       "Look up a task by id. Returns null if not found. Useful when an " +
@@ -332,16 +316,12 @@ function getTaskTool(
       required: ["task_id"],
     },
     handler: async (input) => {
-      try {
-        const id = String(input.task_id ?? "");
-        if (!id) return { content: { error: "task_id required" }, isError: true };
-        const task = await services.taskRepo.findById(id);
-        return { content: { task: projectTask(task) } };
-      } catch (err) {
-        return toolErrorFromThrown(err);
-      }
+      const id = String(input.task_id ?? "");
+      if (!id) return { content: { error: "task_id required" }, isError: true };
+      const task = await services.taskRepo.findById(id);
+      return { content: { task: projectTask(task) } };
     },
-  };
+  });
 }
 
 // ── Work-product tools (IC + team — ICs do the actual work) ──────────────
@@ -350,7 +330,7 @@ function createWorkProductTool(
   ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "create_work_product",
     description:
       "Record a deliverable produced for a task — a PR, branch, commit, " +
@@ -382,55 +362,51 @@ function createWorkProductTool(
       required: ["task_id", "type", "title"],
     },
     handler: async (input) => {
-      try {
-        const taskId = String(input.task_id ?? "");
-        const type = input.type;
-        const title = String(input.title ?? "");
-        if (!taskId || !title) {
-          return {
-            content: { error: "task_id and title required" },
-            isError: true,
-          };
-        }
-        if (!WORK_PRODUCT_TYPES.includes(type as (typeof WORK_PRODUCT_TYPES)[number])) {
-          return {
-            content: { error: `type must be one of: ${WORK_PRODUCT_TYPES.join(", ")}` },
-            isError: true,
-          };
-        }
-        const wp = await services.taskService.createWorkProduct({
-          id: makeWorkProductId(),
-          task_id: taskId,
-          agent_id: ctx.agentId,
-          type: type as (typeof WORK_PRODUCT_TYPES)[number],
-          title,
-          summary: typeof input.summary === "string" ? input.summary : undefined,
-          body: typeof input.body === "string" ? input.body : undefined,
-          url: typeof input.url === "string" ? input.url : undefined,
-          provider: typeof input.provider === "string" ? input.provider : undefined,
-          external_id: typeof input.external_id === "string" ? input.external_id : undefined,
-          metadata:
-            input.metadata && typeof input.metadata === "object"
-              ? (input.metadata as Record<string, unknown>)
-              : undefined,
-        });
+      const taskId = String(input.task_id ?? "");
+      const type = input.type;
+      const title = String(input.title ?? "");
+      if (!taskId || !title) {
         return {
-          content: {
-            created: { id: wp.id, type: wp.type, title: wp.title, task_id: wp.task_id },
-          },
+          content: { error: "task_id and title required" },
+          isError: true,
         };
-      } catch (err) {
-        return toolErrorFromThrown(err);
       }
+      if (!WORK_PRODUCT_TYPES.includes(type as (typeof WORK_PRODUCT_TYPES)[number])) {
+        return {
+          content: { error: `type must be one of: ${WORK_PRODUCT_TYPES.join(", ")}` },
+          isError: true,
+        };
+      }
+      const wp = await services.taskService.createWorkProduct({
+        id: makeWorkProductId(),
+        task_id: taskId,
+        agent_id: ctx.agentId,
+        type: type as (typeof WORK_PRODUCT_TYPES)[number],
+        title,
+        summary: typeof input.summary === "string" ? input.summary : undefined,
+        body: typeof input.body === "string" ? input.body : undefined,
+        url: typeof input.url === "string" ? input.url : undefined,
+        provider: typeof input.provider === "string" ? input.provider : undefined,
+        external_id: typeof input.external_id === "string" ? input.external_id : undefined,
+        metadata:
+          input.metadata && typeof input.metadata === "object"
+            ? (input.metadata as Record<string, unknown>)
+            : undefined,
+      });
+      return {
+        content: {
+          created: { id: wp.id, type: wp.type, title: wp.title, task_id: wp.task_id },
+        },
+      };
     },
-  };
+  });
 }
 
 function listWorkProductsTool(
   _ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "list_work_products",
     description:
       "List existing work products for a task in chronological order. Call " +
@@ -446,36 +422,32 @@ function listWorkProductsTool(
       required: ["task_id"],
     },
     handler: async (input) => {
-      try {
-        const taskId = String(input.task_id ?? "");
-        if (!taskId) return { content: { error: "task_id required" }, isError: true };
-        const wps = await services.taskService.listWorkProducts(taskId);
-        return {
-          content: {
-            work_products: wps.map((w) => ({
-              id: w.id,
-              type: w.type,
-              title: w.title,
-              url: w.url ?? null,
-              summary: w.summary ?? null,
-              body_bytes: w.body_bytes,
-              created_at: w.created_at.toISOString(),
-              updated_at: w.updated_at.toISOString(),
-            })),
-          },
-        };
-      } catch (err) {
-        return toolErrorFromThrown(err);
-      }
+      const taskId = String(input.task_id ?? "");
+      if (!taskId) return { content: { error: "task_id required" }, isError: true };
+      const wps = await services.taskService.listWorkProducts(taskId);
+      return {
+        content: {
+          work_products: wps.map((w) => ({
+            id: w.id,
+            type: w.type,
+            title: w.title,
+            url: w.url ?? null,
+            summary: w.summary ?? null,
+            body_bytes: w.body_bytes,
+            created_at: w.created_at.toISOString(),
+            updated_at: w.updated_at.toISOString(),
+          })),
+        },
+      };
     },
-  };
+  });
 }
 
 function getWorkProductTool(
   _ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "get_work_product",
     description:
       "Fetch a single work product by id, including its full `body` " +
@@ -490,44 +462,40 @@ function getWorkProductTool(
       required: ["id"],
     },
     handler: async (input) => {
-      try {
-        const id = String(input.id ?? "");
-        if (!id) return { content: { error: "id required" }, isError: true };
-        const wp = await services.taskService.getWorkProduct(id);
-        if (!wp) {
-          return { content: { error: `work_product ${id} not found` }, isError: true };
-        }
-        return {
-          content: {
-            work_product: {
-              id: wp.id,
-              task_id: wp.task_id,
-              agent_id: wp.agent_id,
-              type: wp.type,
-              title: wp.title,
-              summary: wp.summary ?? null,
-              body: wp.body ?? null,
-              url: wp.url ?? null,
-              provider: wp.provider ?? null,
-              external_id: wp.external_id ?? null,
-              metadata: wp.metadata ?? null,
-              created_at: wp.created_at.toISOString(),
-              updated_at: wp.updated_at.toISOString(),
-            },
-          },
-        };
-      } catch (err) {
-        return toolErrorFromThrown(err);
+      const id = String(input.id ?? "");
+      if (!id) return { content: { error: "id required" }, isError: true };
+      const wp = await services.taskService.getWorkProduct(id);
+      if (!wp) {
+        return { content: { error: `work_product ${id} not found` }, isError: true };
       }
+      return {
+        content: {
+          work_product: {
+            id: wp.id,
+            task_id: wp.task_id,
+            agent_id: wp.agent_id,
+            type: wp.type,
+            title: wp.title,
+            summary: wp.summary ?? null,
+            body: wp.body ?? null,
+            url: wp.url ?? null,
+            provider: wp.provider ?? null,
+            external_id: wp.external_id ?? null,
+            metadata: wp.metadata ?? null,
+            created_at: wp.created_at.toISOString(),
+            updated_at: wp.updated_at.toISOString(),
+          },
+        },
+      };
     },
-  };
+  });
 }
 
 function updateWorkProductTool(
   _ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "update_work_product",
     description:
       "Amend an existing work product — useful when the same deliverable " +
@@ -549,36 +517,32 @@ function updateWorkProductTool(
       required: ["id"],
     },
     handler: async (input) => {
-      try {
-        const id = String(input.id ?? "");
-        if (!id) return { content: { error: "id required" }, isError: true };
-        const updated = await services.taskService.updateWorkProduct(id, {
-          summary: typeof input.summary === "string" ? input.summary : undefined,
-          body: typeof input.body === "string" ? input.body : undefined,
-          url: typeof input.url === "string" ? input.url : undefined,
-          provider: typeof input.provider === "string" ? input.provider : undefined,
-          external_id:
-            typeof input.external_id === "string" ? input.external_id : undefined,
-          metadata:
-            input.metadata && typeof input.metadata === "object"
-              ? (input.metadata as Record<string, unknown>)
-              : undefined,
-        });
-        return {
-          content: {
-            updated: {
-              id: updated.id,
-              type: updated.type,
-              title: updated.title,
-              updated_at: updated.updated_at.toISOString(),
-            },
+      const id = String(input.id ?? "");
+      if (!id) return { content: { error: "id required" }, isError: true };
+      const updated = await services.taskService.updateWorkProduct(id, {
+        summary: typeof input.summary === "string" ? input.summary : undefined,
+        body: typeof input.body === "string" ? input.body : undefined,
+        url: typeof input.url === "string" ? input.url : undefined,
+        provider: typeof input.provider === "string" ? input.provider : undefined,
+        external_id:
+          typeof input.external_id === "string" ? input.external_id : undefined,
+        metadata:
+          input.metadata && typeof input.metadata === "object"
+            ? (input.metadata as Record<string, unknown>)
+            : undefined,
+      });
+      return {
+        content: {
+          updated: {
+            id: updated.id,
+            type: updated.type,
+            title: updated.title,
+            updated_at: updated.updated_at.toISOString(),
           },
-        };
-      } catch (err) {
-        return toolErrorFromThrown(err);
-      }
+        },
+      };
     },
-  };
+  });
 }
 
 // ── Team-only tools ──────────────────────────────────────────────────────
@@ -587,49 +551,41 @@ function findSubordinatesTool(
   ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "find_subordinates",
     description:
       "List your direct subordinate agents (the IC agents reporting to you). " +
       "Call before create_task to pick the right assignee.",
     schema: { type: "object", properties: {} },
     handler: async () => {
-      try {
-        const subs = await services.agentRepo.findSubordinates(ctx.agentId);
-        return { content: { agents: subs.map(projectAgent) } };
-      } catch (err) {
-        return toolErrorFromThrown(err);
-      }
+      const subs = await services.agentRepo.findSubordinates(ctx.agentId);
+      return { content: { agents: subs.map(projectAgent) } };
     },
-  };
+  });
 }
 
 function findPeersTool(
   ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "find_peers",
     description:
       "List your peer agents — same hierarchy level, same parent. Useful " +
       "for cross-team coordination via the mesh tools (ask, negotiate).",
     schema: { type: "object", properties: {} },
     handler: async () => {
-      try {
-        const peers = await services.agentRepo.findPeers(ctx.agentId);
-        return { content: { agents: peers.map(projectAgent) } };
-      } catch (err) {
-        return toolErrorFromThrown(err);
-      }
+      const peers = await services.agentRepo.findPeers(ctx.agentId);
+      return { content: { agents: peers.map(projectAgent) } };
     },
-  };
+  });
 }
 
 function createTaskTool(
   ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "create_task",
     description:
       "Create a task and assign it to one of your subordinates. The task " +
@@ -672,98 +628,94 @@ function createTaskTool(
       required: ["intent", "agent_id"],
     },
     handler: async (input) => {
-      try {
-        const intent = String(input.intent ?? "");
-        const targetId = String(input.agent_id ?? "");
-        if (!intent || !targetId) {
-          return {
-            content: { error: "intent and agent_id required" },
-            isError: true,
-          };
-        }
+      const intent = String(input.intent ?? "");
+      const targetId = String(input.agent_id ?? "");
+      if (!intent || !targetId) {
+        return {
+          content: { error: "intent and agent_id required" },
+          isError: true,
+        };
+      }
 
-        // Authz: assignee must be one of caller's subordinates.
-        const subs = await services.agentRepo.findSubordinates(ctx.agentId);
-        if (!subs.some((s) => s.id === targetId)) {
-          return {
-            content: {
-              error: "not_subordinate",
-              message: `Cannot assign tasks to ${targetId} — not a direct subordinate of ${ctx.agentId}.`,
-            },
-            isError: true,
-          };
-        }
-
-        const priority = (input.priority as (typeof TASK_PRIORITIES)[number]) ?? "medium";
-        if (!TASK_PRIORITIES.includes(priority)) {
-          return {
-            content: { error: `priority must be one of: ${TASK_PRIORITIES.join(", ")}` },
-            isError: true,
-          };
-        }
-
-        const created = await services.taskRepo.create({
-          id: makeTaskId(),
-          title: intent,
-          description: typeof input.description === "string" ? input.description : undefined,
-          status: "assigned",
-          priority,
-          assignee_id: targetId,
-          creator_id: ctx.agentId,
-          creator_type: "agent",
-          parent_task_id:
-            typeof input.parent_task_id === "string" ? input.parent_task_id : undefined,
-          repo_url:
-            typeof input.repo_url === "string" && input.repo_url ? input.repo_url : undefined,
-        });
-
-        // Dispatch creates the pending session row + advances task →
-        // in_progress. Either the bound daemon (preferred_runtime_id set)
-        // or the legacy executor (null runtime_id) claims it next.
-        const reason: ResumeReason = { kind: "fresh" };
-        const dispatchIntent = buildIntent(
-          { id: created.id, title: created.title, description: created.description },
-          reason,
-        );
-        await services.dispatchService.dispatchTask({
-          task: created,
-          agentId: targetId,
-          intent: dispatchIntent,
-          reason,
-          type: "task",
-          // Link the IC session back to the team session that called
-          // create_task so the chat UI can nest the IC's live transcript
-          // inline. The trg_session_spawned_notify trigger fires when
-          // parent_session_id is set and emits session.spawned for the
-          // parent.
-          parentSessionId: ctx.sessionId,
-        });
-
+      // Authz: assignee must be one of caller's subordinates.
+      const subs = await services.agentRepo.findSubordinates(ctx.agentId);
+      if (!subs.some((s) => s.id === targetId)) {
         return {
           content: {
-            created: {
-              id: created.id,
-              title: created.title,
-              // Reflect the post-dispatch active state so callers don't
-              // see a stale 'assigned' that the next /api/stream tick
-              // overwrites anyway.
-              status: "in_progress",
-              assignee_id: created.assignee_id,
-            },
+            error: "not_subordinate",
+            message: `Cannot assign tasks to ${targetId} — not a direct subordinate of ${ctx.agentId}.`,
           },
+          isError: true,
         };
-      } catch (err) {
-        return toolErrorFromThrown(err);
       }
+
+      const priority = (input.priority as (typeof TASK_PRIORITIES)[number]) ?? "medium";
+      if (!TASK_PRIORITIES.includes(priority)) {
+        return {
+          content: { error: `priority must be one of: ${TASK_PRIORITIES.join(", ")}` },
+          isError: true,
+        };
+      }
+
+      const created = await services.taskRepo.create({
+        id: makeTaskId(),
+        title: intent,
+        description: typeof input.description === "string" ? input.description : undefined,
+        status: "assigned",
+        priority,
+        assignee_id: targetId,
+        creator_id: ctx.agentId,
+        creator_type: "agent",
+        parent_task_id:
+          typeof input.parent_task_id === "string" ? input.parent_task_id : undefined,
+        repo_url:
+          typeof input.repo_url === "string" && input.repo_url ? input.repo_url : undefined,
+      });
+
+      // Dispatch creates the pending session row + advances task →
+      // in_progress. Either the bound daemon (preferred_runtime_id set)
+      // or the legacy executor (null runtime_id) claims it next.
+      const reason: ResumeReason = { kind: "fresh" };
+      const dispatchIntent = buildIntent(
+        { id: created.id, title: created.title, description: created.description },
+        reason,
+      );
+      await services.dispatchService.dispatchTask({
+        task: created,
+        agentId: targetId,
+        intent: dispatchIntent,
+        reason,
+        type: "task",
+        // Link the IC session back to the team session that called
+        // create_task so the chat UI can nest the IC's live transcript
+        // inline. The trg_session_spawned_notify trigger fires when
+        // parent_session_id is set and emits session.spawned for the
+        // parent.
+        parentSessionId: ctx.sessionId,
+      });
+
+      return {
+        content: {
+          created: {
+            id: created.id,
+            title: created.title,
+            // Reflect the post-dispatch active state so callers don't
+            // see a stale 'assigned' that the next /api/stream tick
+            // overwrites anyway.
+            status: "in_progress",
+            assignee_id: created.assignee_id,
+          },
+        },
+      };
     },
-  };
+  });
 }
 
 function checkWorkStatusTool(
   ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "check_work_status",
     description:
       "Check task status for yourself or one of your subordinates. Returns " +
@@ -779,47 +731,43 @@ function checkWorkStatusTool(
       required: ["agent_id"],
     },
     handler: async (input) => {
-      try {
-        const targetId = String(input.agent_id ?? "");
-        if (!targetId) return { content: { error: "agent_id required" }, isError: true };
+      const targetId = String(input.agent_id ?? "");
+      if (!targetId) return { content: { error: "agent_id required" }, isError: true };
 
-        // Authz: self or direct subordinate.
-        if (targetId !== ctx.agentId) {
-          const subs = await services.agentRepo.findSubordinates(ctx.agentId);
-          if (!subs.some((s) => s.id === targetId)) {
-            return {
-              content: {
-                error: "unauthorized",
-                message: `Can only check work status for self or a direct subordinate.`,
-              },
-              isError: true,
-            };
-          }
+      // Authz: self or direct subordinate.
+      if (targetId !== ctx.agentId) {
+        const subs = await services.agentRepo.findSubordinates(ctx.agentId);
+        if (!subs.some((s) => s.id === targetId)) {
+          return {
+            content: {
+              error: "unauthorized",
+              message: `Can only check work status for self or a direct subordinate.`,
+            },
+            isError: true,
+          };
         }
-
-        const tasks = await services.taskRepo.listByAssignee(targetId);
-        const counts: Record<TaskStatus, number> = Object.fromEntries(
-          TASK_STATUSES.map((s) => [s, 0]),
-        ) as Record<TaskStatus, number>;
-        for (const t of tasks) counts[t.status] += 1;
-        return {
-          content: {
-            agent_id: targetId,
-            counts,
-            tasks: tasks.map((t) => ({
-              id: t.id,
-              title: t.title,
-              status: t.status,
-              priority: t.priority,
-              created_at: t.created_at.toISOString(),
-            })),
-          },
-        };
-      } catch (err) {
-        return toolErrorFromThrown(err);
       }
+
+      const tasks = await services.taskRepo.listByAssignee(targetId);
+      const counts: Record<TaskStatus, number> = Object.fromEntries(
+        TASK_STATUSES.map((s) => [s, 0]),
+      ) as Record<TaskStatus, number>;
+      for (const t of tasks) counts[t.status] += 1;
+      return {
+        content: {
+          agent_id: targetId,
+          counts,
+          tasks: tasks.map((t) => ({
+            id: t.id,
+            title: t.title,
+            status: t.status,
+            priority: t.priority,
+            created_at: t.created_at.toISOString(),
+          })),
+        },
+      };
     },
-  };
+  });
 }
 
 // ── revise_task (M6.4) — parent-only authz ───────────────────────────────
@@ -828,30 +776,30 @@ function reviseTaskTool(
   ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
-    name: "revise_task",
-    description:
-      "Revise a subordinate's blocked task — the canonical post-blocker " +
-      "unblock path. Authz: caller must be the assignee's direct parent; " +
-      "the subordinate must currently be blocked. Transitions task " +
-      "blocked → needs_revision and stamps next_dispatch_context with " +
-      "your feedback. Executor picks up within ≤30s; the lower agent's " +
-      "session resumes via --resume with your guidance injected as the " +
-      "<context type=\"revision\" source=\"parent_agent\" from=\"blocked\"> " +
-      "block.",
-    schema: {
-      type: "object",
-      properties: {
-        task_id: { type: "string", description: "The subordinate's blocked task to revise." },
-        feedback: {
-          type: "string",
-          description: "Guidance on how to proceed past the blocker.",
+  return defineTool(
+    {
+      name: "revise_task",
+      description:
+        "Revise a subordinate's blocked task — the canonical post-blocker " +
+        "unblock path. Authz: caller must be the assignee's direct parent; " +
+        "the subordinate must currently be blocked. Transitions task " +
+        "blocked → needs_revision and stamps next_dispatch_context with " +
+        "your feedback. Executor picks up within ≤30s; the lower agent's " +
+        "session resumes via --resume with your guidance injected as the " +
+        "<context type=\"revision\" source=\"parent_agent\" from=\"blocked\"> " +
+        "block.",
+      schema: {
+        type: "object",
+        properties: {
+          task_id: { type: "string", description: "The subordinate's blocked task to revise." },
+          feedback: {
+            type: "string",
+            description: "Guidance on how to proceed past the blocker.",
+          },
         },
+        required: ["task_id", "feedback"],
       },
-      required: ["task_id", "feedback"],
-    },
-    handler: async (input) => {
-      try {
+      handler: async (input) => {
         const taskId = String(input.task_id ?? "");
         const feedback = String(input.feedback ?? "");
         if (!taskId || !feedback) {
@@ -919,14 +867,13 @@ function reviseTaskTool(
             from_status: task.status,
           },
         };
-      } catch (err) {
-        if (err instanceof InvalidTaskTransitionError) {
-          return { content: { error: "invalid_transition", message: err.message }, isError: true };
-        }
-        return toolErrorFromThrown(err);
-      }
+      },
     },
-  };
+    (err) =>
+      err instanceof InvalidTaskTransitionError
+        ? toolError("invalid_transition", err.message)
+        : toolErrorFromThrown(err),
+  );
 }
 
 // ── add_to_escalation (M6.4) — populate the OTHER party's slot ──────────
@@ -935,7 +882,7 @@ function addToEscalationTool(
   ctx: HierarchyToolContext,
   services: HierarchyToolServices,
 ): AgentTool {
-  return {
+  return defineTool({
     name: "add_to_escalation",
     description:
       "Contribute your perspective to a peer-initiated escalation. After " +
@@ -973,45 +920,41 @@ function addToEscalationTool(
       required: ["escalation_id"],
     },
     handler: async (input) => {
-      try {
-        const escalationId = String(input.escalation_id ?? "");
-        if (!escalationId) {
-          return { content: { error: "escalation_id required" }, isError: true };
-        }
-        const proposals = Array.isArray(input.proposals)
-          ? (input.proposals as Array<{ title: string; description: string; tradeoffs?: string }>)
-          : undefined;
-        const openQuestions = Array.isArray(input.open_questions)
-          ? (input.open_questions as string[]).filter((q) => typeof q === "string")
-          : undefined;
-
-        const updated = await services.escalationService.addContribution({
-          escalationId,
-          callerAgentId: ctx.agentId,
-          proposals,
-          openQuestions,
-        });
-
-        // Refresh notification for any future M8 web UI listening.
-        await services.pool.query(`SELECT pg_notify('escalation_updated', $1)`, [
-          escalationId,
-        ]);
-
-        const bothSubmitted =
-          updated.initiator_submitted_at !== undefined &&
-          updated.counterparty_submitted_at !== undefined;
-        return {
-          content: {
-            escalation_id: updated.id,
-            status: updated.status,
-            both_sides_submitted: bothSubmitted,
-          },
-        };
-      } catch (err) {
-        return toolErrorFromThrown(err);
+      const escalationId = String(input.escalation_id ?? "");
+      if (!escalationId) {
+        return { content: { error: "escalation_id required" }, isError: true };
       }
+      const proposals = Array.isArray(input.proposals)
+        ? (input.proposals as Array<{ title: string; description: string; tradeoffs?: string }>)
+        : undefined;
+      const openQuestions = Array.isArray(input.open_questions)
+        ? (input.open_questions as string[]).filter((q) => typeof q === "string")
+        : undefined;
+
+      const updated = await services.escalationService.addContribution({
+        escalationId,
+        callerAgentId: ctx.agentId,
+        proposals,
+        openQuestions,
+      });
+
+      // Refresh notification for any future M8 web UI listening.
+      await services.pool.query(`SELECT pg_notify('escalation_updated', $1)`, [
+        escalationId,
+      ]);
+
+      const bothSubmitted =
+        updated.initiator_submitted_at !== undefined &&
+        updated.counterparty_submitted_at !== undefined;
+      return {
+        content: {
+          escalation_id: updated.id,
+          status: updated.status,
+          both_sides_submitted: bothSubmitted,
+        },
+      };
     },
-  };
+  });
 }
 
 // ── Assemble per tier ────────────────────────────────────────────────────
@@ -1090,7 +1033,7 @@ function createSubordinateAgentTool(
     DEFAULT_BLOCK_TEMPLATES.ic.map((t) => [t.block_name, t.description]),
   );
 
-  return {
+  return defineTool({
     name: "create_subordinate_agent",
     description:
       "Spawn an IC specialist agent under you. Use this during onboarding " +
@@ -1132,177 +1075,173 @@ function createSubordinateAgentTool(
       required: ["name", "tag_line", "persona", "domain"],
     },
     handler: async (input) => {
-      try {
-        if (ctx.hierarchyLevel === "ic") {
-          return {
-            content: {
-              error: "ic_cannot_spawn",
-              message:
-                "Only team/org agents can spawn subordinates; you are an IC.",
-            },
-            isError: true,
-          };
-        }
-
-        const name = String(input.name ?? "").trim();
-        const tagLine = String(input.tag_line ?? "").trim();
-        const persona = String(input.persona ?? "").trim();
-        const domain = String(input.domain ?? "").trim();
-        const activeContext = String(input.active_context ?? "").trim();
-        const constraints = String(input.constraints ?? "").trim();
-        if (!name || !tagLine || !persona || !domain) {
-          return {
-            content: {
-              error: "missing_required_fields",
-              message: "name, tag_line, persona, and domain are all required",
-            },
-            isError: true,
-          };
-        }
-        // Soft-enforce the tag_line limit so the UI's agent card line stays
-        // legible. Hard limit is the column char_limit.
-        if (tagLine.length > 100) {
-          return {
-            content: {
-              error: "tag_line_too_long",
-              message: "tag_line must be ≤100 chars",
-              actual: tagLine.length,
-            },
-            isError: true,
-          };
-        }
-        if (name.length > 80 || PROVISION_NAME_INVALID_RE.test(name)) {
-          return {
-            content: {
-              error: "invalid_name",
-              message: "name must be 1-80 chars and contain no control characters",
-            },
-            isError: true,
-          };
-        }
-
-        // Resolve the parent (caller) so we can inherit owner_id + runtime config.
-        const parent = await services.agentRepo.findById(ctx.agentId);
-        if (!parent) {
-          return {
-            content: { error: "parent_not_found", agent_id: ctx.agentId },
-            isError: true,
-          };
-        }
-
-        // Phase 9 per-parent daily cap. A runaway team agent could
-        // otherwise spawn dozens of specialists in a loop. The cap is
-        // intentionally generous; it bites only on pathological cases.
-        const recentSpawns = await services.agentProvisionEventRepo.countByParentSince(
-          parent.id,
-          24 * 60 * 60,
-        );
-        if (recentSpawns >= SUBORDINATE_DAILY_CAP) {
-          return {
-            content: {
-              error: "subordinate_daily_cap",
-              message:
-                `Parent '${parent.name}' has spawned ${recentSpawns} subordinates in the last 24h ` +
-                `(cap: ${SUBORDINATE_DAILY_CAP}). Reuse an existing specialist or wait for the window to expire.`,
-              cap: SUBORDINATE_DAILY_CAP,
-              count: recentSpawns,
-            },
-            isError: true,
-          };
-        }
-
-        // Inherit the parent's runtime so all the user's agents share the
-        // same Claude auth + model. `system_prompt_addition` carries the
-        // name only — the persona description lives in core memory (seeded
-        // below) and shouldn't be duplicated into the system prompt.
-        const runtime_config = {
-          ...DEFAULT_RUNTIME_CONFIG,
-          ...parent.runtime_config,
-          system_prompt_addition: `You are ${name}.`,
-        };
-
-        const { agent } = await provisionAgent(
-          {
-            agentRepo: services.agentRepo,
-            coreMemoryRepo: services.coreMemoryRepo,
-          },
-          {
-            id: makeAgentId(),
-            name,
-            owner_id: parent.owner_id,
-            parent_agent_id: parent.id,
-            hierarchy_level: "ic",
-            runtime_config,
-            // Same human, same machine — the child's CLI should run on
-            // the same daemon as its parent. The user can rebind via the
-            // agent detail page if they want it on a different runtime.
-            ...(parent.preferred_runtime_id
-              ? { preferred_runtime_id: parent.preferred_runtime_id }
-              : {}),
-          },
-        );
-
-        // Seed the IC's identity-bearing blocks. provisionAgent's
-        // initDefaults creates them empty; overwrite with the briefing
-        // the parent supplied so the IC's first turn has its identity
-        // baked in. Optional blocks (active_context, constraints) only
-        // get written if the parent provided content — empty blocks
-        // stay empty and the IC can fill them in as it works.
-        // The agent's name lives in runtime_config.system_prompt_addition
-        // ("You are X."); persona block is the description only.
-        const seeds: Promise<unknown>[] = [
-          services.coreMemoryRepo.updateContent(agent.id, "tag_line", tagLine),
-          services.coreMemoryRepo.updateContent(agent.id, "persona", persona),
-          services.coreMemoryRepo.updateContent(agent.id, "domain", domain),
-        ];
-        if (activeContext) {
-          seeds.push(
-            services.coreMemoryRepo.updateContent(agent.id, "active_context", activeContext),
-          );
-        }
-        if (constraints) {
-          seeds.push(
-            services.coreMemoryRepo.updateContent(agent.id, "constraints", constraints),
-          );
-        }
-        await Promise.all(seeds);
-
-        // Phase 9 audit log row — backs the daily cap query above + the
-        // /agents/[id] audit panel ("spawned by X on D, persona was Y").
-        try {
-          await services.agentProvisionEventRepo.create({
-            id: makeApeId(),
-            parent_agent_id: parent.id,
-            child_agent_id: agent.id,
-            owner_person_id: parent.owner_id,
-            child_name: name,
-            persona,
-            domain,
-          });
-        } catch (err) {
-          // Don't fail the spawn if the audit row can't write; the
-          // agent + memory are the user-visible artifacts. Log loudly.
-          console.error(
-            `[create_subordinate_agent] audit row failed for child ${agent.id}:`,
-            err instanceof Error ? err.message : err,
-          );
-        }
-
+      if (ctx.hierarchyLevel === "ic") {
         return {
           content: {
-            created: {
-              id: agent.id,
-              name: agent.name,
-              hierarchy_level: agent.hierarchy_level,
-              parent_agent_id: agent.parent_agent_id,
-            },
+            error: "ic_cannot_spawn",
+            message:
+              "Only team/org agents can spawn subordinates; you are an IC.",
           },
+          isError: true,
         };
-      } catch (err) {
-        return toolErrorFromThrown(err);
       }
+
+      const name = String(input.name ?? "").trim();
+      const tagLine = String(input.tag_line ?? "").trim();
+      const persona = String(input.persona ?? "").trim();
+      const domain = String(input.domain ?? "").trim();
+      const activeContext = String(input.active_context ?? "").trim();
+      const constraints = String(input.constraints ?? "").trim();
+      if (!name || !tagLine || !persona || !domain) {
+        return {
+          content: {
+            error: "missing_required_fields",
+            message: "name, tag_line, persona, and domain are all required",
+          },
+          isError: true,
+        };
+      }
+      // Soft-enforce the tag_line limit so the UI's agent card line stays
+      // legible. Hard limit is the column char_limit.
+      if (tagLine.length > 100) {
+        return {
+          content: {
+            error: "tag_line_too_long",
+            message: "tag_line must be ≤100 chars",
+            actual: tagLine.length,
+          },
+          isError: true,
+        };
+      }
+      if (name.length > 80 || PROVISION_NAME_INVALID_RE.test(name)) {
+        return {
+          content: {
+            error: "invalid_name",
+            message: "name must be 1-80 chars and contain no control characters",
+          },
+          isError: true,
+        };
+      }
+
+      // Resolve the parent (caller) so we can inherit owner_id + runtime config.
+      const parent = await services.agentRepo.findById(ctx.agentId);
+      if (!parent) {
+        return {
+          content: { error: "parent_not_found", agent_id: ctx.agentId },
+          isError: true,
+        };
+      }
+
+      // Phase 9 per-parent daily cap. A runaway team agent could
+      // otherwise spawn dozens of specialists in a loop. The cap is
+      // intentionally generous; it bites only on pathological cases.
+      const recentSpawns = await services.agentProvisionEventRepo.countByParentSince(
+        parent.id,
+        24 * 60 * 60,
+      );
+      if (recentSpawns >= SUBORDINATE_DAILY_CAP) {
+        return {
+          content: {
+            error: "subordinate_daily_cap",
+            message:
+              `Parent '${parent.name}' has spawned ${recentSpawns} subordinates in the last 24h ` +
+              `(cap: ${SUBORDINATE_DAILY_CAP}). Reuse an existing specialist or wait for the window to expire.`,
+            cap: SUBORDINATE_DAILY_CAP,
+            count: recentSpawns,
+          },
+          isError: true,
+        };
+      }
+
+      // Inherit the parent's runtime so all the user's agents share the
+      // same Claude auth + model. `system_prompt_addition` carries the
+      // name only — the persona description lives in core memory (seeded
+      // below) and shouldn't be duplicated into the system prompt.
+      const runtime_config = {
+        ...DEFAULT_RUNTIME_CONFIG,
+        ...parent.runtime_config,
+        system_prompt_addition: `You are ${name}.`,
+      };
+
+      const { agent } = await provisionAgent(
+        {
+          agentRepo: services.agentRepo,
+          coreMemoryRepo: services.coreMemoryRepo,
+        },
+        {
+          id: makeAgentId(),
+          name,
+          owner_id: parent.owner_id,
+          parent_agent_id: parent.id,
+          hierarchy_level: "ic",
+          runtime_config,
+          // Same human, same machine — the child's CLI should run on
+          // the same daemon as its parent. The user can rebind via the
+          // agent detail page if they want it on a different runtime.
+          ...(parent.preferred_runtime_id
+            ? { preferred_runtime_id: parent.preferred_runtime_id }
+            : {}),
+        },
+      );
+
+      // Seed the IC's identity-bearing blocks. provisionAgent's
+      // initDefaults creates them empty; overwrite with the briefing
+      // the parent supplied so the IC's first turn has its identity
+      // baked in. Optional blocks (active_context, constraints) only
+      // get written if the parent provided content — empty blocks
+      // stay empty and the IC can fill them in as it works.
+      // The agent's name lives in runtime_config.system_prompt_addition
+      // ("You are X."); persona block is the description only.
+      const seeds: Promise<unknown>[] = [
+        services.coreMemoryRepo.updateContent(agent.id, "tag_line", tagLine),
+        services.coreMemoryRepo.updateContent(agent.id, "persona", persona),
+        services.coreMemoryRepo.updateContent(agent.id, "domain", domain),
+      ];
+      if (activeContext) {
+        seeds.push(
+          services.coreMemoryRepo.updateContent(agent.id, "active_context", activeContext),
+        );
+      }
+      if (constraints) {
+        seeds.push(
+          services.coreMemoryRepo.updateContent(agent.id, "constraints", constraints),
+        );
+      }
+      await Promise.all(seeds);
+
+      // Phase 9 audit log row — backs the daily cap query above + the
+      // /agents/[id] audit panel ("spawned by X on D, persona was Y").
+      try {
+        await services.agentProvisionEventRepo.create({
+          id: makeApeId(),
+          parent_agent_id: parent.id,
+          child_agent_id: agent.id,
+          owner_person_id: parent.owner_id,
+          child_name: name,
+          persona,
+          domain,
+        });
+      } catch (err) {
+        // Don't fail the spawn if the audit row can't write; the
+        // agent + memory are the user-visible artifacts. Log loudly.
+        console.error(
+          `[create_subordinate_agent] audit row failed for child ${agent.id}:`,
+          err instanceof Error ? err.message : err,
+        );
+      }
+
+      return {
+        content: {
+          created: {
+            id: agent.id,
+            name: agent.name,
+            hierarchy_level: agent.hierarchy_level,
+            parent_agent_id: agent.parent_agent_id,
+          },
+        },
+      };
     },
-  };
+  });
 }
 
 /**
