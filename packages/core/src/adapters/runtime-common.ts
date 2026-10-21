@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -10,6 +15,11 @@ import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
  * adapters live here so there is a single source of truth; the provider-
  * specific event schemas and their `switch`-based parsers stay in each
  * adapter's own `stream-json.ts` (they are genuinely different and must).
+ *
+ * {@link runCliRuntime} is the whole lifecycle in one call — an adapter's
+ * `execute` now only builds `args` and `env` and names its parsers. The
+ * helpers it composes stay exported because the tests exercise them
+ * directly.
  */
 
 /**
@@ -207,4 +217,81 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+export interface CliRuntimeRun<E> {
+  /** Prefix for the stdout-truncation warning, e.g. "CodexRuntime". */
+  runtimeTag: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /** Fed to the process on stdin. Only Claude Code pipes the intent this way. */
+  stdin?: string;
+  context: RuntimeContext;
+  /** One NDJSON line → one provider event, or `null` to skip the line. */
+  parseLine: (line: string) => E | null;
+  /** One provider event → the live-transcript steps it implies. */
+  extractSteps: (event: E) => RuntimeStep[];
+  /**
+   * Collected events + the settled process → the provider's `RuntimeResult`.
+   * Not called on an abort. Runs before {@link CliRuntimeRun.cleanup}, so it
+   * may still read per-spawn scratch files.
+   */
+  parseResult: (events: E[], result: CliProcessResult) => RuntimeResult;
+  /** Best-effort teardown, on both the aborted and the settled path. */
+  cleanup?: () => void;
+}
+
+/**
+ * The process lifecycle every CLI-subprocess runtime shares: spawn, read the
+ * NDJSON event stream off stdout a line at a time, forward each line's steps
+ * to `context.onStep`, then map the collected events to a `RuntimeResult`.
+ *
+ * The three adapters (claude-code, codex, opencode) each had their own copy
+ * of these ~25 lines. The copies were already identical, which is the
+ * problem: a fix to the ordering — flush before parse, warn before the abort
+ * check, `onStep` only when the caller asked for steps — had to be made
+ * three times, and the codex adapter's scratch-file cleanup had to be
+ * remembered on both exit paths. Only the provider-specific event schema and
+ * its parsers stay per-adapter (they are genuinely different and must).
+ */
+export async function runCliRuntime<E>(run: CliRuntimeRun<E>): Promise<RuntimeResult> {
+  const { context } = run;
+  const events: E[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = run.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of run.extractSteps(event)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: run.command,
+    args: run.args,
+    cwd: run.cwd,
+    env: run.env,
+    ...(run.stdin !== undefined ? { stdin: run.stdin } : {}),
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+  // Flush any final partial line (a stream that ends without a trailing \n).
+  stdout.flush();
+
+  warnIfTruncated(run.runtimeTag, result);
+
+  if (result.aborted) {
+    run.cleanup?.();
+    return cancelledResult(result);
+  }
+
+  const parsed = run.parseResult(events, result);
+  run.cleanup?.();
+  return finalizeCliResult(parsed, result);
 }
