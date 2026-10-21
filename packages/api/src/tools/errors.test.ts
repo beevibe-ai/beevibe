@@ -4,7 +4,8 @@ import {
   MeshCapacityError,
   MeshMaxRoundsError,
 } from "../mesh/types.js";
-import { toolError, toolErrorFromThrown } from "./errors.js";
+import { defineTool, toolError, toolErrorFromThrown } from "./errors.js";
+import type { AgentTool } from "./types.js";
 
 describe("toolError", () => {
   it("puts the code in `error` and the human text in `message`", () => {
@@ -71,5 +72,78 @@ describe("toolErrorFromThrown", () => {
     // carry a `code` too, and must not be reported as a mesh code.
     const pgLike = Object.assign(new Error("duplicate key"), { code: "23505" });
     expect(toolErrorFromThrown(pgLike).content).toEqual({ error: "duplicate key" });
+  });
+});
+
+describe("defineTool", () => {
+  const stub = (handler: AgentTool["handler"]): AgentTool => ({
+    name: "stub",
+    description: "stub",
+    schema: { type: "object" },
+    handler,
+  });
+
+  it("passes a successful result through untouched", async () => {
+    const tool = defineTool(stub(async (input) => ({ content: { echo: input.q } })));
+    await expect(tool.handler({ q: "hi" })).resolves.toEqual({
+      content: { echo: "hi" },
+    });
+  });
+
+  it("keeps name, description and schema", () => {
+    const tool = defineTool(stub(async () => ({ content: {} })));
+    expect(tool).toMatchObject({
+      name: "stub",
+      description: "stub",
+      schema: { type: "object" },
+    });
+  });
+
+  it("envelopes a throw instead of rejecting", async () => {
+    const tool = defineTool(stub(async () => {
+      throw new Error("boom");
+    }));
+    await expect(tool.handler({})).resolves.toEqual({
+      content: { error: "boom" },
+      isError: true,
+    });
+  });
+
+  it("preserves a coded mesh error's code and meta", async () => {
+    const err = new MeshCapacityError("at cap", { agentId: "agent_1", running: 3, cap: 3 });
+    const tool = defineTool(stub(async () => {
+      throw err;
+    }));
+    const result = await tool.handler({});
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({ error: err.code, ...err.meta });
+  });
+
+  it("routes the throw through a caller-supplied mapper", async () => {
+    const tool = defineTool(
+      stub(async () => {
+        throw new Error("nope");
+      }),
+      () => toolError("watch_error", "mapped"),
+    );
+    await expect(tool.handler({})).resolves.toEqual({
+      content: { error: "watch_error", message: "mapped" },
+      isError: true,
+    });
+  });
+
+  it("envelopes a non-async handler that throws at the call site", async () => {
+    // A non-async handler throws synchronously instead of returning a
+    // rejected promise. The call sits inside the try, so the same catch
+    // covers both.
+    const tool = defineTool(
+      stub((() => {
+        throw new Error("sync boom");
+      }) as unknown as AgentTool["handler"]),
+    );
+    await expect(tool.handler({})).resolves.toEqual({
+      content: { error: "sync boom" },
+      isError: true,
+    });
   });
 });

@@ -40,6 +40,7 @@ import type {
   LearnedSkillRepository,
 } from "@beevibe/core";
 import type { AgentTool, AgentToolResult } from "./types.js";
+import type { CandidateSource, FindRepoCandidate } from "../views/types.js";
 
 /**
  * Data layer URLs — all live in the public `beevibe-ai/beevibe-capabilities`
@@ -93,31 +94,7 @@ const FIND_REPO_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-export type CandidateSource = "learned" | "community" | "trending" | "github";
-
-export interface FindRepoCandidate {
-  repo_url: string;
-  score: number;
-  /** Highest-precedence source (learned > community > trending > github). */
-  source: CandidateSource;
-  /** Every source that contributed to the score. Useful for debugging. */
-  sources: CandidateSource[];
-  /** Human-readable explanation of why this candidate scored. */
-  reason: string;
-  /** GitHub stars when available (best-effort enrich). */
-  stars?: number;
-  /** GitHub description when available. */
-  description?: string;
-  /** Programming language inferred from GitHub. */
-  language?: string;
-  /** Hydrated learned_skill row when source includes "learned". */
-  learned_skill?: {
-    id: string;
-    name: string;
-    goal_pattern: string;
-    invocation: string;
-  };
-}
+export type { CandidateSource, FindRepoCandidate };
 
 export interface FindRepoContext {
   agentId: string;

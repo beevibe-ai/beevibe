@@ -17,7 +17,7 @@ import { isApiConfigured } from "@/lib/api/config";
 import { api, type RoomDetail, type RoomMemberDetail, type RoomMessage } from "@/lib/api/client";
 import { ApiError, describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
-import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
+import { ShareLinkBox } from "@/components/share-link-box";
 import { ModalOverlay } from "@/components/modal-overlay";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ToolStepList } from "@/components/chat/tool-step-list";
@@ -25,6 +25,7 @@ import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { formatRelativeTime, idSuffix, sessionHref, shortId } from "@/lib/format";
+import { TEXT_INPUT_CLASS } from "@/components/text-input";
 import { cn } from "@/lib/utils";
 
 export function RoomDetailClient({ roomId }: { roomId: string }) {
@@ -275,7 +276,6 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
   const [error, setError] = useState<string | null>(null);
   /** When the invitee doesn't have an account yet, surface a share link they can use to sign up + auto-join. */
   const [shareLink, setShareLink] = useState<string | null>(null);
-  const { copied, copy } = useCopyToClipboard();
 
   const invite = useMutation({
     mutationFn: () => api.rooms.invite(roomId, { email: email.trim() }),
@@ -323,7 +323,7 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
           onChange={(e) => setEmail(e.target.value)}
           autoFocus
           placeholder="alice@example.com"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={cn("w-full", TEXT_INPUT_CLASS)}
           disabled={invite.isPending}
         />
         {error ? (
@@ -333,27 +333,15 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
           </div>
         ) : null}
         {shareLink ? (
-          <div className="mt-3 rounded border border-border bg-muted/40 p-3">
-            <div className="text-[11px] text-muted-foreground mb-1.5">
-              No account for that email yet. Send them this link — they&apos;ll sign up and
-              land in this room.
-            </div>
-            <div className="flex items-center gap-1.5">
-              <input
-                readOnly
-                value={shareLink}
-                className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-[11px] font-mono"
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <button
-                type="button"
-                onClick={() => void copy(shareLink ?? "")}
-                className="h-7 px-2.5 rounded text-[11px] font-medium border border-border hover:bg-secondary transition-colors cursor-pointer shrink-0"
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-          </div>
+          <ShareLinkBox
+            link={shareLink}
+            hint={
+              <>
+                No account for that email yet. Send them this link — they&apos;ll sign up
+                and land in this room.
+              </>
+            }
+          />
         ) : null}
         <div className="mt-4 flex items-center justify-end gap-2">
           <button
@@ -739,7 +727,7 @@ function Composer({
             placeholder="Type a message — use @ to mention an agent (Enter to send, Shift+Enter for newline)"
             rows={2}
             disabled={isPending}
-            className="flex-1 rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring resize-none disabled:opacity-60"
+            className={cn("flex-1 resize-none disabled:opacity-60", TEXT_INPUT_CLASS)}
           />
           <button
             type="button"

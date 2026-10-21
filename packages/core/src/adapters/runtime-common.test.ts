@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import type { RuntimeContext, RuntimeResult, RuntimeStep } from "../ports/runtime.js";
+import * as spawnModule from "./claude-code/spawn.js";
 import {
   cancelledResult,
   createStdoutLineReader,
   finalizeCliResult,
+  runCliRuntime,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -145,5 +147,156 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+describe("runCliRuntime", () => {
+  type Evt = { n: number };
+
+  function run(
+    overrides: Partial<Parameters<typeof runCliRuntime<Evt>>[0]> = {},
+    cli: Partial<CliProcessResult> = {},
+    opts: { stdout?: string } = {},
+  ) {
+    const spy = vi.spyOn(spawnModule, "runCliProcess").mockImplementation(async (o) => {
+      const result = cliResult(cli);
+      if (result.pid !== null) {
+        o.onSpawn?.({ pid: result.pid, process_group_id: result.process_group_id ?? result.pid });
+      }
+      if (opts.stdout) o.onLog?.("stdout", opts.stdout);
+      return result;
+    });
+    const promise = runCliRuntime<Evt>({
+      runtimeTag: "TestRuntime",
+      command: "test-cli",
+      args: ["--flag"],
+      cwd: "/tmp/ws",
+      env: { FOO: "bar" },
+      context: runtimeContext(),
+      parseLine: (line) => (line.trim() ? (JSON.parse(line) as Evt) : null),
+      extractSteps: (e) => [{ kind: "text", content: `step ${e.n}` }],
+      parseResult: (events) => ({
+        status: "completed",
+        output: events.map((e) => e.n).join(","),
+      }),
+      ...overrides,
+    });
+    return { promise, spy };
+  }
+
+  function runtimeContext(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
+    return {
+      intent: "do a thing",
+      workspace: { path: "/tmp/ws" },
+      system_prompt_append: "",
+      ...overrides,
+    };
+  }
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("forwards command, args, cwd and env to runCliProcess", async () => {
+    const { promise, spy } = run();
+    await promise;
+    expect(spy.mock.calls[0]![0]).toMatchObject({
+      command: "test-cli",
+      args: ["--flag"],
+      cwd: "/tmp/ws",
+      env: { FOO: "bar" },
+    });
+  });
+
+  it("omits stdin entirely when the adapter doesn't pipe one", async () => {
+    const { promise, spy } = run();
+    await promise;
+    expect("stdin" in spy.mock.calls[0]![0]).toBe(false);
+  });
+
+  it("passes stdin through when the adapter does pipe one", async () => {
+    const { promise, spy } = run({ stdin: "the prompt" });
+    await promise;
+    expect(spy.mock.calls[0]![0].stdin).toBe("the prompt");
+  });
+
+  it("collects parsed events in stream order and hands them to parseResult", async () => {
+    const { promise } = run({}, {}, { stdout: '{"n":1}\n{"n":2}\n{"n":3}\n' });
+    await expect(promise).resolves.toMatchObject({ output: "1,2,3" });
+  });
+
+  it("skips lines parseLine rejects", async () => {
+    const { promise } = run({}, {}, { stdout: '{"n":1}\n\n   \n{"n":2}\n' });
+    await expect(promise).resolves.toMatchObject({ output: "1,2" });
+  });
+
+  it("flushes a trailing line that arrives without a newline", async () => {
+    const { promise } = run({}, {}, { stdout: '{"n":1}\n{"n":2}' });
+    await expect(promise).resolves.toMatchObject({ output: "1,2" });
+  });
+
+  it("forwards each event's steps to context.onStep", async () => {
+    const steps: RuntimeStep[] = [];
+    const { promise } = run(
+      { context: runtimeContext({ onStep: (s) => steps.push(s) }) },
+      {},
+      { stdout: '{"n":1}\n{"n":2}\n' },
+    );
+    await promise;
+    expect(steps).toEqual([
+      { kind: "text", content: "step 1" },
+      { kind: "text", content: "step 2" },
+    ]);
+  });
+
+  it("relays the spawn metadata to context.onSpawn", async () => {
+    const spawns: unknown[] = [];
+    const { promise } = run({ context: runtimeContext({ onSpawn: (m) => spawns.push(m) }) });
+    await promise;
+    expect(spawns).toEqual([{ process_pid: 4242, process_group_id: 4242 }]);
+  });
+
+  it("merges process metadata into the parsed result", async () => {
+    const { promise } = run({}, { exitCode: 3 });
+    await expect(promise).resolves.toMatchObject({
+      process_pid: 4242,
+      process_group_id: 4242,
+      exit_code: 3,
+    });
+  });
+
+  it("returns the cancelled result on abort, without calling parseResult", async () => {
+    const parseResult = vi.fn();
+    const { promise } = run({ parseResult }, { aborted: true });
+    await expect(promise).resolves.toMatchObject({ status: "cancelled" });
+    expect(parseResult).not.toHaveBeenCalled();
+  });
+
+  it("runs cleanup on the aborted path", async () => {
+    const cleanup = vi.fn();
+    const { promise } = run({ cleanup }, { aborted: true });
+    await promise;
+    expect(cleanup).toHaveBeenCalledTimes(1);
+  });
+
+  it("runs cleanup after parseResult so a scratch file is still readable", async () => {
+    const order: string[] = [];
+    const { promise } = run({
+      parseResult: () => {
+        order.push("parse");
+        return { status: "completed", output: "" };
+      },
+      cleanup: () => order.push("cleanup"),
+    });
+    await promise;
+    expect(order).toEqual(["parse", "cleanup"]);
+  });
+
+  it("warns once when stdout was truncated", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { promise } = run({}, { truncated: true });
+    await promise;
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toContain("[TestRuntime]");
   });
 });

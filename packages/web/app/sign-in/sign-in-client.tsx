@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, KeyRound, Loader2, LogIn } from "lucide-react";
+import { TEXT_INPUT_CLASS } from "@/components/text-input";
+import { cn } from "@/lib/utils";
 import { SIGNIN_NO_PASSWORD_SET } from "@beevibe/core/auth/constants";
 import { api } from "@/lib/api/client";
 import { asApiError } from "@/lib/api/http";
@@ -151,7 +153,7 @@ export function SignInClient() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="alice@example.com"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className={cn("w-full", TEXT_INPUT_CLASS)}
               disabled={submitting}
             />
 
@@ -165,7 +167,7 @@ export function SignInClient() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className={cn("w-full", TEXT_INPUT_CLASS)}
               disabled={submitting}
             />
           </>
@@ -183,7 +185,7 @@ export function SignInClient() {
               value={keyDraft}
               onChange={(e) => setKeyDraft(e.target.value)}
               placeholder="bv_u_..."
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+              className={cn("w-full font-mono", TEXT_INPUT_CLASS)}
               disabled={submitting}
             />
           </>

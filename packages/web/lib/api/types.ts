@@ -6,6 +6,18 @@
  */
 
 export type {
+  /**
+   * `FindRepoSource` is the web's long-standing name for the api's
+   * `CandidateSource`. Aliased rather than renamed so the capabilities page
+   * keeps its import.
+   */
+  CandidateSource as FindRepoSource,
+  DaemonPanelEntry,
+  FindRepoCandidate,
+  ReferencedRepo,
+  RuntimePanelEntry,
+  RuntimesListResponse,
+  WorkProductDetail,
   TaskDetail,
   TaskDetailSessionRow,
   AgentDetail,
