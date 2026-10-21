@@ -6,6 +6,8 @@ import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Loader2, MessageCircleMore, Plus, Users } from "lucide-react";
 import { api, type Room } from "@/lib/api/client";
+import { TEXT_INPUT_CLASS } from "@/components/text-input";
+import { cn } from "@/lib/utils";
 import { isApiConfigured } from "@/lib/api/config";
 import { queryKeys } from "@/lib/hooks/keys";
 import { Skeleton } from "@/components/skeleton";
@@ -79,7 +81,7 @@ export function RoomsListClient() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Plan the M9 launch"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className={cn("w-full", TEXT_INPUT_CLASS)}
               disabled={create.isPending}
             />
           </div>

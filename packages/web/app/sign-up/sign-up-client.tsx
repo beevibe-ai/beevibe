@@ -4,6 +4,8 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, Loader2, Sparkles, UserPlus } from "lucide-react";
+import { TEXT_INPUT_CLASS } from "@/components/text-input";
+import { cn } from "@/lib/utils";
 import { PASSWORD_MIN_LENGTH } from "@beevibe/core/auth/constants";
 import { api } from "@/lib/api/client";
 import { asApiError } from "@/lib/api/http";
@@ -115,7 +117,7 @@ export function SignUpClient() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Alice"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={cn("w-full", TEXT_INPUT_CLASS)}
           disabled={submitting}
         />
 
@@ -130,7 +132,7 @@ export function SignUpClient() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="alice@example.com"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={cn("w-full", TEXT_INPUT_CLASS)}
           disabled={submitting}
         />
 
@@ -145,7 +147,7 @@ export function SignUpClient() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder={`at least ${PASSWORD_MIN_LENGTH} characters`}
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={cn("w-full", TEXT_INPUT_CLASS)}
           disabled={submitting}
         />
 
