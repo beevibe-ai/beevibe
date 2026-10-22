@@ -150,3 +150,64 @@ export function makeErrorHandler(
     });
   };
 }
+
+/**
+ * A service-layer error class and the HTTP answer it maps to.
+ *
+ * `code` is the stable `error` string in the body; the body's `message`
+ * is always the error's own, which is what every call site already did.
+ */
+export interface ServiceErrorMapping {
+  error: new (...args: never[]) => Error;
+  status: number;
+  code: string;
+}
+
+/**
+ * Wrap a fallback error handler with an `instanceof` table.
+ *
+ * Five handlers — `escalation`, `negotiation`, `task` and two in `view`
+ * — each wrote the same chain by hand: a run of
+ *
+ *     if (err instanceof SomeError) {
+ *       res.status(N).json({ error: "some_code", message: err.message });
+ *       return;
+ *     }
+ *
+ * and then a fall-through. Nine branches in all, each one a place to
+ * mistype a status or forget the `return` and answer twice. The table
+ * is also the readable form: the whole error contract of a router is
+ * one list instead of a chain to trace.
+ *
+ * Mappings are tried in order, so a subclass goes ahead of its base.
+ * The fallback keeps the `(err, res, context?)` signature
+ * {@link makeErrorHandler} produces, so `view` can keep passing its
+ * per-call context label through.
+ */
+export function withServiceErrors(
+  fallback: (err: unknown, res: Response, context?: string) => void,
+  mappings: readonly ServiceErrorMapping[],
+): (err: unknown, res: Response, context?: string) => void {
+  return (err, res, context) => {
+    for (const mapping of mappings) {
+      if (err instanceof mapping.error) {
+        res.status(mapping.status).json({ error: mapping.code, message: err.message });
+        return;
+      }
+    }
+    fallback(err, res, context);
+  };
+}
+
+/**
+ * {@link withServiceErrors} over a fresh {@link makeErrorHandler} — the
+ * shape `escalation`, `negotiation` and `task` need, each of which had
+ * grown its own copy of the 500 block below its `instanceof` chain
+ * rather than reusing the shared one.
+ */
+export function makeServiceErrorHandler(
+  tag: string,
+  mappings: readonly ServiceErrorMapping[],
+): (err: unknown, res: Response, context?: string) => void {
+  return withServiceErrors(makeErrorHandler(tag), mappings);
+}
