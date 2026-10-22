@@ -4,7 +4,9 @@ import {
   SessionSearchService,
 } from "@beevibe/core/services/session-search";
 import { SESSION_TYPES, SESSION_STATUSES } from "@beevibe/core";
-import type { AgentTool } from "./types.js";
+import { toolError, toolErrorFrom } from "./errors.js";
+import { guarded } from "./handler.js";
+import type { AgentTool, AgentToolResult } from "./types.js";
 
 /**
  * session_search — Layer-3 memory: search past conversations via FTS,
@@ -241,48 +243,40 @@ export function createSessionSearchTool(
     name: "session_search",
     description: DESCRIPTION,
     schema: SCHEMA as unknown as Record<string, unknown>,
-    handler: async (input) => {
-      try {
-        const req = inferRequest(input);
-        const result = await services.sessionSearch.search(req, {
-          callerAgentId: ctx.agentId,
-          hierarchyLevel: ctx.hierarchyLevel,
-          currentSessionId: ctx.sessionId,
-        });
-        if (result === null) {
-          return {
-            content: {
-              error: "not_found_or_forbidden",
-              message:
-                "session_id is not in your scope, the anchor message id does not " +
-                "exist, or the anchor lives in your active conversation.",
-            },
-            isError: true,
-          };
-        }
-        return { content: result as unknown as Record<string, unknown> };
-      } catch (err) {
-        // Match by name as well as instanceof so cross-bundle imports
-        // (e.g. an integration script consuming src/ while api consumes
-        // dist/) still surface the structured error code.
-        const isSessionSearchError =
-          err instanceof SessionSearchError ||
-          (err instanceof Error && err.name === "SessionSearchError");
-        if (isSessionSearchError) {
-          const e = err as SessionSearchError;
-          return {
-            content: { error: e.code, message: e.message },
-            isError: true,
-          };
-        }
-        return {
-          content: {
-            error: "internal_error",
-            message: err instanceof Error ? err.message : String(err),
-          },
-          isError: true,
-        };
+    handler: guarded(async (input) => {
+      const req = inferRequest(input);
+      const result = await services.sessionSearch.search(req, {
+        callerAgentId: ctx.agentId,
+        hierarchyLevel: ctx.hierarchyLevel,
+        currentSessionId: ctx.sessionId,
+      });
+      if (result === null) {
+        return toolError(
+          "not_found_or_forbidden",
+          "session_id is not in your scope, the anchor message id does not " +
+            "exist, or the anchor lives in your active conversation.",
+        );
       }
-    },
+      return { content: result as unknown as Record<string, unknown> };
+    }, sessionSearchError),
   };
+}
+
+/**
+ * `session_search`'s error map: a SessionSearchError carries a code the
+ * agent can branch on, so it survives as `{ error: <code>, message }`.
+ *
+ * Matched by `name` as well as `instanceof` so cross-bundle imports
+ * (e.g. an integration script consuming src/ while api consumes dist/)
+ * still surface the structured code.
+ */
+function sessionSearchError(err: unknown): AgentToolResult {
+  const isSessionSearchError =
+    err instanceof SessionSearchError ||
+    (err instanceof Error && err.name === "SessionSearchError");
+  if (isSessionSearchError) {
+    const e = err as SessionSearchError;
+    return toolError(e.code, e.message);
+  }
+  return toolErrorFrom("internal_error", err);
 }

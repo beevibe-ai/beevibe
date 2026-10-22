@@ -34,6 +34,25 @@ export function toolError(
 }
 
 /**
+ * A named failure whose human message is a caught error's.
+ *
+ * `{ error: "<code>", message: err instanceof Error ? err.message :
+ * String(err) }` was written out at four call sites —
+ * `update-core-memory`'s `update_failed`, `use-repo`'s
+ * `dispatch_failed` and `repo_run_create_failed`, `session-search`'s
+ * `internal_error`. Unlike {@link toolErrorFromThrown} these keep a
+ * stable code in `error` and put the detail in `message`, which is the
+ * shape those tools already promise their callers.
+ */
+export function toolErrorFrom(
+  code: string,
+  err: unknown,
+  extra: Record<string, unknown> = {},
+): AgentToolResult {
+  return toolError(code, err instanceof Error ? err.message : String(err), extra);
+}
+
+/**
  * Envelope for something thrown out of a tool handler.
  *
  * A {@link CodedMeshError} keeps its code and meta — that's the whole

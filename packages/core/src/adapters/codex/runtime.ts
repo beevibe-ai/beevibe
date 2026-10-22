@@ -8,21 +8,17 @@ import type {
   RuntimeWorkspaceContext,
   Workspace,
 } from "../../ports/runtime.js";
-import { runCliProcess } from "../claude-code/spawn.js";
 import { MCP_TOOL_TIMEOUT_MS } from "../local-workspace/manager.js";
 import {
-  cancelledResult,
+  buildRuntimeEnv,
   cliVersionHealthCheck,
   composePrompt,
-  createStdoutLineReader,
-  finalizeCliResult,
-  warnIfTruncated,
+  runStreamingCli,
 } from "../runtime-common.js";
 import {
   extractCodexStepEvents,
   parseCodexEventLine,
   parseCodexEvents,
-  type CodexEvent,
 } from "./stream-json.js";
 
 export interface CodexRuntimeConfig {
@@ -115,49 +111,29 @@ export class CodexRuntime implements AgentRuntime {
         ]
       : [...globalArgs, "exec", ...execArgs, composePrompt(context)];
 
-    const env: Record<string, string | undefined> = { ...process.env };
-    for (const key of OPENAI_AUTH_VARS) delete env[key];
-    if (context.env) Object.assign(env, context.env);
+    const env = buildRuntimeEnv(context, OPENAI_AUTH_VARS);
     if (prepared) env.BEEVIBE_AGENT_API_KEY = prepared.agentApiKey;
 
-    const events: CodexEvent[] = [];
-    const handleLine = (line: string): void => {
-      const evt = parseCodexEventLine(line);
-      if (!evt) return;
-      events.push(evt);
-      if (!context.onStep) return;
-      for (const step of extractCodexStepEvents(evt)) {
-        context.onStep(step);
-      }
-    };
-    const stdout = createStdoutLineReader(handleLine);
+    // Read in `onSettled`, which runs on the cancelled path too, so the
+    // file is always cleaned up even though only the success path uses
+    // its contents.
+    let lastMessage = "";
 
-    const result = await runCliProcess({
+    return runStreamingCli({
+      runtimeTag: "CodexRuntime",
       command: this.config.command ?? "codex",
       args,
       cwd: context.workspace.path,
       env,
-      abortSignal: context.abort_signal,
-      onSpawn: ({ pid, process_group_id }) => {
-        context.onSpawn?.({ process_pid: pid, process_group_id });
+      context,
+      parseLine: parseCodexEventLine,
+      extractSteps: extractCodexStepEvents,
+      onSettled: () => {
+        lastMessage = readIfExists(lastMessagePath);
+        removeIfExists(lastMessagePath);
       },
-      onLog: stdout.onLog,
+      parseResult: (events, exitCode) => parseCodexEvents(events, exitCode, lastMessage),
     });
-    stdout.flush();
-
-    warnIfTruncated("CodexRuntime", result);
-
-    if (result.aborted) {
-      removeIfExists(lastMessagePath);
-      return cancelledResult(result);
-    }
-
-    const lastMessage = readIfExists(lastMessagePath);
-    removeIfExists(lastMessagePath);
-    return finalizeCliResult(
-      parseCodexEvents(events, result.exitCode, lastMessage),
-      result,
-    );
   }
 
   async healthCheck(): Promise<RuntimeHealth> {

@@ -1,6 +1,8 @@
 import type { CoreMemory, CoreMemoryOperation } from "@beevibe/core/services/memory";
 import type { HierarchyLevel } from "@beevibe/core";
 import { DEFAULT_BLOCK_TEMPLATES } from "@beevibe/core";
+import { toolError, toolErrorFrom } from "./errors.js";
+import { guarded } from "./handler.js";
 import type { AgentTool } from "./types.js";
 
 const OPERATIONS: readonly CoreMemoryOperation[] = ["append", "replace"];
@@ -189,76 +191,48 @@ export function createUpdateCoreMemoryTool(
       "  # Backend Platform. Use replace to update the existing bullet\n" +
       "  # in place.",
     schema: schema as Record<string, unknown>,
-    handler: async (input) => {
+    handler: guarded(async (input) => {
       const blockName = input.block_name;
       const operation = input.operation;
       const content = input.content;
       const oldContent = input.old_content;
 
       if (typeof blockName !== "string" || !blockName.trim()) {
-        return {
-          content: { error: "invalid_block_name", message: "block_name must be a non-empty string" },
-          isError: true,
-        };
+        return toolError("invalid_block_name", "block_name must be a non-empty string");
       }
       if (!tierBlocks.includes(blockName)) {
-        return {
-          content: {
-            error: "unknown_block",
-            message: `block_name must be one of: ${tierBlocks.join(", ")}`,
-          },
-          isError: true,
-        };
+        return toolError(
+          "unknown_block",
+          `block_name must be one of: ${tierBlocks.join(", ")}`,
+        );
       }
       if (typeof operation !== "string" || !OPERATIONS.includes(operation as CoreMemoryOperation)) {
-        return {
-          content: {
-            error: "invalid_operation",
-            message: `operation must be one of: ${OPERATIONS.join(", ")}`,
-          },
-          isError: true,
-        };
+        return toolError(
+          "invalid_operation",
+          `operation must be one of: ${OPERATIONS.join(", ")}`,
+        );
       }
       if (typeof content !== "string") {
-        return {
-          content: { error: "invalid_content", message: "content must be a string" },
-          isError: true,
-        };
+        return toolError("invalid_content", "content must be a string");
       }
       if (operation === "replace" && (typeof oldContent !== "string" || !oldContent)) {
-        return {
-          content: {
-            error: "missing_old_content",
-            message: "operation='replace' requires old_content",
-          },
-          isError: true,
-        };
+        return toolError("missing_old_content", "operation='replace' requires old_content");
       }
 
-      try {
-        const block = await services.coreMemory.applyUpdate(
-          ctx.agentId,
-          blockName,
-          operation as CoreMemoryOperation,
-          content,
-          oldContent as string | undefined,
-        );
-        return {
-          content: {
-            updated: true,
-            block_name: block.block_name,
-            content_length: block.content.length,
-          },
-        };
-      } catch (err) {
-        return {
-          content: {
-            error: "update_failed",
-            message: err instanceof Error ? err.message : String(err),
-          },
-          isError: true,
-        };
-      }
-    },
+      const block = await services.coreMemory.applyUpdate(
+        ctx.agentId,
+        blockName,
+        operation as CoreMemoryOperation,
+        content,
+        oldContent as string | undefined,
+      );
+      return {
+        content: {
+          updated: true,
+          block_name: block.block_name,
+          content_length: block.content.length,
+        },
+      };
+    }, (err) => toolErrorFrom("update_failed", err)),
   };
 }

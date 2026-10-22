@@ -3,8 +3,10 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  makeServiceErrorHandler,
   requireNullableString,
   requireParam,
+  withServiceErrors,
 } from "./http-errors.js";
 
 function fakeRes(): Response & { statusCode?: number; body?: unknown } {
@@ -217,5 +219,87 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+class NotFound extends Error {}
+class Conflict extends Error {}
+class SubclassOfNotFound extends NotFound {}
+
+describe("withServiceErrors", () => {
+  it("maps a matching error to its status and code, with the error's own message", () => {
+    const res = fakeRes();
+    const handle = withServiceErrors(vi.fn(), [
+      { error: NotFound, status: 404, code: "thing_not_found" },
+    ]);
+    handle(new NotFound("no such thing: x"), res);
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "thing_not_found", message: "no such thing: x" });
+  });
+
+  it("tries the mappings in order, so a subclass listed first wins", () => {
+    const res = fakeRes();
+    const handle = withServiceErrors(vi.fn(), [
+      { error: SubclassOfNotFound, status: 410, code: "gone" },
+      { error: NotFound, status: 404, code: "thing_not_found" },
+    ]);
+    handle(new SubclassOfNotFound("gone for good"), res);
+    expect(res.statusCode).toBe(410);
+  });
+
+  it("falls through to the fallback for an unmapped error", () => {
+    const res = fakeRes();
+    const fallback = vi.fn();
+    const handle = withServiceErrors(fallback, [
+      { error: NotFound, status: 404, code: "thing_not_found" },
+    ]);
+    const err = new Conflict("unexpected");
+    handle(err, res, "some context");
+    expect(res.statusCode).toBeUndefined();
+    expect(fallback).toHaveBeenCalledWith(err, res, "some context");
+  });
+
+  it("answers exactly once — a mapped error never also reaches the fallback", () => {
+    const res = fakeRes();
+    const fallback = vi.fn();
+    const handle = withServiceErrors(fallback, [
+      { error: NotFound, status: 404, code: "thing_not_found" },
+      { error: Conflict, status: 409, code: "conflict" },
+    ]);
+    handle(new NotFound("x"), res);
+    expect(fallback).not.toHaveBeenCalled();
+  });
+
+  it("falls through for a non-Error throw", () => {
+    const res = fakeRes();
+    const fallback = vi.fn();
+    withServiceErrors(fallback, [{ error: NotFound, status: 404, code: "nf" }])(
+      "a bare string",
+      res,
+    );
+    expect(fallback).toHaveBeenCalled();
+  });
+});
+
+describe("makeServiceErrorHandler", () => {
+  it("maps a known error the same way withServiceErrors does", () => {
+    const res = fakeRes();
+    makeServiceErrorHandler("test route", [
+      { error: Conflict, status: 409, code: "invalid_state" },
+    ])(new Conflict("wrong state"), res);
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({ error: "invalid_state", message: "wrong state" });
+  });
+
+  it("500s an unmapped error through the shared handler, logging under the tag", () => {
+    const res = fakeRes();
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    makeServiceErrorHandler("test route", [
+      { error: Conflict, status: 409, code: "invalid_state" },
+    ])(new Error("boom"), res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "boom" });
+    expect(spy).toHaveBeenCalledWith("[test route]", expect.any(Error));
+    spy.mockRestore();
   });
 });
