@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import type { RuntimeContext, RuntimeResult } from "../ports/runtime.js";
 import {
+  buildRuntimeEnv,
   cancelledResult,
   createStdoutLineReader,
   finalizeCliResult,
@@ -145,5 +146,47 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+describe("buildRuntimeEnv", () => {
+  function ctx(env?: Record<string, string>): RuntimeContext {
+    return { env, system_prompt_append: "", intent: "" } as unknown as RuntimeContext;
+  }
+
+  afterEach(() => {
+    delete process.env.BEEVIBE_TEST_LEAK;
+    delete process.env.BEEVIBE_TEST_KEEP;
+  });
+
+  it("inherits the executor's own environment", () => {
+    process.env.BEEVIBE_TEST_KEEP = "kept";
+    expect(buildRuntimeEnv(ctx()).BEEVIBE_TEST_KEEP).toBe("kept");
+  });
+
+  it("strips the named vars so the CLI falls back to its own credentials", () => {
+    process.env.BEEVIBE_TEST_LEAK = "api-key-billing";
+    const env = buildRuntimeEnv(ctx(), ["BEEVIBE_TEST_LEAK"]);
+    expect("BEEVIBE_TEST_LEAK" in env).toBe(false);
+  });
+
+  it("lets the session's own env win over both", () => {
+    process.env.BEEVIBE_TEST_KEEP = "from-executor";
+    expect(buildRuntimeEnv(ctx({ BEEVIBE_TEST_KEEP: "from-session" })).BEEVIBE_TEST_KEEP).toBe(
+      "from-session",
+    );
+  });
+
+  it("re-adds a stripped var when the session supplies it explicitly", () => {
+    process.env.BEEVIBE_TEST_LEAK = "from-executor";
+    const env = buildRuntimeEnv(ctx({ BEEVIBE_TEST_LEAK: "from-session" }), [
+      "BEEVIBE_TEST_LEAK",
+    ]);
+    expect(env.BEEVIBE_TEST_LEAK).toBe("from-session");
+  });
+
+  it("strips nothing by default — opencode routes on provider keys in the env", () => {
+    process.env.BEEVIBE_TEST_LEAK = "openrouter-key";
+    expect(buildRuntimeEnv(ctx()).BEEVIBE_TEST_LEAK).toBe("openrouter-key");
   });
 });

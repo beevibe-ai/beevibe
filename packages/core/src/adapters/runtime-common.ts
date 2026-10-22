@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,110 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * Build the env for a spawned CLI: the executor's own environment, minus
+ * the vars that would leak the wrong auth into the subprocess, plus the
+ * session's own `context.env` last so it wins.
+ *
+ * `strip` is per-provider. Claude Code drops its nesting guards and
+ * `ANTHROPIC_API_KEY`/`ANTHROPIC_AUTH_TOKEN` so the CLI falls back to
+ * `~/.claude/` credentials; codex drops the OpenAI pair for the same
+ * reason against `~/.codex/`; opencode strips nothing, because it reads
+ * provider keys out of the environment to decide where to route.
+ */
+export function buildRuntimeEnv(
+  context: RuntimeContext,
+  strip: readonly string[] = [],
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = { ...process.env };
+  for (const key of strip) delete env[key];
+  if (context.env) Object.assign(env, context.env);
+  return env;
+}
+
+/**
+ * One streaming CLI session, from spawn to `RuntimeResult`.
+ *
+ * `E` is the provider's own event type. The three CLI runtimes differ in
+ * how they build argv, what they strip from the env, and how they read
+ * their event stream — but the sequence around all that was identical
+ * in each of them, and getting it wrong is quiet rather than loud: a
+ * missing `flush()` drops the last event of a stream that ends without
+ * a newline, a missing `warnIfTruncated` hides a 4MB cut-off, and
+ * skipping the `aborted` check reports a cancelled session as a
+ * failure. Those three steps are the reason this exists.
+ */
+export interface StreamingCliRun<E> {
+  /** Log tag for {@link warnIfTruncated} — e.g. "CodexRuntime". */
+  runtimeTag: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /**
+   * Piped to the CLI's stdin. Claude Code feeds the intent this way
+   * (`--print -`); codex and opencode pass the prompt on argv, so they
+   * leave it unset.
+   */
+  stdin?: string;
+  context: RuntimeContext;
+  /** One NDJSON line → one event, or `null` to skip the line. */
+  parseLine: (line: string) => E | null;
+  /** One event → 0+ steps for the live transcript. */
+  extractSteps: (event: E) => RuntimeStep[];
+  /** The whole event stream + exit code → the parsed result. */
+  parseResult: (
+    events: E[],
+    exitCode: number | null,
+  ) => Omit<RuntimeResult, "process_pid" | "process_group_id">;
+  /**
+   * Runs once the process has settled and stdout is flushed, before
+   * either return path — so it runs on the cancelled path too. Codex
+   * reads and deletes its `--output-last-message` file here, which the
+   * CLI leaves behind otherwise.
+   */
+  onSettled?: () => void;
+}
+
+export async function runStreamingCli<E>(run: StreamingCliRun<E>): Promise<RuntimeResult> {
+  const { context } = run;
+
+  // Parse incrementally during streaming rather than re-reading the whole
+  // stdout after close. The line reader handles chunk boundaries — a single
+  // JSON event can arrive split across chunks.
+  const events: E[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = run.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of run.extractSteps(event)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: run.command,
+    args: run.args,
+    cwd: run.cwd,
+    env: run.env,
+    stdin: run.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Flush any final partial line (a stream that ends without a trailing \n).
+  stdout.flush();
+
+  warnIfTruncated(run.runtimeTag, result);
+  run.onSettled?.();
+
+  if (result.aborted) return cancelledResult(result);
+
+  return finalizeCliResult(run.parseResult(events, result.exitCode), result);
 }
