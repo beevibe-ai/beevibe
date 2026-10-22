@@ -6,6 +6,8 @@ import {
   type FactType,
   type HierarchyLevel,
 } from "@beevibe/core";
+import { toolError } from "./errors.js";
+import { guarded } from "./handler.js";
 import type { AgentTool } from "./types.js";
 
 /**
@@ -93,23 +95,17 @@ export function createSaveMemoryTool(
       "via the briefing's vector recall and via search_context.\n\n" +
       "The most valuable memory makes the next session start already knowing.",
     schema: SAVE_MEMORY_SCHEMA as Record<string, unknown>,
-    handler: async (input) => {
+    handler: guarded(async (input) => {
       const content = input.content;
       const factType = input.fact_type;
       if (typeof content !== "string" || !content.trim()) {
-        return {
-          content: { error: "invalid_content", message: "content must be a non-empty string" },
-          isError: true,
-        };
+        return toolError("invalid_content", "content must be a non-empty string");
       }
       if (typeof factType !== "string" || !FACT_TYPES.includes(factType as FactType)) {
-        return {
-          content: {
-            error: "invalid_fact_type",
-            message: `fact_type must be one of: ${FACT_TYPES.join(", ")}`,
-          },
-          isError: true,
-        };
+        return toolError(
+          "invalid_fact_type",
+          `fact_type must be one of: ${FACT_TYPES.join(", ")}`,
+        );
       }
       const fact = await services.factStore.addOrMerge(
         ctx.agentId,
@@ -124,6 +120,6 @@ export function createSaveMemoryTool(
       return {
         content: { saved: true, fact_id: fact.id, fact_type: factType, scope: fact.scope },
       };
-    },
+    }),
   };
 }

@@ -27,6 +27,8 @@ import {
   type TaskRepository,
 } from "@beevibe/core";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
+import { toolError, toolErrorFrom } from "./errors.js";
+import { guarded } from "./handler.js";
 import type { AgentTool } from "./types.js";
 
 const USE_REPO_SCHEMA = {
@@ -121,24 +123,15 @@ export function createUseRepoTool(
       "Watch the live transcript at /capabilities/runs/<repo_run_id> in " +
       "the UI, or read repo_run.status for completion.",
     schema: USE_REPO_SCHEMA as Record<string, unknown>,
-    handler: async (input) => {
+    handler: guarded(async (input) => {
       const goal = typeof input.goal === "string" ? input.goal.trim() : "";
       const repoUrl =
         typeof input.repo_url === "string" ? input.repo_url.trim() : "";
       if (!goal) {
-        return {
-          content: { error: "invalid_goal", message: "goal must be a non-empty string" },
-          isError: true,
-        };
+        return toolError("invalid_goal", "goal must be a non-empty string");
       }
       if (!repoUrl || !isLikelyGithubUrl(repoUrl)) {
-        return {
-          content: {
-            error: "invalid_repo_url",
-            message: "repo_url must be a GitHub HTTPS URL",
-          },
-          isError: true,
-        };
+        return toolError("invalid_repo_url", "repo_url must be a GitHub HTTPS URL");
       }
 
       const inputUrl =
@@ -153,10 +146,7 @@ export function createUseRepoTool(
       // to the actual agent id and confirm the caller exists.
       const agent = await services.agentRepo.findById(ctx.agentId);
       if (!agent) {
-        return {
-          content: { error: "agent_not_found", message: "calling agent not found" },
-          isError: true,
-        };
+        return toolError("agent_not_found", "calling agent not found");
       }
 
       // Container task — the artifact has to live somewhere, and
@@ -195,13 +185,7 @@ export function createUseRepoTool(
           sessionIdOverride: sessionIdValue,
         });
       } catch (err) {
-        return {
-          content: {
-            error: "dispatch_failed",
-            message: err instanceof Error ? err.message : String(err),
-          },
-          isError: true,
-        };
+        return toolErrorFrom("dispatch_failed", err);
       }
 
       try {
@@ -219,13 +203,7 @@ export function createUseRepoTool(
         // session. composeDispatchPayload will find no repo_run and
         // return null, marking the session failed. Self-recovers, but
         // surface the error so the agent doesn't silently wait.
-        return {
-          content: {
-            error: "repo_run_create_failed",
-            message: err instanceof Error ? err.message : String(err),
-          },
-          isError: true,
-        };
+        return toolErrorFrom("repo_run_create_failed", err);
       }
 
       return {
@@ -247,7 +225,7 @@ export function createUseRepoTool(
           input_filename: inputFilename,
         },
       };
-    },
+    }),
   };
 }
 
