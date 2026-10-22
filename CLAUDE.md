@@ -157,10 +157,12 @@ than expecting green:
 
 | Package | Result |
 | --- | --- |
-| `@beevibe/api` | 27 files pass, 9 fail (308 tests pass) |
-| `@beevibe/core` | 9 tests fail, 415 pass |
-| `@beevibe/scheduler` | 2 files pass, 2 fail (10 tests pass) |
-| `@beevibe/sandbox` | exits 0 — its only suite is Docker-gated and skips |
+| `@beevibe/api` | 43 files pass, 10 fail (820 tests pass, 110 skipped) |
+| `@beevibe/core` | 39 files pass, 20 fail (7 tests fail, 609 pass, 269 skipped) |
+| `@beevibe/daemon` | exits 0 — 156 pass (the multi-instance e2e is opt-in) |
+| `@beevibe/scheduler` | 2 files pass, 2 fail (10 tests pass, 17 skipped) |
+| `@beevibe/sandbox` | exits 0 — its Docker e2e suite is opt-in and skips |
+| `@beevibe/web` | exits 0 — 203 pass, needs neither DB nor keys |
 
 `typecheck`, `lint`, and `build` need none of this and should always be
 clean — use them as the real gate when the DB isn't available.

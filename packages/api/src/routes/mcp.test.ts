@@ -16,6 +16,11 @@
  * Real Postgres (DATABASE_URL_TEST). Real OpenAI embeddings (cheap nano
  * model). LLM-related promotion paths are tested elsewhere; here we just
  * verify the wiring.
+ *
+ * Prerequisites are asserted, not gated: a missing DATABASE_URL_TEST,
+ * OPENAI_API_KEY or ANTHROPIC_API_KEY fails this suite loudly rather than
+ * skipping it, per CONTRIBUTING.md. CI's test job binds the `production`
+ * environment so both keys resolve there.
  */
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
@@ -33,10 +38,7 @@ import { DEFAULT_RUNTIME_CONFIG, agentId, personId, sessionId } from "@beevibe/c
 import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
 import { bootstrap, type BootstrapResult } from "../bootstrap.js";
 
-const HAS_LIVE_API_KEYS =
-  Boolean(process.env.OPENAI_API_KEY) && Boolean(process.env.ANTHROPIC_API_KEY);
-
-describe.skipIf(!HAS_LIVE_API_KEYS)("/mcp router — integration", () => {
+describe("/mcp router — integration", () => {
   let pool: Pool;
   let agentRepo: PostgresAgentRepository;
   let personRepo: PostgresPersonRepository;
