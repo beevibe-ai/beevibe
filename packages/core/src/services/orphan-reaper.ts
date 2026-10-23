@@ -30,6 +30,7 @@
  *     will time out on its own resolver
  */
 
+import { asError } from "../domain/errors.js";
 import type { Session } from "../domain/session.js";
 import { transitionForReapRequeue } from "../domain/task.js";
 import type { SessionRepository } from "../ports/session-repo.js";
@@ -156,8 +157,4 @@ export class DaemonOrphanReaper {
     }
     return { reaped, redispatched };
   }
-}
-
-function asError(err: unknown): Error {
-  return err instanceof Error ? err : new Error(String(err));
 }

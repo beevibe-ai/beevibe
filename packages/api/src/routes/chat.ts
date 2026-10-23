@@ -25,6 +25,7 @@ import { randomUUID } from "node:crypto";
 import { Router, type RequestHandler, type Response } from "express";
 import {
   SYSTEM_WAKE_INTENT_CLOSE,
+  errorMessage,
   SYSTEM_WAKE_INTENT_OPEN,
   isInFlightSessionStatus,
   isKnownCli,
@@ -681,7 +682,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
           .catch((err: unknown) =>
             console.error(
               "[chat route] onboarding_completed_at flip failed:",
-              err instanceof Error ? err.message : String(err),
+              errorMessage(err),
             ),
           );
       }

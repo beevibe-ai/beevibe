@@ -24,6 +24,7 @@
  */
 
 import { Client as PgClient } from "pg";
+import { errorMessage } from "@beevibe/core";
 import type { TaskExecutionWorker } from "./worker.js";
 
 export interface CancelListenerConfig {
@@ -54,7 +55,7 @@ export class CancelListener {
       void this.config.worker.cancelTask(taskId).catch((err: unknown) => {
         console.error(
           `[cancel-listener] cancelTask(${taskId}) failed:`,
-          err instanceof Error ? err.message : err,
+          errorMessage(err),
         );
       });
     });

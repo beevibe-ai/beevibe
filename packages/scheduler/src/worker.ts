@@ -1,4 +1,5 @@
 import {
+  asError,
   transitionForReapRequeue,
   type Agent,
   type AgentRepository,
@@ -209,9 +210,7 @@ export class TaskExecutionWorker {
 
       void Promise.resolve()
         .then(() => this.config.dispatchTask(session, agent, workspace, ac.signal))
-        .catch((err: unknown) =>
-          this.onError(err instanceof Error ? err : new Error(String(err))),
-        )
+        .catch((err: unknown) => this.onError(asError(err)))
         .finally(() => {
           this.inFlight.delete(session.id);
         });

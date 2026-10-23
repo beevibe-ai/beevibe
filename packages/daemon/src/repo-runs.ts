@@ -14,6 +14,7 @@
  */
 
 import {
+  errorMessage,
   transcriptKindToSessionEvent,
   type RuntimeDoneRequest,
   type TerminalSessionStatus,
@@ -171,10 +172,7 @@ export async function runRepoDispatch(
   try {
     await deps.api.post("/runtime/done", done);
   } catch (err) {
-    error(
-      "[daemon/repo-run] /runtime/done POST failed:",
-      err instanceof Error ? err.message : String(err),
-    );
+    error("[daemon/repo-run] /runtime/done POST failed:", errorMessage(err));
   }
 }
 
