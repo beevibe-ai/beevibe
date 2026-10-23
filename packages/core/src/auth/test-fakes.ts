@@ -54,8 +54,6 @@ export function makeDaemonRepoFake(): DaemonRepository {
 
 export function makeCoreMemoryRepoFake(): CoreMemoryBlockRepository {
   return {
-    findByAgentId: vi.fn(),
-    findByNames: vi.fn(),
     upsert: vi.fn(),
     updateContent: vi.fn(),
     initDefaults: vi.fn(),
