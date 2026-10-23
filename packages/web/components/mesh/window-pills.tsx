@@ -1,6 +1,6 @@
 "use client";
 
-import { cn } from "@/lib/utils";
+import { FilterPill } from "@/components/filter-pill";
 import { MESH_WINDOWS, type MeshWindow } from "@/lib/types/mesh";
 
 interface Props {
@@ -11,24 +11,16 @@ interface Props {
 export function MeshWindowPills({ value, onChange }: Props) {
   return (
     <div className="flex items-center gap-1 text-xs shrink-0">
-      {MESH_WINDOWS.map((w) => {
-        const active = value === w;
-        return (
-          <button
-            key={w}
-            type="button"
-            onClick={() => onChange(w)}
-            className={cn(
-              "px-2 py-1 rounded transition-colors cursor-pointer",
-              active
-                ? "bg-secondary text-foreground font-medium"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary",
-            )}
-          >
-            {w === "all" ? "All time" : w}
-          </button>
-        );
-      })}
+      {MESH_WINDOWS.map((w) => (
+        <FilterPill
+          key={w}
+          active={value === w}
+          onClick={() => onChange(w)}
+          className="px-2 py-1"
+        >
+          {w === "all" ? "All time" : w}
+        </FilterPill>
+      ))}
     </div>
   );
 }

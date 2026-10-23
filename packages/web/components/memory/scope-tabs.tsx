@@ -2,6 +2,7 @@
 
 import { Info, Layers } from "lucide-react";
 import type { MemoryScope } from "@beevibe/core";
+import { FilterPill } from "@/components/filter-pill";
 import { cn } from "@/lib/utils";
 
 export type ScopeFilter = "all" | MemoryScope;
@@ -34,15 +35,11 @@ export function ScopeTabs({ current, counts, onChange }: Props) {
         const active = current === t.key;
         const count = t.key === "all" ? counts.total : counts[t.key];
         return (
-          <button
+          <FilterPill
             key={t.key}
+            active={active}
             onClick={() => onChange(t.key)}
-            className={cn(
-              "inline-flex items-center gap-1.5 h-7 px-2.5 rounded transition-colors",
-              active
-                ? "bg-secondary text-foreground font-medium"
-                : "text-muted-foreground hover:text-foreground hover:bg-secondary",
-            )}
+            className="inline-flex items-center gap-1.5 h-7 px-2.5"
           >
             {t.key === "all" ? (
               <Layers className="h-3 w-3" />
@@ -58,7 +55,7 @@ export function ScopeTabs({ current, counts, onChange }: Props) {
             )}
             <span>{t.label}</span>
             <span className="font-mono tabular-nums text-muted-foreground">{count}</span>
-          </button>
+          </FilterPill>
         );
       })}
       <span className="ml-auto inline-flex items-center gap-1.5 text-muted-foreground">

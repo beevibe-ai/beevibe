@@ -22,6 +22,7 @@ import {
   type LearnedSkill,
   type RepoRun,
 } from "@/lib/api/client";
+import { FilterPill } from "@/components/filter-pill";
 import { PageHeader } from "@/components/page-header";
 import { cn } from "@/lib/utils";
 import { cleanRepoDescription, defaultTryGoal, formatStars } from "@/lib/capabilities";
@@ -170,18 +171,12 @@ function CapabilitiesBody() {
           {tabs.map((t) => {
             const active = effectiveTab === t.key;
             return (
-              <button
+              <FilterPill
                 key={t.key}
-                type="button"
-                onClick={() => setTab(t.key)}
+                active={active && !isSearching}
                 disabled={isSearching}
-                className={cn(
-                  "inline-flex items-center gap-1.5 h-7 px-2.5 rounded transition-colors cursor-pointer",
-                  active && !isSearching
-                    ? "bg-secondary text-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
-                  isSearching && "opacity-50 cursor-not-allowed",
-                )}
+                onClick={() => setTab(t.key)}
+                className="inline-flex items-center gap-1.5 h-7 px-2.5"
               >
                 <span>{t.label}</span>
                 {typeof t.count === "number" && t.count > 0 ? (
@@ -189,7 +184,7 @@ function CapabilitiesBody() {
                     {t.count}
                   </span>
                 ) : null}
-              </button>
+              </FilterPill>
             );
           })}
         </div>
@@ -365,18 +360,14 @@ function DiscoverTab() {
           </div>
           <div className="flex items-center gap-1 text-[11px]">
             {(["daily", "weekly", "monthly"] as const).map((w) => (
-              <button
+              <FilterPill
                 key={w}
+                active={window === w}
                 onClick={() => setWindow(w)}
-                className={cn(
-                  "h-6 px-2 rounded transition-colors cursor-pointer",
-                  window === w
-                    ? "bg-secondary text-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-secondary/60",
-                )}
+                className="h-6 px-2"
               >
                 {w}
-              </button>
+              </FilterPill>
             ))}
           </div>
         </div>
