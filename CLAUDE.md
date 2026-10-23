@@ -244,6 +244,35 @@ its own test — check whether it's a deliberate test seam (`clearCache()`
 in `api/src/sse/owner-lookup.ts` is marked `@internal Tests only`) before
 touching it.
 
+### Stale stubs in test fakes
+
+Full-surface `vi.fn()` fakes drift when a port method is renamed, and two
+things conspire to hide it:
+
+- `packages/core/tsconfig.json` excludes `**/*.test.ts` **and**
+  `**/test-fakes.ts`, so nothing in core's test surface is typechecked at
+  all. `packages/api/tsconfig.json` excludes neither, so api test files
+  *are* checked — a stale key there is a TS2561.
+- An `as unknown as SomePort` cast on the returned literal suppresses the
+  check even where it would run. A *partial* fake needs that cast
+  legitimately; a full-surface one does not, and the cast is the tell that
+  the two have drifted.
+
+So sweep fake keys against their port by name rather than trusting
+typecheck:
+
+```bash
+grep -hoE "^\s{2}[a-zA-Z_][a-zA-Z0-9_]*\s*[(<]" packages/core/src/ports/*.ts \
+  | tr -d ' (<' | sort -u > /tmp/ports.txt
+```
+
+Then for each `name: vi.fn()` key in a fake, check it against that list.
+`CoreMemoryBlockRepository`'s two fakes carried `findByAgentId` /
+`findByNames` long after the port renamed them to `findByAgent` /
+`findOne`, and were missing `delete` entirely — the cast is why #285's
+stale-stub pass missed them. Drop the cast whenever a fake is meant to be
+full-surface; in api that buys back a real check.
+
 ### Dead in-repo, but not ours to delete
 
 | Thing | Why it survived the sweep |
