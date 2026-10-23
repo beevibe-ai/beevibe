@@ -31,7 +31,7 @@
  */
 
 import type { Session } from "../domain/session.js";
-import type { TaskStatus } from "../domain/task.js";
+import { transitionForReapRequeue } from "../domain/task.js";
 import type { SessionRepository } from "../ports/session-repo.js";
 import type { TaskRepository } from "../ports/task-repo.js";
 import type { DispatchService } from "./dispatch-service.js";
@@ -60,11 +60,6 @@ export interface DaemonOrphanReaperConfig {
   /** Default: console.error. */
   onError?: (err: Error) => void;
 }
-
-const REAP_REQUEUE: Partial<Record<TaskStatus, TaskStatus>> = {
-  in_progress: "assigned",
-  revision: "needs_revision",
-};
 
 export class DaemonOrphanReaper {
   private running = false;
@@ -134,7 +129,7 @@ export class DaemonOrphanReaper {
           // to the same runtime via prior_session_id.
           const task = await this.config.taskRepo.findById(session.task_id);
           if (task) {
-            const next = REAP_REQUEUE[task.status];
+            const next = transitionForReapRequeue(task.status);
             if (next) {
               await this.config.taskRepo.update(session.task_id, {
                 status: next,

@@ -1,12 +1,12 @@
-import type {
-  Agent,
-  AgentRepository,
-  Session,
-  SessionRepository,
-  TaskRepository,
-  TaskStatus,
-  Workspace,
-  WorkspaceManager,
+import {
+  transitionForReapRequeue,
+  type Agent,
+  type AgentRepository,
+  type Session,
+  type SessionRepository,
+  type TaskRepository,
+  type Workspace,
+  type WorkspaceManager,
 } from "@beevibe/core";
 import { transitionTaskOnClaim } from "@beevibe/core/services/dispatch-service";
 
@@ -168,12 +168,8 @@ export class TaskExecutionWorker {
         // Mirror the claim transition. Anything else (done, cancelled, …)
         // we leave alone — reap shouldn't overwrite a terminal state set
         // by the agent or an operator.
-        const REAP_REQUEUE: Partial<Record<TaskStatus, TaskStatus>> = {
-          in_progress: "assigned",
-          revision: "needs_revision",
-        };
         const current = await this.config.taskRepo.findById(session.task_id);
-        const next = current && REAP_REQUEUE[current.status];
+        const next = current && transitionForReapRequeue(current.status);
         if (next) {
           await this.config.taskRepo.update(session.task_id, { status: next });
         }

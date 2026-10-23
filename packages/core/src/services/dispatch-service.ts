@@ -10,7 +10,7 @@
 
 import type { Agent } from "../domain/agent.js";
 import type { Session, SessionType } from "../domain/session.js";
-import type { Task, TaskStatus } from "../domain/task.js";
+import { transitionForClaim, type Task } from "../domain/task.js";
 import { sessionId as newSessionId } from "../domain/ids.js";
 import type { AgentRepository } from "../ports/agent-repo.js";
 import type { SessionRepository } from "../ports/session-repo.js";
@@ -159,16 +159,11 @@ export class DispatchService {
 }
 
 /**
- * Maps task queue states to active states. Returns undefined for
- * statuses that don't transition on dispatch (in_progress / revision are
- * already active; terminal states shouldn't be re-dispatched). Mirrors
- * the legacy executor's claimById CASE logic.
+ * Maps task queue states to active states on dispatch. Thin alias for
+ * `transitionForClaim` — the table lives in `domain/task.ts` because the
+ * reapers walk the same relation backwards.
  */
-export function transitionForDispatch(current: TaskStatus): TaskStatus | undefined {
-  if (current === "assigned") return "in_progress";
-  if (current === "needs_revision") return "revision";
-  return undefined;
-}
+export const transitionForDispatch = transitionForClaim;
 
 /**
  * Run the task status transition that a successful claim implies.

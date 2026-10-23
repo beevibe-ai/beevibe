@@ -26,6 +26,53 @@ export const TASK_STATUSES: readonly TaskStatus[] = [
 ] as const;
 
 /**
+ * The one claim transition: which queue state becomes which active state
+ * when a daemon actually picks the work up.
+ *
+ * This relation is walked in both directions:
+ *
+ *   - forward, on claim — `transitionForClaim`, used by
+ *     `transitionTaskOnClaim` from the api and scheduler claim paths.
+ *   - backward, on reap — `transitionForReapRequeue`, used by both
+ *     reapers (`DaemonOrphanReaper` for daemon sessions,
+ *     `TaskExecutionWorker.reapOrphanedSessions` for in-process ones) to
+ *     put the task back on the queue it was claimed off.
+ *
+ * All three call sites used to carry their own two-entry table. Adding a
+ * queue state meant remembering all three or leaving a task wedged in an
+ * active state with no live session behind it.
+ *
+ * Mirrors the legacy executor's claimById CASE logic.
+ */
+export const TASK_CLAIM_TRANSITION: Readonly<Partial<Record<TaskStatus, TaskStatus>>> = {
+  assigned: "in_progress",
+  needs_revision: "revision",
+};
+
+/** Inverse of `TASK_CLAIM_TRANSITION`, derived from it. */
+const TASK_REAP_REQUEUE = Object.fromEntries(
+  Object.entries(TASK_CLAIM_TRANSITION).map(([queued, active]) => [active, queued]),
+) as Readonly<Partial<Record<TaskStatus, TaskStatus>>>;
+
+/**
+ * Queue state → active state on claim. `undefined` for statuses that
+ * don't transition: in_progress / revision are already active, and
+ * terminal states shouldn't be re-dispatched.
+ */
+export function transitionForClaim(current: TaskStatus): TaskStatus | undefined {
+  return TASK_CLAIM_TRANSITION[current];
+}
+
+/**
+ * Active state → the queue state it was claimed from, for a reaped
+ * session's parent task. `undefined` for anything else — a reap must not
+ * overwrite a terminal state already set by the agent or an operator.
+ */
+export function transitionForReapRequeue(current: TaskStatus): TaskStatus | undefined {
+  return TASK_REAP_REQUEUE[current];
+}
+
+/**
  * Task statuses that signal "this task has run its course" — done /
  * failed / cancelled. Distinct from the narrower TERMINAL set used by
  * task-service for status-patch guards (which excludes 'failed' so
