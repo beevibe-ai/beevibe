@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import { Network, X } from "lucide-react";
 import { EmptyState } from "@/components/empty-state";
+import { FilterPill } from "@/components/filter-pill";
 import { cn } from "@/lib/utils";
 import type { MeshAsk, MeshAskType, MeshHover } from "@/lib/types/mesh";
 
@@ -64,24 +65,18 @@ export function MeshActivityFeed({
             const count = f.id === "all" ? all.length : counts[f.id] ?? 0;
             const active = filter === f.id;
             return (
-              <button
+              <FilterPill
                 key={f.id}
-                type="button"
-                onClick={() => setFilter(f.id)}
+                active={active}
                 disabled={f.id !== "all" && count === 0}
-                className={cn(
-                  "px-2 py-1 rounded transition-colors cursor-pointer",
-                  active
-                    ? "bg-secondary text-foreground font-medium"
-                    : "text-muted-foreground hover:text-foreground hover:bg-secondary",
-                  f.id !== "all" && count === 0 && "opacity-40 cursor-not-allowed hover:bg-transparent",
-                )}
+                onClick={() => setFilter(f.id)}
+                className="px-2 py-1"
               >
                 {f.label}
                 {f.id !== "all" && count > 0 ? (
                   <span className="ml-1 tabular-nums opacity-70">{count}</span>
                 ) : null}
-              </button>
+              </FilterPill>
             );
           })}
         </div>

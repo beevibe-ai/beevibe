@@ -18,13 +18,15 @@ import {
   createDefaultRuntimeRegistry,
   runtimeMissingError,
 } from "@beevibe/core/adapters/runtime-registry";
-import type {
-  Agent,
-  DispatchPayload,
-  RuntimeRegistry,
-  RuntimeStep,
-  RuntimeResult,
-  TerminalSessionStatus,
+import {
+  asError,
+  errorMessage,
+  type Agent,
+  type DispatchPayload,
+  type RuntimeRegistry,
+  type RuntimeStep,
+  type RuntimeResult,
+  type TerminalSessionStatus,
 } from "@beevibe/core";
 import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
@@ -124,7 +126,7 @@ export async function runDispatch(
     // Spawn / parse failure — runtime never produced a result. POST
     // /runtime/done with a `failed` status anyway so the chat resolver
     // unblocks instead of waiting out the 90s timeout.
-    runError = err instanceof Error ? err : new Error(String(err));
+    runError = asError(err);
   }
 
   await events.close();
@@ -170,9 +172,6 @@ export async function runDispatch(
   try {
     await deps.api.post("/runtime/done", done);
   } catch (err) {
-    error(
-      "[daemon/spawner] /runtime/done POST failed:",
-      err instanceof Error ? err.message : String(err),
-    );
+    error("[daemon/spawner] /runtime/done POST failed:", errorMessage(err));
   }
 }

@@ -1,3 +1,4 @@
+import { errorMessage } from "@beevibe/core/domain/errors";
 import { apiBaseUrl, getUserKey } from "./config";
 
 export class ApiError extends Error {
@@ -43,7 +44,7 @@ export function describeError(err: unknown): string {
     if (err.errorCode) return err.errorCode.replace(/_/g, " ");
     return err.message;
   }
-  return err instanceof Error ? err.message : String(err);
+  return errorMessage(err);
 }
 
 /**

@@ -13,10 +13,11 @@
  * work_product rows and update the repo_run record.
  */
 
-import type {
-  RuntimeDoneRequest,
-  SessionEventKind,
-  TerminalSessionStatus,
+import {
+  errorMessage,
+  transcriptKindToSessionEvent,
+  type RuntimeDoneRequest,
+  type TerminalSessionStatus,
 } from "@beevibe/core";
 import { runRepoAgent, type TranscriptEvent } from "@beevibe/sandbox/orchestrator";
 import type { ApiClient } from "./api-client.js";
@@ -67,7 +68,7 @@ export async function runRepoDispatch(
     for (let i = pushedUpTo; i < transcript.length; i++) {
       const ev = transcript[i];
       if (!ev) continue;
-      events.push({ kind: mapKind(ev.kind), content: ev.text });
+      events.push({ kind: transcriptKindToSessionEvent(ev.kind), content: ev.text });
     }
     pushedUpTo = transcript.length;
   };
@@ -171,30 +172,7 @@ export async function runRepoDispatch(
   try {
     await deps.api.post("/runtime/done", done);
   } catch (err) {
-    error(
-      "[daemon/repo-run] /runtime/done POST failed:",
-      err instanceof Error ? err.message : String(err),
-    );
-  }
-}
-
-/**
- * Map a sandbox orchestrator TranscriptEvent.kind to a Beevibe
- * SessionEventKind. The orchestrator has 'log' and 'error' which the
- * session_event schema doesn't recognize directly — fold them into
- * 'summary' and 'tool_result' respectively so existing readers still
- * understand them.
- */
-function mapKind(kind: TranscriptEvent["kind"]): SessionEventKind {
-  switch (kind) {
-    case "agent":
-      return "agent";
-    case "tool_call":
-      return "tool_call";
-    case "log":
-      return "summary";
-    case "error":
-      return "tool_result";
+    error("[daemon/repo-run] /runtime/done POST failed:", errorMessage(err));
   }
 }
 

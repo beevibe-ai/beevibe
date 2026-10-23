@@ -40,6 +40,7 @@ import type {
   WorkspaceManager,
 } from "@beevibe/core";
 import {
+  errorMessage,
   escapeXmlAttr,
   negotiationId as makeNegId,
   negotiationRoundId as makeRoundId,
@@ -495,7 +496,7 @@ export class MeshServer {
       .catch((err: unknown) => {
         console.error(
           `[mesh] dispatch for ${opts.targetAgentId} (${opts.type}) failed:`,
-          err instanceof Error ? err.message : err,
+          errorMessage(err),
         );
       });
   }

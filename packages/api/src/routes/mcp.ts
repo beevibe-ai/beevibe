@@ -24,7 +24,7 @@ import type {
   WorkProductRepository,
 } from "@beevibe/core";
 import type { Pool } from "@beevibe/core/adapters/postgres";
-import { sessionId as makeBeevibeSid } from "@beevibe/core";
+import { errorMessage, sessionId as makeBeevibeSid } from "@beevibe/core";
 import type { TaskService } from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
@@ -362,7 +362,7 @@ function registerToolsOnServer(server: McpLowLevelServer, tools: AgentTool[]): v
         isError: result.isError ?? false,
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       return {
         content: [{ type: "text" as const, text: JSON.stringify({ error: message }) }],
         isError: true,

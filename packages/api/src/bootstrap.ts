@@ -35,7 +35,7 @@ import { WatchService } from "@beevibe/core/services/watch-service";
 import { SessionSearchService } from "@beevibe/core/services/session-search";
 import { DaemonOrphanReaper } from "@beevibe/core/services/orphan-reaper";
 import { buildPostDispatchHook } from "@beevibe/core/services/post-dispatch";
-import type { Session } from "@beevibe/core";
+import { errorMessage, type Session } from "@beevibe/core";
 import { MeshServer } from "./mesh/server.js";
 import { BeevibeApiServer } from "./server.js";
 import { SessionCache } from "./session-cache.js";
@@ -445,7 +445,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
         } catch (err) {
           console.warn(
             "[onSessionComplete] run_repo task→review failed:",
-            err instanceof Error ? err.message : String(err),
+            errorMessage(err),
           );
         }
       }
@@ -609,10 +609,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
         if (session) failMeshCalleeIfTerminal(session, session.status);
       })
       .catch((err: unknown) => {
-        console.error(
-          "[sse] mesh-fail lookup failed:",
-          err instanceof Error ? err.message : err,
-        );
+        console.error("[sse] mesh-fail lookup failed:", errorMessage(err));
       });
   };
 
