@@ -55,12 +55,13 @@ function makeAgentRepo(): AgentRepository {
 
 function makeCoreMemoryRepo(): CoreMemoryBlockRepository {
   return {
-    findByAgentId: vi.fn(),
-    findByNames: vi.fn(),
+    findByAgent: vi.fn(),
+    findOne: vi.fn(),
     upsert: vi.fn(),
     updateContent: vi.fn(),
+    delete: vi.fn(),
     initDefaults: vi.fn().mockResolvedValue([]),
-  } as unknown as CoreMemoryBlockRepository;
+  };
 }
 
 function fakePerson(overrides: Partial<Person> = {}): Person {
