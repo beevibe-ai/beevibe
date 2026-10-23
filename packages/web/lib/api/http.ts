@@ -1,4 +1,4 @@
-import { errorMessage } from "@beevibe/core";
+import { errorMessage } from "@beevibe/core/domain/errors";
 import { apiBaseUrl, getUserKey } from "./config";
 
 export class ApiError extends Error {

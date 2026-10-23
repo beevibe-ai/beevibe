@@ -17,6 +17,14 @@
  * `@beevibe/sandbox` keeps its own copies on purpose: that package takes
  * no dependency on `@beevibe/core` so the sandbox trust boundary stays
  * one-way.
+ *
+ * FROM THE WEB, IMPORT THIS VIA `@beevibe/core/domain/errors`, NOT the
+ * package root — same rule, and same reason, as `domain/format.ts`. The
+ * root barrel re-exports `./auth`, which reaches for `node:crypto` and
+ * `node:util`; a *value* import of the root from a client component drags
+ * those into webpack and fails `next build` with `UnhandledSchemeError`.
+ * Type-only root imports erase, so they stay fine. Server-side packages
+ * (api, daemon, scheduler) can import the root either way.
  */
 
 /**
