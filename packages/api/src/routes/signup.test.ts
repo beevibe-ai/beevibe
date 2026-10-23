@@ -55,8 +55,6 @@ function makeAgentRepo(): AgentRepository {
 
 function makeCoreMemoryRepo(): CoreMemoryBlockRepository {
   return {
-    findByAgentId: vi.fn(),
-    findByNames: vi.fn(),
     upsert: vi.fn(),
     updateContent: vi.fn(),
     initDefaults: vi.fn().mockResolvedValue([]),

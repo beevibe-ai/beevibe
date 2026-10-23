@@ -244,6 +244,26 @@ its own test — check whether it's a deliberate test seam (`clearCache()`
 in `api/src/sse/owner-lookup.ts` is marked `@internal Tests only`) before
 touching it.
 
+That by-name sweep does **not** reach methods on a port interface. A port
+member always has at least two hits — the `interface` declaration and the
+adapter's implementation — so it never reads as dead no matter how many
+callers it has. Sweep those by **call-site syntax** instead, which is how
+#285's findings and the stale fake stubs were found:
+
+```bash
+git grep -n -E "\.<method>\(" -- 'packages/**' 'scripts/**' | grep -v /dist/
+```
+
+No hits outside `*.test.ts` = uncalled in production. That is the start of a
+judgement call, not a delete: check the keep-table below first, and beware
+name collisions (`RuntimePort.shutdown` and `BeevibeApiServer.shutdown` are
+different methods that this grep cannot tell apart).
+
+A related category this catches: `vi.fn()` stubs in test fakes naming a
+method that no longer exists on the port. The partial-fake
+`as unknown as <Repository>` cast is deliberate convention here, but it also
+hides that drift from the compiler, so the stubs have to be swept by name.
+
 ### Dead in-repo, but not ours to delete
 
 | Thing | Why it survived the sweep |
@@ -251,6 +271,7 @@ touching it.
 | `GET /activity` → `api/src/views/activity.ts` | No caller anywhere in the monorepo, but it's a **documented public endpoint** (`packages/api/README.md`). Retiring it is a product call. The web side is fully gone: the client stub (`api.activity.list`) went with #273, and `queryKeys.activity` + its no-op `lib/sse.ts` invalidations went with #283. |
 | `SkillOutcomeRepository.listBySkill` / `.statsForSkill`, `AgentProvisionEventRepository.listByParent` | Uncalled **read** halves of audit trails whose write side is live and accumulating rows (`skill_outcome` via `recordCapabilityOutcome`, `agent_provision_event` via `create_subordinate_agent`). Same call as the promotion repo below — the consumers (discovery-ranker feedback, agents-page audit panel) are unbuilt, not removed. Deleting the queries makes finishing them harder. |
 | `PostgresMemoryPromotionEventRepository` | Never constructed — `bootstrap.ts` builds the MemoryAgent without `promotionEventRepo`, so the M8.D promotion audit log never writes even though the port, the service branch, its tests and the read-side `views/promotions.ts` all exist. That's **unfinished wiring, not dead code**; deleting the adapter makes finishing it harder. |
+| Port read-halves whose only call sites are their own adapter tests | A broader set than the three above: `claimById`, `findActiveBetween`, `findByLevel`, `findLatest`, `findManyByIds`, `listAssignable`, `listByAgent`, `listByAgentScope`, `listByOwnerAndCli`, `listByWaiterSession`, `listForAgent`, `listPending`, `listReviewQueue`, `listWaitingForTask`, `removeWorkspace`. Each is declared on a port in `core/src/ports/`, implemented by its Postgres adapter, and called from nothing but that adapter's test. Same call as the rows above — the consumers are unbuilt, not removed. **Removing one of these is what broke main in #291**: #285 deleted two such methods while #286 was concurrently adding DB tests for them. Treat a test-only port method as kept unless you are also retiring its feature. |
 
 ## Deploying
 
