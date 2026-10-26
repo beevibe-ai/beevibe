@@ -150,3 +150,40 @@ export function makeErrorHandler(
     });
   };
 }
+
+/**
+ * A route's typed-error table: map each service error the handlers can
+ * raise to its status + wire code, and fall through to
+ * {@link makeErrorHandler} for anything unrecognized.
+ *
+ * `task`, `escalation` and `negotiation` each grew the same hand-written
+ * shape — a run of `if (err instanceof X) { res.status(N).json({ error:
+ * "code", message: err.message }); return; }` branches ending in a
+ * verbatim copy of the 500 tail. Three copies of that tail is three
+ * places to miss if the error envelope moves, which is exactly what
+ * `makeErrorHandler` was extracted to prevent; these routers predate it
+ * and never adopted it because their typed prefix made them look
+ * different enough.
+ *
+ * The branches themselves become data, which also makes the per-route
+ * contract readable in one place instead of spread down a function.
+ * First match wins, so a subclass must be listed ahead of its base —
+ * none of the current cases are related, but the order is the array's.
+ */
+export function makeServiceErrorHandler(
+  tag: string,
+  cases: ReadonlyArray<
+    readonly [errorClass: abstract new (...args: never[]) => Error, status: number, code: string]
+  >,
+): (err: unknown, res: Response) => void {
+  const handleUnknown = makeErrorHandler(tag);
+  return (err, res) => {
+    for (const [ErrorClass, status, code] of cases) {
+      if (err instanceof ErrorClass) {
+        res.status(status).json({ error: code, message: err.message });
+        return;
+      }
+    }
+    handleUnknown(err, res);
+  };
+}

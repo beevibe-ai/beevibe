@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  makeServiceErrorHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +218,58 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("makeServiceErrorHandler", () => {
+  class NotFound extends Error {}
+  class BadState extends Error {}
+
+  const handle = makeServiceErrorHandler("task route", [
+    [NotFound, 404, "task_not_found"],
+    [BadState, 409, "invalid_transition"],
+  ]);
+
+  it("maps a listed error to its status and wire code", () => {
+    const res = fakeRes();
+    handle(new NotFound("no such task"), res);
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "task_not_found", message: "no such task" });
+  });
+
+  it("reaches past the first case to a later one", () => {
+    const res = fakeRes();
+    handle(new BadState("done is terminal"), res);
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({ error: "invalid_transition", message: "done is terminal" });
+  });
+
+  it("falls through to the shared 500 for an unlisted error", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    handle(new Error("pool exhausted"), res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "pool exhausted" });
+    expect(spy).toHaveBeenCalledWith("[task route]", expect.any(Error));
+    spy.mockRestore();
+  });
+
+  it("stringifies a non-Error throw on the fall-through", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    handle("just a string", res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "just a string" });
+    spy.mockRestore();
+  });
+
+  it("takes the first matching case, so order is the array's", () => {
+    // A subclass listed after its base would never be reached. Nothing in
+    // the repo relies on this yet; pinning it keeps the contract explicit
+    // for whoever adds a related pair.
+    class Specific extends NotFound {}
+    const res = fakeRes();
+    handle(new Specific("still a not-found"), res);
+    expect(res.body).toEqual({ error: "task_not_found", message: "still a not-found" });
   });
 });
