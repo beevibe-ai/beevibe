@@ -121,15 +121,8 @@ export class PostgresTaskRepository implements TaskRepository {
     const { rows } = await this.pool.query<TaskRow>(
       `SELECT * FROM task
         WHERE status = 'review'
-        ORDER BY
-          CASE priority
-            WHEN 'critical' THEN 4
-            WHEN 'high'     THEN 3
-            WHEN 'medium'   THEN 2
-            WHEN 'low'      THEN 1
-            ELSE 0
-          END DESC,
-          updated_at ASC`,
+        ORDER BY ${taskPriorityRankSql("priority")} DESC,
+                 updated_at ASC`,
     );
     return rows.map(rowToTask);
   }
