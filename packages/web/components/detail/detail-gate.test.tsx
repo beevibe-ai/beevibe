@@ -9,7 +9,7 @@ vi.mock("@/lib/api/config", () => ({
   },
 }));
 
-import { DetailGate } from "./detail-gate";
+import { DetailGate, peekPanelShell } from "./detail-gate";
 
 interface Row {
   name: string;
@@ -88,5 +88,117 @@ describe("DetailGate", () => {
     renderGate({ data: undefined, isLoading: true, isError: false }, nav).unmount();
     renderGate({ data: undefined, isLoading: false, isError: true }, nav);
     expect(screen.getByText("Back")).toBeInTheDocument();
+  });
+});
+
+describe("DetailGate shell", () => {
+  beforeEach(() => {
+    apiState.isApiConfigured = true;
+  });
+
+  function renderWithShell(query: {
+    data: Row | undefined;
+    isLoading: boolean;
+    isError: boolean;
+  }) {
+    return render(
+      <DetailGate
+        noun="agent"
+        id="agent_7"
+        query={query}
+        skeleton={<div data-testid="skeleton" />}
+        shell={(content, branch) => <div data-testid={`shell-${branch}`}>{content}</div>}
+      >
+        {(row) => <div data-testid="body">{row.name}</div>}
+      </DetailGate>,
+    );
+  }
+
+  it("replaces DetailShell entirely when given", () => {
+    // The peek panels' chrome is `PeekPanel`, a level above — a DetailShell
+    // inside one would add a second centered column.
+    const { container } = renderWithShell(loaded);
+    expect(screen.getByTestId("shell-ready")).toContainElement(screen.getByTestId("body"));
+    expect(container.querySelector(".max-w-5xl")).toBeNull();
+  });
+
+  it("names the branch so a caller can wrap only the ones it wants", () => {
+    renderWithShell({ data: undefined, isLoading: true, isError: false }).unmount();
+    expect(screen.queryByTestId("shell-loading")).toBeNull();
+
+    renderWithShell({ data: undefined, isLoading: true, isError: false });
+    expect(screen.getByTestId("shell-loading")).toContainElement(
+      screen.getByTestId("skeleton"),
+    );
+  });
+
+  it("wraps the unconfigured and error branches too", () => {
+    apiState.isApiConfigured = false;
+    renderWithShell({ data: undefined, isLoading: false, isError: false }).unmount();
+    apiState.isApiConfigured = true;
+
+    renderWithShell({ data: undefined, isLoading: false, isError: true });
+    expect(screen.getByTestId("shell-error")).toBeInTheDocument();
+    expect(screen.getByText("Couldn't load agent")).toBeInTheDocument();
+  });
+
+  it("still derives the copy from the noun, so a panel can't word it its own way", () => {
+    // The whole point of the panels adopting this: they had drifted to
+    // "Set NEXT_PUBLIC_BV_API_URL to load this agent." with no mention of
+    // running the server, and dropped the "Check the API server logs." hint.
+    apiState.isApiConfigured = false;
+    renderWithShell({ data: undefined, isLoading: false, isError: false });
+    expect(
+      screen.getByText(/run the API server to load this agent\./),
+    ).toBeInTheDocument();
+  });
+});
+
+describe("peekPanelShell", () => {
+  beforeEach(() => {
+    apiState.isApiConfigured = true;
+  });
+
+  function renderPeek(query: {
+    data: Row | undefined;
+    isLoading: boolean;
+    isError: boolean;
+  }) {
+    return render(
+      <DetailGate
+        noun="task"
+        id="t_9"
+        query={query}
+        skeleton={<div data-testid="skeleton" />}
+        shell={peekPanelShell}
+      >
+        {(row) => <div data-testid="body">{row.name}</div>}
+      </DetailGate>,
+    );
+  }
+
+  it("hands the loaded body through unpadded", () => {
+    // `PanelLoaded` sets its own `px-5 py-5`; a wrapper here would double it.
+    const { container } = renderPeek(loaded);
+    expect(container.querySelector(".p-4")).toBeNull();
+    expect(screen.getByTestId("body")).toBeInTheDocument();
+  });
+
+  it("hands the skeleton through unpadded", () => {
+    // The panels' skeletons carry `p-5 space-y-4` themselves.
+    const { container } = renderPeek({ data: undefined, isLoading: true, isError: false });
+    expect(container.querySelector(".p-4")).toBeNull();
+    expect(screen.getByTestId("skeleton")).toBeInTheDocument();
+  });
+
+  it("pads the error state", () => {
+    const { container } = renderPeek({ data: undefined, isLoading: false, isError: true });
+    expect(container.querySelector(".p-4")).not.toBeNull();
+  });
+
+  it("pads the unconfigured state", () => {
+    apiState.isApiConfigured = false;
+    const { container } = renderPeek({ data: undefined, isLoading: false, isError: false });
+    expect(container.querySelector(".p-4")).not.toBeNull();
   });
 });

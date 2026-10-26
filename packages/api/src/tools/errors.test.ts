@@ -4,7 +4,7 @@ import {
   MeshCapacityError,
   MeshMaxRoundsError,
 } from "../mesh/types.js";
-import { toolError, toolErrorFromThrown } from "./errors.js";
+import { guarded, toolError, toolErrorFromThrown } from "./errors.js";
 
 describe("toolError", () => {
   it("puts the code in `error` and the human text in `message`", () => {
@@ -71,5 +71,61 @@ describe("toolErrorFromThrown", () => {
     // carry a `code` too, and must not be reported as a mesh code.
     const pgLike = Object.assign(new Error("duplicate key"), { code: "23505" });
     expect(toolErrorFromThrown(pgLike).content).toEqual({ error: "duplicate key" });
+  });
+});
+
+describe("guarded", () => {
+  it("passes a successful result straight through", async () => {
+    const handler = guarded(async (input) => ({ content: { echo: input.q } }));
+    await expect(handler({ q: "hi" })).resolves.toEqual({ content: { echo: "hi" } });
+  });
+
+  it("passes a handler's own error result through untouched", async () => {
+    // A tool that *returns* an error envelope (validation rejection) must not
+    // have it rewritten — only a throw is the wrapper's business.
+    const handler = guarded(async () => toolError("invalid_goal", "goal required"));
+    await expect(handler({})).resolves.toEqual({
+      content: { error: "invalid_goal", message: "goal required" },
+      isError: true,
+    });
+  });
+
+  it("turns a thrown Error into the catch-all envelope", async () => {
+    const handler = guarded(async () => {
+      throw new Error("boom");
+    });
+    await expect(handler({})).resolves.toEqual({
+      content: { error: "boom" },
+      isError: true,
+    });
+  });
+
+  it("keeps a coded mesh error's code and meta", async () => {
+    // This is why the wrapper exists rather than leaning on the catch in
+    // `routes/mcp.ts`: that one flattens a coded error to its message.
+    const handler = guarded(async () => {
+      throw new MeshCapacityError("at cap", { agentId: "agent_1", running: 3, cap: 3 });
+    });
+    const result = await handler({});
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({
+      error: "MESH_CAPACITY_EXCEEDED",
+      agentId: "agent_1",
+      running: 3,
+      cap: 3,
+    });
+  });
+
+  it("catches a synchronous throw from the handler body", async () => {
+    // An `async` function body that throws before its first await still
+    // rejects rather than throwing synchronously, but a handler written as a
+    // plain function would throw — the wrapper must cover both.
+    const handler = guarded((() => {
+      throw new Error("sync boom");
+    }) as Parameters<typeof guarded>[0]);
+    await expect(handler({})).resolves.toEqual({
+      content: { error: "sync boom" },
+      isError: true,
+    });
   });
 });

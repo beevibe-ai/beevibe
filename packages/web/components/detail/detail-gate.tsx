@@ -6,11 +6,17 @@ import { isApiConfigured } from "@/lib/api/config";
 import { DetailShell } from "./detail-shell";
 import { EmptyState } from "@/components/empty-state";
 
+/** Which branch of the gate is rendering. See `shell`. */
+export type GateBranch = "unconfigured" | "loading" | "error" | "ready";
+
 interface Props<T> {
   /**
    * Breadcrumb or back-link, rendered above the body in every state so the
    * user can navigate away from a page that failed to load. Pages whose
    * breadcrumb needs the fetched row pass `data ? <Crumbs row={data}/> : undefined`.
+   *
+   * Ignored when `shell` is given — a caller supplying its own chrome owns
+   * where (or whether) a nav goes.
    */
   nav?: ReactNode;
   /** Icon for the "API not configured" state. The error state is always AlertTriangle. */
@@ -26,6 +32,18 @@ interface Props<T> {
    * the layout it stands in for, so a shared one would jump on hydration.
    */
   skeleton: ReactNode;
+  /**
+   * Chrome around whichever branch renders. Defaults to `DetailShell` — the
+   * full-page routes all want the nav and the centered column in every
+   * state, including the failures.
+   *
+   * The peek panels (`AgentDetailPanel`, `TaskDetailPanel`) pass their own:
+   * their chrome is `PeekPanel`, a level above, and their loaded body
+   * manages its own padding, so they wrap only the two `EmptyState`
+   * branches. Hence the `branch` argument — a caller that padded `"ready"`
+   * too would double-pad the body it was handed.
+   */
+  shell?: (content: ReactNode, branch: GateBranch) => ReactNode;
   /** Rendered inside the shell once the fetch succeeded. */
   children: (data: T) => ReactNode;
 }
@@ -42,35 +60,59 @@ interface Props<T> {
  * while the other half dropped the hint. Both messages are derived from
  * `noun` here, so a page can't word them a fourth way.
  */
-export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }: Props<T>) {
+export function DetailGate<T>({
+  nav,
+  icon,
+  noun,
+  id,
+  query,
+  skeleton,
+  shell,
+  children,
+}: Props<T>) {
+  const wrap =
+    shell ?? ((content: ReactNode) => <DetailShell nav={nav}>{content}</DetailShell>);
+
   if (!isApiConfigured) {
-    return (
-      <DetailShell nav={nav}>
-        <EmptyState
-          icon={icon}
-          title="API not configured"
-          description={`Set NEXT_PUBLIC_BV_API_URL and run the API server to load this ${noun}.`}
-        />
-      </DetailShell>
+    return wrap(
+      <EmptyState
+        icon={icon}
+        title="API not configured"
+        description={`Set NEXT_PUBLIC_BV_API_URL and run the API server to load this ${noun}.`}
+      />,
+      "unconfigured",
     );
   }
 
   if (query.isLoading) {
-    return <DetailShell nav={nav}>{skeleton}</DetailShell>;
+    return wrap(skeleton, "loading");
   }
 
   if (query.isError || !query.data) {
     const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
-    return (
-      <DetailShell nav={nav}>
-        <EmptyState
-          icon={AlertTriangle}
-          title={`Couldn't load ${noun}`}
-          description={`${Noun} ${id} could not be fetched. Check the API server logs.`}
-        />
-      </DetailShell>
+    return wrap(
+      <EmptyState
+        icon={AlertTriangle}
+        title={`Couldn't load ${noun}`}
+        description={`${Noun} ${id} could not be fetched. Check the API server logs.`}
+      />,
+      "error",
     );
   }
 
-  return <DetailShell nav={nav}>{children(query.data)}</DetailShell>;
+  return wrap(children(query.data), "ready");
+}
+
+/**
+ * The `shell` the peek panels pass: no `DetailShell`, because `PeekPanel`
+ * is already the chrome a level above, and padding on only the two
+ * `EmptyState` branches — the skeleton a panel supplies brings its own,
+ * and the loaded body manages its own.
+ *
+ * Shared so the two panels can't drift from each other the way their
+ * hand-written gates did.
+ */
+export function peekPanelShell(content: ReactNode, branch: GateBranch): ReactNode {
+  if (branch === "loading" || branch === "ready") return content;
+  return <div className="p-4">{content}</div>;
 }
