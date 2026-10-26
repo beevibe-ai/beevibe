@@ -18,7 +18,7 @@
  */
 
 import { CodedMeshError } from "../mesh/types.js";
-import type { AgentToolResult } from "./types.js";
+import type { AgentTool, AgentToolResult } from "./types.js";
 
 /**
  * A named failure: `code` is the stable identifier the agent branches
@@ -57,5 +57,37 @@ export function toolErrorFromThrown(
       ...extra,
     },
     isError: true,
+  };
+}
+
+/**
+ * Wrap a tool handler so an unexpected throw becomes the catch-all
+ * envelope instead of escaping the handler.
+ *
+ * Every tool needs this: `routes/mcp.ts` has its own catch around
+ * `tool.handler(...)`, but that one flattens a {@link CodedMeshError} to
+ * `{ error: <message> }` and loses the `code` the calling agent branches
+ * on. So the shape here is not redundant with it — it is what keeps the
+ * coded contract intact.
+ *
+ * Twenty-one handlers across `hierarchy.ts` and `mesh.ts` opened with a
+ * byte-identical `try {` / `} catch (err) { return
+ * toolErrorFromThrown(err); }` pair around their whole body. Lifting it
+ * here leaves each handler as just its happy path, and a new tool gets
+ * the envelope by construction rather than by remembering to copy four
+ * lines.
+ *
+ * Handlers that map a *typed* error before falling through keep their own
+ * `catch`: `revise_task` (InvalidTaskTransitionError), `watch.ts`
+ * (`caughtError`) and `session-search.ts` (SessionSearchError) are
+ * deliberately not this shape.
+ */
+export function guarded(handler: AgentTool["handler"]): AgentTool["handler"] {
+  return async (input) => {
+    try {
+      return await handler(input);
+    } catch (err) {
+      return toolErrorFromThrown(err);
+    }
   };
 }
