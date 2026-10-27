@@ -25,6 +25,7 @@ import {
 } from "@beevibe/core";
 import {
   hashPassword,
+  isValidEmail,
   provisionAgent,
   provisionUser,
   validatePasswordShape,
@@ -41,7 +42,6 @@ export interface SignupRoutesDeps {
 }
 
 const NAME_RE = /^[\p{L}\p{N} '\-_.]{1,80}$/u;
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const handleError = makeErrorHandler("signup route");
 
@@ -69,7 +69,7 @@ export function createSignupRouter(deps: SignupRoutesDeps): Router {
         });
         return;
       }
-      if (!email || !EMAIL_RE.test(email)) {
+      if (!isValidEmail(email)) {
         res.status(400).json({ error: "invalid_email", message: "valid email required" });
         return;
       }

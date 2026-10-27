@@ -15,12 +15,11 @@ import {
 import { useMe } from "@/lib/hooks/use-me";
 import { useDismissOnOutside } from "@/lib/hooks/use-dismiss";
 import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
+import { isValidEmail } from "@beevibe/core/auth/constants";
 import { ModalOverlay } from "@/components/modal-overlay";
 import { clearUserKey } from "@/lib/api/config";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/avatar";
-
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 type View = "closed" | "menu" | "invite";
 
@@ -150,7 +149,7 @@ function InviteTeammateDialog({ onClose }: { onClose: () => void }) {
   const [email, setEmail] = useState("");
   const { copied, copy } = useCopyToClipboard();
   const trimmed = email.trim().toLowerCase();
-  const valid = EMAIL_RE.test(trimmed);
+  const valid = isValidEmail(trimmed);
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   const shareLink = valid
     ? `${origin}/sign-up?email=${encodeURIComponent(trimmed)}`
