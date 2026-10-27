@@ -202,18 +202,17 @@ describe("CoreMemory.setContent — owner-driven full-block overwrite", () => {
     expect(repo.updateContent).not.toHaveBeenCalled();
   });
 
-  it("names both errors so HTTP callers can map them to 4xx", async () => {
-    // The route layer branches on `instanceof`; `name` is what surfaces in
-    // the response body, so both need to survive subclassing.
+  it("puts the block, the limit and the attempted length in the message", async () => {
+    // The route layer branches on `instanceof` and picks its own slug, but
+    // it returns `err.message` verbatim (`view.ts`, POST
+    // /agent/:id/core-memory/:blockName), so the message is the part of
+    // these errors that reaches a client.
     const notFound = new BlockNotFoundError("agent_1", "persona");
-    expect(notFound.name).toBe("BlockNotFoundError");
-    expect(notFound).toBeInstanceOf(Error);
     expect(notFound.message).toContain("persona");
     expect(notFound.message).toContain("agent_1");
 
     const overflow = new BlockCharLimitExceededError("persona", 100, 137);
-    expect(overflow.name).toBe("BlockCharLimitExceededError");
-    expect(overflow).toBeInstanceOf(Error);
+    expect(overflow.message).toContain("persona");
     expect(overflow.message).toContain("100");
     expect(overflow.message).toContain("137");
   });
