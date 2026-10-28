@@ -1,5 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { RuntimeContext, RuntimeStep } from "../../ports/runtime.js";
+import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type {
+  RuntimeContext,
+  RuntimeStep,
+  RuntimeWorkspaceContext,
+} from "../../ports/runtime.js";
 import { OpenCodeRuntime, buildOpenCodeConfig } from "./runtime.js";
 import { OPENCODE_EVENT_TYPE } from "./stream-json.js";
 import type { CliProcessOptions, CliProcessResult } from "../claude-code/spawn.js";
@@ -246,5 +253,66 @@ describe("buildOpenCodeConfig", () => {
     expect(parsed.mcp.beevibe.headers["X-Beevibe-Session"]).toBe(
       "{env:BEEVIBE_SESSION_ID}",
     );
+  });
+});
+
+describe("OpenCodeRuntime.prepareWorkspace", () => {
+  let dir: string;
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "beevibe-opencode-ws-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  function wsContext(): RuntimeWorkspaceContext {
+    return {
+      workspace: { path: dir },
+      agentApiKey: "bv_a_prep",
+      mcpServerUrl: "http://api.test/mcp",
+    };
+  }
+
+  it("writes opencode.json so the CLI picks up the Beevibe MCP server", () => {
+    new OpenCodeRuntime().prepareWorkspace(wsContext());
+
+    const configPath = join(dir, "opencode.json");
+    const parsed = JSON.parse(readFileSync(configPath, "utf8"));
+    expect(parsed.mcp.beevibe.url).toBe("http://api.test/mcp");
+    expect(parsed.mcp.beevibe.headers.Authorization).toBe("Bearer bv_a_prep");
+  });
+
+  it("writes the config owner-only — it carries the agent's API key", () => {
+    new OpenCodeRuntime().prepareWorkspace(wsContext());
+
+    const mode = statSync(join(dir, "opencode.json")).mode & 0o777;
+    expect(mode).toBe(0o600);
+  });
+
+  it("leaves an existing opencode.json alone", () => {
+    const configPath = join(dir, "opencode.json");
+    writeFileSync(configPath, '{"mine":true}');
+
+    // Idempotent across respawns: clobbering would discard whatever the
+    // agent (or the user) customized in its own workspace.
+    new OpenCodeRuntime().prepareWorkspace(wsContext());
+
+    expect(readFileSync(configPath, "utf8")).toBe('{"mine":true}');
+  });
+});
+
+describe("OpenCodeRuntime.skillsDir", () => {
+  it("points at the workspace's .opencode/skills directory", () => {
+    expect(new OpenCodeRuntime().skillsDir({ path: "/ws/agent_1" })).toBe(
+      "/ws/agent_1/.opencode/skills",
+    );
+  });
+});
+
+describe("OpenCodeRuntime.shutdown", () => {
+  it("resolves — each session is its own process, so there is nothing to tear down", async () => {
+    await expect(new OpenCodeRuntime().shutdown()).resolves.toBeUndefined();
   });
 });
