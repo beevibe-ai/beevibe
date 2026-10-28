@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { Request, Response } from "express";
 import {
   invalidBody,
+  loadOr404,
   loadOwned,
   requireNullableString,
   requireParam,
@@ -61,6 +62,48 @@ describe("requireParam", () => {
     const res = fakeRes();
     expect(requireParam(fakeReq({ id: ["a", "b"] }), res, "id", "missing_id")).toBeUndefined();
     expect(res.statusCode).toBe(400);
+  });
+});
+
+describe("loadOr404", () => {
+  const task = { id: "task_1" };
+
+  it("returns the entity when the load finds one", async () => {
+    const res = fakeRes();
+    const got = await loadOr404(res, () => Promise.resolve(task), "task_not_found");
+    expect(got).toBe(task);
+    expect(res.statusCode).toBeUndefined();
+  });
+
+  it("404s with the caller's code when the row is missing", async () => {
+    const res = fakeRes();
+    const got = await loadOr404(res, () => Promise.resolve(undefined), "task_not_found");
+    expect(got).toBeUndefined();
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "task_not_found" });
+  });
+
+  it("treats an explicit null the same as undefined", async () => {
+    const res = fakeRes();
+    expect(await loadOr404(res, () => Promise.resolve(null), "not_found")).toBeUndefined();
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("attaches prose only when the call site passes it", async () => {
+    const res = fakeRes();
+    await loadOr404(res, () => Promise.resolve(null), "no_agent", "Caller has no primary agent.");
+    expect(res.body).toEqual({
+      error: "no_agent",
+      message: "Caller has no primary agent.",
+    });
+  });
+
+  it("leaves the loader's rejection to the handler's catch", async () => {
+    const res = fakeRes();
+    await expect(
+      loadOr404(res, () => Promise.reject(new Error("db down")), "task_not_found"),
+    ).rejects.toThrow("db down");
+    expect(res.statusCode).toBeUndefined();
   });
 });
 

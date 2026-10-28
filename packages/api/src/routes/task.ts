@@ -42,7 +42,7 @@ import { buildIntent, type ResumeReason } from "@beevibe/core/services/agent-ses
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { requireHuman } from "../auth/middleware.js";
 import type { DaemonHub } from "../runtime/hub.js";
-import { requireParam } from "./http-errors.js";
+import { loadOr404, requireParam } from "./http-errors.js";
 
 /** Statuses from which /cancel is legal. Anything non-terminal. */
 const CANCELLABLE_FROM: readonly TaskStatus[] = [
@@ -312,11 +312,8 @@ export function createTaskRouter(deps: TaskRoutesDeps): Router {
     const id = requireParam(req, res, "id", "missing_task_id");
     if (!id) return;
     try {
-      const task = await deps.taskRepo.findById(id);
-      if (!task) {
-        res.status(404).json({ error: "task_not_found" });
-        return;
-      }
+      const task = await loadOr404(res, () => deps.taskRepo.findById(id), "task_not_found");
+      if (!task) return;
       if (!CANCELLABLE_FROM.includes(task.status)) {
         res.status(409).json({
           error: "invalid_transition",

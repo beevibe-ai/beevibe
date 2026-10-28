@@ -19,7 +19,7 @@ import {
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { readArtifactBody } from "../views/work-product.js";
-import { invalidBody, loadOwned, requireParam } from "./http-errors.js";
+import { invalidBody, loadOr404, loadOwned, requireParam } from "./http-errors.js";
 
 export interface LearnedSkillsRouterDeps {
   authMiddleware: RequestHandler;
@@ -87,12 +87,17 @@ export function createLearnedSkillsRouter(deps: LearnedSkillsRouterDeps): Router
       return;
     }
 
+    // Bound to a local so the narrowing above survives into the loader
+    // closure — TS drops it for a mutable property read inside a callback.
+    const repoRunId = body.repo_run_id;
+
     try {
-      const run = await deps.repoRunRepo.findById(body.repo_run_id);
-      if (!run) {
-        res.status(404).json({ error: "repo_run_not_found" });
-        return;
-      }
+      const run = await loadOr404(
+        res,
+        () => deps.repoRunRepo.findById(repoRunId),
+        "repo_run_not_found",
+      );
+      if (!run) return;
       if (run.status !== "succeeded") {
         res.status(409).json({ error: "run_not_succeeded", current_status: run.status });
         return;

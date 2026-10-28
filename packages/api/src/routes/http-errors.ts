@@ -77,6 +77,36 @@ export function requireNullableString(
 }
 
 /**
+ * Load an entity and 404 when it isn't there.
+ *
+ * Thirteen handlers across `view`, `repo-runs`, `task`, `capabilities`,
+ * `find-repo` and `learned-skills` wrote the same four lines — fetch,
+ * `if (!row)`, `res.status(404).json({ error })`, `return` — which is
+ * mostly noise around the one part that differs, the error code.
+ *
+ * `notFoundError` and `message` stay per-call-site: the codes already in
+ * the wire contract are not uniform (`not_found`, `run_not_found`,
+ * `task_not_found`, …) and clients may branch on them, and only two
+ * endpoints attach prose. This factors out the envelope, not the codes.
+ *
+ * Returns `undefined` after responding, so the caller's next line is
+ * `if (!row) return;` — the same guard convention as `requireHuman`.
+ */
+export async function loadOr404<T>(
+  res: Response,
+  load: () => Promise<T | null | undefined>,
+  notFoundError: string,
+  message?: string,
+): Promise<T | undefined> {
+  const entity = await load();
+  if (!entity) {
+    res.status(404).json(message ? { error: notFoundError, message } : { error: notFoundError });
+    return undefined;
+  }
+  return entity;
+}
+
+/**
  * Load an entity and gate it on the caller owning it: 404 when it
  * doesn't exist, 403 when it belongs to somebody else.
  *
@@ -107,11 +137,8 @@ export async function loadOwned<T>(
   notFoundError: string,
   notOwner: { status: number; error: string } = { status: 403, error: "not_owner" },
 ): Promise<T | undefined> {
-  const entity = await load();
-  if (!entity) {
-    res.status(404).json({ error: notFoundError });
-    return undefined;
-  }
+  const entity = await loadOr404(res, load, notFoundError);
+  if (!entity) return undefined;
   if (ownerOf(entity) !== personId) {
     res.status(notOwner.status).json({ error: notOwner.error });
     return undefined;
