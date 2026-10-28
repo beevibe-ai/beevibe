@@ -65,6 +65,13 @@ export function subscribeToUserKey(cb: Listener): () => void {
 
 export const isApiConfigured: boolean = apiBaseUrl !== null;
 
+/**
+ * What the sign-in and sign-up forms show when `isApiConfigured` is
+ * false. Lives next to the flag so the three guards that read it can't
+ * drift into three slightly different sentences.
+ */
+export const API_NOT_CONFIGURED_MESSAGE = "Web isn't configured to talk to an api server.";
+
 /** Format check only — server-side `lookupApiKey` does the real validation. */
 export function isWellFormedUserKey(key: string): boolean {
   return /^bv_u_[A-Za-z0-9]{16,}$/.test(key.trim());
