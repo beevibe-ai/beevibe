@@ -3,6 +3,7 @@ import {
   AmbiguousShortIdError,
   getConversationByShortId,
   getSessionByShortId,
+  getSessionTree,
   toSessionUsageDisplay,
 } from "./sessions.js";
 import { makeMockPool } from "./test-helpers.js";
@@ -309,5 +310,125 @@ function sampleRow(id: string) {
     agent_hier: "team",
     task_title: "Bill rewrite",
     usage: null,
+  };
+}
+
+describe("session transcript mapping", () => {
+  it("maps the aggregated transcript rows, keeping tool_name only where set", async () => {
+    const pool = makeMockPool([
+      {
+        ...sampleRow("sess_trans00ff"),
+        transcript: [
+          { kind: "text", timestamp: "2026-04-30T11:00:01Z", content: "thinking", tool_name: null },
+          { kind: "tool_call", timestamp: "2026-04-30T11:00:02Z", content: "{}", tool_name: "Read" },
+        ],
+      },
+    ]);
+
+    const session = await getSessionByShortId(pool, "trans0");
+
+    // tool_name is omitted rather than null for non-tool entries, so the
+    // UI can branch on its presence.
+    expect(session?.transcript).toEqual([
+      { kind: "text", timestamp: "2026-04-30T11:00:01Z", content: "thinking" },
+      {
+        kind: "tool_call",
+        timestamp: "2026-04-30T11:00:02Z",
+        content: "{}",
+        tool_name: "Read",
+      },
+    ]);
+  });
+});
+
+describe("getSessionTree", () => {
+  it("returns undefined when the root session does not exist", async () => {
+    const pool = makeMockPool([]);
+    expect(await getSessionTree(pool, "sess_missing")).toBeUndefined();
+  });
+
+  it("returns undefined when the first row is not the requested root", async () => {
+    // The recursive CTE orders by depth, so row 0 should always be the
+    // root. If it isn't, the result is unusable — a partial tree hydrated
+    // under the wrong root would mis-parent every node in the UI.
+    const pool = makeMockPool([treeRow("sess_other0000", null, 0)]);
+    expect(await getSessionTree(pool, "sess_root000000")).toBeUndefined();
+  });
+
+  it("splits the rows into the root and its descendants", async () => {
+    const pool = makeMockPool([
+      treeRow("sess_root000000", null, 0),
+      treeRow("sess_kid100000", "sess_root000000", 1),
+      treeRow("sess_kid200000", "sess_kid100000", 2),
+    ]);
+
+    const tree = await getSessionTree(pool, "sess_root000000");
+
+    expect(tree?.root.id).toBe("sess_root000000");
+    expect(tree?.root.parent_session_id).toBeNull();
+    expect(tree?.descendants.map((d) => d.id)).toEqual(["sess_kid100000", "sess_kid200000"]);
+    expect(tree?.descendants[1]?.parent_session_id).toBe("sess_kid100000");
+    expect(pool._spy).toHaveBeenCalledWith(expect.any(String), ["sess_root000000"]);
+  });
+
+  it("derives the short ids and serializes the timestamps", async () => {
+    const pool = makeMockPool([
+      {
+        ...treeRow("sess_root000000", null, 0),
+        task_id: "task_abcdef99",
+        started_at: new Date("2026-04-30T11:00:00Z"),
+        completed_at: new Date("2026-04-30T11:05:00Z"),
+      },
+    ]);
+
+    const root = (await getSessionTree(pool, "sess_root000000"))!.root;
+    expect(root.short_id).toBe("root00");
+    expect(root.task_short_id).toBe("abcdef");
+    expect(root.started_at).toBe("2026-04-30T11:00:00.000Z");
+    expect(root.completed_at).toBe("2026-04-30T11:05:00.000Z");
+  });
+
+  it("leaves the task short id and timestamps null when the columns are null", async () => {
+    const pool = makeMockPool([treeRow("sess_root000000", null, 0)]);
+
+    const root = (await getSessionTree(pool, "sess_root000000"))!.root;
+    // A spawned session with no task row and no spawn time yet — the UI
+    // renders the node, so these must be null rather than "undefined".
+    expect(root.task_id).toBeNull();
+    expect(root.task_short_id).toBeNull();
+    expect(root.task_title).toBeNull();
+    expect(root.started_at).toBeNull();
+    expect(root.completed_at).toBeNull();
+  });
+
+  it("carries the agent and session display fields through", async () => {
+    const pool = makeMockPool([treeRow("sess_root000000", null, 0)]);
+
+    expect((await getSessionTree(pool, "sess_root000000"))!.root).toMatchObject({
+      agent_id: "agt_team",
+      agent_label: "Beta",
+      agent_hierarchy: "team",
+      type: "task",
+      status: "running",
+      intent: "do the work",
+    });
+  });
+});
+
+function treeRow(id: string, parent_session_id: string | null, depth: number) {
+  return {
+    id,
+    parent_session_id,
+    agent_id: "agt_team",
+    agent_label: "Beta",
+    agent_hier: "team",
+    task_id: null,
+    task_title: null,
+    type: "task",
+    status: "running",
+    intent: "do the work",
+    started_at: null,
+    completed_at: null,
+    depth,
   };
 }
