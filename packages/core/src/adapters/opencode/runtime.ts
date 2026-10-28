@@ -10,11 +10,13 @@ import type {
 } from "../../ports/runtime.js";
 import { runCliProcess } from "../claude-code/spawn.js";
 import {
+  buildChildEnv,
   cancelledResult,
   cliVersionHealthCheck,
   composePrompt,
-  createStdoutLineReader,
+  createNdjsonEventCollector,
   finalizeCliResult,
+  forwardSpawn,
   warnIfTruncated,
 } from "../runtime-common.js";
 import {
@@ -73,30 +75,19 @@ export class OpenCodeRuntime implements AgentRuntime {
     if (context.resume_session_id) args.push("--session", context.resume_session_id);
     args.push(composePrompt(context));
 
-    const env: Record<string, string | undefined> = { ...process.env };
-    if (context.env) Object.assign(env, context.env);
-
-    const events: OpenCodeEvent[] = [];
-    const handleLine = (line: string): void => {
-      const evt = parseOpenCodeEventLine(line);
-      if (!evt) return;
-      events.push(evt);
-      if (!context.onStep) return;
-      for (const step of extractOpenCodeStepEvents(evt)) {
-        context.onStep(step);
-      }
-    };
-    const stdout = createStdoutLineReader(handleLine);
+    const stdout = createNdjsonEventCollector<OpenCodeEvent>({
+      parse: parseOpenCodeEventLine,
+      extractSteps: extractOpenCodeStepEvents,
+      onStep: context.onStep,
+    });
 
     const result = await runCliProcess({
       command: this.config.command ?? "opencode",
       args,
       cwd: context.workspace.path,
-      env,
+      env: buildChildEnv(context),
       abortSignal: context.abort_signal,
-      onSpawn: ({ pid, process_group_id }) => {
-        context.onSpawn?.({ process_pid: pid, process_group_id });
-      },
+      onSpawn: forwardSpawn(context),
       onLog: stdout.onLog,
     });
     stdout.flush();
@@ -105,7 +96,7 @@ export class OpenCodeRuntime implements AgentRuntime {
 
     if (result.aborted) return cancelledResult(result);
 
-    return finalizeCliResult(parseOpenCodeEvents(events, result.exitCode), result);
+    return finalizeCliResult(parseOpenCodeEvents(stdout.events, result.exitCode), result);
   }
 
   async healthCheck(): Promise<RuntimeHealth> {
