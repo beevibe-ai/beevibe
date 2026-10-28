@@ -16,6 +16,7 @@ import type {
   LearnedSkillRepository,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
+import { loadOr404 } from "./http-errors.js";
 import { createFindRepoTool } from "../tools/find-repo.js";
 
 export interface FindRepoRouterDeps {
@@ -47,11 +48,13 @@ export function createFindRepoRouter(deps: FindRepoRouterDeps): Router {
       // all, the ranker just gets zero learned-skill matches and the
       // other 3 tiers still work.
       const personId = req.caller!.personId;
-      const agent = await deps.agentRepo.findTopLevelForOwner(personId);
-      if (!agent) {
-        res.status(404).json({ error: "no_agent", message: "Caller has no primary agent." });
-        return;
-      }
+      const agent = await loadOr404(
+        res,
+        () => deps.agentRepo.findTopLevelForOwner(personId),
+        "no_agent",
+        "Caller has no primary agent.",
+      );
+      if (!agent) return;
 
       const tool = createFindRepoTool(
         { agentId: agent.id },

@@ -62,6 +62,7 @@ import { listInbox } from "../views/inbox.js";
 import { getAgentNetwork } from "../views/agent-network.js";
 import {
   invalidBody,
+  loadOr404,
   loadOwned,
   makeErrorHandler,
   requireNullableString,
@@ -158,11 +159,8 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     const id = requireParam(req, res, "id", "missing_task_id");
     if (!id) return;
     try {
-      const task = await getTask(deps.pool, id);
-      if (!task) {
-        res.status(404).json({ error: "task_not_found" });
-        return;
-      }
+      const task = await loadOr404(res, () => getTask(deps.pool, id), "task_not_found");
+      if (!task) return;
       res.json(task);
     } catch (err) {
       handleError(err, res, "task detail");
@@ -205,11 +203,8 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     const id = requireParam(req, res, "id", "missing_agent_id");
     if (!id) return;
     try {
-      const agent = await getAgent(deps.pool, id);
-      if (!agent) {
-        res.status(404).json({ error: "agent_not_found" });
-        return;
-      }
+      const agent = await loadOr404(res, () => getAgent(deps.pool, id), "agent_not_found");
+      if (!agent) return;
       res.json(agent);
     } catch (err) {
       handleError(err, res, "agent detail");
@@ -231,11 +226,12 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       // daemon (cross-tenant escalation).
       let cliToSync: KnownCli | undefined;
       if (runtimeId !== null) {
-        const runtime = await deps.runtimeRepo.findById(runtimeId);
-        if (!runtime) {
-          res.status(404).json({ error: "runtime_not_found" });
-          return;
-        }
+        const runtime = await loadOr404(
+          res,
+          () => deps.runtimeRepo.findById(runtimeId),
+          "runtime_not_found",
+        );
+        if (!runtime) return;
         const daemon = await deps.daemonRepo.findById(runtime.daemon_id);
         if (!daemon || daemon.owner_person_id !== req.caller.personId) {
           res.status(403).json({ error: "runtime_not_owned" });
@@ -395,11 +391,12 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
         return;
       }
       try {
-        const result = await fetch(deps.pool, shortId);
-        if (!result) {
-          res.status(404).json({ error: "session_not_found" });
-          return;
-        }
+        const result = await loadOr404(
+          res,
+          () => fetch(deps.pool, shortId),
+          "session_not_found",
+        );
+        if (!result) return;
         res.json(result);
       } catch (err) {
         if (err instanceof AmbiguousShortIdError) {
@@ -437,11 +434,12 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
       return;
     }
     try {
-      const tree = await getSessionTree(deps.pool, id);
-      if (!tree) {
-        res.status(404).json({ error: "session_not_found" });
-        return;
-      }
+      const tree = await loadOr404(
+        res,
+        () => getSessionTree(deps.pool, id),
+        "session_not_found",
+      );
+      if (!tree) return;
       // Root-session ownership check via the agent's owner_id; mirrors
       // how SINGLE_OWNER_SQL.session resolves the SSE owner set.
       const { rows: ownerRows } = await deps.pool.query<{ owner_id: string }>(
@@ -561,11 +559,12 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     const id = requireParam(req, res, "id", "missing_fact_id");
     if (!id) return;
     try {
-      const fact = await deps.memoryFactRepo.findById(id);
-      if (!fact) {
-        res.status(404).json({ error: "fact_not_found" });
-        return;
-      }
+      const fact = await loadOr404(
+        res,
+        () => deps.memoryFactRepo.findById(id),
+        "fact_not_found",
+      );
+      if (!fact) return;
       // Ownership lives on the agent, not the fact — load the agent and
       // verify owner_id. memory_fact.agent_id is NOT NULL with ON DELETE
       // CASCADE (initial schema), so the agent is guaranteed to exist
@@ -589,11 +588,12 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     const id = requireParam(req, res, "id", "missing_work_product_id");
     if (!id) return;
     try {
-      const wp = await getWorkProduct(deps.pool, id);
-      if (!wp) {
-        res.status(404).json({ error: "work_product_not_found" });
-        return;
-      }
+      const wp = await loadOr404(
+        res,
+        () => getWorkProduct(deps.pool, id),
+        "work_product_not_found",
+      );
+      if (!wp) return;
       res.json(wp);
     } catch (err) {
       handleError(err, res, "work product detail");

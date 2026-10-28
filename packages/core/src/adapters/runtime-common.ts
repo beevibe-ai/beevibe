@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -206,5 +211,77 @@ export function finalizeCliResult(
     process_group_id: result.process_group_id ?? undefined,
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
+  };
+}
+
+/**
+ * Collect an NDJSON event stream off stdout while forwarding live steps.
+ *
+ * All three CLI runtimes had the identical twelve-line block: declare an
+ * `events` array, define a `handleLine` that parses one line, pushes the
+ * event, and fans it out through `extractSteps` into `context.onStep`, then
+ * wrap it in {@link createStdoutLineReader}. Only the two provider-specific
+ * functions differed, so they become parameters.
+ *
+ * `events` is the live array — it fills as chunks arrive and is complete
+ * once `flush()` has run and the process has settled, which is when the
+ * callers hand it to their `parse*Events`.
+ *
+ * Steps are forwarded synchronously as lines arrive, so a UI subscribed to
+ * `onStep` still sees progress mid-run rather than only at exit.
+ */
+export function createNdjsonEventCollector<T>(opts: {
+  parse: (line: string) => T | null;
+  extractSteps: (evt: T) => RuntimeStep[];
+  onStep?: (step: RuntimeStep) => void;
+}): { events: T[]; onLog: (stream: "stdout" | "stderr", chunk: string) => void; flush: () => void } {
+  const events: T[] = [];
+  const reader = createStdoutLineReader((line) => {
+    const evt = opts.parse(line);
+    if (!evt) return;
+    events.push(evt);
+    const onStep = opts.onStep;
+    if (!onStep) return;
+    for (const step of opts.extractSteps(evt)) onStep(step);
+  });
+  return { events, onLog: reader.onLog, flush: reader.flush };
+}
+
+/**
+ * Build the environment for a spawned CLI subprocess: the daemon's own
+ * `process.env`, minus `strip`, plus the context's per-session overrides.
+ *
+ * The order matters and is the same in every runtime: strip first, then
+ * overlay `context.env`, so a variable the caller sets explicitly survives
+ * even when it is on the strip list. `strip` is how each adapter keeps a
+ * stray provider key in the daemon's shell from overriding the CLI's own
+ * credentials — see `ANTHROPIC_AUTH_VARS` / `OPENAI_AUTH_VARS`.
+ */
+export function buildChildEnv(
+  context: Pick<RuntimeContext, "env">,
+  strip: readonly string[] = [],
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = { ...process.env };
+  for (const key of strip) delete env[key];
+  if (context.env) Object.assign(env, context.env);
+  return env;
+}
+
+/**
+ * The `onSpawn` handler to hand `runCliProcess`, adapting its `{ pid }` to
+ * the `{ process_pid }` the `RuntimeContext` callback expects.
+ *
+ * A field rename is exactly the kind of thing three hand-written copies get
+ * away with until one of them is edited, so the mapping lives here once.
+ * Returns undefined when the context wants no notification, which keeps
+ * `runCliProcess` from installing a callback it would only no-op through.
+ */
+export function forwardSpawn(
+  context: Pick<RuntimeContext, "onSpawn">,
+): ((meta: { pid: number; process_group_id: number }) => void) | undefined {
+  const onSpawn = context.onSpawn;
+  if (!onSpawn) return undefined;
+  return ({ pid, process_group_id }) => {
+    onSpawn({ process_pid: pid, process_group_id });
   };
 }

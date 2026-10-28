@@ -1,10 +1,14 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import type { RuntimeResult, RuntimeStep } from "../ports/runtime.js";
 import {
+  buildChildEnv,
   cancelledResult,
+  createNdjsonEventCollector,
   createStdoutLineReader,
   finalizeCliResult,
+  forwardSpawn,
+  parseNdjsonLine,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -145,5 +149,96 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+describe("createNdjsonEventCollector", () => {
+  interface Evt {
+    type: string;
+    text?: string;
+  }
+
+  const collector = (onStep?: (step: RuntimeStep) => void) =>
+    createNdjsonEventCollector<Evt>({
+      parse: (line) => parseNdjsonLine<Evt>(line),
+      extractSteps: (evt) =>
+        evt.text ? [{ kind: "agent", description: evt.text, timestamp: "t" }] : [],
+      onStep,
+    });
+
+  it("collects parsed events in arrival order", () => {
+    const c = collector();
+    c.onLog("stdout", '{"type":"a"}\n{"type":"b"}\n');
+    expect(c.events).toEqual([{ type: "a" }, { type: "b" }]);
+  });
+
+  it("skips lines the parser rejects rather than failing the run", () => {
+    const c = collector();
+    c.onLog("stdout", "plain log noise\n{bad json}\n{\"type\":\"ok\"}\n");
+    expect(c.events).toEqual([{ type: "ok" }]);
+  });
+
+  it("forwards steps as lines arrive, not only at flush", () => {
+    const steps: RuntimeStep[] = [];
+    const c = collector((s) => steps.push(s));
+    c.onLog("stdout", '{"type":"a","text":"hello"}\n');
+    expect(steps).toEqual([{ kind: "agent", description: "hello", timestamp: "t" }]);
+  });
+
+  it("still collects events when no onStep is subscribed", () => {
+    const c = collector();
+    c.onLog("stdout", '{"type":"a","text":"hello"}\n');
+    expect(c.events).toHaveLength(1);
+  });
+
+  it("flush picks up a trailing line with no newline", () => {
+    const c = collector();
+    c.onLog("stdout", '{"type":"last"}');
+    expect(c.events).toEqual([]);
+    c.flush();
+    expect(c.events).toEqual([{ type: "last" }]);
+  });
+});
+
+describe("buildChildEnv", () => {
+  const ORIGINAL = process.env.BV_TEST_VAR;
+  afterEach(() => {
+    if (ORIGINAL === undefined) delete process.env.BV_TEST_VAR;
+    else process.env.BV_TEST_VAR = ORIGINAL;
+  });
+
+  it("inherits the parent environment", () => {
+    process.env.BV_TEST_VAR = "inherited";
+    expect(buildChildEnv({}).BV_TEST_VAR).toBe("inherited");
+  });
+
+  it("strips the named variables", () => {
+    process.env.BV_TEST_VAR = "leaked";
+    expect(buildChildEnv({}, ["BV_TEST_VAR"])).not.toHaveProperty("BV_TEST_VAR");
+  });
+
+  it("lets an explicit context override win over the strip list", () => {
+    process.env.BV_TEST_VAR = "leaked";
+    const env = buildChildEnv({ env: { BV_TEST_VAR: "chosen" } }, ["BV_TEST_VAR"]);
+    expect(env.BV_TEST_VAR).toBe("chosen");
+  });
+
+  it("does not mutate process.env", () => {
+    process.env.BV_TEST_VAR = "kept";
+    buildChildEnv({ env: { BV_TEST_VAR: "other" } }, ["BV_TEST_VAR"]);
+    expect(process.env.BV_TEST_VAR).toBe("kept");
+  });
+});
+
+describe("forwardSpawn", () => {
+  it("renames pid to process_pid for the context callback", () => {
+    const seen: Array<{ process_pid: number; process_group_id: number }> = [];
+    const handler = forwardSpawn({ onSpawn: (meta) => seen.push(meta) });
+    handler!({ pid: 99, process_group_id: 98 });
+    expect(seen).toEqual([{ process_pid: 99, process_group_id: 98 }]);
+  });
+
+  it("returns undefined when the context wants no notification", () => {
+    expect(forwardSpawn({})).toBeUndefined();
   });
 });

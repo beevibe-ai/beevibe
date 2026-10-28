@@ -28,6 +28,7 @@ import type {
 import { getReferencedRepos } from "@beevibe/core/services/referenced-repos";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { requireHuman } from "../auth/middleware.js";
+import { loadOr404 } from "./http-errors.js";
 import { createUseRepoTool } from "../tools/use-repo.js";
 
 export interface CapabilitiesRouterDeps {
@@ -59,11 +60,12 @@ export function createCapabilitiesRouter(deps: CapabilitiesRouterDeps): Router {
     try {
       // Confirm the task exists and belongs to the caller before we
       // scan its transcript — otherwise any user could mine any task.
-      const task = await deps.taskRepo.findById(taskIdParam);
-      if (!task) {
-        res.status(404).json({ error: "task_not_found" });
-        return;
-      }
+      const task = await loadOr404(
+        res,
+        () => deps.taskRepo.findById(taskIdParam),
+        "task_not_found",
+      );
+      if (!task) return;
       const personId = req.caller!.personId;
       // The task is reachable if the caller created it; tighter ACL
       // (agents on the user's team) is enforced separately by the
@@ -113,11 +115,13 @@ export function createCapabilitiesRouter(deps: CapabilitiesRouterDeps): Router {
       // resulting container task + repo_run + work_product are owned by
       // the team agent, which matches the existing agent-driven flow.
       const personId = req.caller!.personId;
-      const agent = await deps.agentRepo.findTopLevelForOwner(personId);
-      if (!agent) {
-        res.status(404).json({ error: "no_agent", message: "Caller has no primary agent." });
-        return;
-      }
+      const agent = await loadOr404(
+        res,
+        () => deps.agentRepo.findTopLevelForOwner(personId),
+        "no_agent",
+        "Caller has no primary agent.",
+      );
+      if (!agent) return;
 
       const tool = createUseRepoTool(
         { agentId: agent.id },

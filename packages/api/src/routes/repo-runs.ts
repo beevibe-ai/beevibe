@@ -19,7 +19,7 @@ import type {
   SessionEventRepository,
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
-import { requireParam } from "./http-errors.js";
+import { loadOr404, requireParam } from "./http-errors.js";
 
 export interface RepoRunsRouterDeps {
   authMiddleware: RequestHandler;
@@ -78,11 +78,8 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
     const id = requireParam(req, res, "id", "missing_id");
     if (!id) return;
     try {
-      const run = await deps.repoRunRepo.findById(id);
-      if (!run) {
-        res.status(404).json({ error: "not_found" });
-        return;
-      }
+      const run = await loadOr404(res, () => deps.repoRunRepo.findById(id), "not_found");
+      if (!run) return;
       // Hydrate transcript from session_event (the canonical store).
       // repo_run.transcript stays empty in the DB; this join is the
       // single source of truth the UI reads.
@@ -115,11 +112,8 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
     const id = requireParam(req, res, "id", "missing_id");
     if (!id) return;
     try {
-      const run = await deps.repoRunRepo.findById(id);
-      if (!run) {
-        res.status(404).json({ error: "not_found" });
-        return;
-      }
+      const run = await loadOr404(res, () => deps.repoRunRepo.findById(id), "not_found");
+      if (!run) return;
       if (run.status !== "pending" && run.status !== "running") {
         res.status(409).json({
           error: "already_terminal",
@@ -152,11 +146,8 @@ export function createRepoRunsRouter(deps: RepoRunsRouterDeps): Router {
     const file = requireParam(req, res, "file", "missing_params");
     if (!file) return;
     try {
-      const run = await deps.repoRunRepo.findById(id);
-      if (!run) {
-        res.status(404).json({ error: "run_not_found" });
-        return;
-      }
+      const run = await loadOr404(res, () => deps.repoRunRepo.findById(id), "run_not_found");
+      if (!run) return;
       // Safety: reject path traversal attempts.
       const safeFilename = basename(file);
       if (safeFilename !== file) {

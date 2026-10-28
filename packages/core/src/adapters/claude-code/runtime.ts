@@ -7,10 +7,12 @@ import type {
   Workspace,
 } from "../../ports/runtime.js";
 import {
+  buildChildEnv,
   cancelledResult,
   cliVersionHealthCheck,
-  createStdoutLineReader,
+  createNdjsonEventCollector,
   finalizeCliResult,
+  forwardSpawn,
   warnIfTruncated,
 } from "../runtime-common.js";
 import { runCliProcess } from "./spawn.js";
@@ -98,26 +100,16 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       args.push("--append-system-prompt", context.system_prompt_append);
     }
 
-    const env: Record<string, string | undefined> = { ...process.env };
-    for (const key of NESTING_GUARD_VARS) delete env[key];
-    for (const key of ANTHROPIC_AUTH_VARS) delete env[key];
-    if (context.env) Object.assign(env, context.env);
+    const env = buildChildEnv(context, [...NESTING_GUARD_VARS, ...ANTHROPIC_AUTH_VARS]);
 
     // Parse messages incrementally during streaming so we don't re-parse
     // the entire stdout after close. A line buffer handles chunk boundaries
     // (a single JSON message can arrive split across multiple chunks).
-    const messages: StreamJsonMessage[] = [];
-    const handleLine = (line: string): void => {
-      const msg = parseStreamJsonLine(line);
-      if (!msg) return;
-      messages.push(msg);
-      if (context.onStep) {
-        for (const step of extractStepEvents(msg)) {
-          context.onStep(step);
-        }
-      }
-    };
-    const stdout = createStdoutLineReader(handleLine);
+    const stdout = createNdjsonEventCollector<StreamJsonMessage>({
+      parse: parseStreamJsonLine,
+      extractSteps: extractStepEvents,
+      onStep: context.onStep,
+    });
 
     const result = await runCliProcess({
       command: this.config.command ?? "claude",
@@ -126,9 +118,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       env,
       stdin: context.intent,
       abortSignal: context.abort_signal,
-      onSpawn: ({ pid, process_group_id }) => {
-        context.onSpawn?.({ process_pid: pid, process_group_id });
-      },
+      onSpawn: forwardSpawn(context),
       onLog: stdout.onLog,
     });
 
@@ -139,7 +129,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
 
     if (result.aborted) return cancelledResult(result);
 
-    return finalizeCliResult(parseClaudeMessages(messages, result.exitCode), result);
+    return finalizeCliResult(parseClaudeMessages(stdout.events, result.exitCode), result);
   }
 
   async healthCheck(): Promise<RuntimeHealth> {
