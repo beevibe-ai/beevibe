@@ -9,64 +9,33 @@ import {
   ListToolsRequestSchema,
   McpError,
 } from "@modelcontextprotocol/sdk/types.js";
-import type { McpCaller } from "../tools/assemble.js";
-import type { CoreMemory, FactStore, MemoryAgent } from "@beevibe/core/services/memory";
-import type {
-  AgentProvisionEventRepository,
-  AgentRepository,
-  CoreMemoryBlockRepository,
-  EmbeddingService,
-  LearnedSkillRepository,
-  PersonRepository,
-  RepoRunRepository,
-  SessionRepository,
-  TaskRepository,
-  WorkProductRepository,
-} from "@beevibe/core";
-import type { Pool } from "@beevibe/core/adapters/postgres";
+import type { AssembleToolsServices, McpCaller } from "../tools/assemble.js";
+import type { MemoryAgent } from "@beevibe/core/services/memory";
+import type { PersonRepository, SessionRepository } from "@beevibe/core";
 import { sessionId as makeBeevibeSid } from "@beevibe/core";
-import type { TaskService } from "@beevibe/core/services/task-service";
-import type { EscalationService } from "@beevibe/core/services/escalation-service";
-import type { DispatchService } from "@beevibe/core/services/dispatch-service";
-import type { WatchService } from "@beevibe/core/services/watch-service";
-import type { SessionSearchService } from "@beevibe/core/services/session-search";
-import type { MeshServer } from "../mesh/server.js";
 import { assembleTools } from "../tools/assemble.js";
 import { buildInstructions } from "../tools/instructions.js";
 import type { AgentTool } from "../tools/types.js";
 import type { SessionCache } from "../session-cache.js";
 
-export interface McpRouterDeps {
+/**
+ * Everything the /mcp router needs: the full set of per-session tool
+ * services, plus the router's own request-scoped collaborators.
+ *
+ * The tool services are inherited from {@link AssembleToolsServices} rather
+ * than re-declared — every one of them exists here only to be handed to
+ * `assembleTools`, so restating them was 17 duplicated fields that had to be
+ * kept in step by hand. `memoryAgent` is the one exception: it is per-agent,
+ * so the router takes a factory and resolves it per session.
+ */
+export interface McpRouterDeps extends Omit<AssembleToolsServices, "memoryAgent"> {
   authMiddleware: RequestHandler;
-  factStore: FactStore;
-  coreMemory: CoreMemory;
-  /** Phase 9: backs `create_subordinate_agent` (seeds persona/domain blocks). */
-  coreMemoryRepo: CoreMemoryBlockRepository;
-  /** Phase 9: audit + per-parent daily cap on subordinate spawning. */
-  agentProvisionEventRepo: AgentProvisionEventRepository;
   sessionCache: SessionCache;
   sessionRepo: SessionRepository;
-  agentRepo: AgentRepository;
-  taskRepo: TaskRepository;
-  workProductRepo: WorkProductRepository;
-  taskService: TaskService;
-  escalationService: EscalationService;
-  dispatchService: DispatchService;
-  mesh: MeshServer;
-  pool: Pool;
-  makeMemoryAgent: (agentId: string) => MemoryAgent;
-  /** Capability Network: backs the use_repo MCP tool. */
-  repoRunRepo: RepoRunRepository;
-  /** Capability Network: backs find_repo's learned-skill tier. */
-  learnedSkillRepo: LearnedSkillRepository;
-  /** Capability Network: powers find_repo's semantic relevance gate. */
-  embeddings: EmbeddingService;
   /** Used to read the caller's owner's capability_network_enabled flag. */
   personRepo: PersonRepository;
-  /** Backs team-tier `watch_tasks` / `unwatch`. */
-  watchService: WatchService;
-  /** Backs the `session_search` MCP tool (Layer-3 memory). */
-  sessionSearch: SessionSearchService;
+  /** Resolves the per-agent `memoryAgent` that `assembleTools` wants. */
+  makeMemoryAgent: (agentId: string) => MemoryAgent;
 }
 
 /** Tracked per-MCP-session state. mcpSid ↔ transport + server. */
@@ -269,28 +238,12 @@ async function handleMcpRequest(
     console.warn(`[mcp] failed to read owner preferences for ${caller.agentId}:`, err);
   }
 
+  // `deps` is a superset of AssembleToolsServices by construction, so the
+  // spread covers every tool service; the router's own collaborators ride
+  // along unread rather than being filtered out field by field.
   const tools = assembleTools(
     { caller, beevibeSid, spawnMode, capabilityNetworkEnabled },
-    {
-      factStore: deps.factStore,
-      coreMemory: deps.coreMemory,
-      coreMemoryRepo: deps.coreMemoryRepo,
-      agentProvisionEventRepo: deps.agentProvisionEventRepo,
-      agentRepo: deps.agentRepo,
-      taskRepo: deps.taskRepo,
-      workProductRepo: deps.workProductRepo,
-      taskService: deps.taskService,
-      escalationService: deps.escalationService,
-      dispatchService: deps.dispatchService,
-      mesh: deps.mesh,
-      pool: deps.pool,
-      memoryAgent,
-      repoRunRepo: deps.repoRunRepo,
-      learnedSkillRepo: deps.learnedSkillRepo,
-      embeddings: deps.embeddings,
-      watchService: deps.watchService,
-      sessionSearch: deps.sessionSearch,
-    },
+    { ...deps, memoryAgent },
   );
 
   const server = new McpLowLevelServer(
