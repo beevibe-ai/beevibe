@@ -40,3 +40,23 @@ export function computeCacheHitRatio(parts: {
   const total = parts.input + parts.cacheCreation + parts.cacheRead;
   return total > 0 ? parts.cacheRead / total : 0;
 }
+
+/**
+ * Resolve a list view's `limit` filter against its own bounds: the caller's
+ * value when given, otherwise `fallback`, clamped into `1..max`.
+ *
+ * Every paginated view did this inline with the same
+ * `Math.min(Math.max(1, limit ?? DEFAULT), MAX)` expression and its own pair
+ * of bound constants. The bounds stay per-view — a memory-facts page and an
+ * inbox page cap at genuinely different sizes — but the clamp is one rule.
+ *
+ * Exactly equivalent to the expression it replaces, non-integer and
+ * non-finite inputs included. Those don't arise today: the /view routes
+ * already drop a non-finite `?limit=` to `undefined` before calling in, so
+ * this layer never sees one. Tightening the contract here (truncating a
+ * fractional limit, or treating 0 as "unspecified" rather than as 1) would
+ * be a behaviour change, not a de-duplication — left for its own commit.
+ */
+export function clampListLimit(limit: number | undefined, fallback: number, max: number): number {
+  return Math.min(Math.max(1, limit ?? fallback), max);
+}
