@@ -244,6 +244,33 @@ its own test — check whether it's a deliberate test seam (`clearCache()`
 in `api/src/sse/owner-lookup.ts` is marked `@internal Tests only`) before
 touching it.
 
+### One level further down: interface *members*
+
+The symbol sweep above only sees top-level declarations, and the port
+sweep (#285) only sees methods. Neither sees the **properties** of an
+interface. That is where the next layer of dead code sat: optional
+fields on internal display DTOs that the sole producer never sets and
+the sole consumer never reads. `tsc` cannot flag these — an unset
+optional field is valid, and reading one is valid too.
+
+Sweep members by name and keep the ones whose only occurrence in the
+tracked repo is their own declaration:
+
+```bash
+# every member of every interface / type literal, then one grep per name
+git grep -h -o -E "\b[a-zA-Z_][a-zA-Z0-9_]*\b" -- 'packages/**/*.ts' \
+  'packages/**/*.tsx' 'scripts/**' 'migrations/**' | sort | uniq -c
+```
+
+Two traps:
+
+- A field name can be **shared by unrelated types** (`arrow` and
+  `response` live on both `MeshAsk` and the unrelated `AskThread`), so a
+  non-zero count is not proof of life — confirm the hit is on *your*
+  type before keeping it.
+- A field that mirrors an **external** producer's payload is not dead
+  even at zero references; see the table below.
+
 ### Dead in-repo, but not ours to delete
 
 | Thing | Why it survived the sweep |
@@ -251,6 +278,8 @@ touching it.
 | `GET /activity` → `api/src/views/activity.ts` | No caller anywhere in the monorepo, but it's a **documented public endpoint** (`packages/api/README.md`). Retiring it is a product call. The web side is fully gone: the client stub (`api.activity.list`) went with #273, and `queryKeys.activity` + its no-op `lib/sse.ts` invalidations went with #283. |
 | `SkillOutcomeRepository.listBySkill` / `.statsForSkill`, `AgentProvisionEventRepository.listByParent` | Uncalled **read** halves of audit trails whose write side is live and accumulating rows (`skill_outcome` via `recordCapabilityOutcome`, `agent_provision_event` via `create_subordinate_agent`). Same call as the promotion repo below — the consumers (discovery-ranker feedback, agents-page audit panel) are unbuilt, not removed. Deleting the queries makes finishing them harder. |
 | `PostgresMemoryPromotionEventRepository` | Never constructed — `bootstrap.ts` builds the MemoryAgent without `promotionEventRepo`, so the M8.D promotion audit log never writes even though the port, the service branch, its tests and the read-side `views/promotions.ts` all exist. That's **unfinished wiring, not dead code**; deleting the adapter makes finishing it harder. |
+| `StreamJsonMessage.duration_ms` / `.num_turns` (`core/src/adapters/claude-code/stream-json.ts`) | Nothing reads either one, but the interface is our **model of the Claude Code CLI's `--output-format stream-json` payload**, and the CLI really does emit both on the `result` message. The type documents an external contract we don't own; trimming it to only the fields we happen to consume today makes the next person re-derive the payload from the CLI. |
+| `TrendingSnapshot.fetched_at` (`web/app/(authed)/capabilities/capabilities-client.tsx`) | Same reasoning — it mirrors `trending-<period>.json`, fetched at runtime from the `beevibe-capabilities` repo. The field is in the file we fetch; we just don't render it yet. |
 
 ## Deploying
 
