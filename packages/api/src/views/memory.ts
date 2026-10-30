@@ -11,6 +11,7 @@ import type { Pool } from "@beevibe/core/adapters/postgres";
 import type { FactType, MemoryScope } from "@beevibe/core";
 import { MEMORY_SCOPES } from "@beevibe/core";
 import type { MemoryFactCounts, MemoryFactDisplay, MergeOrigin } from "./types.js";
+import { clampListLimit } from "./format.js";
 
 const MEMORY_SCOPE_SET = new Set<string>(MEMORY_SCOPES);
 
@@ -52,10 +53,7 @@ export async function listMemoryFacts(
   ownerId: string,
   filter: MemoryFactsFilter = {},
 ): Promise<MemoryFactDisplay[]> {
-  const limit = Math.min(
-    Math.max(1, filter.limit ?? DEFAULT_MEMORY_FACTS_LIMIT),
-    MAX_MEMORY_FACTS_LIMIT,
-  );
+  const limit = clampListLimit(filter.limit, DEFAULT_MEMORY_FACTS_LIMIT, MAX_MEMORY_FACTS_LIMIT);
   const { rows } = await pool.query<FactRow>(LIST_SQL, [
     ownerId,
     filter.scope ?? null,

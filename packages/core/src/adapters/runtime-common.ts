@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,109 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+export interface CliEventStreamOptions<E> {
+  /** Prefix for the stdout-truncation warning, e.g. `"CodexRuntime"`. */
+  runtimeTag: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /** Piped to the CLI's stdin — Claude Code feeds the intent this way. */
+  stdin?: string;
+  /** Supplies `abort_signal`, `onSpawn` and `onStep`. */
+  context: RuntimeContext;
+  /** Provider-specific NDJSON line parser, e.g. `parseCodexEventLine`. */
+  parseLine: (line: string) => E | null;
+  /** Provider-specific step extractor, e.g. `extractCodexStepEvents`. */
+  extractSteps: (event: E) => RuntimeStep[];
+  /** Provider-specific roll-up of the collected events into a result. */
+  buildResult: (
+    events: E[],
+    exitCode: number | null,
+  ) => Omit<RuntimeResult, "process_pid" | "process_group_id">;
+  /**
+   * Best-effort cleanup when the caller aborted, before `cancelledResult`
+   * short-circuits. Codex uses it to drop its `--output-last-message` file;
+   * the stateless runtimes leave it unset.
+   */
+  onAborted?: () => void;
+}
+
+/**
+ * Spawn a CLI, stream its NDJSON stdout into RuntimeSteps, and roll the
+ * collected events up into a `RuntimeResult`.
+ *
+ * Every CLI runtime ran this exact sequence — collect events off a line
+ * reader while forwarding steps to `context.onStep`, flush the trailing
+ * partial line, warn on truncation, short-circuit an abort to
+ * `cancelledResult`, then `finalizeCliResult` over the parsed roll-up. Only
+ * the four provider-specific pieces (`parseLine`, `extractSteps`,
+ * `buildResult`, and the argv) differed, so they are parameters and the
+ * order of operations lives here once.
+ *
+ * Parsing is incremental: events are parsed as lines arrive rather than by
+ * re-reading the accumulated stdout after close.
+ */
+export async function runCliEventStream<E>(
+  opts: CliEventStreamOptions<E>,
+): Promise<RuntimeResult> {
+  const { context } = opts;
+  const events: E[] = [];
+  const handleLine = (line: string): void => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of opts.extractSteps(event)) {
+      context.onStep(step);
+    }
+  };
+  const stdout = createStdoutLineReader(handleLine);
+
+  const result = await runCliProcess({
+    command: opts.command,
+    args: opts.args,
+    cwd: opts.cwd,
+    env: opts.env,
+    stdin: opts.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Emit any final line that arrived without a trailing newline.
+  stdout.flush();
+
+  warnIfTruncated(opts.runtimeTag, result);
+
+  if (result.aborted) {
+    opts.onAborted?.();
+    return cancelledResult(result);
+  }
+
+  return finalizeCliResult(opts.buildResult(events, result.exitCode), result);
+}
+
+/**
+ * Build the env for a spawned CLI: the executor's own environment, minus
+ * `stripVars`, plus the session's `context.env` overrides.
+ *
+ * `stripVars` carries the provider's auth variables, removed so the CLI
+ * authenticates via its own credential store (subscription billing) instead
+ * of inheriting an API key from the executor's shell. The strip happens
+ * before the `context.env` merge, so a session that deliberately sets one of
+ * those keys still wins.
+ */
+export function buildCliEnv(
+  context: RuntimeContext,
+  stripVars: readonly string[] = [],
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = { ...process.env };
+  for (const key of stripVars) delete env[key];
+  if (context.env) Object.assign(env, context.env);
+  return env;
 }

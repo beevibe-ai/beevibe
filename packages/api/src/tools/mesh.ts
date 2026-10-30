@@ -10,11 +10,14 @@
 import { randomUUID } from "node:crypto";
 import type { AgentRepository, TaskRepository } from "@beevibe/core";
 import type { TaskService } from "@beevibe/core/services/task-service";
-import type {
-  EscalationService,
-  CreateEscalationInput,
-} from "@beevibe/core/services/escalation-service";
+import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { Pool } from "@beevibe/core/adapters/postgres";
+import {
+  openQuestionsSchema,
+  parseOpenQuestions,
+  parseProposals,
+  proposalsSchema,
+} from "./escalation-input.js";
 import { toolErrorFromThrown } from "./errors.js";
 import type { AgentTool } from "./types.js";
 import type { McpCaller } from "./assemble.js";
@@ -369,24 +372,10 @@ function escalateToHumansTool(
           description:
             "Single shared problem statement. Neutral phrasing — \"We're stuck on X; root disagreement is Y.\" Becomes the escalation row's summary; immutable thereafter (peer's add_to_escalation can't change it).",
         },
-        proposals: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              title: { type: "string" },
-              description: { type: "string" },
-              tradeoffs: { type: "string" },
-            },
-            required: ["title", "description"],
-          },
-          description: "Your concrete options for the human (2-3 typical).",
-        },
-        open_questions: {
-          type: "array",
-          items: { type: "string" },
-          description: "Things the human might know that you don't.",
-        },
+        proposals: proposalsSchema("Your concrete options for the human (2-3 typical)."),
+        open_questions: openQuestionsSchema(
+          "Things the human might know that you don't.",
+        ),
       },
       required: ["negotiation_id", "summary"],
     },
@@ -398,19 +387,12 @@ function escalateToHumansTool(
           return { content: { error: "negotiation_id and summary required" }, isError: true };
         }
 
-        const proposals = Array.isArray(input.proposals)
-          ? (input.proposals as CreateEscalationInput["proposals"])
-          : undefined;
-        const openQuestions = Array.isArray(input.open_questions)
-          ? (input.open_questions as string[]).filter((q) => typeof q === "string")
-          : undefined;
-
         const escalation = await services.escalationService.create({
           negotiationId,
           callerAgentId: ctx.caller.agentId,
           summary,
-          proposals,
-          openQuestions,
+          proposals: parseProposals(input),
+          openQuestions: parseOpenQuestions(input),
         });
 
         // Sentinel-unblock the peer's pending respond_negotiate (if any).
