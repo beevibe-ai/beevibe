@@ -39,6 +39,7 @@ import type {
   EmbeddingService,
   LearnedSkillRepository,
 } from "@beevibe/core";
+import { clampLimit } from "../pagination.js";
 import type { AgentTool, AgentToolResult } from "./types.js";
 
 /**
@@ -73,6 +74,14 @@ const TRENDING_TTL_MS = 60 * 60 * 1000;
  */
 const SIM_THRESHOLD = 0.35;
 
+/**
+ * Candidate-count bounds. Exported because `routes/find-repo.ts` is an
+ * HTTP wrapper over this same ranker and has to advertise and enforce the
+ * identical range — it used to repeat the literals.
+ */
+export const FIND_REPO_DEFAULT_LIMIT = 5;
+export const FIND_REPO_MAX_LIMIT = 10;
+
 const FIND_REPO_SCHEMA = {
   type: "object",
   properties: {
@@ -86,7 +95,7 @@ const FIND_REPO_SCHEMA = {
     },
     limit: {
       type: "number",
-      description: "Max candidates to return (default 5, capped at 10).",
+      description: `Max candidates to return (default ${FIND_REPO_DEFAULT_LIMIT}, capped at ${FIND_REPO_MAX_LIMIT}).`,
     },
   },
   required: ["goal"],
@@ -317,8 +326,10 @@ async function findRepoHandler(
       isError: true,
     };
   }
-  const limitRaw = typeof input.limit === "number" ? input.limit : 5;
-  const limit = Math.min(10, Math.max(1, Math.floor(limitRaw)));
+  const limit = clampLimit(typeof input.limit === "number" ? input.limit : undefined, {
+    fallback: FIND_REPO_DEFAULT_LIMIT,
+    max: FIND_REPO_MAX_LIMIT,
+  });
 
   // Resolve the agent's owner so we can scope learned-skill lookups.
   const agent = await services.agentRepo.findById(ctx.agentId);
