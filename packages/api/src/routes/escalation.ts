@@ -27,7 +27,7 @@ import {
 } from "@beevibe/core/services/escalation-service";
 import { NegotiationNotFoundError } from "@beevibe/core/services/negotiation-service";
 import { requireHuman } from "../auth/middleware.js";
-import { requireParam } from "./http-errors.js";
+import { makeErrorHandler, requireParam } from "./http-errors.js";
 
 export interface EscalationRoutesDeps {
   authMiddleware: RequestHandler;
@@ -88,6 +88,14 @@ function buildSelector(body: unknown):
   };
 }
 
+const handleUnmappedError = makeErrorHandler("escalation route");
+
+/**
+ * Map the escalation/negotiation service's typed errors onto statuses,
+ * falling through to the shared 500 envelope. The not-found and
+ * invalid-state codes are part of the wire contract the web page branches
+ * on, so they stay spelled out here rather than being derived.
+ */
 function handleEscalationError(err: unknown, res: Response): void {
   if (err instanceof EscalationNotFoundError) {
     res.status(404).json({ error: "escalation_not_found", message: err.message });
@@ -101,11 +109,7 @@ function handleEscalationError(err: unknown, res: Response): void {
     res.status(409).json({ error: "invalid_state", message: err.message });
     return;
   }
-  console.error("[escalation route]", err);
-  res.status(500).json({
-    error: "internal_error",
-    message: err instanceof Error ? err.message : String(err),
-  });
+  handleUnmappedError(err, res);
 }
 
 export function createEscalationRouter(deps: EscalationRoutesDeps): Router {

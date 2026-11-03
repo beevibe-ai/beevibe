@@ -95,7 +95,9 @@ const FIND_REPO_SCHEMA = {
     },
     limit: {
       type: "number",
-      description: `Max candidates to return (default ${FIND_REPO_DEFAULT_LIMIT}, capped at ${FIND_REPO_MAX_LIMIT}).`,
+      description:
+        `Max candidates to return (default ${FIND_REPO_DEFAULT_LIMIT}, ` +
+        `capped at ${FIND_REPO_MAX_LIMIT}).`,
     },
   },
   required: ["goal"],
