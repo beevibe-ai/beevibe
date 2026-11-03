@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,173 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * The placeholder output a parser emits when the CLI exited non-zero with
+ * no final message of its own to surface. Lives here rather than in one
+ * adapter because all three parsers fall back to it — codex and opencode
+ * used to import it out of `claude-code/stream-json.js`, which made a
+ * cross-runtime contract look like a claude-code detail.
+ *
+ * Still re-exported from `claude-code/stream-json.ts` so the public
+ * `@beevibe/core/adapters/claude-code` surface is unchanged.
+ */
+export function bareCliExitMessage(exitCode: number | null): string {
+  return `CLI exited with code ${exitCode}`;
+}
+
+/**
+ * Matches strings produced by {@link bareCliExitMessage} — the only
+ * "useless" stand-in this layer emits on failure. Consumers that want to
+ * swap a bare exit for a friendlier diagnostic gate on this predicate so
+ * the coupling stays in one place.
+ */
+export function isBareCliExitMessage(s: string): boolean {
+  return /^CLI exited with code (-?\d+|null)$/.test(s);
+}
+
+/**
+ * Pick the `output` field of a parsed `RuntimeResult`.
+ *
+ * All three parsers resolve the same three-way preference, and the codex
+ * and opencode copies were byte-identical down to the comment explaining
+ * the `||`:
+ *
+ * - failed: the CLI's own failure message, else whatever assistant text
+ *   we did see, else {@link bareCliExitMessage} so the chat route's
+ *   failure-mapping can swap it for stderr / a daemon pointer.
+ * - succeeded: `preferredOutput` (codex's file-backed last message — the
+ *   canonical final text when present), else the assistant text, else the
+ *   "nothing went wrong, nothing was said" stand-in.
+ *
+ * `||` throughout, not `??`: an empty string must fall through to the next
+ * branch rather than short-circuit as a present-but-blank value. That is
+ * the bug this helper exists to stop re-introducing per adapter.
+ */
+export function selectCliOutput(opts: {
+  failed: boolean;
+  /** The CLI's own error text, when it reported one. */
+  failureMessage?: string;
+  /** Assistant text recovered from the event stream. */
+  assistantText: string;
+  /** Out-of-band final text that wins over `assistantText` on success. */
+  preferredOutput?: string;
+  exitCode: number | null;
+}): string {
+  if (opts.failed) {
+    return opts.failureMessage || opts.assistantText || bareCliExitMessage(opts.exitCode);
+  }
+  return opts.preferredOutput || opts.assistantText || "Session completed.";
+}
+
+/** Max characters of a tool payload kept in a transcript / step label. */
+export const TRANSCRIPT_DETAIL_MAX = 200;
+
+/**
+ * Flatten a payload to one transcript-safe line: capped at
+ * {@link TRANSCRIPT_DETAIL_MAX} characters with newlines folded to
+ * spaces, so one tool result can't blow out the transcript or break the
+ * one-entry-per-line format the summarizers read.
+ */
+export function truncateInline(value: string): string {
+  return value.slice(0, TRANSCRIPT_DETAIL_MAX).replace(/\n/g, " ");
+}
+
+/**
+ * The transcript's line format, in one place.
+ *
+ * `session.transcript` is consumed by downstream LLMs (session search,
+ * handoff summaries), which key off these `[tag]` prefixes. Each adapter
+ * used to build the strings inline, so a drifting space or a renamed tag
+ * in one runtime would silently produce transcripts the summarizers read
+ * differently depending on which CLI happened to run.
+ */
+export const transcriptLine = {
+  assistant: (text: string): string => `[assistant] ${text}\n`,
+  toolCall: (tool: string, detail?: string): string =>
+    detail ? `[tool_call] ${tool} ${detail}\n` : `[tool_call] ${tool}\n`,
+  /** `tool` undefined renders the anonymous `[tool_result]` form. */
+  toolResult: (tool: string | undefined, detail?: string): string => {
+    if (!tool) return "[tool_result]\n";
+    return detail ? `[tool_result from ${tool}] ${detail}\n` : `[tool_result from ${tool}]\n`;
+  },
+  error: (message: string): string => `[error] ${message}\n`,
+} as const;
+
+/** What {@link runStreamingCli} hands back: the parsed events plus the process outcome. */
+export interface StreamingCliRun<E> {
+  /** Every line that `parseLine` accepted, in arrival order. */
+  events: E[];
+  result: CliProcessResult;
+}
+
+export interface StreamingCliOptions<E> {
+  /** Log tag for the truncation warning, e.g. `"CodexRuntime"`. */
+  runtimeTag: string;
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /** Piped to the child's stdin. Only claude-code feeds the intent this way. */
+  stdin?: string;
+  /** Supplies `abort_signal`, `onStep` and `onSpawn`. */
+  context: RuntimeContext;
+  /** Provider-specific NDJSON line parser; `null` skips the line. */
+  parseLine: (line: string) => E | null;
+  /** Provider-specific per-event step extraction, for `context.onStep`. */
+  extractSteps: (event: E) => RuntimeStep[];
+}
+
+/**
+ * Spawn a CLI, stream its NDJSON stdout, and return the parsed events.
+ *
+ * This is the whole middle of every runtime's `execute()`: accumulate
+ * events while emitting `onStep` for each one, spawn through
+ * {@link runCliProcess} forwarding pid/pgid to `onSpawn`, flush the
+ * trailing partial line, and warn if stdout hit the capture cap. All
+ * three adapters had their own copy, and the steps have to stay in
+ * lockstep — forgetting `flush()` drops the last event of a stream with
+ * no trailing newline, and forgetting `warnIfTruncated` loses the only
+ * signal that a parsed result is incomplete.
+ *
+ * What stays per-adapter is what genuinely differs: argv and env
+ * construction before the call, and turning the events into a
+ * `RuntimeResult` after it (including the `result.aborted` check, since
+ * codex has a temp file to clean up on that path).
+ */
+export async function runStreamingCli<E>(
+  opts: StreamingCliOptions<E>,
+): Promise<StreamingCliRun<E>> {
+  const { context } = opts;
+  // Parse incrementally during streaming rather than re-reading stdout
+  // after close; the line reader handles chunk boundaries (one JSON
+  // message can arrive split across several chunks).
+  const events: E[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of opts.extractSteps(event)) context.onStep(step);
+  });
+
+  const result = await runCliProcess({
+    command: opts.command,
+    args: opts.args,
+    cwd: opts.cwd,
+    env: opts.env,
+    ...(opts.stdin === undefined ? {} : { stdin: opts.stdin }),
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Flush any final partial line (stream without a trailing \n).
+  stdout.flush();
+  warnIfTruncated(opts.runtimeTag, result);
+
+  return { events, result };
 }
