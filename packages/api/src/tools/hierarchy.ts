@@ -53,6 +53,12 @@ import {
   type ResumeReason,
 } from "@beevibe/core/services/agent-session";
 import { toolErrorFromThrown } from "./errors.js";
+import {
+  openQuestionsArgSchema,
+  proposalsArgSchema,
+  readEscalationContribution,
+} from "./escalation-input.js";
+import { requireStringArgs } from "./input.js";
 import type { AgentTool } from "./types.js";
 
 // ── Agent-callable status subsets ─────────────────────────────────────────
@@ -303,9 +309,9 @@ function getAgentProfileTool(
     },
     handler: async (input) => {
       try {
-        const id = String(input.agent_id ?? "");
-        if (!id) return { content: { error: "agent_id required" }, isError: true };
-        const agent = await services.agentRepo.findById(id);
+        const args = requireStringArgs(input, ["agent_id"]);
+        if (args.error) return args.error;
+        const agent = await services.agentRepo.findById(args.values.agent_id);
         return { content: { agent: projectAgent(agent) } };
       } catch (err) {
         return toolErrorFromThrown(err);
@@ -333,9 +339,9 @@ function getTaskTool(
     },
     handler: async (input) => {
       try {
-        const id = String(input.task_id ?? "");
-        if (!id) return { content: { error: "task_id required" }, isError: true };
-        const task = await services.taskRepo.findById(id);
+        const args = requireStringArgs(input, ["task_id"]);
+        if (args.error) return args.error;
+        const task = await services.taskRepo.findById(args.values.task_id);
         return { content: { task: projectTask(task) } };
       } catch (err) {
         return toolErrorFromThrown(err);
@@ -383,15 +389,10 @@ function createWorkProductTool(
     },
     handler: async (input) => {
       try {
-        const taskId = String(input.task_id ?? "");
+        const args = requireStringArgs(input, ["task_id", "title"]);
+        if (args.error) return args.error;
+        const { task_id: taskId, title } = args.values;
         const type = input.type;
-        const title = String(input.title ?? "");
-        if (!taskId || !title) {
-          return {
-            content: { error: "task_id and title required" },
-            isError: true,
-          };
-        }
         if (!WORK_PRODUCT_TYPES.includes(type as (typeof WORK_PRODUCT_TYPES)[number])) {
           return {
             content: { error: `type must be one of: ${WORK_PRODUCT_TYPES.join(", ")}` },
@@ -447,9 +448,9 @@ function listWorkProductsTool(
     },
     handler: async (input) => {
       try {
-        const taskId = String(input.task_id ?? "");
-        if (!taskId) return { content: { error: "task_id required" }, isError: true };
-        const wps = await services.taskService.listWorkProducts(taskId);
+        const args = requireStringArgs(input, ["task_id"]);
+        if (args.error) return args.error;
+        const wps = await services.taskService.listWorkProducts(args.values.task_id);
         return {
           content: {
             work_products: wps.map((w) => ({
@@ -491,8 +492,9 @@ function getWorkProductTool(
     },
     handler: async (input) => {
       try {
-        const id = String(input.id ?? "");
-        if (!id) return { content: { error: "id required" }, isError: true };
+        const args = requireStringArgs(input, ["id"]);
+        if (args.error) return args.error;
+        const { id } = args.values;
         const wp = await services.taskService.getWorkProduct(id);
         if (!wp) {
           return { content: { error: `work_product ${id} not found` }, isError: true };
@@ -550,9 +552,9 @@ function updateWorkProductTool(
     },
     handler: async (input) => {
       try {
-        const id = String(input.id ?? "");
-        if (!id) return { content: { error: "id required" }, isError: true };
-        const updated = await services.taskService.updateWorkProduct(id, {
+        const args = requireStringArgs(input, ["id"]);
+        if (args.error) return args.error;
+        const updated = await services.taskService.updateWorkProduct(args.values.id, {
           summary: typeof input.summary === "string" ? input.summary : undefined,
           body: typeof input.body === "string" ? input.body : undefined,
           url: typeof input.url === "string" ? input.url : undefined,
@@ -673,14 +675,9 @@ function createTaskTool(
     },
     handler: async (input) => {
       try {
-        const intent = String(input.intent ?? "");
-        const targetId = String(input.agent_id ?? "");
-        if (!intent || !targetId) {
-          return {
-            content: { error: "intent and agent_id required" },
-            isError: true,
-          };
-        }
+        const args = requireStringArgs(input, ["intent", "agent_id"]);
+        if (args.error) return args.error;
+        const { intent, agent_id: targetId } = args.values;
 
         // Authz: assignee must be one of caller's subordinates.
         const subs = await services.agentRepo.findSubordinates(ctx.agentId);
@@ -780,8 +777,9 @@ function checkWorkStatusTool(
     },
     handler: async (input) => {
       try {
-        const targetId = String(input.agent_id ?? "");
-        if (!targetId) return { content: { error: "agent_id required" }, isError: true };
+        const args = requireStringArgs(input, ["agent_id"]);
+        if (args.error) return args.error;
+        const targetId = args.values.agent_id;
 
         // Authz: self or direct subordinate.
         if (targetId !== ctx.agentId) {
@@ -852,11 +850,9 @@ function reviseTaskTool(
     },
     handler: async (input) => {
       try {
-        const taskId = String(input.task_id ?? "");
-        const feedback = String(input.feedback ?? "");
-        if (!taskId || !feedback) {
-          return { content: { error: "task_id and feedback required" }, isError: true };
-        }
+        const args = requireStringArgs(input, ["task_id", "feedback"]);
+        if (args.error) return args.error;
+        const { task_id: taskId, feedback } = args.values;
 
         const task = await services.taskRepo.findById(taskId);
         if (!task) {
@@ -951,39 +947,21 @@ function addToEscalationTool(
           type: "string",
           description: "The escalation id (from the 'escalated' sentinel).",
         },
-        proposals: {
-          type: "array",
-          items: {
-            type: "object",
-            properties: {
-              title: { type: "string" },
-              description: { type: "string" },
-              tradeoffs: { type: "string" },
-            },
-            required: ["title", "description"],
-          },
-          description: "Your proposals for the human (different from initiator's).",
-        },
-        open_questions: {
-          type: "array",
-          items: { type: "string" },
-          description: "Questions in your domain that humans should know about.",
-        },
+        proposals: proposalsArgSchema(
+          "Your proposals for the human (different from initiator's).",
+        ),
+        open_questions: openQuestionsArgSchema(
+          "Questions in your domain that humans should know about.",
+        ),
       },
       required: ["escalation_id"],
     },
     handler: async (input) => {
       try {
-        const escalationId = String(input.escalation_id ?? "");
-        if (!escalationId) {
-          return { content: { error: "escalation_id required" }, isError: true };
-        }
-        const proposals = Array.isArray(input.proposals)
-          ? (input.proposals as Array<{ title: string; description: string; tradeoffs?: string }>)
-          : undefined;
-        const openQuestions = Array.isArray(input.open_questions)
-          ? (input.open_questions as string[]).filter((q) => typeof q === "string")
-          : undefined;
+        const args = requireStringArgs(input, ["escalation_id"]);
+        if (args.error) return args.error;
+        const escalationId = args.values.escalation_id;
+        const { proposals, openQuestions } = readEscalationContribution(input);
 
         const updated = await services.escalationService.addContribution({
           escalationId,

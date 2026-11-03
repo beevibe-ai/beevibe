@@ -20,7 +20,13 @@ const { findRepoHandler, createFindRepoTool } = vi.hoisted(() => {
   };
 });
 
-vi.mock("../tools/find-repo.js", () => ({ createFindRepoTool }));
+// Spread the real module rather than replacing it wholesale: the router
+// also reads FIND_REPO_DEFAULT_LIMIT / FIND_REPO_MAX_LIMIT from here, and
+// the limit assertions below are only meaningful against the real bounds.
+vi.mock("../tools/find-repo.js", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../tools/find-repo.js")>()),
+  createFindRepoTool,
+}));
 
 const PERSON = "per_alice";
 const humanCaller = { source: "human", personId: PERSON };
