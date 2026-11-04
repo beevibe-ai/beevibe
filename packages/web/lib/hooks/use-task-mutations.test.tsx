@@ -19,6 +19,7 @@ import {
   useRejectTask,
   useReviseTask,
   useCancelTask,
+  useTaskReview,
 } from "./use-task-mutations";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "./keys";
@@ -168,5 +169,133 @@ describe("useCancelTask", () => {
     });
 
     await waitFor(() => expect(cancelMock).toHaveBeenCalledWith("t_1", { reason: "scope" }));
+  });
+});
+
+describe("useTaskReview", () => {
+  it("starts closed, with an empty box and nothing submittable", () => {
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useTaskReview("t_1"), { wrapper: Wrapper });
+
+    expect(result.current.reviseOpen).toBe(false);
+    expect(result.current.feedback).toBe("");
+    expect(result.current.canSubmitRevise).toBe(false);
+    expect(result.current.anyPending).toBe(false);
+    expect(result.current.lastError).toBeNull();
+    expect(result.current.lastErrorAction).toBeNull();
+  });
+
+  it("toggleRevise opens and closes without clearing the draft", () => {
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useTaskReview("t_1"), { wrapper: Wrapper });
+
+    act(() => result.current.setFeedback("half-written"));
+    act(() => result.current.toggleRevise());
+    expect(result.current.reviseOpen).toBe(true);
+
+    act(() => result.current.toggleRevise());
+    expect(result.current.reviseOpen).toBe(false);
+    // Collapsing the drawer is not a discard — the draft survives so a
+    // mis-click doesn't lose typed feedback.
+    expect(result.current.feedback).toBe("half-written");
+  });
+
+  it("closeRevise discards the draft", () => {
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useTaskReview("t_1"), { wrapper: Wrapper });
+
+    act(() => result.current.setFeedback("scrap this"));
+    act(() => result.current.toggleRevise());
+    act(() => result.current.closeRevise());
+
+    expect(result.current.reviseOpen).toBe(false);
+    expect(result.current.feedback).toBe("");
+  });
+
+  it("treats whitespace-only feedback as not submittable", () => {
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useTaskReview("t_1"), { wrapper: Wrapper });
+
+    act(() => result.current.setFeedback("   \n  "));
+    expect(result.current.canSubmitRevise).toBe(false);
+
+    act(() => result.current.setFeedback("  real feedback  "));
+    expect(result.current.canSubmitRevise).toBe(true);
+  });
+
+  it("submitRevise sends trimmed feedback, then clears and closes", async () => {
+    reviseMock.mockResolvedValue({} as never);
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useTaskReview("t_1"), { wrapper: Wrapper });
+
+    act(() => result.current.toggleRevise());
+    act(() => result.current.setFeedback("  needs more tests \n"));
+
+    await act(async () => {
+      result.current.submitRevise();
+    });
+
+    await waitFor(() =>
+      expect(reviseMock).toHaveBeenCalledWith("t_1", { feedback: "needs more tests" }),
+    );
+    await waitFor(() => expect(result.current.reviseOpen).toBe(false));
+    expect(result.current.feedback).toBe("");
+  });
+
+  it("submitRevise is a no-op on whitespace-only feedback", async () => {
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useTaskReview("t_1"), { wrapper: Wrapper });
+
+    act(() => result.current.toggleRevise());
+    act(() => result.current.setFeedback("   "));
+
+    await act(async () => {
+      result.current.submitRevise();
+    });
+
+    expect(reviseMock).not.toHaveBeenCalled();
+    // Still open, so the user can fix the input rather than wonder what
+    // happened.
+    expect(result.current.reviseOpen).toBe(true);
+  });
+
+  it("rolls a failing mutation up into lastError and names the action", async () => {
+    rejectMock.mockRejectedValue(new Error("task is not in review"));
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useTaskReview("t_1"), { wrapper: Wrapper });
+
+    await act(async () => {
+      result.current.reject.mutate({});
+    });
+
+    await waitFor(() => expect(result.current.lastError?.message).toBe("task is not in review"));
+    expect(result.current.lastErrorAction).toBe("reject");
+    expect(result.current.anyPending).toBe(false);
+  });
+
+  it("keeps the three mutations gating each other via anyPending", async () => {
+    let release: (() => void) | undefined;
+    approveMock.mockImplementation(
+      () => new Promise<never>((resolve) => {
+        release = () => resolve(undefined as never);
+      }),
+    );
+    const { Wrapper } = makeWrapper();
+    const { result } = renderHook(() => useTaskReview("t_1"), { wrapper: Wrapper });
+
+    act(() => {
+      result.current.approve.mutate({});
+    });
+
+    await waitFor(() => expect(result.current.anyPending).toBe(true));
+    // An in-flight approve must block a revise submit too — that is the
+    // whole reason the roll-up exists.
+    act(() => result.current.setFeedback("something"));
+    expect(result.current.canSubmitRevise).toBe(false);
+
+    await act(async () => {
+      release?.();
+    });
+    await waitFor(() => expect(result.current.anyPending).toBe(false));
   });
 });

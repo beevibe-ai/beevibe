@@ -14,11 +14,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { useTask } from "@/lib/hooks/use-tasks";
-import {
-  useApproveTask,
-  useRejectTask,
-  useReviseTask,
-} from "@/lib/hooks/use-task-mutations";
+import { useTaskReview } from "@/lib/hooks/use-task-mutations";
 import { TaskLifecycleActions } from "@/components/tasks/task-lifecycle-actions";
 import { isTerminalTaskStatus } from "@/lib/task-status";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
@@ -74,48 +70,29 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
   );
 }
 
-type ReviewMutation = "approve" | "reject" | "revise";
-
-function reviewStatus(
-  hooks: Record<ReviewMutation, { isPending: boolean; isError: boolean; error: Error | null }>,
-) {
-  const actions: ReviewMutation[] = ["approve", "reject", "revise"];
-  return {
-    anyPending: actions.some((a) => hooks[a].isPending),
-    lastError: actions.map((a) => hooks[a].error).find((e) => e) ?? null,
-    lastErrorAction: actions.find((a) => hooks[a].isError) ?? null,
-  };
-}
-
 function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   const isInReview = task.status === "review";
   const isTerminal = isTerminalTaskStatus(task.status);
   const activeSession = task.latest_session?.status === "running" ? task.latest_session : null;
-  const approve = useApproveTask(task.id);
-  const reject = useRejectTask(task.id);
-  const revise = useReviseTask(task.id);
-  const [reviseOpen, setReviseOpen] = useState(false);
-  const [reviseFeedback, setReviseFeedback] = useState("");
-
   // Review actions in flight gate each other AND the lifecycle Cancel
   // button (passed via `extraDisabled` to TaskLifecycleActions) — if
   // cancel raced with an in-flight approve/reject, the task could end
   // up in a weird mid-transition state.
-  const { anyPending: reviewPending, lastError, lastErrorAction } = reviewStatus({ approve, reject, revise });
-
-  const submitRevise = () => {
-    const feedback = reviseFeedback.trim();
-    if (!feedback) return;
-    revise.mutate(
-      { feedback },
-      {
-        onSuccess: () => {
-          setReviseFeedback("");
-          setReviseOpen(false);
-        },
-      },
-    );
-  };
+  const {
+    approve,
+    reject,
+    revise,
+    anyPending: reviewPending,
+    lastError,
+    lastErrorAction,
+    reviseOpen,
+    toggleRevise,
+    closeRevise,
+    feedback: reviseFeedback,
+    setFeedback: setReviseFeedback,
+    canSubmitRevise,
+    submitRevise,
+  } = useTaskReview(task.id);
 
   return (
     <>
@@ -143,7 +120,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
               <button
                 type="button"
                 disabled={reviewPending}
-                onClick={() => setReviseOpen((v) => !v)}
+                onClick={toggleRevise}
                 className="h-9 px-3 rounded text-sm font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Request revision
@@ -172,17 +149,14 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
                 <div className="flex justify-end gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setReviseOpen(false);
-                      setReviseFeedback("");
-                    }}
+                    onClick={closeRevise}
                     className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer"
                   >
                     Cancel
                   </button>
                   <button
                     type="button"
-                    disabled={reviewPending || reviseFeedback.trim().length === 0}
+                    disabled={!canSubmitRevise}
                     onClick={submitRevise}
                     className="h-8 px-3 rounded text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                   >
