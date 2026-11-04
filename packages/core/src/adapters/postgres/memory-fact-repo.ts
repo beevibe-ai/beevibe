@@ -7,6 +7,7 @@ import type {
 } from "../../ports/memory-fact-repo.js";
 import type { Pool } from "./client.js";
 import type { MemoryFactRow } from "./row-types.js";
+import { queryExpectOne, queryMany, queryOne } from "./pg-helpers.js";
 
 const FACT_COLUMNS =
   "id, agent_id, scope, fact_type, content, embedding::text AS embedding, source_session_ids, created_at";
@@ -20,24 +21,27 @@ export class PostgresMemoryFactRepository implements MemoryFactRepository {
   constructor(private pool: Pool) {}
 
   async findById(id: string): Promise<MemoryFact | undefined> {
-    const { rows } = await this.pool.query<MemoryFactRow>(
+    return queryOne(
+      this.pool,
       `SELECT ${FACT_COLUMNS} FROM memory_fact WHERE id = $1 LIMIT 1`,
       [id],
+      rowToFact,
     );
-    return rows[0] ? rowToFact(rows[0]) : undefined;
   }
 
   async findByIds(ids: string[]): Promise<MemoryFact[]> {
     if (ids.length === 0) return [];
-    const { rows } = await this.pool.query<MemoryFactRow>(
+    return queryMany(
+      this.pool,
       `SELECT ${FACT_COLUMNS} FROM memory_fact WHERE id = ANY($1::text[])`,
       [ids],
+      rowToFact,
     );
-    return rows.map(rowToFact);
   }
 
   async create(input: NewMemoryFact): Promise<MemoryFact> {
-    const { rows } = await this.pool.query<MemoryFactRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO memory_fact (
          id, agent_id, scope, fact_type, content, embedding, source_session_ids
        ) VALUES ($1, $2, $3, $4, $5, $6::vector, $7)
@@ -51,8 +55,8 @@ export class PostgresMemoryFactRepository implements MemoryFactRepository {
         vectorToPgLiteral(input.embedding),
         input.source_session_ids,
       ],
+      rowToFact,
     );
-    return rowToFact(rows[0]!);
   }
 
   async update(id: string, patch: MemoryFactPatch): Promise<MemoryFact> {
@@ -112,7 +116,8 @@ export class PostgresMemoryFactRepository implements MemoryFactRepository {
     const minSim = params.min_similarity ?? 0.0;
     const limit = params.limit ?? 10;
     const factTypes = params.fact_types ?? null;
-    const { rows } = await this.pool.query<MemoryFactRow>(
+    return queryMany(
+      this.pool,
       `SELECT ${FACT_COLUMNS},
               1 - (embedding <=> $1::vector) AS similarity
          FROM memory_fact
@@ -123,8 +128,8 @@ export class PostgresMemoryFactRepository implements MemoryFactRepository {
         ORDER BY embedding <=> $1::vector ASC
         LIMIT $6`,
       [vecLit, params.agent_id, scopes, factTypes, minSim, limit],
+      rowToFact,
     );
-    return rows.map(rowToFact);
   }
 
   async listByAgentScope(
@@ -132,26 +137,28 @@ export class PostgresMemoryFactRepository implements MemoryFactRepository {
     scope: MemoryScope,
     limit = 100,
   ): Promise<MemoryFact[]> {
-    const { rows } = await this.pool.query<MemoryFactRow>(
+    return queryMany(
+      this.pool,
       `SELECT ${FACT_COLUMNS}
          FROM memory_fact
         WHERE agent_id = $1 AND scope = $2
         ORDER BY created_at DESC
         LIMIT $3`,
       [agentId, scope, limit],
+      rowToFact,
     );
-    return rows.map(rowToFact);
   }
 
   async listBySessionId(sessionId: string): Promise<MemoryFact[]> {
-    const { rows } = await this.pool.query<MemoryFactRow>(
+    return queryMany(
+      this.pool,
       `SELECT ${FACT_COLUMNS}
          FROM memory_fact
         WHERE $1 = ANY(source_session_ids)
         ORDER BY created_at DESC`,
       [sessionId],
+      rowToFact,
     );
-    return rows.map(rowToFact);
   }
 }
 

@@ -8,32 +8,36 @@ import type {
 } from "../../ports/core-memory-repo.js";
 import type { Pool } from "./client.js";
 import type { CoreMemoryBlockRow } from "./row-types.js";
+import { queryExpectOne, queryMany, queryOne } from "./pg-helpers.js";
 
 export class PostgresCoreMemoryRepository implements CoreMemoryBlockRepository {
   constructor(private pool: Pool) {}
 
   async findByAgent(agentId: string): Promise<CoreMemoryBlock[]> {
-    const { rows } = await this.pool.query<CoreMemoryBlockRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM core_memory_block
         WHERE agent_id = $1
         ORDER BY block_name ASC`,
       [agentId],
+      rowToBlock,
     );
-    return rows.map(rowToBlock);
   }
 
   async findOne(agentId: string, blockName: string): Promise<CoreMemoryBlock | undefined> {
-    const { rows } = await this.pool.query<CoreMemoryBlockRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM core_memory_block
         WHERE agent_id = $1 AND block_name = $2
         LIMIT 1`,
       [agentId, blockName],
+      rowToBlock,
     );
-    return rows[0] ? rowToBlock(rows[0]) : undefined;
   }
 
   async upsert(input: NewCoreMemoryBlock): Promise<CoreMemoryBlock> {
-    const { rows } = await this.pool.query<CoreMemoryBlockRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO core_memory_block (
          id, agent_id, block_name, content, char_limit, is_system, description
        ) VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -53,8 +57,8 @@ export class PostgresCoreMemoryRepository implements CoreMemoryBlockRepository {
         input.is_system,
         input.description ?? "",
       ],
+      rowToBlock,
     );
-    return rowToBlock(rows[0]!);
   }
 
   async updateContent(
@@ -110,7 +114,8 @@ export class PostgresCoreMemoryRepository implements CoreMemoryBlockRepository {
     // ON CONFLICT updates `description` so re-running initDefaults on an
     // existing agent (e.g. after a template description was tightened in
     // code) refreshes the agent-facing guidance. Content is preserved.
-    const { rows } = await this.pool.query<CoreMemoryBlockRow>(
+    return queryMany(
+      this.pool,
       `INSERT INTO core_memory_block (
          id, agent_id, block_name, content, char_limit, is_system, description
        ) VALUES ${tuples.join(", ")}
@@ -119,8 +124,8 @@ export class PostgresCoreMemoryRepository implements CoreMemoryBlockRepository {
          updated_at  = NOW()
        RETURNING *`,
       values,
+      rowToBlock,
     );
-    return rows.map(rowToBlock);
   }
 }
 

@@ -4,7 +4,7 @@ import type {
   DaemonRepository,
 } from "../../ports/daemon-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById, updateRowById } from "./pg-helpers.js";
+import { findRowById, queryMany, queryOne, updateRowById } from "./pg-helpers.js";
 import type { DaemonRow } from "./row-types.js";
 
 function rowToDaemon(row: DaemonRow): Daemon {
@@ -31,33 +31,36 @@ export class PostgresDaemonRepository implements DaemonRepository {
     ownerPersonId: string,
     externalId: string,
   ): Promise<Daemon | undefined> {
-    const { rows } = await this.pool.query<DaemonRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM daemon
         WHERE owner_person_id = $1 AND external_id = $2
         LIMIT 1`,
       [ownerPersonId, externalId],
+      rowToDaemon,
     );
-    return rows[0] ? rowToDaemon(rows[0]) : undefined;
   }
 
   async findByTokenHash(tokenHash: string): Promise<Daemon | undefined> {
-    const { rows } = await this.pool.query<DaemonRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM daemon
         WHERE token_hash = $1 AND revoked_at IS NULL
         LIMIT 1`,
       [tokenHash],
+      rowToDaemon,
     );
-    return rows[0] ? rowToDaemon(rows[0]) : undefined;
   }
 
   async listActiveByOwner(ownerPersonId: string): Promise<Daemon[]> {
-    const { rows } = await this.pool.query<DaemonRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM daemon
         WHERE owner_person_id = $1 AND revoked_at IS NULL
         ORDER BY created_at ASC`,
       [ownerPersonId],
+      rowToDaemon,
     );
-    return rows.map(rowToDaemon);
   }
 
   async create(input: NewDaemon): Promise<Daemon> {

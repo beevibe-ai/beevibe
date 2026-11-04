@@ -1,6 +1,13 @@
 import { describe, expect, it } from "vitest";
 import type { Pool } from "./client.js";
-import { buildPatchClause, findRowById, updateRowById } from "./pg-helpers.js";
+import {
+  buildPatchClause,
+  findRowById,
+  queryExpectOne,
+  queryMany,
+  queryOne,
+  updateRowById,
+} from "./pg-helpers.js";
 
 interface WidgetRow {
   id: string;
@@ -178,5 +185,87 @@ describe("buildPatchClause", () => {
       COLUMNS,
     );
     expect(clause.fields).toEqual(["name = $1"]);
+  });
+});
+
+describe("queryOne", () => {
+  it("passes sql and params through and maps the first row", async () => {
+    const { pool, calls } = fakePool([[widgetRow]]);
+    const got = await queryOne(
+      pool,
+      "SELECT * FROM widget WHERE name = $1 LIMIT 1",
+      ["Sprocket"],
+      rowToWidget,
+    );
+    expect(got).toEqual({ id: "w_1", name: "Sprocket", size: 3 });
+    expect(calls[0]!.sql).toBe("SELECT * FROM widget WHERE name = $1 LIMIT 1");
+    expect(calls[0]!.params).toEqual(["Sprocket"]);
+  });
+
+  it("returns undefined — not a mapped empty row — when nothing matched", async () => {
+    const { pool } = fakePool([[]]);
+    const calledWith: WidgetRow[] = [];
+    const got = await queryOne(pool, "SELECT 1", [], (row: WidgetRow) => {
+      calledWith.push(row);
+      return rowToWidget(row);
+    });
+    expect(got).toBeUndefined();
+    // The mapper must not run at all on an empty result: several mappers
+    // dereference row fields unconditionally.
+    expect(calledWith).toEqual([]);
+  });
+
+  it("ignores rows past the first", async () => {
+    const second: WidgetRow = { id: "w_2", name: "Cog", size: null };
+    const { pool } = fakePool([[widgetRow, second]]);
+    const got = await queryOne(pool, "SELECT 1", [], rowToWidget);
+    expect(got).toEqual({ id: "w_1", name: "Sprocket", size: 3 });
+  });
+});
+
+describe("queryMany", () => {
+  it("maps every row in order", async () => {
+    const second: WidgetRow = { id: "w_2", name: "Cog", size: null };
+    const { pool, calls } = fakePool([[widgetRow, second]]);
+    const got = await queryMany(pool, "SELECT * FROM widget", [], rowToWidget);
+    expect(got).toEqual([
+      { id: "w_1", name: "Sprocket", size: 3 },
+      { id: "w_2", name: "Cog", size: undefined },
+    ]);
+    expect(calls[0]!.params).toEqual([]);
+  });
+
+  it("returns an empty array for an empty result", async () => {
+    const { pool } = fakePool([[]]);
+    expect(await queryMany(pool, "SELECT 1", [], rowToWidget)).toEqual([]);
+  });
+});
+
+describe("queryExpectOne", () => {
+  it("maps the single row", async () => {
+    const { pool } = fakePool([[widgetRow]]);
+    const got = await queryExpectOne(
+      pool,
+      "INSERT INTO widget (id) VALUES ($1) RETURNING *",
+      ["w_1"],
+      rowToWidget,
+    );
+    expect(got).toEqual({ id: "w_1", name: "Sprocket", size: 3 });
+  });
+
+  it("throws with a single-line SQL fragment when the result is empty", async () => {
+    const { pool } = fakePool([[]]);
+    await expect(
+      queryExpectOne(
+        pool,
+        `INSERT INTO widget (id, name)
+           VALUES ($1, $2)
+           RETURNING *`,
+        ["w_1", "Sprocket"],
+        rowToWidget,
+      ),
+    ).rejects.toThrow(
+      "Expected exactly one row from: INSERT INTO widget (id, name) VALUES ($1, $2) RETURNING *",
+    );
   });
 });

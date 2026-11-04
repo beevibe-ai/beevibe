@@ -11,6 +11,7 @@ import type {
   NewRoomMessage,
   RoomRepository,
 } from "../../ports/room-repo.js";
+import { queryExpectOne, queryMany, queryOne } from "./pg-helpers.js";
 
 interface RoomRow {
   id: string;
@@ -65,33 +66,36 @@ export class PostgresRoomRepository implements RoomRepository {
   constructor(private readonly pool: Pool) {}
 
   async create(input: NewRoom): Promise<Room> {
-    const { rows } = await this.pool.query<RoomRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO room (id, name, owner_person_id)
        VALUES ($1, $2, $3)
        RETURNING id, name, owner_person_id, created_at, updated_at`,
       [input.id, input.name, input.owner_person_id],
+      rowToRoom,
     );
-    return rowToRoom(rows[0]!);
   }
 
   async findById(id: string): Promise<Room | undefined> {
-    const { rows } = await this.pool.query<RoomRow>(
+    return queryOne(
+      this.pool,
       `SELECT id, name, owner_person_id, created_at, updated_at FROM room WHERE id = $1`,
       [id],
+      rowToRoom,
     );
-    return rows[0] ? rowToRoom(rows[0]) : undefined;
   }
 
   async listForPerson(personId: string): Promise<Room[]> {
-    const { rows } = await this.pool.query<RoomRow>(
+    return queryMany(
+      this.pool,
       `SELECT r.id, r.name, r.owner_person_id, r.created_at, r.updated_at
        FROM room r
        JOIN room_member rm
          ON rm.room_id = r.id AND rm.kind = 'person' AND rm.person_id = $1
        ORDER BY r.updated_at DESC`,
       [personId],
+      rowToRoom,
     );
-    return rows.map(rowToRoom);
   }
 
   async addPersonMember(roomId: string, personId: string): Promise<void> {
@@ -143,7 +147,8 @@ export class PostgresRoomRepository implements RoomRepository {
   }
 
   async appendMessage(input: NewRoomMessage): Promise<RoomMessage> {
-    const { rows } = await this.pool.query<MessageRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO room_message
          (id, room_id, kind, sender_person_id, sender_agent_id, content, session_id)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -158,12 +163,13 @@ export class PostgresRoomRepository implements RoomRepository {
         input.content,
         input.session_id ?? null,
       ],
+      rowToMessage,
     );
-    return rowToMessage(rows[0]!);
   }
 
   async listMessages(roomId: string, limit = 200): Promise<RoomMessage[]> {
-    const { rows } = await this.pool.query<MessageRow>(
+    return queryMany(
+      this.pool,
       `SELECT id, room_id, kind, sender_person_id, sender_agent_id, content,
               session_id, created_at
        FROM room_message
@@ -171,7 +177,7 @@ export class PostgresRoomRepository implements RoomRepository {
        ORDER BY created_at ASC, id ASC
        LIMIT $2`,
       [roomId, limit],
+      rowToMessage,
     );
-    return rows.map(rowToMessage);
   }
 }

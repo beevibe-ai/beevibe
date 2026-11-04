@@ -4,7 +4,7 @@ import type {
   NewMemoryPromotionEvent,
 } from "../../ports/promotion-event-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById } from "./pg-helpers.js";
+import { findRowById, queryMany } from "./pg-helpers.js";
 
 interface PromotionEventRow {
   id: string;
@@ -63,7 +63,8 @@ export class PostgresMemoryPromotionEventRepository
   }
 
   async listByOwner(ownerId: string, limit: number): Promise<MemoryPromotionEvent[]> {
-    const { rows } = await this.pool.query<PromotionEventRow>(
+    return queryMany(
+      this.pool,
       `SELECT mpe.*
        FROM memory_promotion_event mpe
        JOIN agent a ON a.id = mpe.origin_agent_id
@@ -71,8 +72,8 @@ export class PostgresMemoryPromotionEventRepository
        ORDER BY mpe.created_at DESC
        LIMIT $2`,
       [ownerId, limit],
+      rowToEvent,
     );
-    return rows.map(rowToEvent);
   }
 
   async findById(id: string): Promise<MemoryPromotionEvent | undefined> {

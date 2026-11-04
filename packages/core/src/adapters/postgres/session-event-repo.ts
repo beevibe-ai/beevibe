@@ -4,6 +4,7 @@ import type {
   SessionEventRepository,
 } from "../../ports/session-event-repo.js";
 import type { Pool } from "./client.js";
+import { queryMany } from "./pg-helpers.js";
 
 interface EventRow {
   id: string;
@@ -51,13 +52,14 @@ export class PostgresSessionEventRepository implements SessionEventRepository {
   }
 
   async listBySession(sessionId: string, limit = 500): Promise<SessionEvent[]> {
-    const { rows } = await this.pool.query<EventRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM session_event
         WHERE session_id = $1
         ORDER BY created_at ASC
         LIMIT $2`,
       [sessionId, limit],
+      rowToEvent,
     );
-    return rows.map(rowToEvent);
   }
 }

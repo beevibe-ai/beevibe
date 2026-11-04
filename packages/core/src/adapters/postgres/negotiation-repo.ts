@@ -11,7 +11,13 @@ import type {
   NewNegotiation,
   NewNegotiationRound,
 } from "../../ports/negotiation-repo.js";
-import { findRowById, updateRowById } from "./pg-helpers.js";
+import {
+  findRowById,
+  queryExpectOne,
+  queryMany,
+  queryOne,
+  updateRowById,
+} from "./pg-helpers.js";
 import type { Pool } from "./client.js";
 import type { NegotiationRoundRow, NegotiationRow } from "./row-types.js";
 
@@ -26,7 +32,8 @@ export class PostgresNegotiationRepository implements NegotiationRepository {
     initiatorAgentId: string,
     counterpartyAgentId: string,
   ): Promise<Negotiation | undefined> {
-    const { rows } = await this.pool.query<NegotiationRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM negotiation
         WHERE status = 'active'
           AND initiator_agent_id = $1
@@ -34,12 +41,13 @@ export class PostgresNegotiationRepository implements NegotiationRepository {
         ORDER BY created_at DESC
         LIMIT 1`,
       [initiatorAgentId, counterpartyAgentId],
+      rowToNegotiation,
     );
-    return rows[0] ? rowToNegotiation(rows[0]) : undefined;
   }
 
   async create(input: NewNegotiation): Promise<Negotiation> {
-    const { rows } = await this.pool.query<NegotiationRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO negotiation (
          id, initiator_agent_id, initiator_session_id,
          counterparty_agent_id, counterparty_session_id,
@@ -59,8 +67,8 @@ export class PostgresNegotiationRepository implements NegotiationRepository {
         input.rounds_completed ?? null,
         input.status ?? null,
       ],
+      rowToNegotiation,
     );
-    return rowToNegotiation(rows[0]!);
   }
 
   async update(id: string, patch: NegotiationPatch): Promise<Negotiation> {
@@ -84,28 +92,31 @@ export class PostgresNegotiationRoundRepository implements NegotiationRoundRepos
   constructor(private pool: Pool) {}
 
   async listByNegotiation(negotiationId: string): Promise<NegotiationRound[]> {
-    const { rows } = await this.pool.query<NegotiationRoundRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM negotiation_round
         WHERE negotiation_id = $1
         ORDER BY round_number ASC`,
       [negotiationId],
+      rowToRound,
     );
-    return rows.map(rowToRound);
   }
 
   async findLatest(negotiationId: string): Promise<NegotiationRound | undefined> {
-    const { rows } = await this.pool.query<NegotiationRoundRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM negotiation_round
         WHERE negotiation_id = $1
         ORDER BY round_number DESC
         LIMIT 1`,
       [negotiationId],
+      rowToRound,
     );
-    return rows[0] ? rowToRound(rows[0]) : undefined;
   }
 
   async create(input: NewNegotiationRound): Promise<NegotiationRound> {
-    const { rows } = await this.pool.query<NegotiationRoundRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO negotiation_round (
          id, negotiation_id, round_number, from_agent_id, decision, message
        ) VALUES ($1, $2, $3, $4, $5, $6)
@@ -118,8 +129,8 @@ export class PostgresNegotiationRoundRepository implements NegotiationRoundRepos
         input.decision,
         input.message,
       ],
+      rowToRound,
     );
-    return rowToRound(rows[0]!);
   }
 }
 

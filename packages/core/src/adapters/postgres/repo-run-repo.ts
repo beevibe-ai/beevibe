@@ -20,7 +20,7 @@ import type {
   SkillOutcomeStats,
 } from "../../ports/repo-run-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById } from "./pg-helpers.js";
+import { findRowById, queryExpectOne, queryMany, queryOne } from "./pg-helpers.js";
 
 interface RepoRunRow {
   id: string;
@@ -76,7 +76,8 @@ export class PostgresRepoRunRepository implements RepoRunRepository {
   async create(input: NewRepoRun): Promise<RepoRun> {
     const status = input.status ?? "pending";
     const transcript = input.transcript ?? [];
-    const { rows } = await this.pool.query<RepoRunRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO repo_run
          (id, session_id, task_id, agent_id, goal, repo_url, repo_ref,
           status, transcript)
@@ -93,8 +94,8 @@ export class PostgresRepoRunRepository implements RepoRunRepository {
         status,
         JSON.stringify(transcript),
       ],
+      rowToRepoRun,
     );
-    return rowToRepoRun(rows[0]!);
   }
 
   async findById(id: string): Promise<RepoRun | undefined> {
@@ -102,11 +103,12 @@ export class PostgresRepoRunRepository implements RepoRunRepository {
   }
 
   async findBySessionId(sessionId: string): Promise<RepoRun | undefined> {
-    const { rows } = await this.pool.query<RepoRunRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM repo_run WHERE session_id = $1 LIMIT 1`,
       [sessionId],
+      rowToRepoRun,
     );
-    return rows[0] ? rowToRepoRun(rows[0]) : undefined;
   }
 
   async listByAgent(
@@ -114,25 +116,27 @@ export class PostgresRepoRunRepository implements RepoRunRepository {
     opts?: { limit?: number },
   ): Promise<RepoRun[]> {
     const limit = opts?.limit ?? 50;
-    const { rows } = await this.pool.query<RepoRunRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM repo_run
         WHERE agent_id = $1
         ORDER BY started_at DESC
         LIMIT $2`,
       [agentId, limit],
+      rowToRepoRun,
     );
-    return rows.map(rowToRepoRun);
   }
 
   async listRecent(opts?: { limit?: number }): Promise<RepoRun[]> {
     const limit = opts?.limit ?? 50;
-    const { rows } = await this.pool.query<RepoRunRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM repo_run
         ORDER BY started_at DESC
         LIMIT $1`,
       [limit],
+      rowToRepoRun,
     );
-    return rows.map(rowToRepoRun);
   }
 
   async update(id: string, patch: RepoRunPatch): Promise<RepoRun> {
@@ -177,7 +181,8 @@ export class PostgresLearnedSkillRepository implements LearnedSkillRepository {
   constructor(private pool: Pool) {}
 
   async create(input: NewLearnedSkill): Promise<LearnedSkill> {
-    const { rows } = await this.pool.query<LearnedSkillRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO learned_skill
          (id, name, goal_pattern, repo_url, repo_ref, install_steps,
           invocation, source_run_id, owner_id)
@@ -194,8 +199,8 @@ export class PostgresLearnedSkillRepository implements LearnedSkillRepository {
         input.source_run_id ?? null,
         input.owner_id,
       ],
+      rowToLearnedSkill,
     );
-    return rowToLearnedSkill(rows[0]!);
   }
 
   async findById(id: string): Promise<LearnedSkill | undefined> {
@@ -206,21 +211,23 @@ export class PostgresLearnedSkillRepository implements LearnedSkillRepository {
     ownerId: string,
     name: string,
   ): Promise<LearnedSkill | undefined> {
-    const { rows } = await this.pool.query<LearnedSkillRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM learned_skill WHERE owner_id = $1 AND name = $2 LIMIT 1`,
       [ownerId, name],
+      rowToLearnedSkill,
     );
-    return rows[0] ? rowToLearnedSkill(rows[0]) : undefined;
   }
 
   async listByOwner(ownerId: string): Promise<LearnedSkill[]> {
-    const { rows } = await this.pool.query<LearnedSkillRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM learned_skill
         WHERE owner_id = $1
         ORDER BY created_at DESC`,
       [ownerId],
+      rowToLearnedSkill,
     );
-    return rows.map(rowToLearnedSkill);
   }
 
   async searchByGoal(
@@ -231,7 +238,8 @@ export class PostgresLearnedSkillRepository implements LearnedSkillRepository {
     const limit = opts?.limit ?? 10;
     // websearch_to_tsquery handles bare phrases like "extract tables from PDF"
     // without needing user-supplied tsquery syntax.
-    const { rows } = await this.pool.query<LearnedSkillRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM learned_skill
         WHERE owner_id = $1
           AND to_tsvector('english', goal_pattern)
@@ -243,8 +251,8 @@ export class PostgresLearnedSkillRepository implements LearnedSkillRepository {
                  created_at DESC
         LIMIT $3`,
       [ownerId, goal, limit],
+      rowToLearnedSkill,
     );
-    return rows.map(rowToLearnedSkill);
   }
 
   async update(id: string, patch: LearnedSkillPatch): Promise<LearnedSkill> {
@@ -288,7 +296,8 @@ export class PostgresSkillOutcomeRepository implements SkillOutcomeRepository {
   constructor(private pool: Pool) {}
 
   async upsert(input: NewSkillOutcome): Promise<SkillOutcome> {
-    const { rows } = await this.pool.query<SkillOutcomeRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO skill_outcome
          (id, learned_skill_id, repo_run_id, work_product_id, outcome, reviewer_id)
        VALUES ($1, $2, $3, $4, $5, $6)
@@ -307,8 +316,8 @@ export class PostgresSkillOutcomeRepository implements SkillOutcomeRepository {
         input.outcome,
         input.reviewer_id ?? null,
       ],
+      rowToSkillOutcome,
     );
-    return rowToSkillOutcome(rows[0]!);
   }
 
   async listBySkill(
@@ -316,14 +325,15 @@ export class PostgresSkillOutcomeRepository implements SkillOutcomeRepository {
     opts?: { limit?: number },
   ): Promise<SkillOutcome[]> {
     const limit = opts?.limit ?? 50;
-    const { rows } = await this.pool.query<SkillOutcomeRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM skill_outcome
         WHERE learned_skill_id = $1
         ORDER BY recorded_at DESC
         LIMIT $2`,
       [skillId, limit],
+      rowToSkillOutcome,
     );
-    return rows.map(rowToSkillOutcome);
   }
 
   async statsForSkill(

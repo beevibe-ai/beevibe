@@ -12,7 +12,14 @@ import type {
   SessionPatch,
 } from "../../ports/session-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById, taskPriorityRankSql, updateRowById } from "./pg-helpers.js";
+import {
+  findRowById,
+  queryExpectOne,
+  queryMany,
+  queryOne,
+  taskPriorityRankSql,
+  updateRowById,
+} from "./pg-helpers.js";
 import type { SessionRow } from "./row-types.js";
 
 export class PostgresSessionRepository implements SessionRepository {
@@ -23,45 +30,49 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   async findLatestForTask(taskId: string): Promise<Session | undefined> {
-    const { rows } = await this.pool.query<SessionRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM session
         WHERE task_id = $1
         ORDER BY created_at DESC
         LIMIT 1`,
       [taskId],
+      rowToSession,
     );
-    return rows[0] ? rowToSession(rows[0]) : undefined;
   }
 
   async listForTask(taskId: string): Promise<Session[]> {
-    const { rows } = await this.pool.query<SessionRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM session
         WHERE task_id = $1
         ORDER BY created_at DESC`,
       [taskId],
+      rowToSession,
     );
-    return rows.map(rowToSession);
   }
 
   async listForAgent(agentId: string): Promise<Session[]> {
-    const { rows } = await this.pool.query<SessionRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM session
         WHERE agent_id = $1
         ORDER BY created_at DESC`,
       [agentId],
+      rowToSession,
     );
-    return rows.map(rowToSession);
   }
 
   async listChatForAgent(agentId: string, limit: number): Promise<Session[]> {
-    const { rows } = await this.pool.query<SessionRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM session
         WHERE agent_id = $1 AND type = 'chat' AND deleted_at IS NULL
         ORDER BY created_at DESC
         LIMIT $2`,
       [agentId, limit],
+      rowToSession,
     );
-    return rows.map(rowToSession);
   }
 
   async softDeleteChatChain(headId: string, agentId: string): Promise<number> {
@@ -105,19 +116,22 @@ export class PostgresSessionRepository implements SessionRepository {
   }
 
   async listRunningWithPid(): Promise<Session[]> {
-    const { rows } = await this.pool.query<SessionRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM session
         WHERE status = 'running' AND process_pid IS NOT NULL
         ORDER BY created_at ASC`,
+      [],
+      rowToSession,
     );
-    return rows.map(rowToSession);
   }
 
   async listDaemonOrphaned(opts: {
     sessionStaleSeconds: number;
     runtimeHeartbeatStaleSeconds: number;
   }): Promise<Session[]> {
-    const { rows } = await this.pool.query<SessionRow>(
+    return queryMany(
+      this.pool,
       `SELECT s.* FROM session s
          JOIN runtime r ON r.id = s.runtime_id
         WHERE s.status = 'running'
@@ -126,8 +140,8 @@ export class PostgresSessionRepository implements SessionRepository {
           AND COALESCE(r.last_heartbeat, r.created_at) < now() - ($2 * INTERVAL '1 second')
         ORDER BY s.created_at ASC`,
       [opts.sessionStaleSeconds, opts.runtimeHeartbeatStaleSeconds],
+      rowToSession,
     );
-    return rows.map(rowToSession);
   }
 
   async listPendingForRuntimeIds(
@@ -195,7 +209,8 @@ export class PostgresSessionRepository implements SessionRepository {
     // them, they preempt medium and low tasks. Preserves the prior FIFO
     // ordering within the non-task group.
     const defaultCapParam = `$${params.length + 1}`;
-    const { rows } = await this.pool.query<SessionRow>(
+    return queryOne(
+      this.pool,
       `WITH candidate AS (
          SELECT s.id FROM session s
            JOIN agent a ON a.id = s.agent_id
@@ -227,8 +242,8 @@ export class PostgresSessionRepository implements SessionRepository {
         WHERE session.id = candidate.id
         RETURNING session.*`,
       [...params, DEFAULT_TASK_CAP],
+      rowToSession,
     );
-    return rows[0] ? rowToSession(rows[0]) : undefined;
   }
 
   async countOwnedByDaemon(
@@ -251,24 +266,26 @@ export class PostgresSessionRepository implements SessionRepository {
     agentId: string,
     roomId: string,
   ): Promise<Session | undefined> {
-    const { rows } = await this.pool.query<SessionRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM session
         WHERE agent_id = $1 AND room_id = $2
         ORDER BY created_at DESC
         LIMIT 1`,
       [agentId, roomId],
+      rowToSession,
     );
-    return rows[0] ? rowToSession(rows[0]) : undefined;
   }
 
   async listRunningInRoom(roomId: string): Promise<Session[]> {
-    const { rows } = await this.pool.query<SessionRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM session
         WHERE room_id = $1 AND status = 'running'
         ORDER BY started_at ASC`,
       [roomId],
+      rowToSession,
     );
-    return rows.map(rowToSession);
   }
 
   async create(input: NewSession): Promise<Session> {
@@ -283,7 +300,8 @@ export class PostgresSessionRepository implements SessionRepository {
     // Non-chat sessions ALWAYS get NULL — the type check guards the
     // whole expression so a caller passing an explicit conversation_id
     // on a task / mesh row can't leak it into the chat-thread index.
-    const { rows } = await this.pool.query<SessionRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO session (
          id, agent_id, task_id, prior_session_id,
          type, status, intent,
@@ -337,8 +355,8 @@ export class PostgresSessionRepository implements SessionRepository {
         input.started_at ?? null,
         input.conversation_id ?? null,
       ],
+      rowToSession,
     );
-    return rowToSession(rows[0]!);
   }
 
   async update(id: string, patch: SessionPatch): Promise<Session> {

@@ -9,7 +9,7 @@ import type {
 import {
   cancelledResult,
   cliVersionHealthCheck,
-  createStdoutLineReader,
+  createEventCollector,
   finalizeCliResult,
   warnIfTruncated,
 } from "../runtime-common.js";
@@ -18,7 +18,6 @@ import {
   extractStepEvents,
   parseClaudeMessages,
   parseStreamJsonLine,
-  type StreamJsonMessage,
 } from "./stream-json.js";
 
 /**
@@ -104,20 +103,14 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     if (context.env) Object.assign(env, context.env);
 
     // Parse messages incrementally during streaming so we don't re-parse
-    // the entire stdout after close. A line buffer handles chunk boundaries
-    // (a single JSON message can arrive split across multiple chunks).
-    const messages: StreamJsonMessage[] = [];
-    const handleLine = (line: string): void => {
-      const msg = parseStreamJsonLine(line);
-      if (!msg) return;
-      messages.push(msg);
-      if (context.onStep) {
-        for (const step of extractStepEvents(msg)) {
-          context.onStep(step);
-        }
-      }
-    };
-    const stdout = createStdoutLineReader(handleLine);
+    // the entire stdout after close. The collector handles chunk
+    // boundaries (a single JSON message can arrive split across multiple
+    // chunks) and fans per-message steps out to `context.onStep`.
+    const stream = createEventCollector(
+      parseStreamJsonLine,
+      extractStepEvents,
+      context.onStep,
+    );
 
     const result = await runCliProcess({
       command: this.config.command ?? "claude",
@@ -129,17 +122,17 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       onSpawn: ({ pid, process_group_id }) => {
         context.onSpawn?.({ process_pid: pid, process_group_id });
       },
-      onLog: stdout.onLog,
+      onLog: stream.onLog,
     });
 
     // Flush any final partial line (stream without trailing \n)
-    stdout.flush();
+    stream.flush();
 
     warnIfTruncated("ClaudeCodeRuntime", result);
 
     if (result.aborted) return cancelledResult(result);
 
-    return finalizeCliResult(parseClaudeMessages(messages, result.exitCode), result);
+    return finalizeCliResult(parseClaudeMessages(stream.events, result.exitCode), result);
   }
 
   async healthCheck(): Promise<RuntimeHealth> {

@@ -1,7 +1,13 @@
 import type { Agent, HierarchyLevel, ReviewPolicy, RuntimeConfig } from "../../domain/agent.js";
 import type { AgentRepository, NewAgent, AgentPatch } from "../../ports/agent-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById, updateRowById } from "./pg-helpers.js";
+import {
+  findRowById,
+  queryExpectOne,
+  queryMany,
+  queryOne,
+  updateRowById,
+} from "./pg-helpers.js";
 import type { AgentRow } from "./row-types.js";
 
 export class PostgresAgentRepository implements AgentRepository {
@@ -12,32 +18,35 @@ export class PostgresAgentRepository implements AgentRepository {
   }
 
   async findByApiKey(apiKey: string): Promise<Agent | undefined> {
-    const { rows } = await this.pool.query<AgentRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM agent WHERE api_key = $1 LIMIT 1`,
       [apiKey],
+      rowToAgent,
     );
-    return rows[0] ? rowToAgent(rows[0]) : undefined;
   }
 
   async findTopLevelForOwner(ownerId: string): Promise<Agent | undefined> {
     // team before org — alphabetical DESC picks 'team' over 'org'
-    const { rows } = await this.pool.query<AgentRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM agent
         WHERE owner_id = $1
           AND hierarchy_level IN ('team', 'org')
         ORDER BY hierarchy_level DESC
         LIMIT 1`,
       [ownerId],
+      rowToAgent,
     );
-    return rows[0] ? rowToAgent(rows[0]) : undefined;
   }
 
   async findSubordinates(parentAgentId: string): Promise<Agent[]> {
-    const { rows } = await this.pool.query<AgentRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM agent WHERE parent_agent_id = $1 ORDER BY name ASC`,
       [parentAgentId],
+      rowToAgent,
     );
-    return rows.map(rowToAgent);
   }
 
   async findDescendantIds(rootAgentId: string): Promise<string[]> {
@@ -61,7 +70,8 @@ export class PostgresAgentRepository implements AgentRepository {
   }
 
   async findPeers(agentId: string): Promise<Agent[]> {
-    const { rows } = await this.pool.query<AgentRow>(
+    return queryMany(
+      this.pool,
       `SELECT peer.* FROM agent peer
          JOIN agent self ON self.id = $1
         WHERE peer.id <> self.id
@@ -69,33 +79,36 @@ export class PostgresAgentRepository implements AgentRepository {
           AND peer.parent_agent_id IS NOT DISTINCT FROM self.parent_agent_id
         ORDER BY peer.name ASC`,
       [agentId],
+      rowToAgent,
     );
-    return rows.map(rowToAgent);
   }
 
   async findParent(agentId: string): Promise<Agent | undefined> {
     // Single query via self-join: parent.id = self.parent_agent_id.
     // Returns nothing for top-level agents (parent_agent_id IS NULL).
-    const { rows } = await this.pool.query<AgentRow>(
+    return queryOne(
+      this.pool,
       `SELECT parent.* FROM agent self
          JOIN agent parent ON parent.id = self.parent_agent_id
         WHERE self.id = $1
         LIMIT 1`,
       [agentId],
+      rowToAgent,
     );
-    return rows[0] ? rowToAgent(rows[0]) : undefined;
   }
 
   async findByLevel(level: HierarchyLevel): Promise<Agent[]> {
-    const { rows } = await this.pool.query<AgentRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM agent WHERE hierarchy_level = $1 ORDER BY name ASC`,
       [level],
+      rowToAgent,
     );
-    return rows.map(rowToAgent);
   }
 
   async create(input: NewAgent): Promise<Agent> {
-    const { rows } = await this.pool.query<AgentRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO agent (
          id, name, owner_id, parent_agent_id, hierarchy_level,
          api_key, review_policy, runtime_config,
@@ -117,8 +130,8 @@ export class PostgresAgentRepository implements AgentRepository {
         input.max_negotiation_rounds ?? null,
         input.preferred_runtime_id ?? null,
       ],
+      rowToAgent,
     );
-    return rowToAgent(rows[0]!);
   }
 
   async update(id: string, patch: AgentPatch): Promise<Agent> {

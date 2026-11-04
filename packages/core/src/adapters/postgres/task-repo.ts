@@ -11,7 +11,14 @@ import type {
   TaskListFilter,
 } from "../../ports/task-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById, taskPriorityRankSql, updateRowById } from "./pg-helpers.js";
+import {
+  findRowById,
+  queryExpectOne,
+  queryMany,
+  queryOne,
+  taskPriorityRankSql,
+  updateRowById,
+} from "./pg-helpers.js";
 import type { TaskRow } from "./row-types.js";
 
 export class PostgresTaskRepository implements TaskRepository {
@@ -23,11 +30,7 @@ export class PostgresTaskRepository implements TaskRepository {
 
   async findByIds(ids: string[]): Promise<Task[]> {
     if (ids.length === 0) return [];
-    const { rows } = await this.pool.query<TaskRow>(
-      `SELECT * FROM task WHERE id = ANY($1::text[])`,
-      [ids],
-    );
-    return rows.map(rowToTask);
+    return queryMany(this.pool, `SELECT * FROM task WHERE id = ANY($1::text[])`, [ids], rowToTask);
   }
 
   async list(filter?: TaskListFilter): Promise<Task[]> {
@@ -62,19 +65,21 @@ export class PostgresTaskRepository implements TaskRepository {
     }
 
     const where = clauses.length ? `WHERE ${clauses.join(" AND ")}` : "";
-    const { rows } = await this.pool.query<TaskRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM task ${where} ORDER BY created_at DESC`,
       values,
+      rowToTask,
     );
-    return rows.map(rowToTask);
   }
 
   async listByAssignee(assigneeId: string): Promise<Task[]> {
-    const { rows } = await this.pool.query<TaskRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM task WHERE assignee_id = $1 ORDER BY created_at DESC`,
       [assigneeId],
+      rowToTask,
     );
-    return rows.map(rowToTask);
   }
 
   async listAssignable(): Promise<Task[]> {
@@ -82,14 +87,16 @@ export class PostgresTaskRepository implements TaskRepository {
     // The queue states are `assigned` (first dispatch) and `needs_revision`
     // (re-work requested). Tasks in `in_progress` / `revision` are currently
     // running, not assignable.
-    const { rows } = await this.pool.query<TaskRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM task
         WHERE status IN ('assigned', 'needs_revision')
           AND assignee_id IS NOT NULL
         ORDER BY ${taskPriorityRankSql("priority")} DESC,
                  created_at ASC`,
+      [],
+      rowToTask,
     );
-    return rows.map(rowToTask);
   }
 
   async claimById(taskId: string): Promise<Task | undefined> {
@@ -99,7 +106,8 @@ export class PostgresTaskRepository implements TaskRepository {
     // fresh work (assigned → in_progress) and re-work (needs_revision →
     // revision). Dispatch reads post-claim status=="revision" to decide on
     // priorSessionId (--resume).
-    const { rows } = await this.pool.query<TaskRow>(
+    return queryOne(
+      this.pool,
       `UPDATE task
           SET status = CASE
                          WHEN status = 'assigned'       THEN 'in_progress'
@@ -109,8 +117,8 @@ export class PostgresTaskRepository implements TaskRepository {
         WHERE id = $1 AND status IN ('assigned', 'needs_revision')
         RETURNING *`,
       [taskId],
+      rowToTask,
     );
-    return rows[0] ? rowToTask(rows[0]) : undefined;
   }
 
   async listReviewQueue(): Promise<Task[]> {
@@ -118,7 +126,8 @@ export class PostgresTaskRepository implements TaskRepository {
     // where a reviewer action is needed — `needs_revision` means the human
     // already decided "re-work" and the executor will pick it up;
     // `revision` means the agent is actively re-working.
-    const { rows } = await this.pool.query<TaskRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM task
         WHERE status = 'review'
         ORDER BY
@@ -130,8 +139,9 @@ export class PostgresTaskRepository implements TaskRepository {
             ELSE 0
           END DESC,
           updated_at ASC`,
+      [],
+      rowToTask,
     );
-    return rows.map(rowToTask);
   }
 
   async countChildrenNotComplete(parentId: string): Promise<number> {
@@ -153,7 +163,8 @@ export class PostgresTaskRepository implements TaskRepository {
   }
 
   async create(input: NewTask): Promise<Task> {
-    const { rows } = await this.pool.query<TaskRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO task (
          id, title, description, status, priority,
          assignee_id, creator_id, creator_type, parent_task_id,
@@ -177,8 +188,8 @@ export class PostgresTaskRepository implements TaskRepository {
         input.repo_url ?? null,
         input.next_dispatch_context ?? null,
       ],
+      rowToTask,
     );
-    return rowToTask(rows[0]!);
   }
 
   async update(id: string, patch: TaskPatch): Promise<Task> {

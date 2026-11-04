@@ -12,11 +12,7 @@ import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
 import { isApiConfigured } from "@/lib/api/config";
 import { useTask } from "@/lib/hooks/use-tasks";
-import {
-  useApproveTask,
-  useRejectTask,
-  useReviseTask,
-} from "@/lib/hooks/use-task-mutations";
+import { useTaskReview } from "@/lib/hooks/use-task-mutations";
 import { TaskLifecycleActions } from "./task-lifecycle-actions";
 import { formatRelativeTime, shortId } from "@/lib/format";
 import { richTextToMarkdown, type RichText } from "@/components/rich-text";
@@ -369,29 +365,20 @@ function SessionRow({
 // ── Review actions ──────────────────────────────────────────────────
 
 function ReviewActions({ task }: { task: TaskDetail }) {
-  const approve = useApproveTask(task.id);
-  const reject = useRejectTask(task.id);
-  const revise = useReviseTask(task.id);
-  const [reviseOpen, setReviseOpen] = useState(false);
-  const [feedback, setFeedback] = useState("");
-
-  const anyPending = approve.isPending || reject.isPending || revise.isPending;
-  const lastError =
-    approve.error ?? reject.error ?? revise.error ?? null;
-
-  const submit = () => {
-    const fb = feedback.trim();
-    if (!fb) return;
-    revise.mutate(
-      { feedback: fb },
-      {
-        onSuccess: () => {
-          setFeedback("");
-          setReviseOpen(false);
-        },
-      },
-    );
-  };
+  const {
+    approve,
+    reject,
+    revise,
+    anyPending,
+    lastError,
+    reviseOpen,
+    toggleRevise,
+    closeRevise,
+    feedback,
+    setFeedback,
+    canSubmitRevise,
+    submitRevise,
+  } = useTaskReview(task.id);
 
   return (
     <div className="mt-4 space-y-2">
@@ -407,7 +394,7 @@ function ReviewActions({ task }: { task: TaskDetail }) {
         <button
           type="button"
           disabled={anyPending}
-          onClick={() => setReviseOpen((v) => !v)}
+          onClick={toggleRevise}
           className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
         >
           Revise
@@ -433,18 +420,15 @@ function ReviewActions({ task }: { task: TaskDetail }) {
           <div className="flex justify-end gap-2">
             <button
               type="button"
-              onClick={() => {
-                setReviseOpen(false);
-                setFeedback("");
-              }}
+              onClick={closeRevise}
               className="h-7 px-2.5 rounded text-[11px] font-medium border border-border hover:bg-secondary transition-colors cursor-pointer"
             >
               Cancel
             </button>
             <button
               type="button"
-              disabled={anyPending || feedback.trim().length === 0}
-              onClick={submit}
+              disabled={!canSubmitRevise}
+              onClick={submitRevise}
               className="h-7 px-2.5 rounded text-[11px] font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {revise.isPending ? "Submitting…" : "Submit"}
