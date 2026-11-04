@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,58 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * Collect a CLI's NDJSON event stream while forwarding live transcript
+ * steps, in one object wired straight into `runCliProcess`.
+ *
+ * {@link createStdoutLineReader} factors out the chunk-to-line buffering,
+ * but all three runtimes then wrapped it in the same `handleLine` closure
+ * — parse the line, drop it if unparseable, push it onto an array for the
+ * after-the-fact `parse*Events` pass, and fan the per-event steps out to
+ * `context.onStep`:
+ *
+ * ```ts
+ * const events: CodexEvent[] = [];
+ * const handleLine = (line: string): void => {
+ *   const evt = parseCodexEventLine(line);
+ *   if (!evt) return;
+ *   events.push(evt);
+ *   if (!context.onStep) return;
+ *   for (const step of extractCodexStepEvents(evt)) context.onStep(step);
+ * };
+ * const stdout = createStdoutLineReader(handleLine);
+ * ```
+ *
+ * The three copies had already drifted cosmetically — claude-code wrapped
+ * the fan-out in `if (context.onStep) { … }` where the others early-return
+ * — which is exactly the kind of difference that makes a reader stop and
+ * check whether it is meaningful. It was not.
+ *
+ * `events` is the live array, not a copy: read it after `flush()` and pass
+ * it to the adapter's own `parse*Events`. `onStep` is taken rather than
+ * the whole `RuntimeContext` so the collector has no reason to know about
+ * anything else on it; when it is undefined, `extractSteps` is never
+ * called at all (it allocates a `Date` per event, so skipping it matters
+ * on a long non-streaming run).
+ */
+export function createEventCollector<E>(
+  parse: (line: string) => E | null,
+  extractSteps: (event: E) => RuntimeStep[],
+  onStep: RuntimeContext["onStep"],
+): {
+  events: E[];
+  onLog: (stream: "stdout" | "stderr", chunk: string) => void;
+  flush: () => void;
+} {
+  const events: E[] = [];
+  const reader = createStdoutLineReader((line) => {
+    const event = parse(line);
+    if (!event) return;
+    events.push(event);
+    if (!onStep) return;
+    for (const step of extractSteps(event)) onStep(step);
+  });
+  return { events, onLog: reader.onLog, flush: reader.flush };
 }
