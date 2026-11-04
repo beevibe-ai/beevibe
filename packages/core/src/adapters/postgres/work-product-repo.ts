@@ -9,7 +9,7 @@ import type {
   WorkProductPatch,
 } from "../../ports/work-product-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById } from "./pg-helpers.js";
+import { findRowById, queryExpectOne, queryMany } from "./pg-helpers.js";
 import type { WorkProductListRow, WorkProductRow } from "./row-types.js";
 
 // List queries skip the (potentially huge) body and surface its byte size via
@@ -27,27 +27,30 @@ export class PostgresWorkProductRepository implements WorkProductRepository {
   }
 
   async listByTask(taskId: string): Promise<WorkProductListItem[]> {
-    const { rows } = await this.pool.query<WorkProductListRow>(
+    return queryMany(
+      this.pool,
       `SELECT ${LIST_COLUMNS} FROM work_product
         WHERE task_id = $1
         ORDER BY created_at DESC`,
       [taskId],
+      rowToWorkProductListItem,
     );
-    return rows.map(rowToWorkProductListItem);
   }
 
   async listByAgent(agentId: string): Promise<WorkProductListItem[]> {
-    const { rows } = await this.pool.query<WorkProductListRow>(
+    return queryMany(
+      this.pool,
       `SELECT ${LIST_COLUMNS} FROM work_product
         WHERE agent_id = $1
         ORDER BY created_at DESC`,
       [agentId],
+      rowToWorkProductListItem,
     );
-    return rows.map(rowToWorkProductListItem);
   }
 
   async create(input: NewWorkProduct): Promise<WorkProduct> {
-    const { rows } = await this.pool.query<WorkProductRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO work_product (
          id, task_id, agent_id, type, title,
          summary, body, url, provider, external_id, metadata
@@ -66,8 +69,8 @@ export class PostgresWorkProductRepository implements WorkProductRepository {
         input.external_id ?? null,
         input.metadata ?? null,
       ],
+      rowToWorkProduct,
     );
-    return rowToWorkProduct(rows[0]!);
   }
 
   async update(id: string, patch: WorkProductPatch): Promise<WorkProduct> {

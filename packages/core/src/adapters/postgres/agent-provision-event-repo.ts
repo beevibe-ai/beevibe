@@ -4,6 +4,7 @@ import type {
   AgentProvisionEventRepository,
   NewAgentProvisionEvent,
 } from "../../ports/agent-provision-event-repo.js";
+import { queryExpectOne, queryMany } from "./pg-helpers.js";
 
 interface AgentProvisionEventRow {
   id: string;
@@ -35,7 +36,8 @@ export class PostgresAgentProvisionEventRepository
   constructor(private readonly pool: Pool) {}
 
   async create(input: NewAgentProvisionEvent): Promise<AgentProvisionEvent> {
-    const { rows } = await this.pool.query<AgentProvisionEventRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO agent_provision_event (
          id, parent_agent_id, child_agent_id, owner_person_id,
          child_name, persona, domain, created_at
@@ -51,8 +53,8 @@ export class PostgresAgentProvisionEventRepository
         input.domain,
         input.created_at ?? null,
       ],
+      rowToEvent,
     );
-    return rowToEvent(rows[0]!);
   }
 
   async countByParentSince(
@@ -73,13 +75,14 @@ export class PostgresAgentProvisionEventRepository
     parentAgentId: string,
     limit = 50,
   ): Promise<AgentProvisionEvent[]> {
-    const { rows } = await this.pool.query<AgentProvisionEventRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM agent_provision_event
         WHERE parent_agent_id = $1
         ORDER BY created_at DESC
         LIMIT $2`,
       [parentAgentId, limit],
+      rowToEvent,
     );
-    return rows.map(rowToEvent);
   }
 }

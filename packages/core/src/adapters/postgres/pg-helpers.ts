@@ -136,3 +136,88 @@ export function taskPriorityRankSql(column: string): string {
             ELSE 0
           END)`;
 }
+
+/**
+ * Run a query expected to match at most one row and map it, or `undefined`
+ * when it matched none.
+ *
+ * This is {@link findRowById} generalized to an arbitrary WHERE: every
+ * repository's `findByEmail` / `findByApiKey` / `findByTokenHash` /
+ * `findByDaemonAndCli` / … spelled out the same three lines by hand —
+ *
+ * ```ts
+ * const { rows } = await this.pool.query<PersonRow>(sql, params);
+ * return rows[0] ? rowToPerson(rows[0]) : undefined;
+ * ```
+ *
+ * — twenty-one times across the adapters. The `rows[0] ? … : undefined`
+ * tail is the part worth having once: under `noUncheckedIndexedAccess`
+ * the alternative shapes (`rows.length > 0` then `rows[0]!`,
+ * `rows.at(0)`) all typecheck, so hand-written copies drift in style
+ * without drifting in behavior, and a reader has to re-verify each one.
+ *
+ * `Row` and `T` are both inferred from `map`, so call sites drop the
+ * explicit `query<Row>` type argument — the mapper's own parameter type
+ * is the tighter constraint anyway, since the rows go straight into it.
+ *
+ * Callers whose port returns `null` for "not found" (rather than
+ * `undefined`) add their own `?? null`.
+ */
+export async function queryOne<Row extends QueryResultRow, T>(
+  pool: Pool,
+  sql: string,
+  params: unknown[],
+  map: (row: Row) => T,
+): Promise<T | undefined> {
+  const { rows } = await pool.query<Row>(sql, params);
+  return rows[0] ? map(rows[0]) : undefined;
+}
+
+/**
+ * Run a query and map every row. The list counterpart to
+ * {@link queryOne} — `const { rows } = await pool.query<Row>(…); return
+ * rows.map(rowToX);` appeared forty times across the adapters.
+ *
+ * Only for the plain shape: a `list*` that post-filters, groups, or maps
+ * with a closure over local state keeps its own body, since the saving
+ * there is nil and the inlined version reads better.
+ */
+export async function queryMany<Row extends QueryResultRow, T>(
+  pool: Pool,
+  sql: string,
+  params: unknown[],
+  map: (row: Row) => T,
+): Promise<T[]> {
+  const { rows } = await pool.query<Row>(sql, params);
+  return rows.map(map);
+}
+
+/**
+ * Run a query that must match exactly one row and map it, throwing when
+ * it matched none.
+ *
+ * This is the `INSERT … RETURNING *` shape: seventeen `create*` methods
+ * ended in `return rowToX(rows[0]!)`. The non-null assertion is correct
+ * — an `INSERT … RETURNING` always returns its row — but it is also the
+ * one place in these files where a broken invariant surfaces as
+ * `Cannot read properties of undefined (reading 'id')` from inside a
+ * mapper, with nothing in the message about which query produced it.
+ * Throwing here keeps the same "this cannot happen" contract and makes
+ * the failure legible, at the cost of a leading SQL fragment in the
+ * message.
+ */
+export async function queryExpectOne<Row extends QueryResultRow, T>(
+  pool: Pool,
+  sql: string,
+  params: unknown[],
+  map: (row: Row) => T,
+): Promise<T> {
+  const { rows } = await pool.query<Row>(sql, params);
+  const row = rows[0];
+  if (!row) {
+    throw new Error(
+      `Expected exactly one row from: ${sql.replace(/\s+/g, " ").trim().slice(0, 120)}`,
+    );
+  }
+  return map(row);
+}

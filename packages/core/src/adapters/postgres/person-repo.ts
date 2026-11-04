@@ -1,7 +1,13 @@
 import type { Person } from "../../domain/person.js";
 import type { PersonRepository, NewPerson, PersonPatch } from "../../ports/person-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById, updateRowById } from "./pg-helpers.js";
+import {
+  findRowById,
+  queryExpectOne,
+  queryMany,
+  queryOne,
+  updateRowById,
+} from "./pg-helpers.js";
 import type { PersonRow } from "./row-types.js";
 
 export class PostgresPersonRepository implements PersonRepository {
@@ -12,32 +18,36 @@ export class PostgresPersonRepository implements PersonRepository {
   }
 
   async findByEmail(email: string): Promise<Person | undefined> {
-    const { rows } = await this.pool.query<PersonRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM person WHERE email = $1 LIMIT 1`,
       [email],
+      rowToPerson,
     );
-    return rows[0] ? rowToPerson(rows[0]) : undefined;
   }
 
   async findByApiKey(apiKey: string): Promise<Person | undefined> {
-    const { rows } = await this.pool.query<PersonRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM person WHERE api_key = $1 LIMIT 1`,
       [apiKey],
+      rowToPerson,
     );
-    return rows[0] ? rowToPerson(rows[0]) : undefined;
   }
 
   async findManyByIds(ids: string[]): Promise<Person[]> {
     if (ids.length === 0) return [];
-    const { rows } = await this.pool.query<PersonRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM person WHERE id = ANY($1::text[])`,
       [ids],
+      rowToPerson,
     );
-    return rows.map(rowToPerson);
   }
 
   async create(input: NewPerson): Promise<Person> {
-    const { rows } = await this.pool.query<PersonRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO person (id, name, email, api_key, password_hash)
        VALUES ($1, $2, $3, $4, $5)
        RETURNING *`,
@@ -48,8 +58,8 @@ export class PostgresPersonRepository implements PersonRepository {
         input.api_key ?? null,
         input.password_hash ?? null,
       ],
+      rowToPerson,
     );
-    return rowToPerson(rows[0]!);
   }
 
   async update(id: string, patch: PersonPatch): Promise<Person> {

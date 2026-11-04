@@ -9,7 +9,13 @@ import type {
   EscalationRepository,
   NewEscalation,
 } from "../../ports/escalation-repo.js";
-import { findRowById, updateRowById } from "./pg-helpers.js";
+import {
+  findRowById,
+  queryExpectOne,
+  queryMany,
+  queryOne,
+  updateRowById,
+} from "./pg-helpers.js";
 import type { Pool } from "./client.js";
 import type { EscalationRow } from "./row-types.js";
 
@@ -21,24 +27,28 @@ export class PostgresEscalationRepository implements EscalationRepository {
   }
 
   async findByNegotiation(negotiationId: string): Promise<Escalation | undefined> {
-    const { rows } = await this.pool.query<EscalationRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM escalation WHERE negotiation_id = $1 LIMIT 1`,
       [negotiationId],
+      rowToEscalation,
     );
-    return rows[0] ? rowToEscalation(rows[0]) : undefined;
   }
 
   async listPending(): Promise<Escalation[]> {
-    const { rows } = await this.pool.query<EscalationRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM escalation
         WHERE status = 'pending'
         ORDER BY created_at ASC`,
+      [],
+      rowToEscalation,
     );
-    return rows.map(rowToEscalation);
   }
 
   async create(input: NewEscalation): Promise<Escalation> {
-    const { rows } = await this.pool.query<EscalationRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO escalation (
          id, negotiation_id, initiator_session_id, counterparty_session_id,
          summary,
@@ -65,8 +75,8 @@ export class PostgresEscalationRepository implements EscalationRepository {
         input.escalated_by_role,
         input.status ?? null,
       ],
+      rowToEscalation,
     );
-    return rowToEscalation(rows[0]!);
   }
 
   async update(id: string, patch: EscalationPatch): Promise<Escalation> {

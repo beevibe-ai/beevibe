@@ -18,6 +18,7 @@ import type {
   SessionSearchScope,
 } from "../../ports/session-search-repo.js";
 import type { Pool } from "./client.js";
+import { queryOne } from "./pg-helpers.js";
 
 // ── Constants ─────────────────────────────────────────────────────────
 
@@ -378,14 +379,16 @@ export class PostgresSessionSearchRepository implements SessionSearchRepository 
   }
 
   private async getSessionMeta(sessionId: string): Promise<SessionMetaPreview | null> {
-    const { rows } = await this.pool.query<SessionMetaRow>(
+    const meta = await queryOne(
+      this.pool,
       `SELECT id, conversation_id, type, status, agent_id, task_id,
               intent, created_at, completed_at, result_summary
          FROM session
         WHERE id = $1`,
       [sessionId],
+      rowToMeta,
     );
-    return rows[0] ? rowToMeta(rows[0]) : null;
+    return meta ?? null;
   }
 
   private async getSessionMetaIfInScope(

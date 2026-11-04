@@ -8,7 +8,7 @@ import type {
   TaskWatchRepository,
 } from "../../ports/task-watch-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById } from "./pg-helpers.js";
+import { findRowById, queryExpectOne, queryMany } from "./pg-helpers.js";
 import type { TaskWatchRow } from "./row-types.js";
 
 export class PostgresTaskWatchRepository implements TaskWatchRepository {
@@ -19,33 +19,36 @@ export class PostgresTaskWatchRepository implements TaskWatchRepository {
   }
 
   async listByWaiterSession(waiterSessionId: string): Promise<TaskWatch[]> {
-    const { rows } = await this.pool.query<TaskWatchRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM task_watch
         WHERE waiter_session_id = $1
         ORDER BY created_at DESC`,
       [waiterSessionId],
+      rowToTaskWatch,
     );
-    return rows.map(rowToTaskWatch);
   }
 
   async listWaitingForTask(taskId: string): Promise<TaskWatch[]> {
     // `task_ids @> ARRAY[$1]` (not `$1 = ANY(task_ids)`) is the form Postgres
     // plans against the partial GIN on `task_ids WHERE status='waiting'`.
-    const { rows } = await this.pool.query<TaskWatchRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM task_watch
         WHERE status = 'waiting'
           AND task_ids @> ARRAY[$1]
         ORDER BY created_at ASC`,
       [taskId],
+      rowToTaskWatch,
     );
-    return rows.map(rowToTaskWatch);
   }
 
   async create(input: NewTaskWatch): Promise<TaskWatch> {
     if (input.task_ids.length === 0) {
       throw new Error("task_watch.task_ids must be non-empty");
     }
-    const { rows } = await this.pool.query<TaskWatchRow>(
+    return queryExpectOne(
+      this.pool,
       `INSERT INTO task_watch (
          id, waiter_session_id, agent_id, mode, task_ids, reason, status
        ) VALUES (
@@ -61,8 +64,8 @@ export class PostgresTaskWatchRepository implements TaskWatchRepository {
         input.reason ?? null,
         input.status ?? null,
       ],
+      rowToTaskWatch,
     );
-    return rowToTaskWatch(rows[0]!);
   }
 
   async markFired(id: string, firedSessionId: string): Promise<TaskWatch> {
