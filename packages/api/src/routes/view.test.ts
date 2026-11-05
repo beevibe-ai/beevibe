@@ -9,7 +9,6 @@
  * ownership checks on every mutation, and the 400/403/404/409/500
  * error contract clients branch on.
  */
-import express, { json } from "express";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -93,6 +92,7 @@ const { getWorkProduct } = await import("../views/work-product.js");
 const { listInbox } = await import("../views/inbox.js");
 const { getAgentNetwork } = await import("../views/agent-network.js");
 const { createViewRouter } = await import("./view.js");
+const { mountRouter, stubAuth } = await import("./test-helpers.js");
 
 // ── Fixtures ─────────────────────────────────────────────────────────────
 
@@ -145,27 +145,14 @@ function makePorts(overrides: Partial<Ports> = {}): Ports {
   };
 }
 
-function stubAuth(source: "human" | "agent" | "none") {
-  return (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    if (source === "human") {
-      req.caller = {
-        source: "human",
-        agentId: AGENT,
-        hierarchyLevel: "team",
-        personId: PERSON,
-      };
-    } else if (source === "agent") {
-      req.caller = { source: "agent", agentId: AGENT, hierarchyLevel: "ic" };
-    }
-    next();
-  };
-}
-
 function makeApp(ports: Ports = makePorts(), source: "human" | "agent" | "none" = "human") {
-  const app = express();
-  app.use(json());
-  app.use("/", createViewRouter({ authMiddleware: stubAuth(source), ...ports }));
-  return app;
+  return mountRouter(
+    "/",
+    createViewRouter({
+      authMiddleware: stubAuth(source, { agentId: AGENT, personId: PERSON }),
+      ...ports,
+    }),
+  );
 }
 
 beforeEach(() => {

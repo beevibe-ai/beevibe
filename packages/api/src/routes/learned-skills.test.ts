@@ -13,7 +13,6 @@
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import express, { json } from "express";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -26,6 +25,7 @@ import type {
   WorkProductRepository,
 } from "@beevibe/core";
 import { createLearnedSkillsRouter } from "./learned-skills.js";
+import { mountRouter, stubAuth } from "./test-helpers.js";
 
 const PERSON = "person_1";
 
@@ -98,22 +98,6 @@ function makeWorkProductRepo(): WorkProductRepository {
   };
 }
 
-function stubAuth(source: "human" | "agent" | "none" = "human") {
-  return (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    if (source === "human") {
-      req.caller = {
-        source: "human",
-        agentId: "agent_a",
-        hierarchyLevel: "team",
-        personId: PERSON,
-      };
-    } else if (source === "agent") {
-      req.caller = { source: "agent", agentId: "agent_a", hierarchyLevel: "ic" };
-    }
-    next();
-  };
-}
-
 interface Deps {
   learnedSkillRepo: LearnedSkillRepository;
   repoRunRepo: RepoRunRepository;
@@ -131,13 +115,14 @@ function makeDeps(): Deps {
 let repoRoot: string;
 
 function makeApp(deps: Deps, source: "human" | "agent" | "none" = "human", root = repoRoot) {
-  const app = express();
-  app.use(json());
-  app.use(
+  return mountRouter(
     "/learned-skills",
-    createLearnedSkillsRouter({ authMiddleware: stubAuth(source), ...deps, repoRoot: root }),
+    createLearnedSkillsRouter({
+      authMiddleware: stubAuth(source, { personId: PERSON }),
+      ...deps,
+      repoRoot: root,
+    }),
   );
-  return app;
 }
 
 function skillMdPath(name: string) {
