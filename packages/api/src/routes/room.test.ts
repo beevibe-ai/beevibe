@@ -15,7 +15,6 @@
  * runs for real, since those are pure and their output is part of the
  * wire contract this suite is pinning.
  */
-import express, { json } from "express";
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -54,6 +53,7 @@ vi.mock("@beevibe/core/services/agent-session", async (importOriginal) => {
 });
 
 const { createRoomRouter, resolveAddressees } = await import("./room.js");
+const { mountRouter, stubAuth } = await import("./test-helpers.js");
 
 // ── Fixtures ─────────────────────────────────────────────────────────────
 
@@ -207,34 +207,15 @@ function makePorts(overrides: Partial<Ports> = {}): Ports {
  * against Postgres; these tests only care about the caller shape
  * `requireHuman` gates on, so the source is set per-app.
  */
-function stubAuth(source: "human" | "agent" | "none") {
-  return (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    if (source === "human") {
-      req.caller = {
-        source: "human",
-        agentId: TEAM_AGENT,
-        hierarchyLevel: "team",
-        personId: PERSON,
-      };
-    } else if (source === "agent") {
-      req.caller = { source: "agent", agentId: TEAM_AGENT, hierarchyLevel: "ic" };
-    }
-    next();
-  };
-}
-
 function makeApp(ports: Ports, source: "human" | "agent" | "none" = "human") {
-  const app = express();
-  app.use(json());
-  app.use(
+  return mountRouter(
     "/room",
     createRoomRouter({
-      authMiddleware: stubAuth(source),
+      authMiddleware: stubAuth(source, { agentId: TEAM_AGENT, personId: PERSON }),
       ...ports,
       makeMemoryAgent: () => ({}) as MemoryAgent,
     }),
   );
-  return app;
 }
 
 beforeEach(() => {
