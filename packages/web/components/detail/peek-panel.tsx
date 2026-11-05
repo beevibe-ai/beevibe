@@ -2,7 +2,9 @@
 
 import Link from "next/link";
 import { useRef, type ReactNode } from "react";
-import { ExternalLink, X } from "lucide-react";
+import { AlertTriangle, ExternalLink, X, type LucideIcon } from "lucide-react";
+import { EmptyState } from "@/components/empty-state";
+import { isApiConfigured } from "@/lib/api/config";
 import { useDismissOnOutside } from "@/lib/hooks/use-dismiss";
 import { cn } from "@/lib/utils";
 
@@ -99,4 +101,72 @@ export function PanelFooterField({
       <div className="text-foreground/85 truncate">{children}</div>
     </div>
   );
+}
+
+/**
+ * The three-branch preamble a peek panel's body opens with — API not
+ * configured, still loading, failed to load.
+ *
+ * `DetailGate` is the same idea for the full-page detail routes, but it
+ * wraps each state in `DetailShell` (the centered max-w-5xl column),
+ * which is wrong inside a 520px panel. This is that gate with the
+ * panel's own padding instead, so the agent and task peeks stop
+ * carrying a copy each — and, as with `DetailGate`, both user-facing
+ * messages derive from `noun`, so the two panels can't word them
+ * differently.
+ */
+export function PanelGate<T>({
+  icon,
+  noun,
+  id,
+  query,
+  skeleton,
+  children,
+}: {
+  /** Icon for the "API not configured" state. The error state is always AlertTriangle. */
+  icon?: LucideIcon;
+  /** Lowercase singular of what the panel shows — "agent", "task". */
+  noun: string;
+  /** Id echoed back in the error message so a failed fetch is identifiable. */
+  id: string;
+  /** The react-query result driving the panel. */
+  query: { data: T | undefined; isLoading: boolean; isError: boolean };
+  /**
+   * Loading placeholder. Per-panel rather than generic: the skeleton
+   * mirrors the header it stands in for (an avatar row for the agent, a
+   * title block for the task).
+   */
+  skeleton: ReactNode;
+  children: (data: T) => ReactNode;
+}) {
+  if (!isApiConfigured) {
+    return (
+      <div className="p-4">
+        <EmptyState
+          icon={icon}
+          title="API not configured"
+          description={`Set NEXT_PUBLIC_BV_API_URL to load this ${noun}.`}
+        />
+      </div>
+    );
+  }
+
+  if (query.isLoading) {
+    return <div className="p-5 space-y-4">{skeleton}</div>;
+  }
+
+  if (query.isError || !query.data) {
+    const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
+    return (
+      <div className="p-4">
+        <EmptyState
+          icon={AlertTriangle}
+          title={`Couldn't load ${noun}`}
+          description={`${Noun} ${id} could not be fetched.`}
+        />
+      </div>
+    );
+  }
+
+  return <>{children(query.data)}</>;
 }
