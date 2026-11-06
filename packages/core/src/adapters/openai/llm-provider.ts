@@ -8,7 +8,22 @@ import type {
   LlmUsage,
 } from "../../ports/llm-provider.js";
 
-const DEFAULT_MODEL = "gpt-4o-mini";
+const DEFAULT_MODEL = "gpt-6-luna";
+// Reasoning models reject temperature, and their reasoning counts against
+// max_completion_tokens.
+const REASONING_HEADROOM = 4096;
+const isReasoningModel = (model: string): boolean =>
+  /^(o\d|gpt-[5-9])/.test(model);
+
+function samplingParams(
+  model: string,
+  maxTokens: number,
+  temperature: number,
+) {
+  return isReasoningModel(model)
+    ? { max_completion_tokens: maxTokens + REASONING_HEADROOM }
+    : { max_completion_tokens: maxTokens, temperature };
+}
 
 export interface OpenAILlmProviderConfig {
   apiKey?: string;
@@ -41,10 +56,10 @@ export class OpenAILlmProvider implements LlmProvider {
   }
 
   async complete(req: LlmRequest): Promise<LlmResponse> {
+    const model = req.model ?? this.defaultModel;
     const response = await this.client.chat.completions.create({
-      model: req.model ?? this.defaultModel,
-      max_completion_tokens: req.maxTokens,
-      temperature: req.temperature ?? 0.2,
+      model,
+      ...samplingParams(model, req.maxTokens, req.temperature ?? 0.2),
       messages: [
         { role: "system", content: req.system },
         { role: "user", content: req.prompt },
@@ -61,10 +76,10 @@ export class OpenAILlmProvider implements LlmProvider {
   async completeStructured<T>(
     req: LlmStructuredRequest,
   ): Promise<LlmStructuredResponse<T>> {
+    const model = req.model ?? this.defaultModel;
     const response = await this.client.chat.completions.create({
-      model: req.model ?? this.defaultModel,
-      max_completion_tokens: req.maxTokens,
-      temperature: req.temperature ?? 0,
+      model,
+      ...samplingParams(model, req.maxTokens, req.temperature ?? 0),
       messages: [
         { role: "system", content: req.system },
         { role: "user", content: req.prompt },
