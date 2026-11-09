@@ -1,4 +1,8 @@
-import { TASK_LIFECYCLE_OF, TASK_LIFECYCLES, type TaskLifecycle } from "@beevibe/core";
+import {
+  TASK_LIFECYCLE_OF,
+  TASK_LIFECYCLES,
+  type TaskLifecycle,
+} from "@beevibe/core/domain/task";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { BoardLane } from "@/components/tasks/board-column";
 
@@ -9,6 +13,13 @@ import type { BoardLane } from "@/components/tasks/board-column";
  * `@beevibe/core/domain/task.ts` and is imported here. This module owns
  * only the presentation half: each lane's label and dot color, and the
  * bucketing that turns a flat task list into board columns.
+ *
+ * Imported via the `@beevibe/core/domain/task` subpath, NOT the package
+ * root — see the header of `core/src/domain/format.ts`. The root barrel
+ * re-exports `./auth`, which reaches for `node:crypto` / `node:util`,
+ * and these are *value* imports, so a root import here fails
+ * `next build` with `UnhandledSchemeError`. The type-only root imports
+ * elsewhere in the web app are fine because they erase.
  */
 export type Lifecycle = TaskLifecycle;
 

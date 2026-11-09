@@ -1,10 +1,12 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import type { CliProcessOptions, CliProcessResult } from "./claude-code/spawn.js";
+import * as spawnModule from "./claude-code/spawn.js";
+import type { RuntimeContext, RuntimeResult, RuntimeStep } from "../ports/runtime.js";
 import {
   cancelledResult,
   createStdoutLineReader,
   finalizeCliResult,
+  runCliEventStream,
   warnIfTruncated,
 } from "./runtime-common.js";
 
@@ -145,5 +147,231 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+
+describe("runCliEventStream", () => {
+  interface TestEvent {
+    n: number;
+  }
+
+  function ctx(overrides: Partial<RuntimeContext> = {}): RuntimeContext {
+    return {
+      intent: "do the thing",
+      system_prompt_append: "",
+      workspace: { path: "/tmp/agent_x" },
+      ...overrides,
+    } as RuntimeContext;
+  }
+
+  /**
+   * Stand in for `runCliProcess`: replays `stdout` through the caller's
+   * `onLog` in the given chunks (so chunk boundaries are exercised), fires
+   * `onSpawn`, then resolves with `result`.
+   */
+  function mockRunCli(
+    chunks: string[],
+    result: Partial<CliProcessResult> = {},
+  ): { spy: ReturnType<typeof vi.spyOn>; seen: () => CliProcessOptions | undefined } {
+    let lastOptions: CliProcessOptions | undefined;
+    const spy = vi
+      .spyOn(spawnModule, "runCliProcess")
+      .mockImplementation(async (opts: CliProcessOptions) => {
+        lastOptions = opts;
+        opts.onSpawn?.({ pid: 4242, process_group_id: 4242 });
+        for (const chunk of chunks) opts.onLog?.("stdout", chunk);
+        return cliResult(result);
+      });
+    return { spy, seen: () => lastOptions };
+  }
+
+  const parseLine = (line: string): TestEvent | null => {
+    const n = Number(line.trim());
+    return Number.isFinite(n) && line.trim() ? { n } : null;
+  };
+  const noSteps = (): RuntimeStep[] => [];
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("collects one parsed event per line, in arrival order", async () => {
+    mockRunCli(["1\n2\n", "3\n"]);
+    const { events } = await runCliEventStream<TestEvent>({
+      command: "fake",
+      args: [],
+      cwd: "/tmp",
+      context: ctx(),
+      runtimeTag: "Fake",
+      parseLine,
+      extractSteps: noSteps,
+    });
+    expect(events).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }]);
+  });
+
+  it("reassembles an event split across chunk boundaries", async () => {
+    mockRunCli(["1", "2\n"]);
+    const { events } = await runCliEventStream<TestEvent>({
+      command: "fake",
+      args: [],
+      cwd: "/tmp",
+      context: ctx(),
+      runtimeTag: "Fake",
+      parseLine,
+      extractSteps: noSteps,
+    });
+    expect(events).toEqual([{ n: 12 }]);
+  });
+
+  it("flushes a trailing line with no newline", async () => {
+    mockRunCli(["1\n2"]);
+    const { events } = await runCliEventStream<TestEvent>({
+      command: "fake",
+      args: [],
+      cwd: "/tmp",
+      context: ctx(),
+      runtimeTag: "Fake",
+      parseLine,
+      extractSteps: noSteps,
+    });
+    expect(events).toEqual([{ n: 1 }, { n: 2 }]);
+  });
+
+  it("skips lines the parser rejects without aborting the stream", async () => {
+    mockRunCli(["1\nnoise\n\n2\n"]);
+    const { events } = await runCliEventStream<TestEvent>({
+      command: "fake",
+      args: [],
+      cwd: "/tmp",
+      context: ctx(),
+      runtimeTag: "Fake",
+      parseLine,
+      extractSteps: noSteps,
+    });
+    expect(events).toEqual([{ n: 1 }, { n: 2 }]);
+  });
+
+  it("ignores stderr chunks", async () => {
+    let lastOptions: CliProcessOptions | undefined;
+    vi.spyOn(spawnModule, "runCliProcess").mockImplementation(
+      async (opts: CliProcessOptions) => {
+        lastOptions = opts;
+        opts.onLog?.("stderr", "9\n");
+        opts.onLog?.("stdout", "1\n");
+        return cliResult();
+      },
+    );
+    const { events } = await runCliEventStream<TestEvent>({
+      command: "fake",
+      args: [],
+      cwd: "/tmp",
+      context: ctx(),
+      runtimeTag: "Fake",
+      parseLine,
+      extractSteps: noSteps,
+    });
+    expect(lastOptions).toBeDefined();
+    expect(events).toEqual([{ n: 1 }]);
+  });
+
+  it("fans each event's steps out to context.onStep in order", async () => {
+    mockRunCli(["1\n2\n"]);
+    const steps: RuntimeStep[] = [];
+    await runCliEventStream<TestEvent>({
+      command: "fake",
+      args: [],
+      cwd: "/tmp",
+      context: ctx({ onStep: (s) => steps.push(s) }),
+      runtimeTag: "Fake",
+      parseLine,
+      extractSteps: (e) => [{ type: "text", text: String(e.n) } as RuntimeStep],
+    });
+    expect(steps.map((s) => (s as { text: string }).text)).toEqual(["1", "2"]);
+  });
+
+  it("does not call extractSteps when the context has no onStep", async () => {
+    mockRunCli(["1\n"]);
+    const extractSteps = vi.fn(() => [] as RuntimeStep[]);
+    await runCliEventStream<TestEvent>({
+      command: "fake",
+      args: [],
+      cwd: "/tmp",
+      context: ctx(),
+      runtimeTag: "Fake",
+      parseLine,
+      extractSteps,
+    });
+    expect(extractSteps).not.toHaveBeenCalled();
+  });
+
+  it("forwards argv, cwd, env, stdin and the abort signal to runCliProcess", async () => {
+    const { seen } = mockRunCli([]);
+    const controller = new AbortController();
+    await runCliEventStream<TestEvent>({
+      command: "fake",
+      args: ["--flag"],
+      cwd: "/tmp/ws",
+      env: { FOO: "bar" },
+      stdin: "piped intent",
+      context: ctx({ abort_signal: controller.signal }),
+      runtimeTag: "Fake",
+      parseLine,
+      extractSteps: noSteps,
+    });
+    expect(seen()).toMatchObject({
+      command: "fake",
+      args: ["--flag"],
+      cwd: "/tmp/ws",
+      env: { FOO: "bar" },
+      stdin: "piped intent",
+      abortSignal: controller.signal,
+    });
+  });
+
+  it("rewrites onSpawn's pid into the RuntimeContext shape", async () => {
+    mockRunCli([]);
+    const spawns: Array<{ process_pid: number; process_group_id: number }> = [];
+    await runCliEventStream<TestEvent>({
+      command: "fake",
+      args: [],
+      cwd: "/tmp",
+      context: ctx({ onSpawn: (m) => spawns.push(m) }),
+      runtimeTag: "Fake",
+      parseLine,
+      extractSteps: noSteps,
+    });
+    expect(spawns).toEqual([{ process_pid: 4242, process_group_id: 4242 }]);
+  });
+
+  it("warns once, tagged, when stdout hit the capture cap", async () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mockRunCli(["1\n"], { truncated: true });
+    await runCliEventStream<TestEvent>({
+      command: "fake",
+      args: [],
+      cwd: "/tmp",
+      context: ctx(),
+      runtimeTag: "FakeRuntime",
+      parseLine,
+      extractSteps: noSteps,
+    });
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]![0]).toContain("[FakeRuntime]");
+  });
+
+  it("returns the raw process result for the caller's own branching", async () => {
+    mockRunCli([], { aborted: true, exitCode: null });
+    const { result } = await runCliEventStream<TestEvent>({
+      command: "fake",
+      args: [],
+      cwd: "/tmp",
+      context: ctx(),
+      runtimeTag: "Fake",
+      parseLine,
+      extractSteps: noSteps,
+    });
+    expect(result.aborted).toBe(true);
+    expect(result.exitCode).toBeNull();
   });
 });

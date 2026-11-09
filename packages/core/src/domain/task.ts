@@ -107,6 +107,12 @@ export interface Task {
  * `blocked` into `in_review` and `failed`/`cancelled` into `done`, so a
  * filter named after a lane returned rows the lane doesn't hold. Both
  * sides now read this table.
+ *
+ * The web imports these as *values*, so it must do so via the
+ * `@beevibe/core/domain/task` subpath rather than the package root —
+ * see the header of `./format.ts` for why the root barrel cannot be
+ * value-imported from a client component. Keep this module
+ * dependency-free (type-only imports) so it stays bundle-safe.
  */
 export type TaskLifecycle =
   | "pending"

@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,75 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+
+export interface CliEventStreamOptions<E> {
+  command: string;
+  args: string[];
+  cwd: string;
+  env?: Record<string, string | undefined>;
+  /** Piped to the child's stdin. Only claude-code uses this (`--print -`). */
+  stdin?: string;
+  /** The session being run — supplies `onStep`, `onSpawn` and `abort_signal`. */
+  context: RuntimeContext;
+  /** Log tag for the truncation warning, e.g. `"CodexRuntime"`. */
+  runtimeTag: string;
+  /** Provider-specific NDJSON line parser; `null` skips the line. */
+  parseLine: (line: string) => E | null;
+  /** Provider-specific event -> transcript steps. */
+  extractSteps: (event: E) => RuntimeStep[];
+}
+
+/**
+ * Spawn a CLI runtime and collect its NDJSON event stream.
+ *
+ * All three CLI runtimes (claude-code, codex, opencode) drive their
+ * subprocess the same way: buffer stdout into whole lines, parse each one
+ * into a provider event, append it to an array, fan the event out to
+ * `context.onStep` for the live transcript, then — once the process
+ * settles — flush the trailing partial line and warn if stdout hit the
+ * capture cap. Only the argv, the env, and the two provider-specific
+ * functions differ, so that whole sequence lives here and each adapter
+ * passes its own `parseLine` / `extractSteps`.
+ *
+ * Returns the events in arrival order plus the raw process result; the
+ * caller still owns the abort branch and the provider's
+ * `parse*Events` -> `RuntimeResult` mapping, which are not uniform (codex
+ * folds in an `--output-last-message` file, and the cancelled branch has
+ * per-adapter cleanup).
+ */
+export async function runCliEventStream<E>(
+  opts: CliEventStreamOptions<E>,
+): Promise<{ events: E[]; result: CliProcessResult }> {
+  const { context } = opts;
+  const events: E[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of opts.extractSteps(event)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: opts.command,
+    args: opts.args,
+    cwd: opts.cwd,
+    env: opts.env,
+    stdin: opts.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Flush any final partial line (stream without a trailing \n).
+  stdout.flush();
+  warnIfTruncated(opts.runtimeTag, result);
+
+  return { events, result };
 }
