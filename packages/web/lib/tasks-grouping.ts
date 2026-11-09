@@ -1,39 +1,16 @@
-import type { TaskStatus } from "@beevibe/core";
+import { TASK_LIFECYCLE_OF, TASK_LIFECYCLES, type TaskLifecycle } from "@beevibe/core";
 import type { TaskListItem } from "@/lib/types/tasks";
 import type { BoardLane } from "@/components/tasks/board-column";
 
-export type Lifecycle =
-  | "pending"
-  | "in_progress"
-  | "blocked"
-  | "in_review"
-  | "done"
-  | "archived";
-
 /**
- * Status → lifecycle lane.
- *
- * - `blocked` lives in its own lane (was previously folded into
- *   In review). Blocked = waiting on an external dependency, semantically
- *   different from "waiting on a human verdict." Different action by the
- *   human reading the board, so different column.
- * - `failed` and `cancelled` are terminal states that aren't success.
- *   They go into the `archived` lane, hidden by default — `Done` should
- *   read as "this shipped." Archive toggle exposes them when the user
- *   wants to see what didn't ship.
+ * Which lane a task belongs in is a wire contract with the api — the
+ * board draws one column per lane and `GET /task?lifecycle=` filters by
+ * the same names — so the status → lane table lives in
+ * `@beevibe/core/domain/task.ts` and is imported here. This module owns
+ * only the presentation half: each lane's label and dot color, and the
+ * bucketing that turns a flat task list into board columns.
  */
-const LIFECYCLE_OF: Record<TaskStatus, Lifecycle> = {
-  pending: "pending",
-  assigned: "pending",
-  in_progress: "in_progress",
-  revision: "in_progress",
-  needs_revision: "in_progress",
-  review: "in_review",
-  blocked: "blocked",
-  done: "done",
-  failed: "archived",
-  cancelled: "archived",
-};
+export type Lifecycle = TaskLifecycle;
 
 interface LaneTemplate {
   key: Lifecycle;
@@ -41,22 +18,30 @@ interface LaneTemplate {
   dot: string;
 }
 
-// Workflow-order, left-to-right. Blocked sits between In progress and
-// In review because that's where blockers actually arise — work
-// started, hit an impasse, needs unblocking before it can land in
-// review.
-const VISIBLE_LANES: LaneTemplate[] = [
-  { key: "pending", label: "Pending", dot: "bg-muted-foreground/50" },
-  { key: "in_progress", label: "In progress", dot: "bg-status-running" },
-  { key: "blocked", label: "Blocked", dot: "bg-status-blocked" },
-  { key: "in_review", label: "In review", dot: "bg-status-review" },
-  { key: "done", label: "Done", dot: "bg-status-done" },
-];
+const LANE_PRESENTATION: Record<Lifecycle, Omit<LaneTemplate, "key">> = {
+  pending: { label: "Pending", dot: "bg-muted-foreground/50" },
+  in_progress: { label: "In progress", dot: "bg-status-running" },
+  blocked: { label: "Blocked", dot: "bg-status-blocked" },
+  in_review: { label: "In review", dot: "bg-status-review" },
+  done: { label: "Done", dot: "bg-status-done" },
+  archived: { label: "Archived", dot: "bg-muted-foreground/40" },
+};
 
-const ARCHIVED_LANE: LaneTemplate = {
-  key: "archived",
-  label: "Archived",
-  dot: "bg-muted-foreground/40",
+/**
+ * The lane the archive toggle hides. `failed` and `cancelled` are
+ * terminal states that aren't success, so `Done` can read as "this
+ * shipped" and the toggle exposes what didn't.
+ */
+const ARCHIVED_LANE: Lifecycle = "archived";
+
+// Workflow order comes from core's TASK_LIFECYCLES.
+const VISIBLE_LANES: LaneTemplate[] = TASK_LIFECYCLES.filter(
+  (key) => key !== ARCHIVED_LANE,
+).map((key) => ({ key, ...LANE_PRESENTATION[key] }));
+
+const ARCHIVED_TEMPLATE: LaneTemplate = {
+  key: ARCHIVED_LANE,
+  ...LANE_PRESENTATION[ARCHIVED_LANE],
 };
 
 interface GroupOptions {
@@ -68,17 +53,12 @@ export function groupTasks(
   tasks: TaskListItem[],
   options: GroupOptions = {},
 ): BoardLane[] {
-  const buckets: Record<Lifecycle, TaskListItem[]> = {
-    pending: [],
-    in_progress: [],
-    blocked: [],
-    in_review: [],
-    done: [],
-    archived: [],
-  };
-  for (const t of tasks) buckets[LIFECYCLE_OF[t.status]].push(t);
+  const buckets = Object.fromEntries(
+    TASK_LIFECYCLES.map((lane) => [lane, [] as TaskListItem[]]),
+  ) as Record<Lifecycle, TaskListItem[]>;
+  for (const t of tasks) buckets[TASK_LIFECYCLE_OF[t.status]].push(t);
   const template = options.showArchived
-    ? [...VISIBLE_LANES, ARCHIVED_LANE]
+    ? [...VISIBLE_LANES, ARCHIVED_TEMPLATE]
     : VISIBLE_LANES;
   return template.map((l) => ({
     ...l,
@@ -91,7 +71,7 @@ export function groupTasks(
 export function countArchivedTasks(tasks: TaskListItem[]): number {
   let n = 0;
   for (const t of tasks) {
-    if (t.status === "failed" || t.status === "cancelled") n += 1;
+    if (TASK_LIFECYCLE_OF[t.status] === ARCHIVED_LANE) n += 1;
   }
   return n;
 }
