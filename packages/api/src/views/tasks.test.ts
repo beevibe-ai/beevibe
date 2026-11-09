@@ -76,7 +76,7 @@ describe("listTasks", () => {
     await listTasks(pool, { lifecycle: "in_review", bypassOwnerScope: true });
     expect(queryMock).toHaveBeenCalledWith(
       expect.any(String),
-      [["review", "blocked"], null, null],
+      [["review"], null, null],
     );
   });
 
