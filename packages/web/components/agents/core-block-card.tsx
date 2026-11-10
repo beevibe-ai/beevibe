@@ -5,6 +5,7 @@ import { Pencil } from "lucide-react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Avatar } from "@/components/avatar";
 import { ChatMarkdown } from "@/components/chat/markdown";
+import { CollapsibleMarkdown } from "@/components/collapsible-markdown";
 import { api } from "@/lib/api/client";
 import { queryKeys } from "@/lib/hooks/keys";
 import { cn } from "@/lib/utils";
@@ -427,27 +428,14 @@ function ProseBlock({
   kindLabel?: string;
   onEdit?: () => void;
 }) {
-  const long = block.content.length > COLLAPSE_THRESHOLD;
-  const [expanded, setExpanded] = useState(!long);
-  const visible =
-    long && !expanded
-      ? block.content.slice(0, COLLAPSE_THRESHOLD).trimEnd() + "…"
-      : block.content;
   return (
     <BlockShell>
       <BlockHeader block={block} kindLabel={kindLabel} onEdit={onEdit} />
-      <div className="text-sm text-foreground/85">
-        <ChatMarkdown content={visible} />
-      </div>
-      {long && !expanded ? (
-        <button
-          type="button"
-          onClick={() => setExpanded(true)}
-          className="mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-        >
-          Show more
-        </button>
-      ) : null}
+      <CollapsibleMarkdown
+        content={block.content}
+        threshold={COLLAPSE_THRESHOLD}
+        className="text-sm text-foreground/85"
+      />
     </BlockShell>
   );
 }
