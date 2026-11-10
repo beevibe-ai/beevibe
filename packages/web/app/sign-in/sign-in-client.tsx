@@ -13,6 +13,7 @@ import {
   isWellFormedUserKey,
   setUserKey,
 } from "@/lib/api/config";
+import { TEXT_INPUT_CLASS } from "@/lib/utils";
 
 type Mode = "password" | "key";
 
@@ -151,7 +152,7 @@ export function SignInClient() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="alice@example.com"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className={TEXT_INPUT_CLASS}
               disabled={submitting}
             />
 
@@ -165,7 +166,7 @@ export function SignInClient() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className={TEXT_INPUT_CLASS}
               disabled={submitting}
             />
           </>

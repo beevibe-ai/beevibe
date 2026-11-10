@@ -141,3 +141,22 @@ export function firstNonEmptyLine(content: string | null | undefined): string | 
   }
   return undefined;
 }
+
+/**
+ * The message to show for something thrown.
+ *
+ * `catch (err)` binds `unknown`, so every log line, error envelope, and
+ * `result_summary` that wants to show what went wrong needs the same
+ * narrowing. It was written out inline 33 times across the api and the
+ * daemon — plus a private `errMsg` in `tools/find-repo.ts` — which is a
+ * lot of surface for an expression whose two branches are easy to get
+ * subtly wrong (`String(err)` on an Error yields `"Error: boom"`, with
+ * the class name glued on).
+ *
+ * Non-Error throws (strings, numbers, `undefined`, plain objects) go
+ * through `String()`, so this never itself throws and always returns
+ * something printable.
+ */
+export function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}

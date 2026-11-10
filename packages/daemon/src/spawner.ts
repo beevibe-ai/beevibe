@@ -18,6 +18,7 @@ import {
   createDefaultRuntimeRegistry,
   runtimeMissingError,
 } from "@beevibe/core/adapters/runtime-registry";
+import { errorMessage } from "@beevibe/core/domain/format";
 import type {
   Agent,
   DispatchPayload,
@@ -172,7 +173,7 @@ export async function runDispatch(
   } catch (err) {
     error(
       "[daemon/spawner] /runtime/done POST failed:",
-      err instanceof Error ? err.message : String(err),
+      errorMessage(err),
     );
   }
 }

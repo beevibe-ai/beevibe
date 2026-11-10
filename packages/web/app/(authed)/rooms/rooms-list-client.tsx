@@ -11,6 +11,7 @@ import { queryKeys } from "@/lib/hooks/keys";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { formatRelativeTime, shortId } from "@/lib/format";
+import { TEXT_INPUT_CLASS } from "@/lib/utils";
 
 export function RoomsListClient() {
   const queryClient = useQueryClient();
@@ -79,7 +80,7 @@ export function RoomsListClient() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Plan the M9 launch"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className={TEXT_INPUT_CLASS}
               disabled={create.isPending}
             />
           </div>

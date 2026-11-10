@@ -5,6 +5,7 @@
 
 import { join } from "node:path";
 import { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
+import { errorMessage } from "@beevibe/core/domain/format";
 import { createDefaultRuntimeRegistry } from "@beevibe/core/adapters/runtime-registry";
 import { ApiClient } from "./api-client.js";
 import { Claimer } from "./claimer.js";
@@ -38,7 +39,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
     (err: unknown) => {
       warn(
         "[daemon] skills sync failed; continuing without skills:",
-        err instanceof Error ? err.message : String(err),
+        errorMessage(err),
       );
       return undefined;
     },
@@ -89,7 +90,7 @@ export async function runStart(options: StartOptions = {}): Promise<void> {
   process.on("unhandledRejection", (reason) => {
     warn(
       "[daemon] unhandledRejection (continuing):",
-      reason instanceof Error ? reason.message : String(reason),
+      errorMessage(reason),
     );
   });
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   deriveShortId,
+  errorMessage,
   firstNonEmptyLine,
   formatDurationLabel,
   formatRelative,
@@ -133,5 +134,36 @@ describe("firstNonEmptyLine", () => {
     expect(firstNonEmptyLine("   \n\t\n ")).toBeUndefined();
     expect(firstNonEmptyLine("")).toBeUndefined();
     expect(firstNonEmptyLine(null)).toBeUndefined();
+  });
+});
+
+describe("errorMessage", () => {
+  it("unwraps an Error to its message, without the class-name prefix String() adds", () => {
+    expect(errorMessage(new Error("boom"))).toBe("boom");
+    expect(errorMessage(new TypeError("bad type"))).toBe("bad type");
+  });
+
+  it("keeps the message of an Error subclass that carries extra fields", () => {
+    class CodedError extends Error {
+      constructor(readonly code: string) {
+        super(`failed: ${code}`);
+      }
+    }
+    expect(errorMessage(new CodedError("E42"))).toBe("failed: E42");
+  });
+
+  it("stringifies a non-Error throw", () => {
+    expect(errorMessage("just a string")).toBe("just a string");
+    expect(errorMessage(42)).toBe("42");
+    expect(errorMessage(undefined)).toBe("undefined");
+    expect(errorMessage(null)).toBe("null");
+  });
+
+  it("returns something printable for an Error with an empty message", () => {
+    expect(errorMessage(new Error(""))).toBe("");
+  });
+
+  it("does not throw on an object with no useful string form", () => {
+    expect(errorMessage({ a: 1 })).toBe("[object Object]");
   });
 });

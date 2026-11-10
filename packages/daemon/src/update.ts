@@ -21,6 +21,7 @@
  */
 
 import { createHash } from "node:crypto";
+import { errorMessage } from "@beevibe/core/domain/format";
 import { createWriteStream, mkdtempSync, rmSync, chmodSync, renameSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -220,7 +221,7 @@ export async function runUpdate(opts: { skipPrompt?: boolean } = {}): Promise<vo
     try {
       renameSync(stagingPath, process.execPath);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = errorMessage(err);
       error(`Failed to replace ${process.execPath}: ${msg}`);
       error(`The new binary is at ${stagingPath} — install manually if needed.`);
       // Don't clean up the stagingDir if we leave the new binary behind

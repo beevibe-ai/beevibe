@@ -18,6 +18,7 @@ import type {
   SessionEventKind,
   TerminalSessionStatus,
 } from "@beevibe/core";
+import { errorMessage } from "@beevibe/core/domain/format";
 import { runRepoAgent, type TranscriptEvent } from "@beevibe/sandbox/orchestrator";
 import type { ApiClient } from "./api-client.js";
 import { createEventBatcher } from "./event-batcher.js";
@@ -173,7 +174,7 @@ export async function runRepoDispatch(
   } catch (err) {
     error(
       "[daemon/repo-run] /runtime/done POST failed:",
-      err instanceof Error ? err.message : String(err),
+      errorMessage(err),
     );
   }
 }

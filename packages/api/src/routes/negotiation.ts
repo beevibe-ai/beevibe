@@ -13,6 +13,7 @@ import {
   type NegotiationService,
   NegotiationNotFoundError,
 } from "@beevibe/core/services/negotiation-service";
+import { errorMessage } from "@beevibe/core/domain/format";
 import { requireHuman } from "../auth/middleware.js";
 import { requireParam } from "./http-errors.js";
 
@@ -40,7 +41,7 @@ export function createNegotiationRouter(deps: NegotiationRoutesDeps): Router {
       console.error("[negotiation route]", err);
       res.status(500).json({
         error: "internal_error",
-        message: err instanceof Error ? err.message : String(err),
+        message: errorMessage(err),
       });
     }
   });

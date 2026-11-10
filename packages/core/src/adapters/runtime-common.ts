@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -39,6 +44,29 @@ export function parseNdjsonLine<T>(line: string): T | null {
  * richer superset — extra `name`/`persona` and single-key branches — and
  * intentionally keeps its own implementation.)
  */
+/**
+ * Max characters of a tool input, tool result, or command rendered into a
+ * `RuntimeStep.description` or a transcript line. Every CLI adapter capped
+ * these at 200 with its own literal; the cap is a UI/transcript concern
+ * shared by all of them, so it lives here.
+ */
+export const TRANSCRIPT_SNIPPET_MAX = 200;
+
+/**
+ * Truncate `text` to `max` chars and flatten embedded newlines to spaces, so
+ * the result is safe to splice into a single `[tag] …` transcript line.
+ * `undefined` / `null` collapse to `""`.
+ *
+ * Slices *before* flattening, matching what every adapter did by hand.
+ */
+export function oneLineSnippet(
+  text: string | undefined | null,
+  max: number = TRANSCRIPT_SNIPPET_MAX,
+): string {
+  if (!text) return "";
+  return text.slice(0, max).replace(/\n/g, " ");
+}
+
 export const PREFERRED_TOOL_INPUT_FIELDS = [
   "file_path",
   "path",
@@ -59,14 +87,14 @@ export function describeToolInput(
   input: unknown,
   fields: readonly string[] = PREFERRED_TOOL_INPUT_FIELDS,
 ): string {
-  if (typeof input === "string") return input.slice(0, 200);
+  if (typeof input === "string") return input.slice(0, TRANSCRIPT_SNIPPET_MAX);
   if (!input || typeof input !== "object" || Array.isArray(input)) return "";
   const obj = input as Record<string, unknown>;
   for (const key of fields) {
     const v = obj[key];
-    if (typeof v === "string" && v.length > 0) return v.slice(0, 200);
+    if (typeof v === "string" && v.length > 0) return v.slice(0, TRANSCRIPT_SNIPPET_MAX);
   }
-  return JSON.stringify(input).slice(0, 200);
+  return JSON.stringify(input).slice(0, TRANSCRIPT_SNIPPET_MAX);
 }
 
 /**
@@ -207,4 +235,136 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * Output text for a session that ran to completion without the CLI
+ * surfacing any final assistant message. Shared so the three adapters
+ * can't drift on the exact string (the web UI matches on it).
+ */
+export const SESSION_COMPLETED_OUTPUT = "Session completed.";
+
+/**
+ * The placeholder `resolveCliOutput` returns when the CLI exited non-zero
+ * with no message to surface. Exported so downstream consumers (the chat
+ * route's user-facing failure mapping) can detect this exact string and
+ * replace it with something more actionable instead of pattern-matching
+ * across package boundaries.
+ */
+export function bareCliExitMessage(exitCode: number | null): string {
+  return `CLI exited with code ${exitCode}`;
+}
+
+/**
+ * Matches strings produced by {@link bareCliExitMessage} — the only
+ * "useless" stand-in this layer emits on failure. Consumers that want to
+ * swap a bare exit for a friendlier diagnostic gate on this predicate so
+ * the coupling stays in one place.
+ */
+export function isBareCliExitMessage(s: string): boolean {
+  return /^CLI exited with code (-?\d+|null)$/.test(s);
+}
+
+/**
+ * Pick the `RuntimeResult.output` text from the candidates a parser dug out
+ * of the event stream, most-specific first, falling back to the shared
+ * terminal strings.
+ *
+ * All three CLI parsers ended a run with the same chain — "first candidate
+ * that isn't empty, else `Session completed.` on success / the bare exit
+ * message on failure". Candidates are taken as-is (callers trim where they
+ * want trimming), and an empty string falls *through* to the next candidate
+ * rather than short-circuiting, which is why the adapters all wrote `||`
+ * rather than `??` here.
+ */
+export function resolveCliOutput(opts: {
+  failed: boolean;
+  exitCode: number | null;
+  candidates: ReadonlyArray<string | undefined>;
+}): string {
+  for (const candidate of opts.candidates) {
+    if (candidate) return candidate;
+  }
+  return opts.failed ? bareCliExitMessage(opts.exitCode) : SESSION_COMPLETED_OUTPUT;
+}
+
+/**
+ * Accumulator for the human-readable transcript persisted alongside a
+ * session.
+ *
+ * The `[assistant] …` / `[tool_call] …` / `[tool_result from X] …` /
+ * `[error] …` line format is a cross-provider contract — transcript
+ * summarizers and the session detail UI parse these tags — but each
+ * adapter was building the lines with its own template literals. One
+ * builder keeps the tags, the spacing, and the trailing newline identical
+ * across providers.
+ */
+export interface TranscriptBuilder {
+  /** `[assistant] <text>` */
+  assistant(text: string): void;
+  /** `[tool_call] <tool>`, plus ` <detail>` when a detail is given. */
+  toolCall(tool: string, detail?: string): void;
+  /**
+   * `[tool_result from <tool>]`, plus ` <detail>` when a detail is given.
+   * A missing `tool` degrades to a bare `[tool_result]` — Claude Code can
+   * emit a result whose `tool_use_id` never correlated to a call.
+   */
+  toolResult(tool: string | undefined, detail?: string): void;
+  /** `[error] <message>` */
+  error(message: string): void;
+  /** The assembled transcript, or `undefined` when nothing was pushed. */
+  value(): string | undefined;
+}
+
+export function createTranscript(): TranscriptBuilder {
+  const parts: string[] = [];
+  /** `[<tag>] <detail>` — or a bare `[<tag>]` when there is no detail. */
+  const line = (tag: string, detail?: string): void => {
+    parts.push(detail ? `[${tag}] ${detail}\n` : `[${tag}]\n`);
+  };
+  return {
+    assistant: (text) => line("assistant", text),
+    toolCall: (tool, detail) => line("tool_call", detail ? `${tool} ${detail}` : tool),
+    toolResult: (tool, detail) =>
+      tool === undefined ? line("tool_result") : line(`tool_result from ${tool}`, detail),
+    error: (message) => line("error", message),
+    value: () => parts.join("") || undefined,
+  };
+}
+
+/**
+ * Buffer stdout into whole lines, parse each one into a provider event, push
+ * it onto `events`, and fan the derived {@link RuntimeStep}s out to `onStep`.
+ *
+ * Every CLI runtime's `execute()` had this same twelve-line block, differing
+ * only in the parse/extract pair and the event type. Parsing incrementally
+ * during streaming (rather than re-splitting the accumulated stdout after
+ * close) is what lets `onStep` drive a live transcript, so the buffering and
+ * the parsing have to stay wired together.
+ *
+ * Callers must call `flush()` once the process settles, to pick up a final
+ * line that arrived without a trailing newline.
+ */
+export interface CliEventCollector<E> {
+  /** Events parsed so far, in stream order. */
+  readonly events: E[];
+  onLog: (stream: "stdout" | "stderr", chunk: string) => void;
+  flush: () => void;
+}
+
+export function createCliEventCollector<E>(opts: {
+  parse: (line: string) => E | null;
+  extractSteps: (event: E) => RuntimeStep[];
+  onStep?: ((step: RuntimeStep) => void) | undefined;
+}): CliEventCollector<E> {
+  const events: E[] = [];
+  const reader = createStdoutLineReader((line) => {
+    const event = opts.parse(line);
+    if (!event) return;
+    events.push(event);
+    const { onStep } = opts;
+    if (!onStep) return;
+    for (const step of opts.extractSteps(event)) onStep(step);
+  });
+  return { events, onLog: reader.onLog, flush: reader.flush };
 }

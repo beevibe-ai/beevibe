@@ -32,6 +32,7 @@ import {
   type RuntimeSyncRequest,
   type RuntimeSyncResponse,
 } from "@beevibe/core";
+import { errorMessage } from "@beevibe/core/domain/format";
 import {
   generateDaemonApiKey,
   hashDaemonToken,
@@ -317,7 +318,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
         } catch (err) {
           console.warn(
             "[runtime/done] repo_run update failed:",
-            err instanceof Error ? err.message : String(err),
+            errorMessage(err),
           );
         }
 
@@ -346,7 +347,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
             } catch (err) {
               console.warn(
                 `[runtime/done] work_product create failed for ${artifact.filename}:`,
-                err instanceof Error ? err.message : String(err),
+                errorMessage(err),
               );
             }
           }
@@ -362,7 +363,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
         Promise.resolve(deps.onSessionComplete(updated)).catch((err: unknown) =>
           console.warn(
             "[runtime/done] onSessionComplete failed:",
-            err instanceof Error ? err.message : String(err),
+            errorMessage(err),
           ),
         );
       }
@@ -567,7 +568,7 @@ async function composeDispatchPayload(
   } catch (err) {
     console.warn(
       "[runtime/claim] briefing snapshot persist failed:",
-      err instanceof Error ? err.message : String(err),
+      errorMessage(err),
     );
   }
 
@@ -597,7 +598,7 @@ async function composeDispatchPayload(
     } catch (err) {
       console.warn(
         "[runtime/claim] repo_run status flip failed:",
-        err instanceof Error ? err.message : String(err),
+        errorMessage(err),
       );
     }
   }
