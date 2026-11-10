@@ -1,5 +1,11 @@
 import type { RuntimeResult, RuntimeStep } from "../../ports/runtime.js";
-import { parseNdjsonLine } from "../runtime-common.js";
+import {
+  TRANSCRIPT_SNIPPET_MAX,
+  createTranscript,
+  oneLineSnippet,
+  parseNdjsonLine,
+  resolveCliOutput,
+} from "../runtime-common.js";
 
 /**
  * Parser for Claude Code's `--output-format stream-json` output. Each line
@@ -158,7 +164,7 @@ const PREFERRED_INPUT_FIELDS = [
 function describeToolInput(input: Record<string, unknown>): string {
   for (const k of PREFERRED_INPUT_FIELDS) {
     const v = input[k];
-    if (typeof v === "string") return v.slice(0, 200);
+    if (typeof v === "string") return v.slice(0, TRANSCRIPT_SNIPPET_MAX);
   }
   // create_subordinate_agent shape: surface the new agent's name.
   if (typeof input.name === "string" && typeof input.persona === "string") {
@@ -166,9 +172,9 @@ function describeToolInput(input: Record<string, unknown>): string {
   }
   const keys = Object.keys(input);
   if (keys.length === 1 && typeof input[keys[0]!] === "string") {
-    return (input[keys[0]!] as string).slice(0, 200);
+    return (input[keys[0]!] as string).slice(0, TRANSCRIPT_SNIPPET_MAX);
   }
-  return JSON.stringify(input).slice(0, 200);
+  return JSON.stringify(input).slice(0, TRANSCRIPT_SNIPPET_MAX);
 }
 
 /**
@@ -200,7 +206,7 @@ export function parseClaudeMessages(
     }
   }
 
-  const transcriptParts: string[] = [];
+  const transcript = createTranscript();
   let output = "";
   let sessionId: string | undefined;
   let costUsd: number | undefined;
@@ -214,36 +220,29 @@ export function parseClaudeMessages(
     if (msg.type === STREAM_TYPE.Assistant && msg.message) {
       const content = msg.message.content;
       if (typeof content === "string") {
-        transcriptParts.push(`[assistant] ${content}\n`);
+        transcript.assistant(content);
         output = content;
       } else if (Array.isArray(content)) {
         const texts: string[] = [];
         for (const block of content) {
           if (block.type === BLOCK_TYPE.Text && typeof block.text === "string") {
-            transcriptParts.push(`[assistant] ${block.text}\n`);
+            transcript.assistant(block.text);
             texts.push(block.text);
           } else if (block.type === BLOCK_TYPE.ToolUse) {
-            transcriptParts.push(`[tool_call] ${block.name ?? "unknown"}\n`);
+            transcript.toolCall(block.name ?? "unknown");
           }
           // Skip thinking blocks + signatures — they bloat the transcript.
         }
         if (texts.length > 0) output = texts.join("\n");
       }
     } else if (msg.type === STREAM_TYPE.ToolUse) {
-      transcriptParts.push(`[tool_call] ${msg.name ?? "unknown"}\n`);
+      transcript.toolCall(msg.name ?? "unknown");
     } else if (msg.type === STREAM_TYPE.ToolResult) {
       const toolName = msg.tool_use_id ? toolUseNames.get(msg.tool_use_id) : undefined;
-      const resultContent =
-        typeof msg.content === "string" ? msg.content.slice(0, 200).replace(/\n/g, " ") : "";
-      if (toolName) {
-        transcriptParts.push(
-          resultContent
-            ? `[tool_result from ${toolName}] ${resultContent}\n`
-            : `[tool_result from ${toolName}]\n`,
-        );
-      } else {
-        transcriptParts.push("[tool_result]\n");
-      }
+      transcript.toolResult(
+        toolName,
+        typeof msg.content === "string" ? oneLineSnippet(msg.content) : "",
+      );
     } else if (msg.type === STREAM_TYPE.Result) {
       sessionId = msg.session_id;
       costUsd = msg.total_cost_usd ?? msg.cost_usd;
@@ -263,7 +262,6 @@ export function parseClaudeMessages(
   }
 
   const succeeded = exitCode === 0;
-  const transcript = transcriptParts.join("");
   const usage =
     inputTokens || outputTokens || costUsd !== undefined || cacheCreationTokens || cacheReadTokens
       ? {
@@ -278,33 +276,20 @@ export function parseClaudeMessages(
 
   return {
     status: succeeded ? "completed" : "failed",
-    output: output || (succeeded ? "Session completed." : bareCliExitMessage(exitCode)),
-    transcript: transcript || undefined,
+    output: resolveCliOutput({ failed: !succeeded, exitCode, candidates: [output] }),
+    transcript: transcript.value(),
     usage,
     cli_session_id: sessionId,
   };
 }
 
 /**
- * The placeholder message `parseClaudeMessages` returns when the CLI
- * exited non-zero with no final-result message to surface. Exported so
- * downstream consumers (e.g. the chat route's user-facing failure
- * mapping) can detect this exact string and replace it with something
- * more actionable instead of pattern-matching across package boundaries.
+ * Re-exported from `runtime-common` so this module keeps its published
+ * surface: the pair is a cross-provider contract (codex and opencode fall
+ * back to the same string), so it lives with the other shared CLI helpers
+ * rather than in the Claude Code adapter.
  */
-export function bareCliExitMessage(exitCode: number | null): string {
-  return `CLI exited with code ${exitCode}`;
-}
-
-/**
- * Matches strings produced by `bareCliExitMessage` — the only "useless"
- * stand-in this layer emits on failure. Consumers that want to swap a
- * bare exit for a friendlier diagnostic gate on this predicate so the
- * coupling stays in one place.
- */
-export function isBareCliExitMessage(s: string): boolean {
-  return /^CLI exited with code (-?\d+|null)$/.test(s);
-}
+export { bareCliExitMessage, isBareCliExitMessage } from "../runtime-common.js";
 
 /**
  * Convenience wrapper: split stdout on \n, parse each line, then build
