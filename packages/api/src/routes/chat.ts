@@ -35,6 +35,7 @@ import {
   type RuntimeRepository,
   type SessionRepository,
 } from "@beevibe/core";
+import { errorMessage } from "@beevibe/core/domain/format";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { ResumeReason } from "@beevibe/core/services/agent-session";
 import { isBareCliExitMessage } from "@beevibe/core/adapters/claude-code";
@@ -681,7 +682,7 @@ export function createChatRouter(deps: ChatRoutesDeps): Router {
           .catch((err: unknown) =>
             console.error(
               "[chat route] onboarding_completed_at flip failed:",
-              err instanceof Error ? err.message : String(err),
+              errorMessage(err),
             ),
           );
       }

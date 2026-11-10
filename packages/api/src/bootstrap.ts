@@ -21,6 +21,7 @@ import {
   PostgresWorkProductRepository,
   createPool,
 } from "@beevibe/core/adapters/postgres";
+import { errorMessage } from "@beevibe/core/domain/format";
 import type { Pool } from "@beevibe/core/adapters/postgres";
 import {
   createMemoryStack,
@@ -445,7 +446,7 @@ export async function bootstrap(cfg: BootstrapConfig): Promise<BootstrapResult> 
         } catch (err) {
           console.warn(
             "[onSessionComplete] run_repo task→review failed:",
-            err instanceof Error ? err.message : String(err),
+            errorMessage(err),
           );
         }
       }

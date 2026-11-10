@@ -11,6 +11,7 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import type { McpCaller } from "../tools/assemble.js";
 import type { CoreMemory, FactStore, MemoryAgent } from "@beevibe/core/services/memory";
+import { errorMessage } from "@beevibe/core/domain/format";
 import type {
   AgentProvisionEventRepository,
   AgentRepository,
@@ -362,7 +363,7 @@ function registerToolsOnServer(server: McpLowLevelServer, tools: AgentTool[]): v
         isError: result.isError ?? false,
       };
     } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
+      const message = errorMessage(err);
       return {
         content: [{ type: "text" as const, text: JSON.stringify({ error: message }) }],
         isError: true,

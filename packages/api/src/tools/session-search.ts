@@ -1,4 +1,5 @@
 import type { HierarchyLevel, SessionSearchRequest } from "@beevibe/core";
+import { errorMessage } from "@beevibe/core/domain/format";
 import {
   SessionSearchError,
   SessionSearchService,
@@ -278,7 +279,7 @@ export function createSessionSearchTool(
         return {
           content: {
             error: "internal_error",
-            message: err instanceof Error ? err.message : String(err),
+            message: errorMessage(err),
           },
           isError: true,
         };

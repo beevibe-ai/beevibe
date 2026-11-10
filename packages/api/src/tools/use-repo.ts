@@ -26,6 +26,7 @@ import {
   type RepoRunRepository,
   type TaskRepository,
 } from "@beevibe/core";
+import { errorMessage } from "@beevibe/core/domain/format";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { AgentTool } from "./types.js";
 
@@ -198,7 +199,7 @@ export function createUseRepoTool(
         return {
           content: {
             error: "dispatch_failed",
-            message: err instanceof Error ? err.message : String(err),
+            message: errorMessage(err),
           },
           isError: true,
         };
@@ -222,7 +223,7 @@ export function createUseRepoTool(
         return {
           content: {
             error: "repo_run_create_failed",
-            message: err instanceof Error ? err.message : String(err),
+            message: errorMessage(err),
           },
           isError: true,
         };

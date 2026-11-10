@@ -1,4 +1,5 @@
 import type { CoreMemory, CoreMemoryOperation } from "@beevibe/core/services/memory";
+import { errorMessage } from "@beevibe/core/domain/format";
 import type { HierarchyLevel } from "@beevibe/core";
 import { DEFAULT_BLOCK_TEMPLATES } from "@beevibe/core";
 import type { AgentTool } from "./types.js";
@@ -254,7 +255,7 @@ export function createUpdateCoreMemoryTool(
         return {
           content: {
             error: "update_failed",
-            message: err instanceof Error ? err.message : String(err),
+            message: errorMessage(err),
           },
           isError: true,
         };

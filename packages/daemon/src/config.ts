@@ -6,6 +6,7 @@
  */
 
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { errorMessage } from "@beevibe/core/domain/format";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -65,7 +66,7 @@ export function loadConfig(configRoot?: string): DaemonConfig | undefined {
   } catch (err) {
     throw new Error(
       `Daemon config at ${path} is malformed: ${
-        err instanceof Error ? err.message : String(err)
+        errorMessage(err)
       }`,
     );
   }

@@ -15,6 +15,7 @@ import type { IncomingMessage, Server } from "node:http";
 import type { Duplex } from "node:stream";
 import { WebSocket, WebSocketServer } from "ws";
 import type { LookupApiKeyDeps } from "@beevibe/core/auth";
+import { errorMessage } from "@beevibe/core/domain/format";
 import { lookupApiKey } from "@beevibe/core/auth";
 import type { RuntimeRepository, SessionRepository } from "@beevibe/core";
 import type { DaemonClient, DaemonHub, DaemonPushPayload } from "./hub.js";
@@ -195,7 +196,7 @@ export class RuntimeWsServer {
       }
     } catch (err) {
       console.warn("[runtime/ws] replay-pending failed", {
-        err: err instanceof Error ? err.message : String(err),
+        err: errorMessage(err),
       });
     }
   }
@@ -208,7 +209,7 @@ export class RuntimeWsServer {
         } catch (err) {
           console.warn("[runtime/ws] heartbeat on connect failed", {
             runtimeId: rid,
-            err: err instanceof Error ? err.message : String(err),
+            err: errorMessage(err),
           });
         }
       }),
