@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useMe } from "@/lib/hooks/use-me";
 import { isApiConfigured } from "@/lib/api/config";
+import { DetailStateMessage, detailState } from "@/components/detail/detail-state";
 import { api, type RoomDetail, type RoomMemberDetail, type RoomMessage } from "@/lib/api/client";
 import { ApiError, describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
@@ -23,7 +24,6 @@ import { ChatMarkdown } from "@/components/chat/markdown";
 import { ToolStepList } from "@/components/chat/tool-step-list";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
 import { Skeleton } from "@/components/skeleton";
-import { EmptyState } from "@/components/empty-state";
 import { formatRelativeTime, idSuffix, sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -121,14 +121,13 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
     });
   }, [data?.messages.length, send.isPending]);
 
-  if (!isApiConfigured) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <EmptyState icon={Users} title="API not configured" />
-      </div>
-    );
-  }
-  if (isLoading) {
+  const state = detailState({
+    noun: "room",
+    id: roomId,
+    icon: Users,
+    query: { data, isLoading, isError },
+  });
+  if (state.kind === "loading") {
     return (
       <div className="flex-1 px-6 py-6">
         <Skeleton className="h-12 w-1/2 mb-4" />
@@ -136,17 +135,14 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
       </div>
     );
   }
-  if (isError || !data) {
+  if (state.kind !== "ready") {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load room"
-          description={`Room ${roomId} could not be fetched.`}
-        />
+        <DetailStateMessage state={state} />
       </div>
     );
   }
+  const room = state.data;
 
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -159,19 +155,19 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
   return (
     <div className="flex-1 flex overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
-        <RoomHeader room={data} myPersonId={me?.person.id} />
+        <RoomHeader room={room} myPersonId={me?.person.id} />
         <div ref={transcriptRef} className="flex-1 overflow-y-auto px-6 py-6">
           <div className="max-w-3xl mx-auto space-y-3">
-            {data.messages.length === 0 ? (
-              <EmptyMessages members={data.members} />
+            {room.messages.length === 0 ? (
+              <EmptyMessages members={room.members} />
             ) : (
-              data.messages.map((m, i) => (
+              room.messages.map((m, i) => (
                 <MessageBubble
                   key={m.id}
                   message={m}
-                  members={data.members}
+                  members={room.members}
                   myPersonId={me?.person.id}
-                  showSuggestions={!send.isPending && i === data.messages.length - 1}
+                  showSuggestions={!send.isPending && i === room.messages.length - 1}
                   onSuggest={(text) => {
                     // Suggestion chips are implicitly addressed to the agent
                     // who emitted them — without an explicit @mention the
@@ -187,8 +183,8 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
               ))
             )}
             {send.isPending ? <Pending /> : null}
-            {(data.typing?.length ?? 0) > 0 ? (
-              <TypingIndicators typing={data.typing!} />
+            {(room.typing?.length ?? 0) > 0 ? (
+              <TypingIndicators typing={room.typing!} />
             ) : null}
             {send.error ? (
               <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
@@ -206,7 +202,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
           setDraft={setDraft}
           submit={submit}
           isPending={send.isPending}
-          members={data.members}
+          members={room.members}
         />
       </div>
     </div>
