@@ -1,6 +1,15 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
-import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
+import {
+  type CliProcessOptions,
+  type CliProcessResult,
+  runCliProcess,
+} from "./claude-code/spawn.js";
 
 /**
  * Shared helpers for the CLI-subprocess runtimes (claude-code, codex,
@@ -207,4 +216,86 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * Run one CLI session end to end: spawn, read the NDJSON event stream,
+ * forward step events live, and map the outcome to a `RuntimeResult`.
+ *
+ * All three CLI runtimes performed this exact sequence inline, differing
+ * only in the four provider-specific functions this takes as arguments:
+ *
+ *   1. accumulate parsed events into an array
+ *   2. forward each event's steps to `context.onStep`, when set
+ *   3. buffer stdout into whole lines via {@link createStdoutLineReader}
+ *   4. `runCliProcess`, then flush the trailing partial line
+ *   5. {@link warnIfTruncated}
+ *   6. return {@link cancelledResult} when the caller aborted
+ *   7. otherwise {@link finalizeCliResult} over the parsed events
+ *
+ * Steps 6 and 7 are the ones worth having in one place: the abort check
+ * has to come before parsing (an aborted session's event stream is
+ * cut off mid-stride, and a half-parsed transcript would surface as a
+ * failure rather than a cancellation), and `flush` has to happen after
+ * the process settles but before parsing, or a stream that ends without
+ * a trailing newline silently drops its last event.
+ *
+ * `onSettled` exists for Codex, which writes a per-spawn
+ * `--output-last-message` file it has to clean up on both exits. It runs
+ * after `parseResult` on the normal path, so a `parseResult` closure can
+ * still read that file, and before the return on the aborted path.
+ */
+export async function runCliSession<E>(opts: {
+  /** Log tag for the truncation warning — "CodexRuntime", etc. */
+  runtimeTag: string;
+  context: RuntimeContext;
+  /**
+   * Process shape. `abortSignal`, `onSpawn` and `onLog` are supplied
+   * from `context` and the line reader, so they are not accepted here.
+   */
+  spawn: Omit<CliProcessOptions, "abortSignal" | "onSpawn" | "onLog">;
+  /** Provider's NDJSON line parser; `null` skips the line. */
+  parseLine: (line: string) => E | null;
+  /** Provider's event → live-transcript steps mapping. */
+  extractSteps: (event: E) => RuntimeStep[];
+  /** Provider's events → result mapping, called only when not aborted. */
+  parseResult: (events: E[], exitCode: number | null) => RuntimeResult;
+  /** Per-spawn cleanup, run on both the aborted and the parsed path. */
+  onSettled?: () => void;
+}): Promise<RuntimeResult> {
+  const { context } = opts;
+  const events: E[] = [];
+
+  const stdout = createStdoutLineReader((line) => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of opts.extractSteps(event)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    ...opts.spawn,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Emit any final line the stream ended on without a newline.
+  stdout.flush();
+
+  warnIfTruncated(opts.runtimeTag, result);
+
+  if (result.aborted) {
+    opts.onSettled?.();
+    return cancelledResult(result);
+  }
+
+  const parsed = opts.parseResult(events, result.exitCode);
+  opts.onSettled?.();
+  return finalizeCliResult(parsed, result);
 }
