@@ -1,16 +1,15 @@
 "use client";
 
-import { AlertTriangle, Bot } from "lucide-react";
+import { Bot } from "lucide-react";
 import { Avatar } from "@/components/avatar";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { PanelFooterField, PeekPanel } from "@/components/detail/peek-panel";
+import { DetailStateMessage, detailState } from "@/components/detail/detail-state";
 import { CoreBlockCard } from "@/components/agents/core-block-card";
 import { RecentSessionRow } from "@/components/agents/recent-session-row";
 import { RecentChatThreadRow } from "@/components/agents/recent-chat-thread-row";
-import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
-import { isApiConfigured } from "@/lib/api/config";
 import { useAgent } from "@/lib/hooks/use-agents";
 import { useIsOwner } from "@/lib/hooks/use-me";
 import { formatReviewPolicy } from "@/lib/format";
@@ -42,21 +41,9 @@ export function AgentDetailPanel({
 }
 
 function PanelBody({ agentId }: { agentId: string }) {
-  const { data, isLoading, isError } = useAgent(agentId);
+  const state = detailState({ noun: "agent", id: agentId, icon: Bot, query: useAgent(agentId) });
 
-  if (!isApiConfigured) {
-    return (
-      <div className="p-4">
-        <EmptyState
-          icon={Bot}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL to load this agent."
-        />
-      </div>
-    );
-  }
-
-  if (isLoading) {
+  if (state.kind === "loading") {
     return (
       <div className="p-5 space-y-4">
         <Skeleton className="h-14 w-full" />
@@ -66,19 +53,15 @@ function PanelBody({ agentId }: { agentId: string }) {
     );
   }
 
-  if (isError || !data) {
+  if (state.kind !== "ready") {
     return (
       <div className="p-4">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load agent"
-          description={`Agent ${agentId} could not be fetched.`}
-        />
+        <DetailStateMessage state={state} />
       </div>
     );
   }
 
-  return <PanelLoaded agent={data} />;
+  return <PanelLoaded agent={state.data} />;
 }
 
 function PanelLoaded({ agent }: { agent: AgentDetail }) {

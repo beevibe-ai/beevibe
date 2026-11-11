@@ -14,16 +14,16 @@ import {
 } from "lucide-react";
 import { useMe } from "@/lib/hooks/use-me";
 import { isApiConfigured } from "@/lib/api/config";
+import { DetailStateMessage, detailState } from "@/components/detail/detail-state";
 import { api, type RoomDetail, type RoomMemberDetail, type RoomMessage } from "@/lib/api/client";
 import { ApiError, describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
-import { useCopyToClipboard } from "@/lib/hooks/use-copy-to-clipboard";
 import { ModalOverlay } from "@/components/modal-overlay";
+import { ShareLinkBox } from "@/components/share-link-box";
 import { ChatMarkdown } from "@/components/chat/markdown";
 import { ToolStepList } from "@/components/chat/tool-step-list";
 import { useChatStream, type ChatStreamStep } from "@/lib/chat-stream";
 import { Skeleton } from "@/components/skeleton";
-import { EmptyState } from "@/components/empty-state";
 import { formatRelativeTime, idSuffix, sessionHref, shortId } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -121,14 +121,13 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
     });
   }, [data?.messages.length, send.isPending]);
 
-  if (!isApiConfigured) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <EmptyState icon={Users} title="API not configured" />
-      </div>
-    );
-  }
-  if (isLoading) {
+  const state = detailState({
+    noun: "room",
+    id: roomId,
+    icon: Users,
+    query: { data, isLoading, isError },
+  });
+  if (state.kind === "loading") {
     return (
       <div className="flex-1 px-6 py-6">
         <Skeleton className="h-12 w-1/2 mb-4" />
@@ -136,17 +135,14 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
       </div>
     );
   }
-  if (isError || !data) {
+  if (state.kind !== "ready") {
     return (
       <div className="flex-1 flex items-center justify-center">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load room"
-          description={`Room ${roomId} could not be fetched.`}
-        />
+        <DetailStateMessage state={state} />
       </div>
     );
   }
+  const room = state.data;
 
   const submit = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -159,19 +155,19 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
   return (
     <div className="flex-1 flex overflow-hidden">
       <div className="flex-1 flex flex-col overflow-hidden">
-        <RoomHeader room={data} myPersonId={me?.person.id} />
+        <RoomHeader room={room} myPersonId={me?.person.id} />
         <div ref={transcriptRef} className="flex-1 overflow-y-auto px-6 py-6">
           <div className="max-w-3xl mx-auto space-y-3">
-            {data.messages.length === 0 ? (
-              <EmptyMessages members={data.members} />
+            {room.messages.length === 0 ? (
+              <EmptyMessages members={room.members} />
             ) : (
-              data.messages.map((m, i) => (
+              room.messages.map((m, i) => (
                 <MessageBubble
                   key={m.id}
                   message={m}
-                  members={data.members}
+                  members={room.members}
                   myPersonId={me?.person.id}
-                  showSuggestions={!send.isPending && i === data.messages.length - 1}
+                  showSuggestions={!send.isPending && i === room.messages.length - 1}
                   onSuggest={(text) => {
                     // Suggestion chips are implicitly addressed to the agent
                     // who emitted them — without an explicit @mention the
@@ -187,8 +183,8 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
               ))
             )}
             {send.isPending ? <Pending /> : null}
-            {(data.typing?.length ?? 0) > 0 ? (
-              <TypingIndicators typing={data.typing!} />
+            {(room.typing?.length ?? 0) > 0 ? (
+              <TypingIndicators typing={room.typing!} />
             ) : null}
             {send.error ? (
               <div className="rounded-lg border border-status-failed/40 bg-status-failed/5 p-3 text-xs">
@@ -206,7 +202,7 @@ export function RoomDetailClient({ roomId }: { roomId: string }) {
           setDraft={setDraft}
           submit={submit}
           isPending={send.isPending}
-          members={data.members}
+          members={room.members}
         />
       </div>
     </div>
@@ -275,7 +271,6 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
   const [error, setError] = useState<string | null>(null);
   /** When the invitee doesn't have an account yet, surface a share link they can use to sign up + auto-join. */
   const [shareLink, setShareLink] = useState<string | null>(null);
-  const { copied, copy } = useCopyToClipboard();
 
   const invite = useMutation({
     mutationFn: () => api.rooms.invite(roomId, { email: email.trim() }),
@@ -333,27 +328,15 @@ function InviteDialog({ roomId, onClose }: { roomId: string; onClose: () => void
           </div>
         ) : null}
         {shareLink ? (
-          <div className="mt-3 rounded border border-border bg-muted/40 p-3">
-            <div className="text-[11px] text-muted-foreground mb-1.5">
-              No account for that email yet. Send them this link — they&apos;ll sign up and
-              land in this room.
-            </div>
-            <div className="flex items-center gap-1.5">
-              <input
-                readOnly
-                value={shareLink}
-                className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-[11px] font-mono"
-                onFocus={(e) => e.currentTarget.select()}
-              />
-              <button
-                type="button"
-                onClick={() => void copy(shareLink ?? "")}
-                className="h-7 px-2.5 rounded text-[11px] font-medium border border-border hover:bg-secondary transition-colors cursor-pointer shrink-0"
-              >
-                {copied ? "Copied" : "Copy"}
-              </button>
-            </div>
-          </div>
+          <ShareLinkBox
+            link={shareLink}
+            note={
+              <>
+                No account for that email yet. Send them this link — they&apos;ll sign up
+                and land in this room.
+              </>
+            }
+          />
         ) : null}
         <div className="mt-4 flex items-center justify-end gap-2">
           <button
