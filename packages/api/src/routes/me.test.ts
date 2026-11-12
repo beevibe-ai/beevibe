@@ -18,62 +18,25 @@ import type {
   PersonRepository,
   RuntimeRegistry,
 } from "@beevibe/core";
+import {
+  makeAgentRepo,
+  makeFakeAgent,
+  makeFakePerson,
+  makePersonRepo,
+  makeStubAuth,
+} from "../test-helpers.js";
 import { createMeRouter } from "./me.js";
 
 const PERSON = "person_1";
+const AGENT = "agent_a";
 
-function makePersonRepo(): PersonRepository {
-  return {
-    findById: vi.fn(),
-    findByEmail: vi.fn(),
-    findByApiKey: vi.fn(),
-    findManyByIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-}
+const stubAuth = makeStubAuth({ agentId: AGENT, personId: PERSON });
+const fakeAgent = makeFakeAgent({ id: AGENT, name: "Ada's team", owner_id: PERSON });
+const fakePerson = makeFakePerson({ id: PERSON });
 
-function makeAgentRepo(): AgentRepository {
-  return {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findParent: vi.fn(),
-    findByLevel: vi.fn(),
-    findDescendantIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-}
 
-function fakePerson(overrides: Partial<Person> = {}): Person {
-  return {
-    id: PERSON,
-    name: "Ada",
-    email: "ada@example.com",
-    capability_network_enabled: true,
-    created_at: new Date("2026-04-01"),
-    updated_at: new Date("2026-04-01"),
-    ...overrides,
-  };
-}
 
-function fakeAgent(overrides: Partial<Agent> = {}): Agent {
-  return {
-    id: "agent_a",
-    name: "Ada's team",
-    owner_id: PERSON,
-    hierarchy_level: "team",
-    runtime_config: { type: "claude" },
-    created_at: new Date("2026-04-01"),
-    updated_at: new Date("2026-04-01"),
-    ...overrides,
-  };
-}
+
 
 /** A registry carrying only the `healthCheck` the route actually calls. */
 function makeRegistry(
@@ -91,21 +54,6 @@ function makeEmbed(impl: () => Promise<number[]>): EmbeddingService {
   } as unknown as EmbeddingService;
 }
 
-function stubAuth(source: "human" | "agent" | "none" = "human") {
-  return (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    if (source === "human") {
-      req.caller = {
-        source: "human",
-        agentId: "agent_a",
-        hierarchyLevel: "team",
-        personId: PERSON,
-      };
-    } else if (source === "agent") {
-      req.caller = { source: "agent", agentId: "agent_a", hierarchyLevel: "ic" };
-    }
-    next();
-  };
-}
 
 interface AppOpts {
   personRepo?: PersonRepository;

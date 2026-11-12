@@ -12,34 +12,14 @@ import request from "supertest";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Person, PersonRepository } from "@beevibe/core";
 import { SIGNIN_NO_PASSWORD_SET, hashPassword } from "@beevibe/core/auth";
+import { makeFakePerson, makePersonRepo } from "../test-helpers.js";
 import { createSigninRouter } from "./signin.js";
+
+const fakePerson = makeFakePerson({ id: "person_1", api_key: "bv_u_secret" });
 
 const PASSWORD = "correct-horse-battery";
 
-function makePersonRepo(): PersonRepository {
-  return {
-    findById: vi.fn(),
-    findByEmail: vi.fn(),
-    findByApiKey: vi.fn(),
-    findManyByIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-}
 
-function fakePerson(overrides: Partial<Person> = {}): Person {
-  return {
-    id: "person_1",
-    name: "Ada",
-    email: "ada@example.com",
-    api_key: "bv_u_secret",
-    capability_network_enabled: true,
-    created_at: new Date("2026-04-01"),
-    updated_at: new Date("2026-04-01"),
-    ...overrides,
-  };
-}
 
 function makeApp(personRepo: PersonRepository, enabled?: boolean) {
   const app = express();
