@@ -53,6 +53,8 @@ vi.mock("@beevibe/core/services/agent-session", async (importOriginal) => {
   };
 });
 
+import { makeFakeAgent, makeStubAuth } from "../test-helpers.js";
+
 const { createRoomRouter, resolveAddressees } = await import("./room.js");
 
 // ── Fixtures ─────────────────────────────────────────────────────────────
@@ -60,18 +62,9 @@ const { createRoomRouter, resolveAddressees } = await import("./room.js");
 const PERSON = "person_alice";
 const TEAM_AGENT = "agent_alicesteam";
 
-function fakeAgent(overrides: Partial<Agent> = {}): Agent {
-  return {
-    id: TEAM_AGENT,
-    name: "Alice's Team",
-    owner_id: PERSON,
-    hierarchy_level: "team",
-    runtime_config: { type: "claude" },
-    created_at: new Date("2026-01-01T00:00:00Z"),
-    updated_at: new Date("2026-01-01T00:00:00Z"),
-    ...overrides,
-  };
-}
+const stubAuth = makeStubAuth({ agentId: TEAM_AGENT, personId: PERSON });
+const fakeAgent = makeFakeAgent({ id: TEAM_AGENT, name: "Alice's Team", owner_id: PERSON });
+
 
 function fakeRoom(overrides: Partial<Room> = {}): Room {
   return {
@@ -207,21 +200,6 @@ function makePorts(overrides: Partial<Ports> = {}): Ports {
  * against Postgres; these tests only care about the caller shape
  * `requireHuman` gates on, so the source is set per-app.
  */
-function stubAuth(source: "human" | "agent" | "none") {
-  return (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    if (source === "human") {
-      req.caller = {
-        source: "human",
-        agentId: TEAM_AGENT,
-        hierarchyLevel: "team",
-        personId: PERSON,
-      };
-    } else if (source === "agent") {
-      req.caller = { source: "agent", agentId: TEAM_AGENT, hierarchyLevel: "ic" };
-    }
-    next();
-  };
-}
 
 function makeApp(ports: Ports, source: "human" | "agent" | "none" = "human") {
   const app = express();

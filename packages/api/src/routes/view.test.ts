@@ -92,6 +92,8 @@ const { listActivity } = await import("../views/activity.js");
 const { getWorkProduct } = await import("../views/work-product.js");
 const { listInbox } = await import("../views/inbox.js");
 const { getAgentNetwork } = await import("../views/agent-network.js");
+import { makeFakeAgent, makeStubAuth } from "../test-helpers.js";
+
 const { createViewRouter } = await import("./view.js");
 
 // ── Fixtures ─────────────────────────────────────────────────────────────
@@ -100,18 +102,9 @@ const PERSON = "person_alice";
 const OTHER = "person_bob";
 const AGENT = "agent_alicesteam";
 
-function fakeAgent(overrides: Partial<Agent> = {}): Agent {
-  return {
-    id: AGENT,
-    name: "Alice's Team",
-    owner_id: PERSON,
-    hierarchy_level: "team",
-    runtime_config: { type: "claude" },
-    created_at: new Date("2026-01-01T00:00:00Z"),
-    updated_at: new Date("2026-01-01T00:00:00Z"),
-    ...overrides,
-  };
-}
+const stubAuth = makeStubAuth({ agentId: AGENT, personId: PERSON });
+const fakeAgent = makeFakeAgent({ id: AGENT, name: "Alice's Team", owner_id: PERSON });
+
 
 interface Ports {
   pool: Pool;
@@ -145,21 +138,6 @@ function makePorts(overrides: Partial<Ports> = {}): Ports {
   };
 }
 
-function stubAuth(source: "human" | "agent" | "none") {
-  return (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    if (source === "human") {
-      req.caller = {
-        source: "human",
-        agentId: AGENT,
-        hierarchyLevel: "team",
-        personId: PERSON,
-      };
-    } else if (source === "agent") {
-      req.caller = { source: "agent", agentId: AGENT, hierarchyLevel: "ic" };
-    }
-    next();
-  };
-}
 
 function makeApp(ports: Ports = makePorts(), source: "human" | "agent" | "none" = "human") {
   const app = express();

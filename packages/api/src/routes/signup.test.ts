@@ -21,37 +21,20 @@ import type {
   PersonRepository,
 } from "@beevibe/core";
 import { hashPassword } from "@beevibe/core/auth";
+import {
+  makeAgentRepo,
+  makeFakeAgent,
+  makeFakePerson,
+  makePersonRepo,
+} from "../test-helpers.js";
 import { createSignupRouter } from "./signup.js";
 
 const PASSWORD = "correct-horse-battery";
 
-function makePersonRepo(): PersonRepository {
-  return {
-    findById: vi.fn(),
-    findByEmail: vi.fn(),
-    findByApiKey: vi.fn(),
-    findManyByIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-}
+const fakeAgent = makeFakeAgent({ id: "agent_a", name: "Ada's team", owner_id: "person_1" });
+const fakePerson = makeFakePerson({ id: "person_1", api_key: "bv_u_existing" });
 
-function makeAgentRepo(): AgentRepository {
-  return {
-    findById: vi.fn(),
-    findByApiKey: vi.fn(),
-    findTopLevelForOwner: vi.fn(),
-    findSubordinates: vi.fn(),
-    findPeers: vi.fn(),
-    findParent: vi.fn(),
-    findByLevel: vi.fn(),
-    findDescendantIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-}
+
 
 function makeCoreMemoryRepo(): CoreMemoryBlockRepository {
   return {
@@ -63,31 +46,7 @@ function makeCoreMemoryRepo(): CoreMemoryBlockRepository {
   } as unknown as CoreMemoryBlockRepository;
 }
 
-function fakePerson(overrides: Partial<Person> = {}): Person {
-  return {
-    id: "person_1",
-    name: "Ada",
-    email: "ada@example.com",
-    api_key: "bv_u_existing",
-    capability_network_enabled: true,
-    created_at: new Date("2026-04-01"),
-    updated_at: new Date("2026-04-01"),
-    ...overrides,
-  };
-}
 
-function fakeAgent(overrides: Partial<Agent> = {}): Agent {
-  return {
-    id: "agent_a",
-    name: "Ada's team",
-    owner_id: "person_1",
-    hierarchy_level: "team",
-    runtime_config: { type: "claude" },
-    created_at: new Date("2026-04-01"),
-    updated_at: new Date("2026-04-01"),
-    ...overrides,
-  };
-}
 
 interface Fakes {
   personRepo: PersonRepository;

@@ -15,11 +15,14 @@ import type {
   SessionEvent,
   SessionEventRepository,
 } from "@beevibe/core";
+import { makeStubAuth } from "../test-helpers.js";
 import { createRepoRunsRouter } from "./repo-runs.js";
 
 // ── Fakes ────────────────────────────────────────────────────────────────
 
 const PERSON = "person_1";
+
+const stubAuth = makeStubAuth({ agentId: "agent_a", personId: PERSON });
 
 function fakeRun(overrides: Partial<RepoRun> = {}): RepoRun {
   return {
@@ -65,21 +68,6 @@ function makeSessionEventRepo(): SessionEventRepository {
  * against Postgres; these tests only care that handlers see the caller
  * shape `requireHuman` gates on, so the source is set per-app.
  */
-function stubAuth(source: "human" | "agent" | "none" = "human") {
-  return (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    if (source === "human") {
-      req.caller = {
-        source: "human",
-        agentId: "agent_a",
-        hierarchyLevel: "team",
-        personId: PERSON,
-      };
-    } else if (source === "agent") {
-      req.caller = { source: "agent", agentId: "agent_a", hierarchyLevel: "ic" };
-    }
-    next();
-  };
-}
 
 function makeApp(
   repoRunRepo: RepoRunRepository,
