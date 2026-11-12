@@ -18,7 +18,7 @@
  */
 
 import { CodedMeshError } from "../mesh/types.js";
-import type { AgentToolResult } from "./types.js";
+import type { AgentTool, AgentToolResult } from "./types.js";
 
 /**
  * A named failure: `code` is the stable identifier the agent branches
@@ -58,4 +58,39 @@ export function toolErrorFromThrown(
     },
     isError: true,
   };
+}
+
+/**
+ * Wrap a tool so anything thrown out of its handler comes back as the
+ * {@link toolErrorFromThrown} envelope instead of propagating.
+ *
+ * Every handler in `hierarchy.ts` and `mesh.ts` used to open with `try {`
+ * and close with the same four-line `catch (err) { return
+ * toolErrorFromThrown(err); }` — 21 copies of it. Applying the guard once
+ * per builder, via {@link guardTools}, means a new tool is covered the
+ * moment it joins the array rather than when someone remembers the
+ * boilerplate.
+ *
+ * `routes/mcp.ts` also catches around `tool.handler(...)`, but that path
+ * flattens a {@link CodedMeshError} to its bare message. Guarding here keeps
+ * the code and meta, which is the whole reason the per-handler blocks
+ * existed; the route-level catch stays as defense in depth for callers that
+ * bypass the builders.
+ */
+export function guardTool(tool: AgentTool): AgentTool {
+  return {
+    ...tool,
+    handler: async (input) => {
+      try {
+        return await tool.handler(input);
+      } catch (err) {
+        return toolErrorFromThrown(err);
+      }
+    },
+  };
+}
+
+/** {@link guardTool} over a whole builder's output. */
+export function guardTools(tools: readonly AgentTool[]): AgentTool[] {
+  return tools.map(guardTool);
 }

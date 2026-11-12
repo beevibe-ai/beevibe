@@ -191,6 +191,45 @@ async function callTool(
   return findTool(tools, name).handler(input);
 }
 
+// ── Builder-level error guard ────────────────────────────────────────────
+
+// Each handler used to carry its own `try { … } catch (err) { return
+// toolErrorFromThrown(err) }`. That is now applied once, in
+// `buildHierarchyTools`, so these assert the wiring rather than the
+// envelope shape (errors.test.ts covers the shape).
+describe("buildHierarchyTools — thrown service errors", () => {
+  it("reports a thrown error as an envelope instead of rejecting", async () => {
+    const services = buildServices();
+    services.taskService.updateProgress = vi
+      .fn()
+      .mockRejectedValue(new Error("db is down"));
+    const tools = buildHierarchyTools({ agentId: "a", hierarchyLevel: "ic" }, services);
+
+    const result = await callTool(tools, "update_progress", {
+      task_id: "t1",
+      status: "done",
+      summary: "shipped",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual({ error: "db is down" });
+  });
+
+  // The guard has to reach every tool the builder returns, not just the
+  // first one or the shared tier.
+  it("guards the team-only tools too", async () => {
+    const services = buildServices();
+    services.agentRepo.findSubordinates = vi.fn().mockRejectedValue(new Error("nope"));
+    const tools = buildHierarchyTools({ agentId: "a", hierarchyLevel: "team" }, services);
+
+    const result = await callTool(tools, "create_task", {
+      intent: "ship it",
+      agent_id: "agent_x",
+    });
+    expect(result.isError).toBe(true);
+    expect(result.content).toEqual({ error: "nope" });
+  });
+});
+
 // ── Tier gating ──────────────────────────────────────────────────────────
 
 /** Every tier gets these; the IC tier gets nothing else. */
