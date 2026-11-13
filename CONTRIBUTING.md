@@ -136,11 +136,24 @@ non-DB suites in `api`/`scheduler` pass against an empty environment, so
 a quick `pnpm --filter @beevibe/api test` still exercises ~300 cases
 without Postgres.
 
-Not run in CI: the live Claude CLI smoke test. Run it manually
-pre-release with a real `claude` binary on `PATH`:
+Not run in CI: three opt-in suites, each gated on an env var and
+skipped (not failed) when it is unset.
+
+The live Claude CLI smoke test — run it manually pre-release with a real
+`claude` binary on `PATH`:
 
 ```bash
 RUN_CLAUDE_SMOKE=1 pnpm --filter @beevibe/core test smoke
+```
+
+The two end-to-end suites. The Docker one pulls a real image and runs
+`apt-get` inside the container (~30s on a cold cache); the
+multi-instance one is pure Node (a stub HTTP server plus a temp dir), so
+it is cheap enough to run whenever you touch daemon config or setup:
+
+```bash
+BEEVIBE_E2E_DOCKER=1 pnpm --filter @beevibe/sandbox test
+BEEVIBE_E2E_MULTI_INSTANCE=1 pnpm --filter @beevibe/daemon test
 ```
 
 ### Building behind an HTTP proxy
