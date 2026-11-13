@@ -17,6 +17,7 @@ import type {
 } from "@beevibe/core";
 import { requireHuman } from "../auth/middleware.js";
 import { createFindRepoTool } from "../tools/find-repo.js";
+import { boundedFloorIntQuery, requireStringQuery } from "./query-params.js";
 
 export interface FindRepoRouterDeps {
   authMiddleware: RequestHandler;
@@ -32,13 +33,17 @@ export function createFindRepoRouter(deps: FindRepoRouterDeps): Router {
   router.get("/", async (req, res) => {
     if (!requireHuman(req, res)) return;
 
-    const goal = typeof req.query.goal === "string" ? req.query.goal.trim() : "";
-    if (!goal) {
-      res.status(400).json({ error: "missing_goal" });
-      return;
-    }
-    const limitParam = typeof req.query.limit === "string" ? Number(req.query.limit) : 5;
-    const limit = Number.isFinite(limitParam) ? Math.min(10, Math.max(1, Math.floor(limitParam))) : 5;
+    const goal = requireStringQuery(req, res, "goal", "missing_goal");
+    if (!goal) return;
+    // The 1..10 band is asserted on both sides of this call — here by
+    // `find-repo.test.ts`'s "limit coercion" suite, and again inside
+    // `find_repo`'s own handler. Kept rather than deferred to the tool
+    // so the route's wire contract stays pinned where it is tested.
+    const limit = boundedFloorIntQuery(req, "limit", {
+      min: 1,
+      max: 10,
+      fallback: 5,
+    });
 
     try {
       // The ranker scopes learned_skill lookups to the calling agent's
