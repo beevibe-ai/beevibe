@@ -67,6 +67,12 @@ import {
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
+import {
+  boundedIntQuery,
+  enumQuery,
+  numberQuery,
+  stringQuery,
+} from "./query-params.js";
 
 /** Every handler below passes a per-call context, e.g. `[view route: task list]`. */
 const handleError = makeErrorHandler("view route");
@@ -88,7 +94,12 @@ export interface ViewRoutesDeps {
 const LIFECYCLES = new Set<Lifecycle>(
   Object.keys(TASK_STATUSES_BY_LIFECYCLE) as Lifecycle[],
 );
-const VIEWS = new Set<TaskListFilter["view"]>(["all", "mine", "sprint", "timeline"]);
+const VIEWS = new Set<NonNullable<TaskListFilter["view"]>>([
+  "all",
+  "mine",
+  "sprint",
+  "timeline",
+]);
 const SCOPES = new Set<MemoryScope>(MEMORY_SCOPES);
 
 function isReviewPolicy(v: unknown): v is ReviewPolicy {
@@ -121,14 +132,10 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
     // created it directly. Without this scope the list leaks tasks across
     // owners (any logged-in person could see every task in the DB).
     const filter: TaskListFilter = { caller_person_id: req.caller.personId };
-    const lifecycleParam = typeof req.query.lifecycle === "string" ? req.query.lifecycle : undefined;
-    if (lifecycleParam && LIFECYCLES.has(lifecycleParam as Lifecycle)) {
-      filter.lifecycle = lifecycleParam as Lifecycle;
-    }
-    const viewParam = typeof req.query.view === "string" ? req.query.view : undefined;
-    if (viewParam && VIEWS.has(viewParam as TaskListFilter["view"])) {
-      filter.view = viewParam as TaskListFilter["view"];
-    }
+    const lifecycle = enumQuery(req, "lifecycle", LIFECYCLES);
+    if (lifecycle) filter.lifecycle = lifecycle;
+    const view = enumQuery(req, "view", VIEWS);
+    if (view) filter.view = view;
 
     if (filter.view === "mine") {
       // Resolve the caller to their primary agent so "mine" filters tasks
@@ -141,8 +148,9 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
         res.json([]);
         return;
       }
-    } else if (typeof req.query.assignee_id === "string") {
-      filter.assignee_id = req.query.assignee_id;
+    } else {
+      const assignee = stringQuery(req, "assignee_id");
+      if (assignee !== undefined) filter.assignee_id = assignee;
     }
 
     try {
@@ -515,8 +523,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.get("/promotion", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : NaN;
-    const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+    const limit = numberQuery(req, "limit");
     try {
       const events = await listPromotions(deps.pool, req.caller.personId, { limit });
       res.json(events);
@@ -527,13 +534,8 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
 
   router.get("/memory/fact", async (req, res) => {
     if (!requireHuman(req, res)) return;
-    const scopeParam = typeof req.query.scope === "string" ? req.query.scope : undefined;
-    const scope =
-      scopeParam && SCOPES.has(scopeParam as MemoryScope)
-        ? (scopeParam as MemoryScope)
-        : undefined;
-    const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : NaN;
-    const limit = Number.isFinite(limitRaw) ? limitRaw : undefined;
+    const scope = enumQuery(req, "scope", SCOPES);
+    const limit = numberQuery(req, "limit");
 
     try {
       const facts = await listMemoryFacts(deps.pool, req.caller.personId, {
@@ -603,8 +605,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
   router.get("/inbox", async (req, res) => {
     if (!requireHuman(req, res)) return;
     try {
-      const limitParam = typeof req.query.limit === "string" ? Number(req.query.limit) : 50;
-      const limit = Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 200 ? limitParam : 50;
+      const limit = boundedIntQuery(req, "limit", { max: 200, fallback: 50 });
       const items = await listInbox(deps.pool, req.caller.personId, { limit });
       res.json(items);
     } catch (err) {
@@ -615,12 +616,7 @@ export function createViewRouter(deps: ViewRoutesDeps): Router {
   router.get("/activity", async (req, res) => {
     if (!requireHuman(req, res)) return;
     try {
-      const limitParam =
-        typeof req.query.limit === "string" ? Number(req.query.limit) : 20;
-      const limit =
-        Number.isFinite(limitParam) && limitParam > 0 && limitParam <= 100
-          ? limitParam
-          : 20;
+      const limit = boundedIntQuery(req, "limit", { max: 100, fallback: 20 });
       const entries = await listActivity(deps.pool, req.caller.personId, limit);
       res.json(entries);
     } catch (err) {
