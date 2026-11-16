@@ -26,6 +26,7 @@ import type {
   WorkProductRepository,
 } from "@beevibe/core";
 import { createLearnedSkillsRouter } from "./learned-skills.js";
+import { stubAuth } from "./test-helpers.js";
 
 const PERSON = "person_1";
 
@@ -95,22 +96,6 @@ function makeWorkProductRepo(): WorkProductRepository {
     create: vi.fn(),
     update: vi.fn(),
     delete: vi.fn(),
-  };
-}
-
-function stubAuth(source: "human" | "agent" | "none" = "human") {
-  return (req: express.Request, _res: express.Response, next: express.NextFunction) => {
-    if (source === "human") {
-      req.caller = {
-        source: "human",
-        agentId: "agent_a",
-        hierarchyLevel: "team",
-        personId: PERSON,
-      };
-    } else if (source === "agent") {
-      req.caller = { source: "agent", agentId: "agent_a", hierarchyLevel: "ic" };
-    }
-    next();
   };
 }
 
