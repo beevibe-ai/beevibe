@@ -1,10 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { AlertTriangle, type LucideIcon } from "lucide-react";
-import { isApiConfigured } from "@/lib/api/config";
+import type { LucideIcon } from "lucide-react";
 import { DetailShell } from "./detail-shell";
-import { EmptyState } from "@/components/empty-state";
+import { gateBranch, type GateQuery } from "./gate-branch";
 
 interface Props<T> {
   /**
@@ -20,7 +19,7 @@ interface Props<T> {
   /** Id echoed back in the error message so a failed fetch is identifiable. */
   id: string;
   /** The react-query result driving the page. */
-  query: { data: T | undefined; isLoading: boolean; isError: boolean };
+  query: GateQuery<T>;
   /**
    * Loading placeholder. Per-page rather than generic: the skeleton mirrors
    * the layout it stands in for, so a shared one would jump on hydration.
@@ -39,38 +38,16 @@ interface Props<T> {
  * copy had drifted: the same condition variously said "run the API server",
  * "run the api server" and "run the MCP server" (one process, three names),
  * and half the pages ended the fetch error with "Check the MCP server logs"
- * while the other half dropped the hint. Both messages are derived from
- * `noun` here, so a page can't word them a fourth way.
+ * while the other half dropped the hint.
+ *
+ * The branches themselves live in `./gate-branch`, shared with `PanelGate`
+ * — the peek panels need the same triage under a different shell.
  */
 export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }: Props<T>) {
-  if (!isApiConfigured) {
-    return (
-      <DetailShell nav={nav}>
-        <EmptyState
-          icon={icon}
-          title="API not configured"
-          description={`Set NEXT_PUBLIC_BV_API_URL and run the API server to load this ${noun}.`}
-        />
-      </DetailShell>
-    );
-  }
-
-  if (query.isLoading) {
-    return <DetailShell nav={nav}>{skeleton}</DetailShell>;
-  }
-
-  if (query.isError || !query.data) {
-    const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
-    return (
-      <DetailShell nav={nav}>
-        <EmptyState
-          icon={AlertTriangle}
-          title={`Couldn't load ${noun}`}
-          description={`${Noun} ${id} could not be fetched. Check the API server logs.`}
-        />
-      </DetailShell>
-    );
-  }
-
-  return <DetailShell nav={nav}>{children(query.data)}</DetailShell>;
+  const branch = gateBranch({ icon, noun, id, query, skeleton });
+  return (
+    <DetailShell nav={nav}>
+      {branch.ready ? children(branch.data) : branch.node}
+    </DetailShell>
+  );
 }
