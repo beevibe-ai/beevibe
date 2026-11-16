@@ -6,7 +6,8 @@
  * the page renders in one round-trip.
  */
 
-import type { Pool } from "@beevibe/core/adapters/postgres";
+import type { Pool, WorkProductRow } from "@beevibe/core/adapters/postgres";
+import { rowToWorkProduct } from "@beevibe/core/adapters/postgres";
 import type { Lifecycle } from "./tasks-grouping.js";
 import {
   TASK_STATUSES_BY_LIFECYCLE,
@@ -277,7 +278,7 @@ export async function getTask(
   const [taskResult, sessionResult, wpResult] = await Promise.all([
     pool.query<TaskListRow>(DETAIL_SQL_TASK, [id]),
     pool.query<DetailSessionRow>(DETAIL_SQL_SESSIONS, [id]),
-    pool.query(DETAIL_SQL_WORK_PRODUCTS, [id]),
+    pool.query<WorkProductRow>(DETAIL_SQL_WORK_PRODUCTS, [id]),
   ]);
   const taskRow = taskResult.rows[0];
   if (!taskRow) return undefined;
@@ -299,23 +300,5 @@ export async function getTask(
     ...rowToTaskListItem(taskRow),
     sessions,
     work_products,
-  };
-}
-
-function rowToWorkProduct(r: Record<string, unknown>): WorkProduct {
-  return {
-    id: String(r.id),
-    task_id: String(r.task_id),
-    agent_id: String(r.agent_id),
-    type: r.type as WorkProduct["type"],
-    title: String(r.title),
-    summary: (r.summary as string | null) ?? undefined,
-    body: (r.body as string | null) ?? undefined,
-    url: (r.url as string | null) ?? undefined,
-    provider: (r.provider as string | null) ?? undefined,
-    external_id: (r.external_id as string | null) ?? undefined,
-    metadata: (r.metadata as Record<string, unknown> | null) ?? undefined,
-    created_at: r.created_at as Date,
-    updated_at: r.updated_at as Date,
   };
 }
