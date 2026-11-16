@@ -1,6 +1,15 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
-import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
+import {
+  type CliProcessOptions,
+  type CliProcessResult,
+  runCliProcess,
+} from "./claude-code/spawn.js";
 
 /**
  * Shared helpers for the CLI-subprocess runtimes (claude-code, codex,
@@ -207,4 +216,82 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * Run one CLI session end to end: spawn, stream-parse stdout, emit live
+ * steps, and map the settled process to a `RuntimeResult`.
+ *
+ * All three CLI runtimes did this identically. Each `execute()` built an
+ * `events` array, a `handleLine` that parsed a line into a
+ * provider-specific event, pushed it, and fanned `extract*StepEvents` out
+ * to `context.onStep`; wrapped that in `createStdoutLineReader`; called
+ * `runCliProcess` with the same five fields plus the same `onSpawn`
+ * trampoline; then `flush()`, `warnIfTruncated`, the `result.aborted`
+ * early return, and `finalizeCliResult`. The provider-specific parts are
+ * exactly the three functions passed in here — everything around them was
+ * the same eleven steps in the same order, three times over, which is
+ * three places to forget the `flush()` or let the abort check drift below
+ * the parse.
+ *
+ * `spawn` is the provider's argv and env; `abortSignal`, `onSpawn` and
+ * `onLog` are supplied here and must not be set by the caller.
+ */
+export async function runStreamingCliSession<Event>(opts: {
+  /** Log tag for the stdout-truncation warning, e.g. "CodexRuntime". */
+  runtimeTag: string;
+  context: RuntimeContext;
+  spawn: Omit<CliProcessOptions, "abortSignal" | "onSpawn" | "onLog">;
+  /** One stdout line → one event, or `null` for a line to skip. */
+  parseLine: (line: string) => Event | null;
+  /** One event → the live-transcript steps it produces, if any. */
+  extractSteps: (event: Event) => RuntimeStep[];
+  /**
+   * The whole event stream → a result. Called only on a non-aborted run,
+   * after the process has settled, so a runtime whose output lands in a
+   * file (codex's `--output-last-message`) can read it from in here.
+   */
+  toResult: (
+    events: Event[],
+    exitCode: number | null,
+  ) => Omit<RuntimeResult, "process_pid" | "process_group_id">;
+  /**
+   * Fires instead of `toResult` when the caller aborted, before
+   * {@link cancelledResult} is returned. For per-spawn scratch files that
+   * need cleaning up on both paths.
+   */
+  onAbort?: () => void;
+}): Promise<RuntimeResult> {
+  const { context } = opts;
+  const events: Event[] = [];
+
+  const stdout = createStdoutLineReader((line) => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of opts.extractSteps(event)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    ...opts.spawn,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+  // Emit any trailing partial line — a stream can end without a newline.
+  stdout.flush();
+
+  warnIfTruncated(opts.runtimeTag, result);
+
+  if (result.aborted) {
+    opts.onAbort?.();
+    return cancelledResult(result);
+  }
+
+  return finalizeCliResult(opts.toResult(events, result.exitCode), result);
 }

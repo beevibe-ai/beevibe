@@ -22,20 +22,9 @@ import type {
 } from "@beevibe/core";
 import { hashPassword } from "@beevibe/core/auth";
 import { createSignupRouter } from "./signup.js";
+import { fakeAgent, stubPersonRepo } from "./test-helpers.js";
 
 const PASSWORD = "correct-horse-battery";
-
-function makePersonRepo(): PersonRepository {
-  return {
-    findById: vi.fn(),
-    findByEmail: vi.fn(),
-    findByApiKey: vi.fn(),
-    findManyByIds: vi.fn(),
-    create: vi.fn(),
-    update: vi.fn(),
-    delete: vi.fn(),
-  };
-}
 
 function makeAgentRepo(): AgentRepository {
   return {
@@ -76,19 +65,6 @@ function fakePerson(overrides: Partial<Person> = {}): Person {
   };
 }
 
-function fakeAgent(overrides: Partial<Agent> = {}): Agent {
-  return {
-    id: "agent_a",
-    name: "Ada's team",
-    owner_id: "person_1",
-    hierarchy_level: "team",
-    runtime_config: { type: "claude" },
-    created_at: new Date("2026-04-01"),
-    updated_at: new Date("2026-04-01"),
-    ...overrides,
-  };
-}
-
 interface Fakes {
   personRepo: PersonRepository;
   agentRepo: AgentRepository;
@@ -101,7 +77,7 @@ interface Fakes {
  * the input they were handed.
  */
 function makeFakes(): Fakes {
-  const personRepo = makePersonRepo();
+  const personRepo = stubPersonRepo();
   const agentRepo = makeAgentRepo();
   vi.mocked(personRepo.create).mockImplementation(async (input: NewPerson) =>
     fakePerson({ ...input, id: input.id ?? "person_new" } as Partial<Person>),

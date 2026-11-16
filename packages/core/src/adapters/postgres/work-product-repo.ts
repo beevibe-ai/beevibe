@@ -104,7 +104,18 @@ export class PostgresWorkProductRepository implements WorkProductRepository {
   }
 }
 
-function rowToWorkProduct(row: WorkProductRow): WorkProduct {
+/**
+ * `work_product` row → `WorkProduct`.
+ *
+ * Exported because the api's task-detail view reads the same table with
+ * its own `SELECT *` (it composes a denormalized DTO in one round-trip
+ * rather than going through this repo) and had grown a second copy of
+ * this mapping over `Record<string, unknown>`, casting each column by
+ * hand. Two mappers for one wire type is one too many: `metadata` and
+ * `body` are nullable here and optional on the domain object, and the
+ * next column added would have to be remembered in both.
+ */
+export function rowToWorkProduct(row: WorkProductRow): WorkProduct {
   return {
     id: row.id,
     task_id: row.task_id,
