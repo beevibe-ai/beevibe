@@ -9,7 +9,7 @@ import type {
 import {
   cancelledResult,
   cliVersionHealthCheck,
-  createStdoutLineReader,
+  createEventCollector,
   finalizeCliResult,
   warnIfTruncated,
 } from "../runtime-common.js";
@@ -104,20 +104,14 @@ export class ClaudeCodeRuntime implements AgentRuntime {
     if (context.env) Object.assign(env, context.env);
 
     // Parse messages incrementally during streaming so we don't re-parse
-    // the entire stdout after close. A line buffer handles chunk boundaries
-    // (a single JSON message can arrive split across multiple chunks).
-    const messages: StreamJsonMessage[] = [];
-    const handleLine = (line: string): void => {
-      const msg = parseStreamJsonLine(line);
-      if (!msg) return;
-      messages.push(msg);
-      if (context.onStep) {
-        for (const step of extractStepEvents(msg)) {
-          context.onStep(step);
-        }
-      }
-    };
-    const stdout = createStdoutLineReader(handleLine);
+    // the entire stdout after close. The collector's line buffer handles
+    // chunk boundaries (a single JSON message can arrive split across
+    // multiple chunks).
+    const stdout = createEventCollector<StreamJsonMessage>({
+      parseLine: parseStreamJsonLine,
+      extractSteps: extractStepEvents,
+      onStep: context.onStep,
+    });
 
     const result = await runCliProcess({
       command: this.config.command ?? "claude",
@@ -139,7 +133,7 @@ export class ClaudeCodeRuntime implements AgentRuntime {
 
     if (result.aborted) return cancelledResult(result);
 
-    return finalizeCliResult(parseClaudeMessages(messages, result.exitCode), result);
+    return finalizeCliResult(parseClaudeMessages(stdout.events, result.exitCode), result);
   }
 
   async healthCheck(): Promise<RuntimeHealth> {

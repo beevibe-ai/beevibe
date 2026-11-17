@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -156,6 +161,44 @@ export function createStdoutLineReader(handleLine: (line: string) => void): {
       }
     },
   };
+}
+
+/**
+ * Collect a CLI's NDJSON event stream while it runs, fanning each event out
+ * to `onStep` for the live transcript.
+ *
+ * All three CLI runtimes did this identically: declare an `events` array,
+ * define a `handleLine` that parses the line, pushes it, and loops the
+ * extracted steps into `context.onStep`, then hand that to
+ * {@link createStdoutLineReader}. The only per-runtime parts are the two
+ * functions, which stay in each adapter's own `stream-json.ts`.
+ *
+ * Parsing as the stream arrives rather than re-reading stdout after close is
+ * what makes the live transcript live; `events` is the same array the
+ * adapter's `parse*Events` reads once the process settles.
+ *
+ * `flush` is {@link createStdoutLineReader}'s — callers must invoke it after
+ * the process settles so a stream with no trailing newline isn't truncated.
+ */
+export function createEventCollector<T>(opts: {
+  parseLine: (line: string) => T | null;
+  extractSteps: (event: T) => RuntimeStep[];
+  onStep?: (step: RuntimeStep) => void;
+}): {
+  /** Events parsed so far, in arrival order. Grows as stdout is consumed. */
+  readonly events: T[];
+  onLog: (stream: "stdout" | "stderr", chunk: string) => void;
+  flush: () => void;
+} {
+  const events: T[] = [];
+  const reader = createStdoutLineReader((line) => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!opts.onStep) return;
+    for (const step of opts.extractSteps(event)) opts.onStep(step);
+  });
+  return { events, onLog: reader.onLog, flush: reader.flush };
 }
 
 /**

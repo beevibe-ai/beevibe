@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import type { RuntimeResult, RuntimeStep } from "../ports/runtime.js";
 import {
   cancelledResult,
+  createEventCollector,
   createStdoutLineReader,
   finalizeCliResult,
   warnIfTruncated,
@@ -145,5 +146,62 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+describe("createEventCollector", () => {
+  interface Evt {
+    n: number;
+  }
+  const parseLine = (line: string): Evt | null =>
+    line.trim() ? ({ n: Number(line.trim()) } as Evt) : null;
+  const extractSteps = (e: Evt): RuntimeStep[] =>
+    e.n % 2 === 0
+      ? [{ kind: "agent", description: `even ${e.n}`, timestamp: "t" }]
+      : [];
+
+  it("collects every parsed event in arrival order", () => {
+    const c = createEventCollector<Evt>({ parseLine, extractSteps });
+    c.onLog("stdout", "1\n2\n3\n");
+    expect(c.events).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }]);
+  });
+
+  it("reassembles events split across chunk boundaries", () => {
+    const c = createEventCollector<Evt>({ parseLine, extractSteps });
+    c.onLog("stdout", "1");
+    c.onLog("stdout", "2\n");
+    expect(c.events).toEqual([{ n: 12 }]);
+  });
+
+  it("emits a trailing partial line only on flush", () => {
+    const c = createEventCollector<Evt>({ parseLine, extractSteps });
+    c.onLog("stdout", "7");
+    expect(c.events).toEqual([]);
+    c.flush();
+    expect(c.events).toEqual([{ n: 7 }]);
+  });
+
+  it("ignores stderr and unparseable lines", () => {
+    const c = createEventCollector<Evt>({ parseLine, extractSteps });
+    c.onLog("stderr", "9\n");
+    c.onLog("stdout", "\n\n");
+    expect(c.events).toEqual([]);
+  });
+
+  it("fans extracted steps out to onStep as events arrive", () => {
+    const onStep = vi.fn();
+    const c = createEventCollector<Evt>({ parseLine, extractSteps, onStep });
+    c.onLog("stdout", "1\n2\n4\n");
+    expect(onStep).toHaveBeenCalledTimes(2);
+    expect(onStep.mock.calls.map((c) => c[0].description)).toEqual(["even 2", "even 4"]);
+  });
+
+  it("still collects events when no onStep is given", () => {
+    const extract = vi.fn(extractSteps);
+    const c = createEventCollector<Evt>({ parseLine, extractSteps: extract });
+    c.onLog("stdout", "2\n");
+    expect(c.events).toEqual([{ n: 2 }]);
+    // No consumer for the steps, so don't pay to extract them.
+    expect(extract).not.toHaveBeenCalled();
   });
 });
