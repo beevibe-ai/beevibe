@@ -28,6 +28,7 @@
 import { config as loadEnv } from "dotenv";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { header } from "./lib/term.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(here, "../.env") });
@@ -68,9 +69,6 @@ const ID = {
 
 function log(s: string) {
   console.log(`  ${s}`);
-}
-function header(s: string) {
-  console.log(`\n\x1b[1m\x1b[36m${s}\x1b[0m`);
 }
 
 async function sleep(ms: number) {

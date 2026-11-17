@@ -28,6 +28,7 @@
 import { config as loadEnv } from "dotenv";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { fail as printFail, header, ok } from "./lib/term.js";
 
 const here = dirname(fileURLToPath(import.meta.url));
 loadEnv({ path: resolve(here, "../.env") });
@@ -55,14 +56,8 @@ import { createSessionSearchTool } from "../packages/api/src/tools/session-searc
 // ── Fixture prefix so cleanup is unambiguous ─────────────────────────
 const TAG = "e2e_ss";
 
-function logHeader(s: string) {
-  console.log("\n\x1b[1m\x1b[36m" + s + "\x1b[0m");
-}
-function ok(s: string) {
-  console.log("  \x1b[32m✓\x1b[0m " + s);
-}
 function fail(s: string): never {
-  console.error("  \x1b[31m✗\x1b[0m " + s);
+  printFail(s);
   throw new Error(s);
 }
 function assert(cond: unknown, msg: string) {
@@ -96,7 +91,7 @@ async function main() {
 
   try {
     // ── Seed: one owner, two ICs under one team ─────────────────────
-    logHeader("Seeding fixture topology");
+    header("Seeding fixture topology");
     const ownerId = `person_${TAG}_${makePersonId().slice(0, 8)}`;
     await persons.create({ id: ownerId, name: "e2e session_search owner" });
     ok(`person ${ownerId}`);
@@ -130,7 +125,7 @@ async function main() {
     ok(`team ${teamAgentId} with ICs alice + bob`);
 
     // ── Seed sessions: realistic mix ────────────────────────────────
-    logHeader("Seeding sessions with realistic transcripts");
+    header("Seeding sessions with realistic transcripts");
 
     // 1) Alice's failed auth refactor task — the "find the failed session" hit.
     const aliceTaskId = `task_${TAG}_${makeTaskId().slice(0, 8)}_authrefactor`;
@@ -265,7 +260,7 @@ async function main() {
 
     // ── Tests ───────────────────────────────────────────────────────
 
-    logHeader("Discovery — ic scope finds own auth refactor");
+    header("Discovery — ic scope finds own auth refactor");
     const discAliceAuth = await service.search(
       { kind: "discover", query: "authentication middleware" },
       { callerAgentId: aliceId, hierarchyLevel: "ic", currentSessionId: activeSid },
@@ -283,7 +278,7 @@ async function main() {
       assert(hit.messages.some((m) => m.anchor), "anchor message flagged in window");
     }
 
-    logHeader("Discovery — failed status filter narrows correctly");
+    header("Discovery — failed status filter narrows correctly");
     const discFailed = await service.search(
       {
         kind: "discover",
@@ -303,7 +298,7 @@ async function main() {
       fail("discovery returned non-discover shape");
     }
 
-    logHeader("Discovery — team scope sees subordinate (bob), ic scope does NOT");
+    header("Discovery — team scope sees subordinate (bob), ic scope does NOT");
     const discTeamBilling = await service.search(
       { kind: "discover", query: "billing tiered" },
       { callerAgentId: teamAgentId, hierarchyLevel: "team", currentSessionId: activeSid },
@@ -322,7 +317,7 @@ async function main() {
       "ic caller alice cannot see bob's billing session",
     );
 
-    logHeader("Discovery — chat dedupe by conversation lineage");
+    header("Discovery — chat dedupe by conversation lineage");
     const discDocker = await service.search(
       { kind: "discover", query: "docker" },
       { callerAgentId: aliceId, hierarchyLevel: "ic", currentSessionId: activeSid },
@@ -338,7 +333,7 @@ async function main() {
       );
     }
 
-    logHeader("Discovery — excludes the caller's active lineage");
+    header("Discovery — excludes the caller's active lineage");
     const discActive = await service.search(
       { kind: "discover", query: "Active conversation" },
       { callerAgentId: aliceId, hierarchyLevel: "ic", currentSessionId: activeSid },
@@ -348,7 +343,7 @@ async function main() {
       "active conversation is excluded from discovery",
     );
 
-    logHeader("Read — full conversation dump");
+    header("Read — full conversation dump");
     const readResult = await service.search(
       { kind: "read", session_id: aliceFailedSession },
       { callerAgentId: aliceId, hierarchyLevel: "ic", currentSessionId: activeSid },
@@ -359,7 +354,7 @@ async function main() {
       assert(!readResult.truncated, "not truncated");
     }
 
-    logHeader("Scroll — widen around a discovery anchor");
+    header("Scroll — widen around a discovery anchor");
     const discAgain = await service.search(
       { kind: "discover", query: "authentication middleware" },
       { callerAgentId: aliceId, hierarchyLevel: "ic", currentSessionId: activeSid },
@@ -381,7 +376,7 @@ async function main() {
       }
     }
 
-    logHeader("Browse — recent sessions in scope (deduped by lineage)");
+    header("Browse — recent sessions in scope (deduped by lineage)");
     const browseAlice = await service.search(
       { kind: "browse", limit: 10 },
       { callerAgentId: aliceId, hierarchyLevel: "ic", currentSessionId: activeSid },
@@ -397,7 +392,7 @@ async function main() {
       assert(!ids.includes(bobSession), "browse honors ic scope (no bob)");
     }
 
-    logHeader("Filters — agent_id outside scope is rejected");
+    header("Filters — agent_id outside scope is rejected");
     try {
       await service.search(
         {
@@ -413,7 +408,7 @@ async function main() {
       assert(/scope/.test(msg), `error mentions scope: "${msg}"`);
     }
 
-    logHeader("MCP tool wrapper — shape inference + scope wired");
+    header("MCP tool wrapper — shape inference + scope wired");
     const tool = createSessionSearchTool(
       { agentId: aliceId, hierarchyLevel: "ic", sessionId: activeSid },
       { sessionSearch: service },
@@ -431,10 +426,10 @@ async function main() {
       "error code is forbidden_agent_filter",
     );
 
-    logHeader("ALL ASSERTIONS PASSED");
+    header("ALL ASSERTIONS PASSED");
   } finally {
     // ── Cleanup ─────────────────────────────────────────────────────
-    logHeader("Cleaning up fixtures");
+    header("Cleaning up fixtures");
     await pool.query(`DELETE FROM session_event WHERE session_id IN (SELECT id FROM session WHERE id LIKE $1)`, [`%${TAG}%`]);
     await pool.query(`DELETE FROM session WHERE id LIKE $1`, [`%${TAG}%`]);
     await pool.query(`DELETE FROM task WHERE id LIKE $1`, [`%${TAG}%`]);

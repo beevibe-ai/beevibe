@@ -42,6 +42,7 @@ import { execSync, spawnSync } from "node:child_process";
 import readline from "node:readline/promises";
 import { stdin as input, stdout as output } from "node:process";
 import { parse as parseDotenv } from "dotenv";
+import { bold, cyan, dim, green, info, ok, step, warn, yellow } from "./lib/term.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
@@ -54,15 +55,6 @@ const WEB_ENV_PATH = join(REPO_ROOT, "packages/web/.env.local");
 const ADMIN_EMAIL_DEFAULT = "admin@beevibe.local";
 const TEAM_AGENT_NAME_DEFAULT = "Team agent";
 
-const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
-const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
-const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
-const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
-const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
-const ok = (msg: string) => console.log(`  ${green("✓")} ${msg}`);
-const info = (msg: string) => console.log(`  ${cyan("→")} ${msg}`);
-const warn = (msg: string) => console.log(`  ${yellow("!")} ${msg}`);
-const step = (n: number, msg: string) => console.log(`\n${bold(`Step ${n}.`)} ${msg}`);
 
 async function main(): Promise<void> {
   console.log(`${bold("beevibe bootstrap")} — first-run setup\n`);
