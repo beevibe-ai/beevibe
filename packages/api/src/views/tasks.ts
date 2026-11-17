@@ -6,7 +6,8 @@
  * the page renders in one round-trip.
  */
 
-import type { Pool } from "@beevibe/core/adapters/postgres";
+import type { Pool, TaskRow, WorkProductRow } from "@beevibe/core/adapters/postgres";
+import { rowToWorkProduct } from "@beevibe/core/adapters/postgres";
 import type { Lifecycle } from "./tasks-grouping.js";
 import {
   TASK_STATUSES_BY_LIFECYCLE,
@@ -54,24 +55,21 @@ export interface TaskListFilter {
   bypassOwnerScope?: true;
 }
 
-interface TaskListRow {
-  // task.*
-  id: string;
-  title: string;
-  description: string | null;
+/**
+ * `SELECT t.*` plus the denormalizing joins below.
+ *
+ * The `task.*` half is core's `TaskRow` rather than a second copy of the
+ * column list — a migration that adds a task column has to reach both the
+ * repo and this view, and when it was written out twice it reached only
+ * one. The three enum-ish columns are re-narrowed: `TaskRow` types them as
+ * `string` because the repo's mapper casts them, whereas this view hands
+ * the row straight to a DTO.
+ */
+interface TaskListRow
+  extends Omit<TaskRow, "status" | "priority" | "creator_type"> {
   status: TaskStatus;
   priority: TaskPriority;
-  assignee_id: string | null;
-  creator_id: string;
   creator_type: CreatorType;
-  parent_task_id: string | null;
-  result_summary: string | null;
-  blocker_agent_id: string | null;
-  blocker_reason: string | null;
-  repo_url: string | null;
-  next_dispatch_context: Record<string, unknown> | null;
-  created_at: Date;
-  updated_at: Date;
   // joins
   assignee_name: string | null;
   assignee_hier: HierarchyLevel | null;
@@ -85,8 +83,43 @@ interface TaskListRow {
   latest_session_agent_label: string | null;
 }
 
-const LIST_SQL = /* sql */ `
-WITH latest_session AS (
+/**
+ * The projection + joins the list and detail queries share.
+ *
+ * Both compose a `TaskListRow`, so both must select the same aliases in
+ * the same shape; they had the whole block written out twice, which is two
+ * places to edit for one new column and no compiler help if they drift.
+ * What genuinely differs stays at the call site: the list counts sessions
+ * and work products with CTEs (one scan for the whole page) while the
+ * detail query uses scalar subqueries for its single row, and the
+ * latest-session CTE is scoped differently.
+ */
+const TASK_PROJECTION = /* sql */ `
+  t.*,
+  asg.name              AS assignee_name,
+  asg.hierarchy_level   AS assignee_hier,
+  COALESCE(crt_a.name, crt_p.name) AS creator_label`;
+
+const LATEST_SESSION_PROJECTION = /* sql */ `
+  ls.sid                AS latest_session_id,
+  ls.sstatus            AS latest_session_status,
+  ls.sstarted           AS latest_session_started_at,
+  ls.scompleted         AS latest_session_completed_at,
+  ls.agent_label        AS latest_session_agent_label`;
+
+const TASK_ACTOR_JOINS = /* sql */ `
+LEFT JOIN agent  asg   ON asg.id   = t.assignee_id
+LEFT JOIN agent  crt_a ON crt_a.id = t.creator_id  AND t.creator_type = 'agent'
+LEFT JOIN person crt_p ON crt_p.id = t.creator_id  AND t.creator_type = 'person'`;
+
+/**
+ * `latest_session` CTE body — one row per task, newest session first.
+ * `scope` is the WHERE predicate: the list query wants every task with a
+ * session, the detail query only `$1`.
+ */
+function latestSessionCte(scope: string): string {
+  return /* sql */ `
+latest_session AS (
   SELECT DISTINCT ON (s.task_id)
     s.task_id,
     s.id           AS sid,
@@ -96,9 +129,13 @@ WITH latest_session AS (
     a.name         AS agent_label
   FROM session s
   JOIN agent a ON a.id = s.agent_id
-  WHERE s.task_id IS NOT NULL
+  WHERE ${scope}
   ORDER BY s.task_id, s.created_at DESC
-),
+)`;
+}
+
+const LIST_SQL = /* sql */ `
+WITH ${latestSessionCte("s.task_id IS NOT NULL")},
 session_counts AS (
   SELECT task_id, COUNT(*)::int AS n
   FROM session
@@ -110,22 +147,11 @@ wp_counts AS (
   FROM work_product
   GROUP BY task_id
 )
-SELECT
-  t.*,
-  asg.name              AS assignee_name,
-  asg.hierarchy_level   AS assignee_hier,
-  COALESCE(crt_a.name, crt_p.name) AS creator_label,
+SELECT ${TASK_PROJECTION},
   COALESCE(sc.n, 0)     AS session_count,
   COALESCE(wpc.n, 0)    AS work_product_count,
-  ls.sid                AS latest_session_id,
-  ls.sstatus            AS latest_session_status,
-  ls.sstarted           AS latest_session_started_at,
-  ls.scompleted         AS latest_session_completed_at,
-  ls.agent_label        AS latest_session_agent_label
-FROM task t
-LEFT JOIN agent  asg   ON asg.id   = t.assignee_id
-LEFT JOIN agent  crt_a ON crt_a.id = t.creator_id  AND t.creator_type = 'agent'
-LEFT JOIN person crt_p ON crt_p.id = t.creator_id  AND t.creator_type = 'person'
+  ${LATEST_SESSION_PROJECTION}
+FROM task t${TASK_ACTOR_JOINS}
 LEFT JOIN session_counts sc ON sc.task_id = t.id
 LEFT JOIN wp_counts wpc     ON wpc.task_id = t.id
 LEFT JOIN latest_session ls ON ls.task_id = t.id
@@ -226,31 +252,12 @@ interface DetailSessionRow {
 }
 
 const DETAIL_SQL_TASK = /* sql */ `
-WITH latest_session AS (
-  SELECT DISTINCT ON (s.task_id)
-    s.task_id, s.id AS sid, s.status AS sstatus, s.started_at AS sstarted,
-    s.completed_at AS scompleted, a.name AS agent_label
-  FROM session s
-  JOIN agent a ON a.id = s.agent_id
-  WHERE s.task_id = $1
-  ORDER BY s.task_id, s.created_at DESC
-)
-SELECT
-  t.*,
-  asg.name              AS assignee_name,
-  asg.hierarchy_level   AS assignee_hier,
-  COALESCE(crt_a.name, crt_p.name) AS creator_label,
+WITH ${latestSessionCte("s.task_id = $1")}
+SELECT ${TASK_PROJECTION},
   (SELECT COUNT(*) FROM session       WHERE task_id = t.id)::int AS session_count,
   (SELECT COUNT(*) FROM work_product  WHERE task_id = t.id)::int AS work_product_count,
-  ls.sid                AS latest_session_id,
-  ls.sstatus            AS latest_session_status,
-  ls.sstarted           AS latest_session_started_at,
-  ls.scompleted         AS latest_session_completed_at,
-  ls.agent_label        AS latest_session_agent_label
-FROM task t
-LEFT JOIN agent  asg   ON asg.id   = t.assignee_id
-LEFT JOIN agent  crt_a ON crt_a.id = t.creator_id  AND t.creator_type = 'agent'
-LEFT JOIN person crt_p ON crt_p.id = t.creator_id  AND t.creator_type = 'person'
+  ${LATEST_SESSION_PROJECTION}
+FROM task t${TASK_ACTOR_JOINS}
 LEFT JOIN latest_session ls ON ls.task_id = t.id
 WHERE t.id = $1
 LIMIT 1
@@ -277,7 +284,7 @@ export async function getTask(
   const [taskResult, sessionResult, wpResult] = await Promise.all([
     pool.query<TaskListRow>(DETAIL_SQL_TASK, [id]),
     pool.query<DetailSessionRow>(DETAIL_SQL_SESSIONS, [id]),
-    pool.query(DETAIL_SQL_WORK_PRODUCTS, [id]),
+    pool.query<WorkProductRow>(DETAIL_SQL_WORK_PRODUCTS, [id]),
   ]);
   const taskRow = taskResult.rows[0];
   if (!taskRow) return undefined;
@@ -299,23 +306,5 @@ export async function getTask(
     ...rowToTaskListItem(taskRow),
     sessions,
     work_products,
-  };
-}
-
-function rowToWorkProduct(r: Record<string, unknown>): WorkProduct {
-  return {
-    id: String(r.id),
-    task_id: String(r.task_id),
-    agent_id: String(r.agent_id),
-    type: r.type as WorkProduct["type"],
-    title: String(r.title),
-    summary: (r.summary as string | null) ?? undefined,
-    body: (r.body as string | null) ?? undefined,
-    url: (r.url as string | null) ?? undefined,
-    provider: (r.provider as string | null) ?? undefined,
-    external_id: (r.external_id as string | null) ?? undefined,
-    metadata: (r.metadata as Record<string, unknown> | null) ?? undefined,
-    created_at: r.created_at as Date,
-    updated_at: r.updated_at as Date,
   };
 }

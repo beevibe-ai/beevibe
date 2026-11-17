@@ -7,6 +7,7 @@ import {
   type HierarchyLevel,
 } from "@beevibe/core";
 import type { AgentTool } from "./types.js";
+import { guardTool } from "./errors.js";
 
 /**
  * Render the per-fact-type guidance for the tool's `fact_type` enum
@@ -66,7 +67,7 @@ export function createSaveMemoryTool(
   ctx: SaveMemoryContext,
   services: SaveMemoryServices,
 ): AgentTool {
-  return {
+  return guardTool({
     name: "save_memory",
     description:
       "Save a curated, generalized fact for retrieval in every future briefing.\n\n" +
@@ -125,5 +126,5 @@ export function createSaveMemoryTool(
         content: { saved: true, fact_id: fact.id, fact_type: factType, scope: fact.scope },
       };
     },
-  };
+  });
 }

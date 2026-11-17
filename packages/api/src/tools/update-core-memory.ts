@@ -2,6 +2,7 @@ import type { CoreMemory, CoreMemoryOperation } from "@beevibe/core/services/mem
 import type { HierarchyLevel } from "@beevibe/core";
 import { DEFAULT_BLOCK_TEMPLATES } from "@beevibe/core";
 import type { AgentTool } from "./types.js";
+import { guardTool } from "./errors.js";
 
 const OPERATIONS: readonly CoreMemoryOperation[] = ["append", "replace"];
 
@@ -92,7 +93,7 @@ export function createUpdateCoreMemoryTool(
     required: ["block_name", "operation", "content"],
   } as const;
 
-  return {
+  return guardTool({
     name: "update_core_memory",
     description:
       "Update your core-memory blocks when the stable state you want loaded " +
@@ -260,5 +261,5 @@ export function createUpdateCoreMemoryTool(
         };
       }
     },
-  };
+  });
 }

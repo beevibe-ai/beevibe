@@ -19,16 +19,12 @@
 import { config as loadDotenv } from "dotenv";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
+import { bold, cyan, dim, green, yellow } from "./lib/term.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = join(__dirname, "..");
 loadDotenv({ path: join(REPO_ROOT, ".env") });
 
-const cyan = (s: string) => `\x1b[36m${s}\x1b[0m`;
-const green = (s: string) => `\x1b[32m${s}\x1b[0m`;
-const yellow = (s: string) => `\x1b[33m${s}\x1b[0m`;
-const dim = (s: string) => `\x1b[2m${s}\x1b[0m`;
-const bold = (s: string) => `\x1b[1m${s}\x1b[0m`;
 
 interface Args {
   name: string;

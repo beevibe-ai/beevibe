@@ -18,7 +18,7 @@
  */
 
 import { CodedMeshError } from "../mesh/types.js";
-import type { AgentToolResult } from "./types.js";
+import type { AgentTool, AgentToolResult } from "./types.js";
 
 /**
  * A named failure: `code` is the stable identifier the agent branches
@@ -58,4 +58,41 @@ export function toolErrorFromThrown(
     },
     isError: true,
   };
+}
+
+/**
+ * Wrap a tool so an unexpected throw out of its handler becomes the
+ * catch-all {@link toolErrorFromThrown} envelope.
+ *
+ * Every handler used to open with `try {` and close with the same
+ * four-line `catch (err) { return toolErrorFromThrown(err); }` — 22
+ * byte-identical copies across `hierarchy.ts` and `mesh.ts`. The other
+ * seven handlers (`find_repo`, `use_repo`, `save_memory`,
+ * `session_search`, `update_core_memory`, `watch_tasks`, `unwatch`) had
+ * no guard at all, so a {@link CodedMeshError} raised beneath them lost
+ * its `code` and `meta` to the generic 500-ish envelope in
+ * `routes/mcp.ts`. Applying the guard here rather than per handler makes
+ * that uniform and means a newly added tool can't be the next one
+ * written without it.
+ *
+ * A handler that wants to name a specific failure still returns
+ * {@link toolError} itself — this only covers the throw path.
+ */
+export function guardTool(tool: AgentTool): AgentTool {
+  const { handler } = tool;
+  return {
+    ...tool,
+    handler: async (input) => {
+      try {
+        return await handler(input);
+      } catch (err) {
+        return toolErrorFromThrown(err);
+      }
+    },
+  };
+}
+
+/** {@link guardTool} over a whole tool set, for the `build*Tools` builders. */
+export function guardTools(tools: AgentTool[]): AgentTool[] {
+  return tools.map(guardTool);
 }
