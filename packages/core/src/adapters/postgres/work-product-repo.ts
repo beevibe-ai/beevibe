@@ -104,7 +104,17 @@ export class PostgresWorkProductRepository implements WorkProductRepository {
   }
 }
 
-function rowToWorkProduct(row: WorkProductRow): WorkProduct {
+/**
+ * `work_product` row → domain object.
+ *
+ * Exported because `@beevibe/api`'s task-detail view reads work products
+ * with its own `SELECT *` (it composes the whole task page in one
+ * round-trip rather than going through this repo) and had grown a second
+ * mapper over `Record<string, unknown>` that re-derived each field with a
+ * cast. One typed mapper means a new column can't be added to the domain
+ * type and silently missed on the view's path.
+ */
+export function rowToWorkProduct(row: WorkProductRow): WorkProduct {
   return {
     id: row.id,
     task_id: row.task_id,
