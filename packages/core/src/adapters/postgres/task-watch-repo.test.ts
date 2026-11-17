@@ -149,62 +149,6 @@ describe("PostgresTaskWatchRepository", () => {
     expect(list.map((w) => w.id)).toEqual([newerId, olderId]);
   });
 
-  it("listWaitingForTask matches via array containment", async () => {
-    const wantsAB = await watches.create({
-      id: taskWatchId(),
-      waiter_session_id: waiterSession,
-      agent_id: agentIdValue,
-      mode: "all",
-      task_ids: [taskA, taskB],
-    });
-    const wantsBOnly = await watches.create({
-      id: taskWatchId(),
-      waiter_session_id: waiterSession,
-      agent_id: agentIdValue,
-      mode: "any",
-      task_ids: [taskB],
-    });
-
-    const hitsForA = await watches.listWaitingForTask(taskA);
-    expect(hitsForA.map((w) => w.id)).toEqual([wantsAB.id]);
-
-    const hitsForB = await watches.listWaitingForTask(taskB);
-    expect(hitsForB.map((w) => w.id).sort()).toEqual(
-      [wantsAB.id, wantsBOnly.id].sort(),
-    );
-  });
-
-  it("listWaitingForTask excludes fired and aborted watches", async () => {
-    const willFire = await watches.create({
-      id: taskWatchId(),
-      waiter_session_id: waiterSession,
-      agent_id: agentIdValue,
-      mode: "any",
-      task_ids: [taskA],
-    });
-    const willAbort = await watches.create({
-      id: taskWatchId(),
-      waiter_session_id: waiterSession,
-      agent_id: agentIdValue,
-      mode: "any",
-      task_ids: [taskA],
-    });
-    // We need a session id to stand in for the wake session; reuse the
-    // waiter session id — the repo doesn't enforce uniqueness here.
-    await watches.markFired(willFire.id, waiterSession);
-    await watches.markAborted(willAbort.id);
-
-    const stillWaiting = await watches.create({
-      id: taskWatchId(),
-      waiter_session_id: waiterSession,
-      agent_id: agentIdValue,
-      mode: "any",
-      task_ids: [taskA],
-    });
-    const hits = await watches.listWaitingForTask(taskA);
-    expect(hits.map((w) => w.id)).toEqual([stillWaiting.id]);
-  });
-
   it("markFired stamps fired_at + fired_session_id and is idempotent on re-call", async () => {
     const id = taskWatchId();
     await watches.create({

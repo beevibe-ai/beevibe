@@ -251,6 +251,46 @@ touching it.
 | `GET /activity` → `api/src/views/activity.ts` | No caller anywhere in the monorepo, but it's a **documented public endpoint** (`packages/api/README.md`). Retiring it is a product call. The web side is fully gone: the client stub (`api.activity.list`) went with #273, and `queryKeys.activity` + its no-op `lib/sse.ts` invalidations went with #283. |
 | `SkillOutcomeRepository.listBySkill` / `.statsForSkill`, `AgentProvisionEventRepository.listByParent` | Uncalled **read** halves of audit trails whose write side is live and accumulating rows (`skill_outcome` via `recordCapabilityOutcome`, `agent_provision_event` via `create_subordinate_agent`). Same call as the promotion repo below — the consumers (discovery-ranker feedback, agents-page audit panel) are unbuilt, not removed. Deleting the queries makes finishing them harder. |
 | `PostgresMemoryPromotionEventRepository` | Never constructed — `bootstrap.ts` builds the MemoryAgent without `promotionEventRepo`, so the M8.D promotion audit log never writes even though the port, the service branch, its tests and the read-side `views/promotions.ts` all exist. That's **unfinished wiring, not dead code**; deleting the adapter makes finishing it harder. |
+| Uncalled **read** queries on live repos (full list below) | Each has a Postgres implementation and a DB-gated adapter test, but no production caller. No replacement exists and none is documented as superseded, so by the same reasoning as the rows above they read as unbuilt consumers, not removed ones. The #292 sweep verified and deliberately kept them. |
+| `idx_task_dispatch` (`migrations/1777700000000_…`) | Partial index whose predicate mirrored `TaskRepository.listAssignable`, removed in #292. Nothing queries that shape any more, so the index is dead weight — but dropping it needs a new migration and is a DB/ops call, not a code sweep's. |
+
+The deliberately-kept uncalled reads, so the next sweep can skip
+re-deriving them:
+
+| Port | Methods |
+| --- | --- |
+| `AgentRepository` | `findByLevel`, `delete` (no agent-delete path exists at all — the feature is unbuilt, which is also why `WorkspaceManager.removeWorkspace` stays) |
+| `SessionRepository` | `listForAgent` (unbounded + includes soft-deleted; `listChatForAgent` is what the chat surface uses, but it is not documented as a replacement) |
+| `TaskRepository` | `listReviewQueue` |
+| `TaskWatchRepository` | `listByWaiterSession` |
+| `EscalationRepository` | `listPending` |
+| `NegotiationRepository` | `findActiveBetween`; rounds' `findLatest` |
+| `PersonRepository` | `findManyByIds` |
+| `MemoryFactRepository` | `listByAgentScope` |
+| `RepoRunRepository` | `listByAgent` |
+| `WorkProductRepository` | `listByAgent` |
+| `RuntimeRepository` | `listByOwnerAndCli` |
+| `WorkspaceManager` | `removeWorkspace` |
+| `Runtime` | `shutdown` (lifecycle hook; all three CLI runtimes implement it, no caller invokes it) |
+
+**When sweeping port members, typecheck the tests explicitly.** Every
+package's `tsconfig.json` excludes `**/*.test.ts`, so `pnpm typecheck`
+does *not* see a test that calls a method you just deleted, and the
+DB-gated suites can't run without Postgres to catch it either. That gap
+is what broke main after #285 (fixed in #291). Compile them on purpose:
+
+```bash
+cd packages/core && cat > tsconfig.sweeptests.json <<'JSON'
+{ "extends": "./tsconfig.json", "compilerOptions": { "noEmit": true },
+  "include": ["src/**/*"], "exclude": ["dist", "node_modules"] }
+JSON
+npx tsc -p tsconfig.sweeptests.json; rm tsconfig.sweeptests.json
+```
+
+The test files carry pre-existing vitest-mock type errors, so diff the
+error set against a `git stash` of your change rather than expecting
+zero. Note a removed interface member also breaks every typed `vi.fn()`
+fake via excess-property checking — those stubs must go too.
 
 ## Deploying
 

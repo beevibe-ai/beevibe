@@ -161,8 +161,10 @@ export class DispatchService {
 /**
  * Maps task queue states to active states. Returns undefined for
  * statuses that don't transition on dispatch (in_progress / revision are
- * already active; terminal states shouldn't be re-dispatched). Mirrors
- * the legacy executor's claimById CASE logic.
+ * already active; terminal states shouldn't be re-dispatched). This is
+ * the sole home of that mapping: the task-level claim it was once split
+ * with (the executor's `TaskRepository.claimById` CASE) went away when
+ * dispatch moved to claiming sessions.
  */
 export function transitionForDispatch(current: TaskStatus): TaskStatus | undefined {
   if (current === "assigned") return "in_progress";
