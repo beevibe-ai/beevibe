@@ -4,7 +4,8 @@ import {
   MeshCapacityError,
   MeshMaxRoundsError,
 } from "../mesh/types.js";
-import { toolError, toolErrorFromThrown } from "./errors.js";
+import type { AgentTool } from "./types.js";
+import { guardTool, guardTools, toolError, toolErrorFromThrown } from "./errors.js";
 
 describe("toolError", () => {
   it("puts the code in `error` and the human text in `message`", () => {
@@ -71,5 +72,71 @@ describe("toolErrorFromThrown", () => {
     // carry a `code` too, and must not be reported as a mesh code.
     const pgLike = Object.assign(new Error("duplicate key"), { code: "23505" });
     expect(toolErrorFromThrown(pgLike).content).toEqual({ error: "duplicate key" });
+  });
+});
+
+describe("guardTool", () => {
+  const tool = (handler: AgentTool["handler"]): AgentTool => ({
+    name: "t",
+    description: "d",
+    schema: { type: "object", properties: {} },
+    handler,
+  });
+
+  it("passes a successful result through untouched", async () => {
+    const guarded = guardTool(tool(async (input) => ({ content: { got: input.x } })));
+    expect(await guarded.handler({ x: 1 })).toEqual({ content: { got: 1 } });
+  });
+
+  it("passes a handler-returned error result through untouched", async () => {
+    const guarded = guardTool(tool(async () => toolError("nope", "no")));
+    expect(await guarded.handler({})).toEqual({
+      content: { error: "nope", message: "no" },
+      isError: true,
+    });
+  });
+
+  it("envelopes a thrown Error as the catch-all shape", async () => {
+    const guarded = guardTool(tool(async () => {
+      throw new Error("boom");
+    }));
+    expect(await guarded.handler({})).toEqual({
+      content: { error: "boom" },
+      isError: true,
+    });
+  });
+
+  it("keeps a coded mesh error's code and meta", async () => {
+    const guarded = guardTool(tool(async () => {
+      throw new MeshCapacityError("at cap", { agentId: "agent_1", running: 3, cap: 3 });
+    }));
+    const result = await guarded.handler({});
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({
+      error: "MESH_CAPACITY_EXCEEDED",
+      agentId: "agent_1",
+      cap: 3,
+    });
+  });
+
+  it("preserves name, description and schema", () => {
+    const original = tool(async () => ({ content: {} }));
+    const guarded = guardTool(original);
+    expect(guarded.name).toBe(original.name);
+    expect(guarded.description).toBe(original.description);
+    expect(guarded.schema).toBe(original.schema);
+  });
+
+  it("guardTools wraps every tool in the set", async () => {
+    const [a, b] = guardTools([
+      tool(async () => {
+        throw new Error("a failed");
+      }),
+      tool(async () => {
+        throw new Error("b failed");
+      }),
+    ]);
+    expect((await a!.handler({})).content).toEqual({ error: "a failed" });
+    expect((await b!.handler({})).content).toEqual({ error: "b failed" });
   });
 });

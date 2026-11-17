@@ -5,6 +5,7 @@ import {
 } from "@beevibe/core/services/session-search";
 import { SESSION_TYPES, SESSION_STATUSES } from "@beevibe/core";
 import type { AgentTool } from "./types.js";
+import { guardTool } from "./errors.js";
 
 /**
  * session_search — Layer-3 memory: search past conversations via FTS,
@@ -237,7 +238,7 @@ export function createSessionSearchTool(
   ctx: SessionSearchToolContext,
   services: SessionSearchToolServices,
 ): AgentTool {
-  return {
+  return guardTool({
     name: "session_search",
     description: DESCRIPTION,
     schema: SCHEMA as unknown as Record<string, unknown>,
@@ -284,5 +285,5 @@ export function createSessionSearchTool(
         };
       }
     },
-  };
+  });
 }

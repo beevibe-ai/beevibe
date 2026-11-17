@@ -17,7 +17,7 @@ import {
   WatchValidationError,
   type WatchService,
 } from "@beevibe/core/services/watch-service";
-import { toolError } from "./errors.js";
+import { guardTools, toolError } from "./errors.js";
 import type { AgentTool, AgentToolResult } from "./types.js";
 
 export interface WatchToolContext {
@@ -185,5 +185,5 @@ export function buildWatchTools(
   ctx: WatchToolContext,
   services: WatchToolServices,
 ): AgentTool[] {
-  return [buildWatchTasksTool(ctx, services), buildUnwatchTool(ctx, services)];
+  return guardTools([buildWatchTasksTool(ctx, services), buildUnwatchTool(ctx, services)]);
 }

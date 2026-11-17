@@ -28,6 +28,7 @@ import {
 } from "@beevibe/core";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { AgentTool } from "./types.js";
+import { guardTool } from "./errors.js";
 
 const USE_REPO_SCHEMA = {
   type: "object",
@@ -98,7 +99,7 @@ export function createUseRepoTool(
   ctx: UseRepoContext,
   services: UseRepoServices,
 ): AgentTool {
-  return {
+  return guardTool({
     name: "use_repo",
     description:
       "Run an external GitHub repo as a one-shot tool inside a fresh " +
@@ -248,7 +249,7 @@ export function createUseRepoTool(
         },
       };
     },
-  };
+  });
 }
 
 function containerTaskTitle(goal: string): string {

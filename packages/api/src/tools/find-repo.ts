@@ -40,6 +40,7 @@ import type {
   LearnedSkillRepository,
 } from "@beevibe/core";
 import type { AgentTool, AgentToolResult } from "./types.js";
+import { guardTool } from "./errors.js";
 
 /**
  * Data layer URLs — all live in the public `beevibe-ai/beevibe-capabilities`
@@ -281,7 +282,7 @@ export function createFindRepoTool(
   const trending = services.trending ?? new HttpTrendingClient(fetcher);
   const githubToken = services.githubToken ?? process.env.GITHUB_TOKEN;
 
-  return {
+  return guardTool({
     name: "find_repo",
     description:
       "Rank GitHub repos for a goal. Returns the top N candidates from " +
@@ -298,7 +299,7 @@ export function createFindRepoTool(
     schema: FIND_REPO_SCHEMA as Record<string, unknown>,
     handler: async (input) =>
       findRepoHandler(input, ctx, services, fetcher, registry, trending, githubToken),
-  };
+  });
 }
 
 async function findRepoHandler(
