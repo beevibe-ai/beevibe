@@ -3,19 +3,16 @@
  * Fires pg_notify('cancel_task', task_id) and verifies worker.cancelTask
  * gets invoked with the task id.
  */
-import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
-import { createTestPool } from "@beevibe/core/test-helpers";
-import type { Pool } from "@beevibe/core/adapters/postgres";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { setupTestPool } from "@beevibe/core/test-helpers";
 import { CancelListener } from "./cancel-listener.js";
 import type { TaskExecutionWorker } from "./worker.js";
 
 describe("CancelListener", () => {
-  let pool: Pool;
+  // Previously this suite never closed its pool — it was the one file
+  // with no `afterAll` at all, so the pool leaked for the whole run.
+  const pool = setupTestPool();
   let listener: CancelListener | undefined;
-
-  beforeAll(() => {
-    pool = createTestPool();
-  });
 
   afterEach(async () => {
     if (listener) {

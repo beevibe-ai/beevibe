@@ -1,8 +1,7 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
 import { agentId, factId, personId, sessionId } from "../../domain/ids.js";
-import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresMemoryFactRepository } from "./memory-fact-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
@@ -23,21 +22,19 @@ function leaningVector(a: number, b: number, weight = 0.8, dims = 1536): number[
 }
 
 describe("PostgresMemoryFactRepository", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let facts: PostgresMemoryFactRepository;
   let agents: PostgresAgentRepository;
   let persons: PostgresPersonRepository;
   let aid: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     facts = new PostgresMemoryFactRepository(pool);
     agents = new PostgresAgentRepository(pool);
     persons = new PostgresPersonRepository(pool);
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
     const owner = await persons.create({ id: personId(), name: "Owner" });
     const a = await agents.create({
       id: agentId(),
@@ -47,10 +44,6 @@ describe("PostgresMemoryFactRepository", () => {
       runtime_config: DEFAULT_RUNTIME_CONFIG,
     });
     aid = a.id;
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   it("create → findById roundtrip preserves all fields including 1536-dim vector", async () => {

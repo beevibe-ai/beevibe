@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
 import {
   agentId,
@@ -8,8 +8,7 @@ import {
   sessionId,
   taskId,
 } from "../../domain/ids.js";
-import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresDaemonRepository } from "./daemon-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
@@ -18,7 +17,7 @@ import { PostgresSessionRepository } from "./session-repo.js";
 import { PostgresTaskRepository } from "./task-repo.js";
 
 describe("PostgresSessionRepository", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let sessions: PostgresSessionRepository;
   let agents: PostgresAgentRepository;
   let persons: PostgresPersonRepository;
@@ -28,7 +27,6 @@ describe("PostgresSessionRepository", () => {
   let task: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     sessions = new PostgresSessionRepository(pool);
     agents = new PostgresAgentRepository(pool);
     persons = new PostgresPersonRepository(pool);
@@ -36,7 +34,6 @@ describe("PostgresSessionRepository", () => {
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
     const p = await persons.create({ id: personId(), name: "P" });
     person = p.id;
     const a = await agents.create({
@@ -55,10 +52,6 @@ describe("PostgresSessionRepository", () => {
       creator_type: "person",
     });
     task = t.id;
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   const newSession = (overrides: Partial<Parameters<typeof sessions.create>[0]> = {}) => ({

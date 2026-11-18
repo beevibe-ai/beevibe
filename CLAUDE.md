@@ -136,10 +136,36 @@ Two traps:
 
 - `--coverage.all` is required, or files with no test file at all are
   simply absent from the report and read as "covered".
-- An **unhandled** error in a test file (the DB-gated suites throw one
-  from `afterAll`) aborts report generation entirely — the run prints
-  results but writes no `coverage-summary.json`. Exclude the DB- and
-  key-gated suites when measuring without Postgres.
+- An **unhandled** error in a test file aborts report generation
+  entirely — the run prints results but writes no
+  `coverage-summary.json`. The DB-gated suites used to throw one from
+  `afterAll` on every keyless run; `setupTestPool()` fixed that, so
+  without Postgres they now fail once, cleanly, and the report still
+  writes. Key-gated suites are still worth excluding.
+
+### The Postgres integration-test harness
+
+A suite that needs a real database calls `setupTestPool()` from
+`@beevibe/core/test-helpers` as the first statement in its `describe`,
+and does not write pool hooks of its own:
+
+```ts
+describe("agent repo", () => {
+  const pool = setupTestPool();          // truncate per test + close at end
+  let agents: PostgresAgentRepository;
+  beforeAll(() => { agents = new PostgresAgentRepository(pool); });
+});
+```
+
+Pass `{ truncate: "once" }` when the suite seeds its fixture *in*
+`beforeAll` and reads it from several tests, so a per-test wipe would
+delete it (`views/mesh.db.test.ts` is the only one).
+
+`api/routes/mcp.test.ts` is the deliberate exception and keeps its own
+pool: it's behind `describe.skipIf(!HAS_LIVE_API_KEYS)`, and vitest
+evaluates a skipped suite's body anyway, so calling `setupTestPool()`
+there would require `DATABASE_URL_TEST` just to collect a suite about to
+be skipped.
 
 ### Recognizing environmental failures vs. real ones
 
@@ -149,8 +175,12 @@ In a sandbox with no Docker and no provider keys, these failures are
 | Message | Cause |
 | --- | --- |
 | `DATABASE_URL_TEST env var is required…` | no Postgres |
-| `Cannot read properties of undefined (reading 'end')` in `afterAll` | knock-on from the above |
 | `OPENAI_API_KEY missing` / `ANTHROPIC_API_KEY missing` | no provider keys |
+
+A `Cannot read properties of undefined (reading 'end')` in `afterAll`
+used to pile on top of the first of these. If you see one again, a suite
+has gone back to hand-rolling its pool instead of calling
+`setupTestPool()` — see below.
 
 Baseline in a bare sandbox (no Docker, no keys), for comparison rather
 than expecting green:

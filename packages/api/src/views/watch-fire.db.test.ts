@@ -5,7 +5,7 @@
  * mode='all' / mode='any' contract.
  */
 
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
@@ -13,7 +13,6 @@ import {
   PostgresSessionRepository,
   PostgresTaskRepository,
   PostgresTaskWatchRepository,
-  type Pool,
 } from "@beevibe/core/adapters/postgres";
 import { provisionAgent, provisionUser } from "@beevibe/core/auth";
 import {
@@ -26,14 +25,10 @@ import {
   taskId,
   taskWatchId,
 } from "@beevibe/core";
-import {
-  createTestPool,
-  seedPinnedRuntime,
-  truncateAll,
-} from "@beevibe/core/test-helpers";
+import { seedPinnedRuntime, setupTestPool } from "@beevibe/core/test-helpers";
 
 describe("trg_task_watch_check — integration", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let watches: PostgresTaskWatchRepository;
   let agents: PostgresAgentRepository;
   let persons: PostgresPersonRepository;
@@ -47,7 +42,6 @@ describe("trg_task_watch_check — integration", () => {
   let ownerPersonId: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     watches = new PostgresTaskWatchRepository(pool);
     agents = new PostgresAgentRepository(pool);
     persons = new PostgresPersonRepository(pool);
@@ -57,7 +51,6 @@ describe("trg_task_watch_check — integration", () => {
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
 
     const owner = await provisionUser(
       { personRepo: persons },
@@ -95,10 +88,6 @@ describe("trg_task_watch_check — integration", () => {
     teamAgentId = team.agent.id;
     icAgentId = ic.agent.id;
     ownerPersonId = owner.person.id;
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   async function createTask(title: string): Promise<string> {

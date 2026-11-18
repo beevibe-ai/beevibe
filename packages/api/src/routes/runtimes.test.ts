@@ -13,14 +13,13 @@
 
 import express, { json } from "express";
 import request from "supertest";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
   PostgresDaemonRepository,
   PostgresPersonRepository,
   PostgresRuntimeRepository,
-  type Pool,
 } from "@beevibe/core/adapters/postgres";
 import {
   generateDaemonApiKey,
@@ -35,13 +34,13 @@ import {
   personId,
   runtimeId,
 } from "@beevibe/core";
-import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
+import { setupTestPool } from "@beevibe/core/test-helpers";
 import { createAuthMiddleware } from "../auth/middleware.js";
 import { DaemonHub, type DaemonClient } from "../runtime/hub.js";
 import { createRuntimesRouter } from "./runtimes.js";
 
 describe("/runtimes panel surface — integration", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let agentRepo: PostgresAgentRepository;
   let personRepo: PostgresPersonRepository;
   let daemonRepo: PostgresDaemonRepository;
@@ -50,7 +49,6 @@ describe("/runtimes panel surface — integration", () => {
   let hub: DaemonHub;
 
   beforeAll(() => {
-    pool = createTestPool();
     agentRepo = new PostgresAgentRepository(pool);
     personRepo = new PostgresPersonRepository(pool);
     daemonRepo = new PostgresDaemonRepository(pool);
@@ -59,12 +57,7 @@ describe("/runtimes panel surface — integration", () => {
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
     hub = new DaemonHub();
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   function makeApp() {

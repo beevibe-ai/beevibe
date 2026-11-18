@@ -5,7 +5,7 @@
  */
 
 import { createServer, type Server } from "node:http";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { WebSocket } from "ws";
 import {
   PostgresAgentRepository,
@@ -13,7 +13,6 @@ import {
   PostgresPersonRepository,
   PostgresRuntimeRepository,
   PostgresSessionRepository,
-  type Pool,
 } from "@beevibe/core/adapters/postgres";
 import {
   generateDaemonApiKey,
@@ -28,7 +27,7 @@ import {
   sessionId,
 } from "@beevibe/core";
 import { DEFAULT_RUNTIME_CONFIG } from "@beevibe/core";
-import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
+import { setupTestPool } from "@beevibe/core/test-helpers";
 import { DaemonHub } from "./hub.js";
 import { RuntimeWsServer } from "./ws-server.js";
 
@@ -41,7 +40,7 @@ interface Fixture {
 }
 
 describe("RuntimeWsServer", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let agentRepo: PostgresAgentRepository;
   let personRepo: PostgresPersonRepository;
   let daemonRepo: PostgresDaemonRepository;
@@ -53,7 +52,6 @@ describe("RuntimeWsServer", () => {
   let port: number;
 
   beforeAll(async () => {
-    pool = createTestPool();
     agentRepo = new PostgresAgentRepository(pool);
     personRepo = new PostgresPersonRepository(pool);
     daemonRepo = new PostgresDaemonRepository(pool);
@@ -83,11 +81,6 @@ describe("RuntimeWsServer", () => {
   afterAll(async () => {
     await wsServer.stop();
     await new Promise<void>((resolve) => httpServer.close(() => resolve()));
-    await pool.end();
-  });
-
-  beforeEach(async () => {
-    await truncateAll(pool);
   });
 
   async function setupFixture(): Promise<Fixture> {

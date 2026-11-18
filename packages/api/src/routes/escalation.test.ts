@@ -13,7 +13,7 @@
 import express, { json } from "express";
 import request from "supertest";
 import { Client as PgClient } from "pg";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
@@ -23,7 +23,6 @@ import {
   PostgresPersonRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
-  type Pool,
 } from "@beevibe/core/adapters/postgres";
 import { provisionAgent, provisionUser } from "@beevibe/core/auth";
 import { EscalationService } from "@beevibe/core/services/escalation-service";
@@ -37,12 +36,12 @@ import {
   taskId,
 } from "@beevibe/core";
 import type { Escalation, Negotiation, Task } from "@beevibe/core";
-import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
+import { setupTestPool } from "@beevibe/core/test-helpers";
 import { createAuthMiddleware } from "../auth/middleware.js";
 import { createEscalationRouter } from "./escalation.js";
 
 describe("escalation routes — integration", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let agentRepo: PostgresAgentRepository;
   let personRepo: PostgresPersonRepository;
   let coreMemoryRepo: PostgresCoreMemoryRepository;
@@ -54,7 +53,6 @@ describe("escalation routes — integration", () => {
   let escalationService: EscalationService;
 
   beforeAll(() => {
-    pool = createTestPool();
     agentRepo = new PostgresAgentRepository(pool);
     personRepo = new PostgresPersonRepository(pool);
     coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
@@ -70,14 +68,6 @@ describe("escalation routes — integration", () => {
       taskRepo,
       agentRepo,
     });
-  });
-
-  beforeEach(async () => {
-    await truncateAll(pool);
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   function makeApp() {

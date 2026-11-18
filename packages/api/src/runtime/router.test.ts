@@ -9,7 +9,7 @@
 
 import express, { json } from "express";
 import request from "supertest";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
@@ -19,7 +19,6 @@ import {
   PostgresSessionEventRepository,
   PostgresSessionRepository,
   PostgresTaskRepository,
-  type Pool,
 } from "@beevibe/core/adapters/postgres";
 import {
   generateDaemonApiKey,
@@ -36,7 +35,7 @@ import {
   personId,
 } from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
-import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
+import { setupTestPool } from "@beevibe/core/test-helpers";
 import { createAuthMiddleware } from "../auth/middleware.js";
 import { DaemonHub } from "./hub.js";
 import { createRuntimeRouter, type RuntimeRouterDeps } from "./router.js";
@@ -59,7 +58,7 @@ function makeMemoryAgentStub(): MemoryAgent {
 }
 
 describe("/runtime — integration", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let agentRepo: PostgresAgentRepository;
   let personRepo: PostgresPersonRepository;
   let daemonRepo: PostgresDaemonRepository;
@@ -72,7 +71,6 @@ describe("/runtime — integration", () => {
   let onSessionComplete: ReturnType<typeof vi.fn>;
 
   beforeAll(() => {
-    pool = createTestPool();
     agentRepo = new PostgresAgentRepository(pool);
     personRepo = new PostgresPersonRepository(pool);
     daemonRepo = new PostgresDaemonRepository(pool);
@@ -84,13 +82,8 @@ describe("/runtime — integration", () => {
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
     hub = new DaemonHub();
     onSessionComplete = vi.fn().mockResolvedValue(undefined);
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   function makeApp(deps?: Partial<RuntimeRouterDeps>) {

@@ -8,7 +8,7 @@
  * duplicates members, and a missing kind filter leaks persons into
  * the agent list (and vice versa).
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
 import {
   agentId,
@@ -17,15 +17,14 @@ import {
   roomMessageId,
   sessionId,
 } from "../../domain/ids.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
-import type { Pool } from "./client.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
 import { PostgresRoomRepository } from "./room-repo.js";
 import { PostgresSessionRepository } from "./session-repo.js";
 
 describe("PostgresRoomRepository", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let rooms: PostgresRoomRepository;
   let agents: PostgresAgentRepository;
   let persons: PostgresPersonRepository;
@@ -36,19 +35,13 @@ describe("PostgresRoomRepository", () => {
   let alicesTeam: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     rooms = new PostgresRoomRepository(pool);
     agents = new PostgresAgentRepository(pool);
     persons = new PostgresPersonRepository(pool);
     sessions = new PostgresSessionRepository(pool);
   });
 
-  afterAll(async () => {
-    await pool.end();
-  });
-
   beforeEach(async () => {
-    await truncateAll(pool);
     alice = (await persons.create({ id: personId(), name: "Alice" })).id;
     bob = (await persons.create({ id: personId(), name: "Bob" })).id;
     alicesTeam = (

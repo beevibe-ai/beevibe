@@ -1,14 +1,13 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
 import { agentId, personId, taskId } from "../../domain/ids.js";
-import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
 import { PostgresTaskRepository } from "./task-repo.js";
 
 describe("PostgresTaskRepository", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let tasks: PostgresTaskRepository;
   let agents: PostgresAgentRepository;
   let persons: PostgresPersonRepository;
@@ -16,14 +15,12 @@ describe("PostgresTaskRepository", () => {
   let assigneeAgentId: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     tasks = new PostgresTaskRepository(pool);
     agents = new PostgresAgentRepository(pool);
     persons = new PostgresPersonRepository(pool);
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
     const owner = await persons.create({ id: personId(), name: "Owner" });
     ownerPersonId = owner.id;
     const a = await agents.create({
@@ -34,10 +31,6 @@ describe("PostgresTaskRepository", () => {
       runtime_config: DEFAULT_RUNTIME_CONFIG,
     });
     assigneeAgentId = a.id;
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   const newTask = (overrides: Partial<Parameters<typeof tasks.create>[0]> = {}) => ({

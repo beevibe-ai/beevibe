@@ -1,24 +1,14 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { personId } from "../../domain/ids.js";
-import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresPersonRepository } from "./person-repo.js";
 
 describe("PostgresPersonRepository", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let repo: PostgresPersonRepository;
 
   beforeAll(() => {
-    pool = createTestPool();
     repo = new PostgresPersonRepository(pool);
-  });
-
-  beforeEach(async () => {
-    await truncateAll(pool);
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   it("create + findById round-trips", async () => {

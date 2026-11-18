@@ -8,7 +8,7 @@
 import express from "express";
 import { json } from "express";
 import request from "supertest";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
@@ -17,7 +17,6 @@ import {
   PostgresNegotiationRoundRepository,
   PostgresPersonRepository,
   PostgresSessionRepository,
-  type Pool,
 } from "@beevibe/core/adapters/postgres";
 import { provisionAgent, provisionUser } from "@beevibe/core/auth";
 import { NegotiationService } from "@beevibe/core/services/negotiation-service";
@@ -29,12 +28,12 @@ import {
   personId,
   sessionId,
 } from "@beevibe/core";
-import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
+import { setupTestPool } from "@beevibe/core/test-helpers";
 import { createAuthMiddleware } from "../auth/middleware.js";
 import { createNegotiationRouter } from "./negotiation.js";
 
 describe("negotiation routes — integration", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let agentRepo: PostgresAgentRepository;
   let personRepo: PostgresPersonRepository;
   let coreMemoryRepo: PostgresCoreMemoryRepository;
@@ -45,7 +44,6 @@ describe("negotiation routes — integration", () => {
   let negotiationService: NegotiationService;
 
   beforeAll(() => {
-    pool = createTestPool();
     agentRepo = new PostgresAgentRepository(pool);
     personRepo = new PostgresPersonRepository(pool);
     coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
@@ -59,14 +57,6 @@ describe("negotiation routes — integration", () => {
       agentRepo,
       escalationRepo,
     });
-  });
-
-  beforeEach(async () => {
-    await truncateAll(pool);
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   function makeApp() {
