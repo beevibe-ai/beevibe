@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../domain/agent.js";
 import {
   SYSTEM_WAKE_INTENT_CLOSE,
@@ -10,8 +10,7 @@ import {
   sessionId,
   taskId,
 } from "../domain/ids.js";
-import { createTestPool, seedPinnedRuntime, truncateAll } from "../test-helpers.js";
-import type { Pool } from "../adapters/postgres/client.js";
+import { seedPinnedRuntime, setupTestPool } from "../test-helpers.js";
 import { PostgresAgentRepository } from "../adapters/postgres/agent-repo.js";
 import { PostgresPersonRepository } from "../adapters/postgres/person-repo.js";
 import { PostgresSessionRepository } from "../adapters/postgres/session-repo.js";
@@ -25,7 +24,7 @@ import {
 } from "./watch-service.js";
 
 describe("WatchService — integration", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let agents: PostgresAgentRepository;
   let persons: PostgresPersonRepository;
   let sessions: PostgresSessionRepository;
@@ -39,7 +38,6 @@ describe("WatchService — integration", () => {
   let ownerPersonId: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     agents = new PostgresAgentRepository(pool);
     persons = new PostgresPersonRepository(pool);
     sessions = new PostgresSessionRepository(pool);
@@ -54,7 +52,6 @@ describe("WatchService — integration", () => {
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
     const owner = await persons.create({ id: personId(), name: "Owner" });
     const team = await agents.create({
       id: agentId(),
@@ -82,10 +79,6 @@ describe("WatchService — integration", () => {
     icAgentId = ic.id;
     waiterSessionId = waiter.id;
     ownerPersonId = owner.id;
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   /** Dispatch a task by inserting a task row + an IC session parented to the

@@ -5,7 +5,7 @@
  */
 import express, { json } from "express";
 import request from "supertest";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
@@ -14,19 +14,18 @@ import {
   PostgresSessionRepository,
   PostgresTaskRepository,
   PostgresWorkProductRepository,
-  type Pool,
 } from "@beevibe/core/adapters/postgres";
 import { provisionAgent, provisionUser } from "@beevibe/core/auth";
 import { TaskService } from "@beevibe/core/services/task-service";
 import { DispatchService } from "@beevibe/core/services/dispatch-service";
 import { DEFAULT_RUNTIME_CONFIG, agentId, personId, sessionId, taskId } from "@beevibe/core";
-import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
+import { setupTestPool } from "@beevibe/core/test-helpers";
 import { createAuthMiddleware } from "../auth/middleware.js";
 import { DaemonHub } from "../runtime/hub.js";
 import { createTaskRouter } from "./task.js";
 
 describe("task routes — integration", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let agentRepo: PostgresAgentRepository;
   let personRepo: PostgresPersonRepository;
   let coreMemoryRepo: PostgresCoreMemoryRepository;
@@ -39,7 +38,6 @@ describe("task routes — integration", () => {
   let hub: DaemonHub;
 
   beforeAll(() => {
-    pool = createTestPool();
     agentRepo = new PostgresAgentRepository(pool);
     personRepo = new PostgresPersonRepository(pool);
     coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
@@ -50,14 +48,6 @@ describe("task routes — integration", () => {
     taskService = new TaskService({ taskRepo, workProductRepo, agentRepo, sessionRepo });
     dispatchService = new DispatchService({ agentRepo, sessionRepo, taskRepo });
     hub = new DaemonHub();
-  });
-
-  beforeEach(async () => {
-    await truncateAll(pool);
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   function makeApp() {

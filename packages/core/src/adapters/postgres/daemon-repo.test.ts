@@ -1,30 +1,23 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { daemonId, personId } from "../../domain/ids.js";
-import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresDaemonRepository } from "./daemon-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
 
 describe("PostgresDaemonRepository", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let daemons: PostgresDaemonRepository;
   let persons: PostgresPersonRepository;
   let ownerId: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     daemons = new PostgresDaemonRepository(pool);
     persons = new PostgresPersonRepository(pool);
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
     const owner = await persons.create({ id: personId(), name: "Owner" });
     ownerId = owner.id;
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   it("creates a daemon row and round-trips it via findById", async () => {

@@ -3,7 +3,7 @@
  * mesh.test.ts can't catch SQL errors like ambiguous columns.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
@@ -11,7 +11,6 @@ import {
   PostgresNegotiationRoundRepository,
   PostgresPersonRepository,
   PostgresSessionRepository,
-  type Pool,
 } from "@beevibe/core/adapters/postgres";
 import { provisionAgent, provisionUser } from "@beevibe/core/auth";
 import {
@@ -22,25 +21,24 @@ import {
   personId,
   sessionId,
 } from "@beevibe/core";
-import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
+import { setupTestPool } from "@beevibe/core/test-helpers";
 import { getMeshOverview } from "./mesh.js";
 import { MESH_WINDOWS } from "./types.js";
 
 describe("getMeshOverview — integration", () => {
-  let pool: Pool;
+  // Seeds its fixture once in `beforeAll` and reads it from every
+  // test, so the wipe has to happen once up front — not per test.
+  const pool = setupTestPool({ truncate: "once" });
   let initiatorId: string;
   let counterpartyId: string;
 
   beforeAll(async () => {
-    pool = createTestPool();
     const agentRepo = new PostgresAgentRepository(pool);
     const personRepo = new PostgresPersonRepository(pool);
     const coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
     const sessionRepo = new PostgresSessionRepository(pool);
     const negotiationRepo = new PostgresNegotiationRepository(pool);
     const negotiationRoundRepo = new PostgresNegotiationRoundRepository(pool);
-
-    await truncateAll(pool);
 
     const owner = await provisionUser(
       { personRepo },
@@ -104,10 +102,6 @@ describe("getMeshOverview — integration", () => {
 
     initiatorId = a.agent.id;
     counterpartyId = b.agent.id;
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   it.each([...MESH_WINDOWS])("runs cleanly with window=%s", async (window) => {

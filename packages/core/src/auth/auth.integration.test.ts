@@ -3,13 +3,12 @@
  * no LLM, no CLI. Runs as part of the standard `pnpm test` cycle when
  * DATABASE_URL_TEST is set.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { PostgresAgentRepository } from "../adapters/postgres/agent-repo.js";
-import type { Pool } from "../adapters/postgres/client.js";
 import { PostgresCoreMemoryRepository } from "../adapters/postgres/core-memory-repo.js";
 import { PostgresDaemonRepository } from "../adapters/postgres/daemon-repo.js";
 import { PostgresPersonRepository } from "../adapters/postgres/person-repo.js";
-import { createTestPool, truncateAll } from "../test-helpers.js";
+import { setupTestPool } from "../test-helpers.js";
 import { DEFAULT_RUNTIME_CONFIG } from "../domain/agent.js";
 import { agentId, daemonId, personId } from "../domain/ids.js";
 import {
@@ -21,7 +20,7 @@ import { findUserAgent } from "./find-user-agent.js";
 import { provisionAgent, provisionUser } from "./provision.js";
 
 describe("auth — integration", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let agentRepo: PostgresAgentRepository;
   let personRepo: PostgresPersonRepository;
   let daemonRepo: PostgresDaemonRepository;
@@ -33,20 +32,11 @@ describe("auth — integration", () => {
   };
 
   beforeAll(() => {
-    pool = createTestPool();
     agentRepo = new PostgresAgentRepository(pool);
     personRepo = new PostgresPersonRepository(pool);
     daemonRepo = new PostgresDaemonRepository(pool);
     coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
     deps = { agentRepo, personRepo, daemonRepo };
-  });
-
-  beforeEach(async () => {
-    await truncateAll(pool);
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   async function makeAlice() {

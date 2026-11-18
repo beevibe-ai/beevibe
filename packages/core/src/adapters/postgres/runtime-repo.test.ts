@@ -1,13 +1,12 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { daemonId, personId, runtimeId } from "../../domain/ids.js";
-import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresDaemonRepository } from "./daemon-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
 import { PostgresRuntimeRepository } from "./runtime-repo.js";
 
 describe("PostgresRuntimeRepository", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let runtimes: PostgresRuntimeRepository;
   let daemons: PostgresDaemonRepository;
   let persons: PostgresPersonRepository;
@@ -15,14 +14,12 @@ describe("PostgresRuntimeRepository", () => {
   let dId: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     runtimes = new PostgresRuntimeRepository(pool);
     daemons = new PostgresDaemonRepository(pool);
     persons = new PostgresPersonRepository(pool);
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
     const owner = await persons.create({ id: personId(), name: "Owner" });
     ownerId = owner.id;
     dId = daemonId();
@@ -33,10 +30,6 @@ describe("PostgresRuntimeRepository", () => {
       device_name: "Host",
       token_hash: "t",
     });
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   it("creates a runtime, defaults capabilities to {}, round-trips", async () => {

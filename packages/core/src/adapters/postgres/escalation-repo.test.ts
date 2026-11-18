@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
 import {
   agentId,
@@ -7,8 +7,7 @@ import {
   personId,
   sessionId,
 } from "../../domain/ids.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
-import type { Pool } from "./client.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresEscalationRepository } from "./escalation-repo.js";
 import { PostgresNegotiationRepository } from "./negotiation-repo.js";
@@ -16,7 +15,7 @@ import { PostgresPersonRepository } from "./person-repo.js";
 import { PostgresSessionRepository } from "./session-repo.js";
 
 describe("PostgresEscalationRepository", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let escalations: PostgresEscalationRepository;
   let negotiations: PostgresNegotiationRepository;
   let agents: PostgresAgentRepository;
@@ -29,7 +28,6 @@ describe("PostgresEscalationRepository", () => {
   let person: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     escalations = new PostgresEscalationRepository(pool);
     negotiations = new PostgresNegotiationRepository(pool);
     agents = new PostgresAgentRepository(pool);
@@ -38,7 +36,6 @@ describe("PostgresEscalationRepository", () => {
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
     const owner = await persons.create({ id: personId(), name: "Owner" });
     person = owner.id;
     const a = await agents.create({
@@ -80,10 +77,6 @@ describe("PostgresEscalationRepository", () => {
       max_rounds: 5,
     });
     neg = negotiation.id;
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   it("create + findById round-trips with status='pending', empty counterparty slot", async () => {

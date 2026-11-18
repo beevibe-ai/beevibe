@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
 import {
   agentId,
@@ -11,8 +11,7 @@ import {
   userMessageId,
 } from "../../domain/session-search.js";
 import type { SessionSearchScope } from "../../ports/session-search-repo.js";
-import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
 import { PostgresSessionEventRepository } from "./session-event-repo.js";
@@ -21,7 +20,7 @@ import { PostgresTaskRepository } from "./task-repo.js";
 import { PostgresSessionSearchRepository } from "./session-search-repo.js";
 
 describe("PostgresSessionSearchRepository", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let search: PostgresSessionSearchRepository;
   let sessions: PostgresSessionRepository;
   let events: PostgresSessionEventRepository;
@@ -33,7 +32,6 @@ describe("PostgresSessionSearchRepository", () => {
   let bobAgent: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     search = new PostgresSessionSearchRepository(pool);
     sessions = new PostgresSessionRepository(pool);
     events = new PostgresSessionEventRepository(pool);
@@ -42,12 +40,7 @@ describe("PostgresSessionSearchRepository", () => {
     tasks = new PostgresTaskRepository(pool);
   });
 
-  afterAll(async () => {
-    await pool.end();
-  });
-
   beforeEach(async () => {
-    await truncateAll(pool);
     const p = await persons.create({ id: personId(), name: "Owner" });
     owner = p.id;
     const a = await agents.create({

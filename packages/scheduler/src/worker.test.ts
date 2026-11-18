@@ -5,8 +5,7 @@
  * matching daemon and never reach this loop.
  */
 
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import type { Pool } from "@beevibe/core/adapters/postgres";
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   PostgresAgentRepository,
   PostgresDaemonRepository,
@@ -37,7 +36,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DEFAULT_TASK_CAP } from "@beevibe/core";
-import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
+import { setupTestPool } from "@beevibe/core/test-helpers";
 import {
   DEFAULT_POLL_MS,
   TaskExecutionWorker,
@@ -70,7 +69,7 @@ const fakeRuntimeRegistry: RuntimeRegistry = {
 };
 
 describe("TaskExecutionWorker (Phase 4 — session-based claim)", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let agents: PostgresAgentRepository;
   let tasks: PostgresTaskRepository;
   let sessions: PostgresSessionRepository;
@@ -83,7 +82,6 @@ describe("TaskExecutionWorker (Phase 4 — session-based claim)", () => {
   let ownerPersonId: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     agents = new PostgresAgentRepository(pool);
     tasks = new PostgresTaskRepository(pool);
     sessions = new PostgresSessionRepository(pool);
@@ -92,12 +90,7 @@ describe("TaskExecutionWorker (Phase 4 — session-based claim)", () => {
     runtimes = new PostgresRuntimeRepository(pool);
   });
 
-  afterAll(async () => {
-    await pool.end();
-  });
-
   beforeEach(async () => {
-    await truncateAll(pool);
     const owner = await persons.create({ id: personId(), name: "Worker Owner" });
     ownerPersonId = owner.id;
     workspaceRoot = mkdtempSync(join(tmpdir(), "beevibe-worker-test-"));

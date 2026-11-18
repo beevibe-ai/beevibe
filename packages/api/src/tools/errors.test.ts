@@ -4,7 +4,8 @@ import {
   MeshCapacityError,
   MeshMaxRoundsError,
 } from "../mesh/types.js";
-import { toolError, toolErrorFromThrown } from "./errors.js";
+import { guardToolHandlers, toolError, toolErrorFromThrown } from "./errors.js";
+import type { AgentTool } from "./types.js";
 
 describe("toolError", () => {
   it("puts the code in `error` and the human text in `message`", () => {
@@ -71,5 +72,95 @@ describe("toolErrorFromThrown", () => {
     // carry a `code` too, and must not be reported as a mesh code.
     const pgLike = Object.assign(new Error("duplicate key"), { code: "23505" });
     expect(toolErrorFromThrown(pgLike).content).toEqual({ error: "duplicate key" });
+  });
+});
+
+describe("guardToolHandlers", () => {
+  function tool(handler: AgentTool["handler"]): AgentTool {
+    return { name: "t", description: "d", schema: {}, handler };
+  }
+
+  it("envelopes a throw instead of letting it escape the handler", async () => {
+    const [guarded] = guardToolHandlers([
+      tool(async () => {
+        throw new Error("boom");
+      }),
+    ]);
+    await expect(guarded!.handler({})).resolves.toEqual({
+      content: { error: "boom" },
+      isError: true,
+    });
+  });
+
+  it("preserves a CodedMeshError's code and meta through the guard", async () => {
+    // This is the whole point of guarding: without it the throw reaches the
+    // MCP transport's generic catch, which flattens to `{ error: <message> }`
+    // and strips the code the calling agent branches on.
+    const [guarded] = guardToolHandlers([
+      tool(async () => {
+        throw new MeshCapacityError("at cap", {
+          agentId: "agent_1",
+          running: 3,
+          cap: 3,
+        });
+      }),
+    ]);
+    await expect(guarded!.handler({})).resolves.toEqual({
+      content: {
+        error: "MESH_CAPACITY_EXCEEDED",
+        agentId: "agent_1",
+        running: 3,
+        cap: 3,
+        message: "at cap",
+      },
+      isError: true,
+    });
+  });
+
+  it("passes a successful result through untouched", async () => {
+    const [guarded] = guardToolHandlers([
+      tool(async (input) => ({ content: { echoed: input.q } })),
+    ]);
+    await expect(guarded!.handler({ q: "hi" })).resolves.toEqual({
+      content: { echoed: "hi" },
+    });
+  });
+
+  it("leaves a returned error envelope alone — it only catches throws", async () => {
+    const envelope = { content: { error: "invalid_goal" }, isError: true };
+    const [guarded] = guardToolHandlers([tool(async () => envelope)]);
+    await expect(guarded!.handler({})).resolves.toEqual(envelope);
+  });
+
+  it("keeps name, description and schema, and guards every tool in the list", async () => {
+    const guarded = guardToolHandlers([
+      { name: "a", description: "da", schema: { type: "object" }, handler: async () => {
+        throw new Error("a failed");
+      } },
+      { name: "b", description: "db", schema: {}, handler: async () => {
+        throw new Error("b failed");
+      } },
+    ]);
+    expect(guarded.map((t) => t.name)).toEqual(["a", "b"]);
+    expect(guarded[0]!.description).toBe("da");
+    expect(guarded[0]!.schema).toEqual({ type: "object" });
+    expect((await guarded[0]!.handler({})).content.error).toBe("a failed");
+    expect((await guarded[1]!.handler({})).content.error).toBe("b failed");
+  });
+
+  it("lets an inner guard win when a handler keeps its own catch", async () => {
+    // `revise_task` still wraps its own body to map
+    // InvalidTaskTransitionError onto a named code; double-wrapping must
+    // not clobber that.
+    const [guarded] = guardToolHandlers([
+      tool(async () => {
+        try {
+          throw new Error("inner");
+        } catch {
+          return { content: { error: "invalid_transition" }, isError: true };
+        }
+      }),
+    ]);
+    expect((await guarded!.handler({})).content.error).toBe("invalid_transition");
   });
 });

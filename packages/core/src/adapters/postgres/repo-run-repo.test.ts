@@ -9,7 +9,7 @@
  * `websearch_to_tsquery` ranking, and the `ON CONFLICT` upsert that
  * keeps a re-review from stacking rows.
  */
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
 import {
   agentId,
@@ -21,8 +21,7 @@ import {
   taskId,
 } from "../../domain/ids.js";
 import type { RepoRunTranscriptEvent } from "../../domain/repo-run.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
-import type { Pool } from "./client.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
 import {
@@ -35,7 +34,7 @@ import { PostgresSessionRepository } from "./session-repo.js";
 import { PostgresTaskRepository } from "./task-repo.js";
 
 describe("capability-network postgres repositories", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let runs: PostgresRepoRunRepository;
   let skills: PostgresLearnedSkillRepository;
   let outcomes: PostgresSkillOutcomeRepository;
@@ -48,7 +47,6 @@ describe("capability-network postgres repositories", () => {
   let agent: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     runs = new PostgresRepoRunRepository(pool);
     skills = new PostgresLearnedSkillRepository(pool);
     outcomes = new PostgresSkillOutcomeRepository(pool);
@@ -58,12 +56,7 @@ describe("capability-network postgres repositories", () => {
     tasks = new PostgresTaskRepository(pool);
   });
 
-  afterAll(async () => {
-    await pool.end();
-  });
-
   beforeEach(async () => {
-    await truncateAll(pool);
     const p = await persons.create({ id: personId(), name: "Owner" });
     owner = p.id;
     const a = await agents.create({

@@ -5,13 +5,12 @@
  */
 import express, { json, type Request, type Response } from "express";
 import request from "supertest";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import {
   PostgresAgentRepository,
   PostgresCoreMemoryRepository,
   PostgresDaemonRepository,
   PostgresPersonRepository,
-  type Pool,
 } from "@beevibe/core/adapters/postgres";
 import {
   generateDaemonApiKey,
@@ -25,7 +24,7 @@ import {
   daemonId,
   personId,
 } from "@beevibe/core";
-import { createTestPool, truncateAll } from "@beevibe/core/test-helpers";
+import { setupTestPool } from "@beevibe/core/test-helpers";
 import {
   createAuthMiddleware,
   requireDaemon,
@@ -33,26 +32,17 @@ import {
 } from "./middleware.js";
 
 describe("auth middleware — integration", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let agentRepo: PostgresAgentRepository;
   let personRepo: PostgresPersonRepository;
   let daemonRepo: PostgresDaemonRepository;
   let coreMemoryRepo: PostgresCoreMemoryRepository;
 
   beforeAll(() => {
-    pool = createTestPool();
     agentRepo = new PostgresAgentRepository(pool);
     personRepo = new PostgresPersonRepository(pool);
     daemonRepo = new PostgresDaemonRepository(pool);
     coreMemoryRepo = new PostgresCoreMemoryRepository(pool);
-  });
-
-  beforeEach(async () => {
-    await truncateAll(pool);
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   function makeApp() {

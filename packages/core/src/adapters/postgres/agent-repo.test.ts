@@ -1,31 +1,24 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG, type HierarchyLevel } from "../../domain/agent.js";
 import { agentId, personId } from "../../domain/ids.js";
-import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
 
 describe("PostgresAgentRepository", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let agents: PostgresAgentRepository;
   let persons: PostgresPersonRepository;
   let ownerId: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     agents = new PostgresAgentRepository(pool);
     persons = new PostgresPersonRepository(pool);
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
     const owner = await persons.create({ id: personId(), name: "Owner" });
     ownerId = owner.id;
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   const newAgent = (overrides: Partial<Parameters<typeof agents.create>[0]> = {}) => ({

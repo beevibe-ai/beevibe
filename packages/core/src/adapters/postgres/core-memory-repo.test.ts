@@ -1,29 +1,26 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
 import { DEFAULT_BLOCK_TEMPLATES } from "../../domain/core-memory.js";
 import { agentId, blockId, personId } from "../../domain/ids.js";
-import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresCoreMemoryRepository } from "./core-memory-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
 
 describe("PostgresCoreMemoryRepository", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let blocks: PostgresCoreMemoryRepository;
   let agents: PostgresAgentRepository;
   let persons: PostgresPersonRepository;
   let agent1Id: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     blocks = new PostgresCoreMemoryRepository(pool);
     agents = new PostgresAgentRepository(pool);
     persons = new PostgresPersonRepository(pool);
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
     const owner = await persons.create({ id: personId(), name: "Owner" });
     const agent = await agents.create({
       id: agentId(),
@@ -33,10 +30,6 @@ describe("PostgresCoreMemoryRepository", () => {
       runtime_config: DEFAULT_RUNTIME_CONFIG,
     });
     agent1Id = agent.id;
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   it("upsert creates a new block", async () => {

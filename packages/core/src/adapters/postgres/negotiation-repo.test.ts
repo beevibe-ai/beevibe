@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
 import {
   agentId,
@@ -8,8 +8,7 @@ import {
   sessionId,
   taskId,
 } from "../../domain/ids.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
-import type { Pool } from "./client.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import {
   PostgresNegotiationRepository,
@@ -20,7 +19,7 @@ import { PostgresSessionRepository } from "./session-repo.js";
 import { PostgresTaskRepository } from "./task-repo.js";
 
 describe("PostgresNegotiationRepository", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let negotiations: PostgresNegotiationRepository;
   let rounds: PostgresNegotiationRoundRepository;
   let agents: PostgresAgentRepository;
@@ -35,7 +34,6 @@ describe("PostgresNegotiationRepository", () => {
   let task: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     negotiations = new PostgresNegotiationRepository(pool);
     rounds = new PostgresNegotiationRoundRepository(pool);
     agents = new PostgresAgentRepository(pool);
@@ -45,7 +43,6 @@ describe("PostgresNegotiationRepository", () => {
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
     const owner = await persons.create({ id: personId(), name: "Owner" });
     const a = await agents.create({
       id: agentId(),
@@ -89,10 +86,6 @@ describe("PostgresNegotiationRepository", () => {
       creator_type: "person",
     });
     task = t.id;
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   it("create + findById round-trips with status='active', rounds_completed=0 by default", async () => {

@@ -1,15 +1,14 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { DEFAULT_RUNTIME_CONFIG } from "../../domain/agent.js";
 import { agentId, personId, taskId, workProductId } from "../../domain/ids.js";
-import type { Pool } from "./client.js";
-import { createTestPool, truncateAll } from "../../test-helpers.js";
+import { setupTestPool } from "../../test-helpers.js";
 import { PostgresAgentRepository } from "./agent-repo.js";
 import { PostgresPersonRepository } from "./person-repo.js";
 import { PostgresTaskRepository } from "./task-repo.js";
 import { PostgresWorkProductRepository } from "./work-product-repo.js";
 
 describe("PostgresWorkProductRepository", () => {
-  let pool: Pool;
+  const pool = setupTestPool();
   let wps: PostgresWorkProductRepository;
   let agents: PostgresAgentRepository;
   let persons: PostgresPersonRepository;
@@ -18,7 +17,6 @@ describe("PostgresWorkProductRepository", () => {
   let task: string;
 
   beforeAll(() => {
-    pool = createTestPool();
     wps = new PostgresWorkProductRepository(pool);
     agents = new PostgresAgentRepository(pool);
     persons = new PostgresPersonRepository(pool);
@@ -26,7 +24,6 @@ describe("PostgresWorkProductRepository", () => {
   });
 
   beforeEach(async () => {
-    await truncateAll(pool);
     const p = await persons.create({ id: personId(), name: "P" });
     const a = await agents.create({
       id: agentId(),
@@ -44,10 +41,6 @@ describe("PostgresWorkProductRepository", () => {
       creator_type: "person",
     });
     task = t.id;
-  });
-
-  afterAll(async () => {
-    await pool.end();
   });
 
   const newWp = (overrides: Partial<Parameters<typeof wps.create>[0]> = {}) => ({
