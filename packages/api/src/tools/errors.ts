@@ -18,7 +18,7 @@
  */
 
 import { CodedMeshError } from "../mesh/types.js";
-import type { AgentToolResult } from "./types.js";
+import type { AgentTool, AgentToolResult } from "./types.js";
 
 /**
  * A named failure: `code` is the stable identifier the agent branches
@@ -58,4 +58,47 @@ export function toolErrorFromThrown(
     },
     isError: true,
   };
+}
+
+/**
+ * Route anything thrown out of a tool's handler through
+ * {@link toolErrorFromThrown}, for every tool in a builder's output.
+ *
+ * Each of the 22 hierarchy and mesh tools used to open its handler with
+ * `try {` and close it with the same three lines:
+ *
+ * ```ts
+ * } catch (err) {
+ *   return toolErrorFromThrown(err);
+ * }
+ * ```
+ *
+ * That is not merely noise. The guard is what preserves a
+ * {@link CodedMeshError}'s `code` and `meta` — the fields agents branch
+ * on. Without it a throw escapes to the MCP transport's generic catch in
+ * `routes/mcp.ts`, which flattens everything to `{ error: <message> }`,
+ * so a coded mesh failure arrives at the agent indistinguishable from an
+ * unexpected crash. Leaving the guard per-handler meant every new tool
+ * had to remember it, and forgetting was silent.
+ *
+ * Applying it at the builder boundary instead makes it structural: a tool
+ * handed back by `buildHierarchyTools` / `buildIcMeshTools` /
+ * `buildTeamMeshTools` is guarded because it came from there, not because
+ * someone typed the wrapper again.
+ *
+ * Handlers that *return* an error envelope are untouched — this only
+ * catches throws. Wrapping twice is harmless (the inner guard wins), so
+ * a tool that keeps its own `try` for local recovery still composes.
+ */
+export function guardToolHandlers(tools: AgentTool[]): AgentTool[] {
+  return tools.map((tool) => ({
+    ...tool,
+    handler: async (input: Record<string, unknown>) => {
+      try {
+        return await tool.handler(input);
+      } catch (err) {
+        return toolErrorFromThrown(err);
+      }
+    },
+  }));
 }
