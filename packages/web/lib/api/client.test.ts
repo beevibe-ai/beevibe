@@ -92,7 +92,10 @@ describe("api client (reads)", () => {
     });
   });
 
-  describe("deferred surfaces (paths set; backend not yet shipped)", () => {
+  // GET /promotion, /mesh and /dashboard are all live (routes/view.ts) and
+  // consumed by the /promotions, /mesh and /dashboard pages via their hooks.
+  // These pin the path + query shape each hook depends on.
+  describe("read surfaces backing the metrics pages", () => {
     it("promotions.list() hits /promotion", async () => {
       await api.promotions.list();
       expect(fetchJsonMock).toHaveBeenCalledWith("/promotion", { signal: undefined });
