@@ -199,7 +199,6 @@ export interface RuntimeResult {
 /** Result of `healthCheck()`. */
 export interface RuntimeHealth {
   healthy: boolean;
-  latency_ms?: number;
   error?: string;
 }
 
