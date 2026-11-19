@@ -4,7 +4,7 @@
 
 import type { NegotiationRound, NegotiationReview } from "@beevibe/core";
 
-export type { NegotiationStatus, NegotiationDecision } from "@beevibe/core";
+export type { NegotiationDecision } from "@beevibe/core";
 
 export type NegotiationRoundDetail = Omit<NegotiationRound, "sent_at"> & {
   sent_at: string;
