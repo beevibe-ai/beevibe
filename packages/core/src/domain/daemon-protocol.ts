@@ -171,7 +171,17 @@ export interface RuntimeDoneRequest {
   status: Exclude<SessionStatus, "pending" | "running">;
   cli_session_id?: string;
   result_summary?: string;
-  exit_code?: number;
+  /**
+   * The CLI's exit code, or `null` when the spawn never settled (ENOENT on
+   * the binary, a workspace mkdir failure) and so has no code to report.
+   * The two cases are distinguishable here on purpose — "the CLI ran and
+   * failed" is a different diagnosis from "we never got to run it."
+   *
+   * `Session.exit_code` is `number | undefined`, with no null: the api
+   * narrows at the boundary (`router.ts`) rather than carrying a wire-level
+   * absence marker into the domain.
+   */
+  exit_code?: number | null;
   error?: string;
   usage?: SessionUsage;
   /**

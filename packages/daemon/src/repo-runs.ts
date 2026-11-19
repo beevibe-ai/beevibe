@@ -21,6 +21,7 @@ import type {
 import { runRepoAgent, type TranscriptEvent } from "@beevibe/sandbox/orchestrator";
 import type { ApiClient } from "./api-client.js";
 import { createEventBatcher } from "./event-batcher.js";
+import { indentDetail, postDone } from "./done.js";
 import { error, log } from "./logger.js";
 import type { DispatchPayload, RunRepoArtifact } from "./spawner.js";
 
@@ -138,9 +139,6 @@ export async function runRepoDispatch(
     sandbox_path: a.sandbox_path,
   }));
 
-  // Typed against the shared contract rather than inferred: this body is
-  // the /runtime/done request the api parses, so a field renamed on the
-  // server side should break the build here, not in production.
   const done: RuntimeDoneRequest = {
     session_id: payload.session_id,
     status,
@@ -164,18 +162,11 @@ export async function runRepoDispatch(
   } else {
     error(
       `[daemon/repo-run] sess=${payload.session_id} status=${status}` +
-        (result.error ? `\n  error:\n    ${result.error.split("\n").join("\n    ")}` : ""),
+        (result.error ? `\n  error:\n    ${indentDetail(result.error)}` : ""),
     );
   }
 
-  try {
-    await deps.api.post("/runtime/done", done);
-  } catch (err) {
-    error(
-      "[daemon/repo-run] /runtime/done POST failed:",
-      err instanceof Error ? err.message : String(err),
-    );
-  }
+  await postDone(deps.api, "[daemon/repo-run]", done);
 }
 
 /**

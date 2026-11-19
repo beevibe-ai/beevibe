@@ -21,6 +21,7 @@ import {
 import type {
   Agent,
   DispatchPayload,
+  RuntimeDoneRequest,
   RuntimeRegistry,
   RuntimeStep,
   RuntimeResult,
@@ -29,6 +30,7 @@ import type {
 import type { LocalWorkspaceManager } from "@beevibe/core/adapters/local-workspace";
 import type { ApiClient } from "./api-client.js";
 import { createEventBatcher } from "./event-batcher.js";
+import { indentDetail, postDone } from "./done.js";
 import { error, log } from "./logger.js";
 import { runRepoDispatch } from "./repo-runs.js";
 
@@ -144,7 +146,10 @@ export async function runDispatch(
   // when something goes wrong.
   const errorDetail = runError?.message ?? result?.stderr;
 
-  const done = {
+  // Typed against the shared contract rather than inferred, so a field
+  // renamed on the api side breaks this build instead of silently dropping
+  // out of the request body.
+  const done: RuntimeDoneRequest = {
     session_id: payload.session_id,
     status,
     cli_session_id: result?.cli_session_id,
@@ -163,16 +168,9 @@ export async function runDispatch(
   } else {
     error(
       `[daemon/spawn] sess=${payload.session_id} status=${status} exit=${done.exit_code}` +
-        (errorDetail ? `\n  error:\n    ${errorDetail.split("\n").join("\n    ")}` : ""),
+        (errorDetail ? `\n  error:\n    ${indentDetail(errorDetail)}` : ""),
     );
   }
 
-  try {
-    await deps.api.post("/runtime/done", done);
-  } catch (err) {
-    error(
-      "[daemon/spawner] /runtime/done POST failed:",
-      err instanceof Error ? err.message : String(err),
-    );
-  }
+  await postDone(deps.api, "[daemon/spawner]", done);
 }
