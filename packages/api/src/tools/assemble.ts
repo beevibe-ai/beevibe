@@ -26,6 +26,7 @@ import { createUpdateCoreMemoryTool } from "./update-core-memory.js";
 import { createUseRepoTool } from "./use-repo.js";
 import { createFindRepoTool } from "./find-repo.js";
 import { buildWatchTools } from "./watch.js";
+import { withToolErrors } from "./errors.js";
 import type { AgentTool } from "./types.js";
 
 export interface AssembleToolsServices {
@@ -229,13 +230,15 @@ export function assembleTools(
           { watchService: services.watchService },
         );
 
+  // Every tool gets the coded-error envelope here rather than each
+  // handler remembering its own try/catch — see `withToolErrors`.
   const all = [
     ...memoryTools,
     ...hierarchyTools,
     ...meshTools,
     ...capabilityTools,
     ...watchTools,
-  ];
+  ].map(withToolErrors);
   if (ctx.spawnMode === "server_fallback_mesh") {
     return filterForServerFallback(all);
   }
