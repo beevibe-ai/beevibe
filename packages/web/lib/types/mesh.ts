@@ -90,7 +90,6 @@ export type {
   MeshAskStatus,
   GraphNodeData,
   GraphEdgeData,
-  MeshSummaryData,
   MeshWindow,
 } from "@beevibe/api/views/types";
 

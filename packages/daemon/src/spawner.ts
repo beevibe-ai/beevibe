@@ -35,7 +35,6 @@ import { runRepoDispatch } from "./repo-runs.js";
 export type {
   DispatchPayload,
   RunRepoArtifact,
-  RunRepoDispatch,
 } from "@beevibe/core";
 
 export interface SpawnDeps {
