@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,135 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * A parsed `RuntimeResult` before the process-level metadata is merged in.
+ * This is exactly what each adapter's `parse*Events` returns and what
+ * {@link finalizeCliResult} accepts.
+ */
+export type ParsedCliResult = Omit<RuntimeResult, "process_pid" | "process_group_id">;
+
+/**
+ * The provider-specific half of a CLI run: everything the shared driver
+ * cannot know. Each adapter supplies its own argv, env, and the three
+ * functions that understand its event schema.
+ */
+export interface CliSessionSpec<Event> {
+  /** Log tag for truncation warnings, e.g. `"CodexRuntime"`. */
+  runtimeTag: string;
+  /** Binary to spawn, already resolved against the adapter's config. */
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /** Fed to the child's stdin. Only Claude Code uses this (it pipes the intent). */
+  stdin?: string;
+  /** Parse one NDJSON line into a provider event; `null` skips the line. */
+  parseLine: (line: string) => Event | null;
+  /** Derive live transcript steps from one event, for `context.onStep`. */
+  extractSteps: (evt: Event) => RuntimeStep[];
+  /** Map the collected events plus the exit code to a result. */
+  parseResult: (events: Event[], exitCode: number | null) => ParsedCliResult;
+  /**
+   * Best-effort teardown, run once after the process settles on every
+   * path — including abort — and after {@link parseResult} on the normal
+   * path, so a spec whose `parseResult` reads a scratch file can still
+   * delete it here. Codex uses this for its `--output-last-message` file.
+   */
+  cleanup?: () => void;
+}
+
+/**
+ * Drive one CLI subprocess session end-to-end: spawn, stream-parse stdout
+ * into provider events while emitting live steps, then map the collected
+ * events to a `RuntimeResult`.
+ *
+ * All three CLI runtimes (claude-code, codex, opencode) had written this
+ * same sequence out by hand — collect events in an array, wrap the line
+ * handler, spawn, flush, warn on truncation, branch on abort, finalize.
+ * The order of those steps is load-bearing in ways that are easy to get
+ * subtly wrong in a fourth copy:
+ *
+ *   - `stdout.flush()` must run before parsing, or a stream that ends
+ *     without a trailing newline silently drops its last event (which for
+ *     codex is the `turn.completed` carrying the usage numbers).
+ *   - the abort check must come before parsing, so a cancelled session
+ *     reports `cancelled` rather than being parsed as a non-zero exit and
+ *     surfaced to the user as a failure.
+ *   - `onStep` must be skipped entirely when the caller didn't supply one,
+ *     rather than per-step, so `extractSteps` isn't run for nothing on
+ *     every event of a non-streaming session.
+ *
+ * What stays per-adapter is the part that genuinely differs: argv, env,
+ * and the event schema — supplied via {@link CliSessionSpec}.
+ */
+export async function runCliSession<Event>(
+  context: RuntimeContext,
+  spec: CliSessionSpec<Event>,
+): Promise<RuntimeResult> {
+  const events: Event[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const evt = spec.parseLine(line);
+    if (!evt) return;
+    events.push(evt);
+    if (!context.onStep) return;
+    for (const step of spec.extractSteps(evt)) {
+      context.onStep(step);
+    }
+  });
+
+  const result = await runCliProcess({
+    command: spec.command,
+    args: spec.args,
+    cwd: spec.cwd,
+    env: spec.env,
+    stdin: spec.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Emit any final partial line (a stream that ended without a newline).
+  stdout.flush();
+
+  warnIfTruncated(spec.runtimeTag, result);
+
+  if (result.aborted) {
+    spec.cleanup?.();
+    return cancelledResult(result);
+  }
+
+  const parsed = spec.parseResult(events, result.exitCode);
+  spec.cleanup?.();
+  return finalizeCliResult(parsed, result);
+}
+
+/**
+ * Build the environment for a spawned CLI: the executor's own environment,
+ * minus the vars in `strip`, plus the session's `context.env`, plus
+ * `extra`.
+ *
+ * The ordering is the point. `strip` runs before the overlays so a var the
+ * adapter deliberately removes (an auth token that would override the
+ * user's subscription credentials, a nesting guard) can still be set back
+ * deliberately by the caller — and `context.env` is applied before `extra`
+ * so an adapter-owned var like `BEEVIBE_AGENT_API_KEY` wins over a stale
+ * value inherited from the dispatch payload. Each adapter had this
+ * sequence inline with its own var list; only the list differs.
+ */
+export function buildRuntimeEnv(
+  context: RuntimeContext,
+  opts: {
+    strip?: readonly string[];
+    extra?: Record<string, string | undefined>;
+  } = {},
+): Record<string, string | undefined> {
+  const env: Record<string, string | undefined> = { ...process.env };
+  for (const key of opts.strip ?? []) delete env[key];
+  if (context.env) Object.assign(env, context.env);
+  if (opts.extra) Object.assign(env, opts.extra);
+  return env;
 }

@@ -7,18 +7,14 @@ import type {
   Workspace,
 } from "../../ports/runtime.js";
 import {
-  cancelledResult,
+  buildRuntimeEnv,
   cliVersionHealthCheck,
-  createStdoutLineReader,
-  finalizeCliResult,
-  warnIfTruncated,
+  runCliSession,
 } from "../runtime-common.js";
-import { runCliProcess } from "./spawn.js";
 import {
   extractStepEvents,
   parseClaudeMessages,
   parseStreamJsonLine,
-  type StreamJsonMessage,
 } from "./stream-json.js";
 
 /**
@@ -98,48 +94,23 @@ export class ClaudeCodeRuntime implements AgentRuntime {
       args.push("--append-system-prompt", context.system_prompt_append);
     }
 
-    const env: Record<string, string | undefined> = { ...process.env };
-    for (const key of NESTING_GUARD_VARS) delete env[key];
-    for (const key of ANTHROPIC_AUTH_VARS) delete env[key];
-    if (context.env) Object.assign(env, context.env);
-
-    // Parse messages incrementally during streaming so we don't re-parse
-    // the entire stdout after close. A line buffer handles chunk boundaries
-    // (a single JSON message can arrive split across multiple chunks).
-    const messages: StreamJsonMessage[] = [];
-    const handleLine = (line: string): void => {
-      const msg = parseStreamJsonLine(line);
-      if (!msg) return;
-      messages.push(msg);
-      if (context.onStep) {
-        for (const step of extractStepEvents(msg)) {
-          context.onStep(step);
-        }
-      }
-    };
-    const stdout = createStdoutLineReader(handleLine);
-
-    const result = await runCliProcess({
+    // Messages are parsed incrementally as stdout streams rather than
+    // re-parsed wholesale after close; `runCliSession` owns the line
+    // buffering that makes that safe across chunk boundaries (a single
+    // JSON message can arrive split across several chunks).
+    return runCliSession(context, {
+      runtimeTag: "ClaudeCodeRuntime",
       command: this.config.command ?? "claude",
       args,
       cwd,
-      env,
+      env: buildRuntimeEnv(context, {
+        strip: [...NESTING_GUARD_VARS, ...ANTHROPIC_AUTH_VARS],
+      }),
       stdin: context.intent,
-      abortSignal: context.abort_signal,
-      onSpawn: ({ pid, process_group_id }) => {
-        context.onSpawn?.({ process_pid: pid, process_group_id });
-      },
-      onLog: stdout.onLog,
+      parseLine: parseStreamJsonLine,
+      extractSteps: extractStepEvents,
+      parseResult: parseClaudeMessages,
     });
-
-    // Flush any final partial line (stream without trailing \n)
-    stdout.flush();
-
-    warnIfTruncated("ClaudeCodeRuntime", result);
-
-    if (result.aborted) return cancelledResult(result);
-
-    return finalizeCliResult(parseClaudeMessages(messages, result.exitCode), result);
   }
 
   async healthCheck(): Promise<RuntimeHealth> {
