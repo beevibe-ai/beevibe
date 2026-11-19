@@ -1,6 +1,14 @@
 import type { RuntimeResult, RuntimeStep } from "../../ports/runtime.js";
 import { bareCliExitMessage } from "../claude-code/stream-json.js";
 import { describeToolInput, parseNdjsonLine } from "../runtime-common.js";
+import {
+  TRANSCRIPT_DETAIL_LIMIT,
+  assistantLine,
+  errorLine,
+  summarizeDetail,
+  toolCallLine,
+  toolResultLine,
+} from "../transcript-format.js";
 
 /**
  * Parser for `codex exec --json` output.
@@ -137,7 +145,7 @@ export function extractCodexStepEvents(evt: CodexEvent): RuntimeStep[] {
       {
         kind: isCompletion ? "tool_result" : "tool_call",
         tool: "shell",
-        description: (item.command ?? "").slice(0, 200),
+        description: (item.command ?? "").slice(0, TRANSCRIPT_DETAIL_LIMIT),
         timestamp: now,
       },
     ];
@@ -163,7 +171,7 @@ export function extractCodexStepEvents(evt: CodexEvent): RuntimeStep[] {
       {
         kind: isCompletion ? "tool_result" : "tool_call",
         tool: "web_search",
-        description: (item.query ?? "").slice(0, 200),
+        description: (item.query ?? "").slice(0, TRANSCRIPT_DETAIL_LIMIT),
         timestamp: now,
       },
     ];
@@ -210,28 +218,30 @@ export function parseCodexEvents(
         break;
       case CODEX_EVENT_TYPE.Error:
         topLevelError = evt.message ?? topLevelError;
-        if (evt.message) transcriptParts.push(`[error] ${evt.message}\n`);
+        if (evt.message) transcriptParts.push(errorLine(evt.message));
         break;
       case CODEX_EVENT_TYPE.ItemCompleted: {
         const item = evt.item;
         if (!item || !item.type) break;
         if (item.type === CODEX_ITEM_TYPE.AgentMessage && item.text) {
           assistantText = item.text;
-          transcriptParts.push(`[assistant] ${item.text}\n`);
+          transcriptParts.push(assistantLine(item.text));
         } else if (item.type === CODEX_ITEM_TYPE.McpToolCall) {
           const tool = item.tool ?? "unknown";
-          transcriptParts.push(`[tool_call] ${tool}\n`);
+          transcriptParts.push(toolCallLine(tool));
           const resultSummary = summarizeMcpResult(item.result);
           if (resultSummary || item.error?.message) {
             transcriptParts.push(
-              `[tool_result from ${tool}] ${item.error?.message ?? resultSummary}\n`,
+              toolResultLine(tool, item.error?.message ?? resultSummary),
             );
           }
         } else if (item.type === CODEX_ITEM_TYPE.CommandExecution) {
-          transcriptParts.push(`[tool_call] shell ${(item.command ?? "").slice(0, 200)}\n`);
+          transcriptParts.push(
+            toolCallLine("shell", (item.command ?? "").slice(0, TRANSCRIPT_DETAIL_LIMIT)),
+          );
           if (item.aggregated_output) {
             transcriptParts.push(
-              `[tool_result from shell] ${item.aggregated_output.slice(0, 200).replace(/\n/g, " ")}\n`,
+              toolResultLine("shell", summarizeDetail(item.aggregated_output)),
             );
           }
         }
@@ -280,8 +290,8 @@ function summarizeMcpResult(result: { content?: unknown[] } | null | undefined):
   for (const block of result.content) {
     if (block && typeof block === "object" && (block as { type?: unknown }).type === "text") {
       const text = (block as { text?: unknown }).text;
-      if (typeof text === "string") return text.slice(0, 200).replace(/\n/g, " ");
+      if (typeof text === "string") return summarizeDetail(text);
     }
   }
-  return JSON.stringify(result.content).slice(0, 200);
+  return JSON.stringify(result.content).slice(0, TRANSCRIPT_DETAIL_LIMIT);
 }

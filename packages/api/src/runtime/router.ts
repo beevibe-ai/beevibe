@@ -292,7 +292,10 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
         status: body.status,
         cli_session_id: body.cli_session_id,
         result_summary: body.result_summary,
-        exit_code: body.exit_code,
+        // The wire admits `null` for "spawn never settled"; the domain
+        // carries only `number | undefined`, and the repo maps both to a
+        // SQL NULL, so collapse it here rather than widening Session.
+        exit_code: body.exit_code ?? undefined,
         error: body.error,
         usage: body.usage,
         completed_at: new Date(),
