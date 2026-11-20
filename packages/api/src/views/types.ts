@@ -21,6 +21,7 @@ import type {
   Task,
   TaskStatus,
   WorkProduct,
+  WorkProductType,
   FactType,
   MemoryScope,
   SessionEventKind,
@@ -791,6 +792,107 @@ export interface AgentNetwork {
   self: AgentDisplay[];
   /** Other people's agents the caller co-exists with via shared rooms. */
   peers: AgentPeerOwner[];
+}
+
+// ── Runtimes panel — GET /runtimes (Settings → Runtimes) ───────────────────
+//
+// Not strictly a `views/*` projection — the router in `routes/runtimes.ts`
+// builds these itself — but it is part of the same read contract, and this
+// module is the only api surface web can import from. Declaring them here
+// rather than in the router keeps web from re-typing them a second time,
+// which is how the copies drifted: web's had `cli_version?: string` against
+// a server that sends `null`, and omitted `capabilities` / `created_at`
+// altogether.
+
+export interface RuntimePanelEntry {
+  id: string;
+  cli: string;
+  cli_version: string | null;
+  last_heartbeat: string | null;
+  /** True iff a daemon WS client subscribed to this runtime is connected. */
+  online: boolean;
+  capabilities: Record<string, unknown>;
+  created_at: string;
+}
+
+export interface DaemonPanelEntry {
+  id: string;
+  device_name: string;
+  external_id: string;
+  last_seen_at: string | null;
+  created_at: string;
+  runtimes: RuntimePanelEntry[];
+}
+
+export interface RuntimesListResponse {
+  ok: true;
+  daemons: DaemonPanelEntry[];
+}
+
+// ── Work product detail — GET /view/work-product/:id ───────────────────────
+
+/**
+ * Single work product, as the detail page reads it. Declared here rather
+ * than in `views/work-product.ts` because that module imports `node:fs`
+ * to inline a `file://` body, and web cannot pull a node-dependent module
+ * into its bundle — even for a type-only import, the subpath has to resolve.
+ */
+export interface WorkProductDetail {
+  id: string;
+  task_id: string;
+  task_short_id: string;
+  task_title: string;
+  agent_id: string;
+  agent_label: string;
+  type: WorkProductType;
+  title: string;
+  summary?: string;
+  url?: string;
+  provider?: string;
+  external_id?: string;
+  /**
+   * Full deliverable content. Sourced from `work_product.body` when set;
+   * otherwise falls back to reading a `file://` URL from disk. Truncated
+   * to 256 KB.
+   */
+  body?: string;
+  /** True when `url` is file:// — UI uses this to suppress an unclickable link. */
+  url_is_local: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── find_repo candidates — GET /capabilities/find-repo ─────────────────────
+//
+// Emitted by the `find_repo` MCP tool (`tools/find-repo.ts`) and rendered
+// by the capabilities page. Same reasoning as the runtimes panel above:
+// the tool module is not importable from web, so the shape lives here and
+// the tool imports it.
+
+export type FindRepoSource = "learned" | "community" | "trending" | "github";
+
+export interface FindRepoCandidate {
+  repo_url: string;
+  score: number;
+  /** Highest-precedence source (learned > community > trending > github). */
+  source: FindRepoSource;
+  /** Every source that contributed to the score. Useful for debugging. */
+  sources: FindRepoSource[];
+  /** Human-readable explanation of why this candidate scored. */
+  reason: string;
+  /** GitHub stars when available (best-effort enrich). */
+  stars?: number;
+  /** GitHub description when available. */
+  description?: string;
+  /** Programming language inferred from GitHub. */
+  language?: string;
+  /** Hydrated learned_skill row when source includes "learned". */
+  learned_skill?: {
+    id: string;
+    name: string;
+    goal_pattern: string;
+    invocation: string;
+  };
 }
 
 // ── Re-exports of ambient types that web imports alongside the DTOs ─────────
