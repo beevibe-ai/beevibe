@@ -11,6 +11,7 @@ import { queryKeys } from "@/lib/hooks/keys";
 import { Skeleton } from "@/components/skeleton";
 import { EmptyState } from "@/components/empty-state";
 import { formatRelativeTime, shortId } from "@/lib/format";
+import { FIELD_LABEL_CLASS, TEXT_INPUT_CLASS } from "@/components/form-field";
 
 export function RoomsListClient() {
   const queryClient = useQueryClient();
@@ -70,7 +71,7 @@ export function RoomsListClient() {
           className="mb-6 flex items-end gap-2 bg-card border border-border rounded-lg p-3"
         >
           <div className="flex-1">
-            <label htmlFor="room-name" className="block text-xs font-medium text-foreground mb-1.5">
+            <label htmlFor="room-name" className={FIELD_LABEL_CLASS}>
               Create a new room
             </label>
             <input
@@ -79,7 +80,7 @@ export function RoomsListClient() {
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="e.g. Plan the M9 launch"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className={TEXT_INPUT_CLASS}
               disabled={create.isPending}
             />
           </div>
