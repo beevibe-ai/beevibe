@@ -104,7 +104,18 @@ export class PostgresWorkProductRepository implements WorkProductRepository {
   }
 }
 
-function rowToWorkProduct(row: WorkProductRow): WorkProduct {
+/**
+ * `work_product` row → domain `WorkProduct`.
+ *
+ * Exported because `api/src/views/tasks.ts` builds the same projection for
+ * the task detail page off its own `SELECT * FROM work_product`, and was
+ * carrying a second copy of this mapper — one that took
+ * `Record<string, unknown>` and coerced every field with `String()`,
+ * because its query rows weren't typed. Thirteen fields written out twice
+ * for one domain type means adding a column is two edits in two packages,
+ * and the api copy silently drops anything it forgets.
+ */
+export function rowToWorkProduct(row: WorkProductRow): WorkProduct {
   return {
     id: row.id,
     task_id: row.task_id,
