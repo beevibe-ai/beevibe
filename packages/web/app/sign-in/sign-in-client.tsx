@@ -13,6 +13,8 @@ import {
   isWellFormedUserKey,
   setUserKey,
 } from "@/lib/api/config";
+import { FIELD_LABEL_CLASS, TEXT_INPUT_CLASS } from "@/components/form-field";
+import { cn } from "@/lib/utils";
 
 type Mode = "password" | "key";
 
@@ -139,7 +141,7 @@ export function SignInClient() {
 
         {mode === "password" ? (
           <>
-            <label className="block text-xs font-medium text-foreground mb-1.5" htmlFor="email">
+            <label className={FIELD_LABEL_CLASS} htmlFor="email">
               Email
             </label>
             <input
@@ -151,11 +153,11 @@ export function SignInClient() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="alice@example.com"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className={TEXT_INPUT_CLASS}
               disabled={submitting}
             />
 
-            <label className="block text-xs font-medium text-foreground mb-1.5 mt-3" htmlFor="password">
+            <label className={cn(FIELD_LABEL_CLASS, "mt-3")} htmlFor="password">
               Password
             </label>
             <input
@@ -165,13 +167,13 @@ export function SignInClient() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+              className={TEXT_INPUT_CLASS}
               disabled={submitting}
             />
           </>
         ) : (
           <>
-            <label className="block text-xs font-medium text-foreground mb-1.5" htmlFor="key">
+            <label className={FIELD_LABEL_CLASS} htmlFor="key">
               User API key
             </label>
             <input
@@ -183,7 +185,7 @@ export function SignInClient() {
               value={keyDraft}
               onChange={(e) => setKeyDraft(e.target.value)}
               placeholder="bv_u_..."
-              className="w-full rounded border border-border bg-background px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-ring"
+              className={cn(TEXT_INPUT_CLASS, "font-mono")}
               disabled={submitting}
             />
           </>

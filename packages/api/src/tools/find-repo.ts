@@ -39,6 +39,7 @@ import type {
   EmbeddingService,
   LearnedSkillRepository,
 } from "@beevibe/core";
+import type { FindRepoCandidate, FindRepoSource } from "../views/types.js";
 import type { AgentTool, AgentToolResult } from "./types.js";
 
 /**
@@ -93,31 +94,11 @@ const FIND_REPO_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-export type CandidateSource = "learned" | "community" | "trending" | "github";
-
-export interface FindRepoCandidate {
-  repo_url: string;
-  score: number;
-  /** Highest-precedence source (learned > community > trending > github). */
-  source: CandidateSource;
-  /** Every source that contributed to the score. Useful for debugging. */
-  sources: CandidateSource[];
-  /** Human-readable explanation of why this candidate scored. */
-  reason: string;
-  /** GitHub stars when available (best-effort enrich). */
-  stars?: number;
-  /** GitHub description when available. */
-  description?: string;
-  /** Programming language inferred from GitHub. */
-  language?: string;
-  /** Hydrated learned_skill row when source includes "learned". */
-  learned_skill?: {
-    id: string;
-    name: string;
-    goal_pattern: string;
-    invocation: string;
-  };
-}
+// Both shapes are declared in `views/types.ts` — the one api module web can
+// import — and re-exported here, next to the ranker that produces them. The
+// source union was spelled `CandidateSource` here and `FindRepoSource` in
+// web's hand-written copy; `FindRepoSource` is the surviving name.
+export type { FindRepoCandidate, FindRepoSource };
 
 export interface FindRepoContext {
   agentId: string;
@@ -672,7 +653,7 @@ function isFilteredOutContent(description: string | null | undefined): boolean {
   return FILTERED_DESCRIPTION_PATTERN.test(description);
 }
 
-function pickPrimarySource(sources: CandidateSource[]): CandidateSource {
+function pickPrimarySource(sources: FindRepoSource[]): FindRepoSource {
   // Trust order: learned > trending > community > github. The user's
   // explicit preference is "prefer trendy ones", so trending wins the
   // label when a candidate has both trending velocity and community

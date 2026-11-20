@@ -8,6 +8,8 @@ import { PASSWORD_MIN_LENGTH } from "@beevibe/core/auth/constants";
 import { api } from "@/lib/api/client";
 import { asApiError } from "@/lib/api/http";
 import { getUserKey, isApiConfigured, setUserKey } from "@/lib/api/config";
+import { FIELD_LABEL_CLASS, TEXT_INPUT_CLASS } from "@/components/form-field";
+import { cn } from "@/lib/utils";
 
 /**
  * Self-serve signup. Visitor enters name + email; the api mints them a
@@ -104,7 +106,7 @@ export function SignUpClient() {
           </p>
         </header>
 
-        <label className="block text-xs font-medium text-foreground mb-1.5" htmlFor="name">
+        <label className={FIELD_LABEL_CLASS} htmlFor="name">
           Name
         </label>
         <input
@@ -115,11 +117,11 @@ export function SignUpClient() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder="Alice"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={TEXT_INPUT_CLASS}
           disabled={submitting}
         />
 
-        <label className="block text-xs font-medium text-foreground mb-1.5 mt-3" htmlFor="email">
+        <label className={cn(FIELD_LABEL_CLASS, "mt-3")} htmlFor="email">
           Email
         </label>
         <input
@@ -130,11 +132,11 @@ export function SignUpClient() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder="alice@example.com"
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={TEXT_INPUT_CLASS}
           disabled={submitting}
         />
 
-        <label className="block text-xs font-medium text-foreground mb-1.5 mt-3" htmlFor="password">
+        <label className={cn(FIELD_LABEL_CLASS, "mt-3")} htmlFor="password">
           Password
         </label>
         <input
@@ -145,7 +147,7 @@ export function SignUpClient() {
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           placeholder={`at least ${PASSWORD_MIN_LENGTH} characters`}
-          className="w-full rounded border border-border bg-background px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
+          className={TEXT_INPUT_CLASS}
           disabled={submitting}
         />
 
