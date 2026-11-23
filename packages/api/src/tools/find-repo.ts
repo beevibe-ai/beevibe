@@ -39,6 +39,7 @@ import type {
   EmbeddingService,
   LearnedSkillRepository,
 } from "@beevibe/core";
+import type { CandidateSource, FindRepoCandidate } from "../views/types.js";
 import type { AgentTool, AgentToolResult } from "./types.js";
 
 /**
@@ -93,31 +94,13 @@ const FIND_REPO_SCHEMA = {
   additionalProperties: false,
 } as const;
 
-export type CandidateSource = "learned" | "community" | "trending" | "github";
-
-export interface FindRepoCandidate {
-  repo_url: string;
-  score: number;
-  /** Highest-precedence source (learned > community > trending > github). */
-  source: CandidateSource;
-  /** Every source that contributed to the score. Useful for debugging. */
-  sources: CandidateSource[];
-  /** Human-readable explanation of why this candidate scored. */
-  reason: string;
-  /** GitHub stars when available (best-effort enrich). */
-  stars?: number;
-  /** GitHub description when available. */
-  description?: string;
-  /** Programming language inferred from GitHub. */
-  language?: string;
-  /** Hydrated learned_skill row when source includes "learned". */
-  learned_skill?: {
-    id: string;
-    name: string;
-    goal_pattern: string;
-    invocation: string;
-  };
-}
+/**
+ * The candidate shape reaches the web through `POST
+ * /capabilities/find-repo`, so it is declared in `views/types.ts` with the
+ * rest of the wire contract. Re-exported here for this module's own call
+ * sites (and its tests), which import it alongside the handler.
+ */
+export type { CandidateSource, FindRepoCandidate } from "../views/types.js";
 
 export interface FindRepoContext {
   agentId: string;

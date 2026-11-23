@@ -362,7 +362,8 @@ function RuntimeCard({
   runtime: {
     id: string;
     cli: string;
-    cli_version?: string;
+    /** `null`, not absent — see `RuntimePanelEntry` on the wire. */
+    cli_version: string | null;
     online: boolean;
     device: string;
   };
