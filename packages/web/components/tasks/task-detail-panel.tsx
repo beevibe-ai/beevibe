@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState } from "react";
 import { AlertTriangle, FileText, ListChecks, Terminal } from "lucide-react";
 import { ChatMarkdown } from "@/components/chat/markdown";
+import { CollapsibleMarkdown } from "@/components/collapsible-markdown";
 import { ClickToCopyId } from "@/components/detail/click-to-copy-id";
 import { PanelFooterField, PeekPanel } from "@/components/detail/peek-panel";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
@@ -231,30 +232,13 @@ function DescriptionSection({ description }: { description: RichText[] | undefin
     description && description.length > 0
       ? description.map(richTextToMarkdown).join("\n\n")
       : "";
-  const long = markdown.length > DESCRIPTION_COLLAPSE_THRESHOLD;
-  const [expanded, setExpanded] = useState(!long);
-  const visible =
-    long && !expanded
-      ? markdown.slice(0, DESCRIPTION_COLLAPSE_THRESHOLD).trimEnd() + "…"
-      : markdown;
-
   return (
     <Section title="Description">
       {markdown ? (
-        <>
-          <div className="text-foreground/85">
-            <ChatMarkdown content={visible} />
-          </div>
-          {long && !expanded ? (
-            <button
-              type="button"
-              onClick={() => setExpanded(true)}
-              className="mt-2 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer"
-            >
-              Show more
-            </button>
-          ) : null}
-        </>
+        <CollapsibleMarkdown
+          content={markdown}
+          threshold={DESCRIPTION_COLLAPSE_THRESHOLD}
+        />
       ) : (
         <p className="text-sm text-muted-foreground italic">No description.</p>
       )}

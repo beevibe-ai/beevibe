@@ -26,6 +26,7 @@ import type {
   SessionEventKind,
   SessionStatus,
   SessionType,
+  WorkProductType,
 } from "@beevibe/core";
 
 /**
@@ -791,6 +792,113 @@ export interface AgentNetwork {
   self: AgentDisplay[];
   /** Other people's agents the caller co-exists with via shared rooms. */
   peers: AgentPeerOwner[];
+}
+
+// ── Work products ───────────────────────────────────────────────────────────
+
+/**
+ * Single work product, as `GET /work-product/:id` returns it.
+ *
+ * Produced by `views/work-product.ts`, which re-exports this type so the
+ * view module's own signature keeps reading locally. It lives here because
+ * the web renders it, and a second hand-written copy on that side had
+ * already started to drift.
+ */
+export interface WorkProductDetail {
+  id: string;
+  task_id: string;
+  task_short_id: string;
+  task_title: string;
+  agent_id: string;
+  agent_label: string;
+  type: WorkProductType;
+  title: string;
+  summary?: string;
+  url?: string;
+  provider?: string;
+  external_id?: string;
+  /**
+   * Full deliverable content. Sourced from `work_product.body` when set;
+   * otherwise falls back to reading a `file://` URL from disk. Truncated
+   * to 256 KB.
+   */
+  body?: string;
+  /** True when `url` is file:// — UI uses this to suppress an unclickable link. */
+  url_is_local: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// ── Runtimes panel ──────────────────────────────────────────────────────────
+
+/**
+ * One CLI runtime under a daemon, as `GET /runtimes` returns it.
+ *
+ * Declared here rather than in `routes/runtimes.ts` (which re-exports it)
+ * because the web renders the same payload. The nullable fields are
+ * `T | null`, not `T | undefined`: `projectRuntime` normalizes absent
+ * columns with `?? null`, so the keys are always present on the wire.
+ */
+export interface RuntimePanelEntry {
+  id: string;
+  cli: string;
+  cli_version: string | null;
+  last_heartbeat: string | null;
+  /** True iff a daemon WS client subscribed to this runtime is connected. */
+  online: boolean;
+  capabilities: Record<string, unknown>;
+  created_at: string;
+}
+
+/** One daemon plus the runtimes registered under it. */
+export interface DaemonPanelEntry {
+  id: string;
+  device_name: string;
+  external_id: string;
+  last_seen_at: string | null;
+  created_at: string;
+  runtimes: RuntimePanelEntry[];
+}
+
+export interface RuntimesListResponse {
+  ok: true;
+  daemons: DaemonPanelEntry[];
+}
+
+// ── Capability discovery (find_repo) ────────────────────────────────────────
+
+/** Signal source that contributed to a {@link FindRepoCandidate}'s score. */
+export type CandidateSource = "learned" | "community" | "trending" | "github";
+
+/**
+ * One ranked repo from the `find_repo` ranker.
+ *
+ * Reaches the web through `POST /capabilities/find-repo`, so it belongs to
+ * the wire contract even though it originates in an MCP tool;
+ * `tools/find-repo.ts` re-exports it for its own call sites.
+ */
+export interface FindRepoCandidate {
+  repo_url: string;
+  score: number;
+  /** Highest-precedence source (learned > community > trending > github). */
+  source: CandidateSource;
+  /** Every source that contributed to the score. Useful for debugging. */
+  sources: CandidateSource[];
+  /** Human-readable explanation of why this candidate scored. */
+  reason: string;
+  /** GitHub stars when available (best-effort enrich). */
+  stars?: number;
+  /** GitHub description when available. */
+  description?: string;
+  /** Programming language inferred from GitHub. */
+  language?: string;
+  /** Hydrated learned_skill row when source includes "learned". */
+  learned_skill?: {
+    id: string;
+    name: string;
+    goal_pattern: string;
+    invocation: string;
+  };
 }
 
 // ── Re-exports of ambient types that web imports alongside the DTOs ─────────

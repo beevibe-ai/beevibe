@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,89 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+
+export interface CliRuntimeSessionOptions<Event> {
+  /** Log tag for the stdout-truncation warning, e.g. `"CodexRuntime"`. */
+  runtimeTag: string;
+  /** Binary to spawn, already resolved against the adapter's config. */
+  command: string;
+  args: string[];
+  /** Environment for the subprocess, already stripped/merged by the adapter. */
+  env: Record<string, string | undefined>;
+  context: RuntimeContext;
+  /** Piped to the subprocess when set (Claude Code feeds the intent this way). */
+  stdin?: string;
+  /** Provider-specific NDJSON line parser; `null` for a line to skip. */
+  parseLine: (line: string) => Event | null;
+  /** Provider-specific live-transcript step extraction for one event. */
+  extractSteps: (event: Event) => RuntimeStep[];
+  /** Provider-specific roll-up of the collected events into a result. */
+  buildResult: (
+    events: Event[],
+    exitCode: number | null,
+  ) => Omit<RuntimeResult, "process_pid" | "process_group_id">;
+  /**
+   * Best-effort teardown, run exactly once after the process settles — on
+   * the aborted path too. Codex uses it to delete the per-spawn
+   * `--output-last-message` file. It runs *after* `buildResult`, so a
+   * `buildResult` closure may still read whatever this then removes.
+   */
+  cleanup?: () => void;
+}
+
+/**
+ * Drive one CLI-subprocess session end to end.
+ *
+ * Every CLI runtime's `execute` had spelled out the same six steps around
+ * its own argv and parsers: collect NDJSON events off stdout while fanning
+ * each one out to `context.onStep`, spawn, flush the trailing partial line,
+ * warn on truncated stdout, short-circuit an abort to `cancelledResult`, and
+ * merge process metadata in with `finalizeCliResult`. Three copies meant the
+ * easy half of a runtime was also three chances to forget `stdout.flush()`
+ * (drops the last event of any stream with no trailing newline) or the
+ * `result.aborted` check (reports a user cancellation as a failure).
+ *
+ * What stays in each adapter is what actually differs: argv construction,
+ * env stripping, MCP wiring, and the provider's event schema + parsers.
+ */
+export async function runCliRuntimeSession<Event>(
+  opts: CliRuntimeSessionOptions<Event>,
+): Promise<RuntimeResult> {
+  const { context } = opts;
+  const events: Event[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = opts.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of opts.extractSteps(event)) context.onStep(step);
+  });
+
+  const result = await runCliProcess({
+    command: opts.command,
+    args: opts.args,
+    cwd: context.workspace.path,
+    env: opts.env,
+    ...(opts.stdin !== undefined ? { stdin: opts.stdin } : {}),
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+  // Emit any final line that arrived without a trailing newline.
+  stdout.flush();
+
+  warnIfTruncated(opts.runtimeTag, result);
+
+  if (result.aborted) {
+    opts.cleanup?.();
+    return cancelledResult(result);
+  }
+
+  const parsed = opts.buildResult(events, result.exitCode);
+  opts.cleanup?.();
+  return finalizeCliResult(parsed, result);
 }
