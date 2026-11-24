@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -207,4 +212,93 @@ export function finalizeCliResult(
     exit_code: result.exitCode,
     ...(stderrTail ? { stderr: stderrTail } : {}),
   };
+}
+
+/**
+ * Everything that differs between one CLI runtime's session and another's.
+ * The parts that don't differ are {@link runCliSession} below.
+ */
+export interface CliSessionSpec<TEvent> {
+  /** Prefix for the stdout-truncation warning — e.g. "CodexRuntime". */
+  runtimeTag: string;
+  /** Binary to spawn, already resolved against the adapter's config. */
+  command: string;
+  args: string[];
+  cwd: string;
+  env: Record<string, string | undefined>;
+  /**
+   * Piped to the CLI's stdin. Claude Code feeds the intent this way (its
+   * argv carries `--print -`); codex and opencode put the composed prompt
+   * on argv and leave this unset.
+   */
+  stdin?: string;
+  /** Parse one NDJSON line into a provider event; `null` skips the line. */
+  parseLine: (line: string) => TEvent | null;
+  /** Live-transcript steps for one event, fanned out to `context.onStep`. */
+  extractSteps: (event: TEvent) => RuntimeStep[];
+  /** Build the result from the events the stream carried. */
+  buildResult: (
+    events: TEvent[],
+    exitCode: number | null,
+  ) => Omit<RuntimeResult, "process_pid" | "process_group_id">;
+  /**
+   * Run once the process has settled, on both the completed and the
+   * cancelled path, before either result is built. Codex uses it to read
+   * and then delete its per-spawn `--output-last-message` file; the other
+   * runtimes have nothing to clean up and leave it unset.
+   */
+  onSettled?: () => void;
+}
+
+/**
+ * Drive one CLI subprocess session end to end.
+ *
+ * Each CLI runtime spawns its binary, reads an NDJSON event stream off
+ * stdout, fans the events out to `context.onStep` as they arrive, and maps
+ * the lot to a `RuntimeResult`. Only the argv, the env scrubbing and the
+ * provider's event schema differ — the orchestration below was the same
+ * ~30 lines in all three adapters, which meant any fix to it (the trailing
+ * partial line, the abort path, the truncation warning) had to be made
+ * three times and stay made.
+ *
+ * Events are parsed incrementally as lines arrive rather than re-parsed
+ * from the accumulated stdout after close, so `onStep` can drive a live
+ * transcript.
+ */
+export async function runCliSession<TEvent>(
+  context: RuntimeContext,
+  spec: CliSessionSpec<TEvent>,
+): Promise<RuntimeResult> {
+  const events: TEvent[] = [];
+  const stdout = createStdoutLineReader((line) => {
+    const event = spec.parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!context.onStep) return;
+    for (const step of spec.extractSteps(event)) context.onStep(step);
+  });
+
+  const result = await runCliProcess({
+    command: spec.command,
+    args: spec.args,
+    cwd: spec.cwd,
+    env: spec.env,
+    stdin: spec.stdin,
+    abortSignal: context.abort_signal,
+    onSpawn: ({ pid, process_group_id }) => {
+      context.onSpawn?.({ process_pid: pid, process_group_id });
+    },
+    onLog: stdout.onLog,
+  });
+
+  // Emit any final line the stream ended without a newline on, before
+  // anything reads `events`.
+  stdout.flush();
+
+  warnIfTruncated(spec.runtimeTag, result);
+  spec.onSettled?.();
+
+  if (result.aborted) return cancelledResult(result);
+
+  return finalizeCliResult(spec.buildResult(events, result.exitCode), result);
 }
