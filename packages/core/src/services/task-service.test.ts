@@ -566,7 +566,7 @@ describe("TaskService.prepareRetry", () => {
   });
 });
 
-describe("TaskService.createWorkProduct + listWorkProducts", () => {
+describe("TaskService.createWorkProduct + updateWorkProduct", () => {
   it("createWorkProduct verifies task exists then delegates", async () => {
     vi.mocked(taskRepo.findById).mockResolvedValue(makeTask());
     vi.mocked(workProductRepo.create).mockResolvedValue(makeWorkProduct());
@@ -594,7 +594,6 @@ describe("TaskService.createWorkProduct + listWorkProducts", () => {
     ).rejects.toBeInstanceOf(TaskNotFoundError);
     expect(workProductRepo.create).not.toHaveBeenCalled();
   });
-
 
   it("updateWorkProduct forwards the mutable patch to the repo", async () => {
     vi.mocked(workProductRepo.update).mockImplementation(async (id, patch) =>

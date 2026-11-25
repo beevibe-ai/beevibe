@@ -185,11 +185,10 @@ describe("FactStore.addOrMerge — merge path", () => {
   });
 });
 
-describe("FactStore thin delegations", () => {
-  it("updateScope calls repo.update with just scope", async () => {
+describe("FactStore.updateScope", () => {
+  it("calls repo.update with just scope", async () => {
     vi.mocked(repo.update).mockResolvedValue(makeFact({ scope: "team" }));
     await store.updateScope("fact_x", "team");
     expect(repo.update).toHaveBeenCalledWith("fact_x", { scope: "team" });
   });
-
 });
