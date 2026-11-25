@@ -4,6 +4,7 @@ import type {
   SessionEventRepository,
 } from "../../ports/session-event-repo.js";
 import type { Pool } from "./client.js";
+import { insertReturning, queryMany } from "./pg-helpers.js";
 
 interface EventRow {
   id: string;
@@ -33,7 +34,9 @@ export class PostgresSessionEventRepository implements SessionEventRepository {
     // in the same statement via a CTE. The orphan reaper (Phase 6+)
     // depends on last_event_at being maintained — without this, every
     // running session looks orphaned forever.
-    const { rows } = await this.pool.query<EventRow>(
+    return insertReturning(
+      this.pool,
+      "session_event",
       `WITH ev AS (
          INSERT INTO session_event (id, session_id, kind, content, tool_name)
          VALUES ($1, $2, $3, $4, $5)
@@ -45,19 +48,19 @@ export class PostgresSessionEventRepository implements SessionEventRepository {
        )
        SELECT * FROM ev`,
       [input.id, input.session_id, input.kind, input.content, input.tool_name ?? null],
+      rowToEvent,
     );
-    if (!rows[0]) throw new Error("session_event INSERT returned no row");
-    return rowToEvent(rows[0]);
   }
 
   async listBySession(sessionId: string, limit = 500): Promise<SessionEvent[]> {
-    const { rows } = await this.pool.query<EventRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM session_event
         WHERE session_id = $1
         ORDER BY created_at ASC
         LIMIT $2`,
       [sessionId, limit],
+      rowToEvent,
     );
-    return rows.map(rowToEvent);
   }
 }

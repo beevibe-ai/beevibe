@@ -4,7 +4,7 @@ import type {
   RuntimeRepository,
 } from "../../ports/runtime-repo.js";
 import type { Pool } from "./client.js";
-import { findRowById, updateRowById } from "./pg-helpers.js";
+import { findRowById, insertReturning, queryMany, queryOne, updateRowById } from "./pg-helpers.js";
 import type { RuntimeRow } from "./row-types.js";
 
 function rowToRuntime(row: RuntimeRow): Runtime {
@@ -30,26 +30,29 @@ export class PostgresRuntimeRepository implements RuntimeRepository {
     daemonId: string,
     cli: string,
   ): Promise<Runtime | undefined> {
-    const { rows } = await this.pool.query<RuntimeRow>(
+    return queryOne(
+      this.pool,
       `SELECT * FROM runtime WHERE daemon_id = $1 AND cli = $2 LIMIT 1`,
       [daemonId, cli],
+      rowToRuntime,
     );
-    return rows[0] ? rowToRuntime(rows[0]) : undefined;
   }
 
   async listByDaemon(daemonId: string): Promise<Runtime[]> {
-    const { rows } = await this.pool.query<RuntimeRow>(
+    return queryMany(
+      this.pool,
       `SELECT * FROM runtime WHERE daemon_id = $1 ORDER BY cli ASC`,
       [daemonId],
+      rowToRuntime,
     );
-    return rows.map(rowToRuntime);
   }
 
   async listByOwnerAndCli(
     ownerPersonId: string,
     cli: string,
   ): Promise<Runtime[]> {
-    const { rows } = await this.pool.query<RuntimeRow>(
+    return queryMany(
+      this.pool,
       `SELECT r.*
          FROM runtime r
          JOIN daemon d ON d.id = r.daemon_id
@@ -58,12 +61,14 @@ export class PostgresRuntimeRepository implements RuntimeRepository {
           AND r.cli = $2
         ORDER BY r.last_heartbeat DESC NULLS LAST`,
       [ownerPersonId, cli],
+      rowToRuntime,
     );
-    return rows.map(rowToRuntime);
   }
 
   async create(input: NewRuntime): Promise<Runtime> {
-    const { rows } = await this.pool.query<RuntimeRow>(
+    return insertReturning(
+      this.pool,
+      "runtime",
       `INSERT INTO runtime (
          id, daemon_id, cli, cli_version, capabilities, created_at
        ) VALUES (
@@ -78,9 +83,8 @@ export class PostgresRuntimeRepository implements RuntimeRepository {
         input.capabilities ? JSON.stringify(input.capabilities) : null,
         input.created_at ?? null,
       ],
+      rowToRuntime,
     );
-    if (!rows[0]) throw new Error("runtime INSERT returned no row");
-    return rowToRuntime(rows[0]);
   }
 
   async update(id: string, patch: RuntimePatch): Promise<Runtime> {
