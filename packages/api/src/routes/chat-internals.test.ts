@@ -237,4 +237,38 @@ describe("chainToMessages", () => {
     const system = out.find((m) => m.role === "system");
     expect(system?.content.startsWith("Wake reason: deploy progress check")).toBe(true);
   });
+
+  it("renders a failed turn through failureMessageFor and skips its summary", () => {
+    // The agent bubble for a failed turn must not fall back to the raw
+    // result_summary — the user gets the friendlier failure text instead.
+    const s = makeSession({
+      id: "sess_f",
+      intent: "deploy",
+      status: "failed",
+      error: "the deploy script exited before pushing",
+      result_summary: "ignored on the failure path",
+    });
+    const out = chainToMessages({ head_id: s.id, sessions: [s] });
+    expect(out.map((m) => m.role)).toEqual(["user", "agent"]);
+    expect(out[1]?.content).toBe("the deploy script exited before pushing");
+    expect(out[1]?.session_id).toBe("sess_f");
+  });
+
+  it("falls back to the daemon-log pointer for a failed turn with no usable detail", () => {
+    const s = makeSession({ id: "sess_f", intent: "deploy", status: "failed" });
+    const out = chainToMessages({ head_id: s.id, sessions: [s] });
+    expect(out[1]?.content).toContain("beevibe-daemon start");
+  });
+
+  it("emits only the system message for a failed wake turn", () => {
+    const s = makeSession({
+      id: "sess_wake",
+      intent: "<system-wake>\n1 tasks completed:\n  - X — done\nDecide next steps.\n</system-wake>",
+      status: "failed",
+      error: "resume failed",
+    });
+    const out = chainToMessages({ head_id: s.id, sessions: [s] });
+    expect(out.map((m) => m.role)).toEqual(["system", "agent"]);
+    expect(out[1]?.content).toBe("resume failed");
+  });
 });
