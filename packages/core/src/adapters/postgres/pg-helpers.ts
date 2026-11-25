@@ -57,11 +57,7 @@ export async function findRowById<Row extends QueryResultRow, T>(
   id: string,
   map: (row: Row) => T,
 ): Promise<T | undefined> {
-  const { rows } = await pool.query<Row>(
-    `SELECT * FROM ${table} WHERE id = $1 LIMIT 1`,
-    [id],
-  );
-  return rows[0] ? map(rows[0]) : undefined;
+  return queryOne(pool, `SELECT * FROM ${table} WHERE id = $1 LIMIT 1`, [id], map);
 }
 
 export interface UpdateRowOptions<Row extends QueryResultRow, Patch extends object, T> {
@@ -135,4 +131,72 @@ export function taskPriorityRankSql(column: string): string {
             WHEN 'low'      THEN 1
             ELSE 0
           END)`;
+}
+
+/**
+ * Run a query that yields at most one row and map it into its domain type,
+ * or `undefined` when there is no row.
+ *
+ * Every repository's `findBy*` lookup is this shape — query, then
+ * `rows[0] ? map(rows[0]) : undefined` — written out 22 times across 14
+ * repos. The SQL stays at the call site (that is the part which genuinely
+ * differs); what this factors out is the row-presence narrowing, which is
+ * where a hand-written copy goes wrong under `noUncheckedIndexedAccess`
+ * (reaching for `rows[0]!` instead of a real check).
+ *
+ * `findRowById` is the by-primary-key special case of this.
+ */
+export async function queryOne<Row extends QueryResultRow, T>(
+  pool: Pool,
+  sql: string,
+  params: unknown[],
+  map: (row: Row) => T,
+): Promise<T | undefined> {
+  const { rows } = await pool.query<Row>(sql, params);
+  return rows[0] ? map(rows[0]) : undefined;
+}
+
+/**
+ * Run a query and map every row into its domain type.
+ *
+ * The list counterpart of {@link queryOne} — `rows.map(rowToX)` appeared 43
+ * times across 16 repos. Returns `[]` for an empty result, so callers never
+ * need a null check.
+ */
+export async function queryMany<Row extends QueryResultRow, T>(
+  pool: Pool,
+  sql: string,
+  params: unknown[],
+  map: (row: Row) => T,
+): Promise<T[]> {
+  const { rows } = await pool.query<Row>(sql, params);
+  return rows.map(map);
+}
+
+/**
+ * Run an `INSERT ... RETURNING *` and map the inserted row.
+ *
+ * A successful INSERT always returns its row, so an empty result means the
+ * statement did not do what the caller thinks it did (an `ON CONFLICT DO
+ * NOTHING` that conflicted, a rewritten statement, a trigger that suppressed
+ * the write). Repos spelled this guard two different ways: an explicit
+ * `if (!rows[0]) throw new Error("<table> INSERT returned no row")` in four
+ * of them, and a bare `rows[0]!` non-null assertion in the rest. The bare
+ * `!` is the dangerous one — it turns a no-op INSERT into a `TypeError`
+ * raised later, wherever the undefined row is first read, instead of an
+ * error naming the table that failed to write. This makes the checked form
+ * the only form.
+ *
+ * `table` is used only to build that message.
+ */
+export async function insertReturning<Row extends QueryResultRow, T>(
+  pool: Pool,
+  table: string,
+  sql: string,
+  params: unknown[],
+  map: (row: Row) => T,
+): Promise<T> {
+  const { rows } = await pool.query<Row>(sql, params);
+  if (!rows[0]) throw new Error(`${table} INSERT returned no row`);
+  return map(rows[0]);
 }
