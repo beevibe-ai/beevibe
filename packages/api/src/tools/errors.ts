@@ -59,3 +59,30 @@ export function toolErrorFromThrown(
     isError: true,
   };
 }
+
+/**
+ * Wrap a tool handler so anything it throws becomes the catch-all error
+ * envelope rather than escaping into the MCP server.
+ *
+ * Every handler in `hierarchy.ts` and `mesh.ts` opened with the same
+ * `try` / `catch (err) { return toolErrorFromThrown(err) }` frame — 21
+ * byte-identical copies, which is 21 chances to add a tool and forget the
+ * frame. A handler that throws past the MCP server surfaces to the agent
+ * as a transport error instead of a readable tool result, so the frame is
+ * load-bearing rather than defensive decoration.
+ *
+ * Handlers needing more than the catch-all keep their own `try`: the
+ * `revise_task` handler maps `InvalidTaskTransitionError` to a coded
+ * result first, and is deliberately left unwrapped.
+ */
+export function safeHandler(
+  handler: (input: Record<string, unknown>) => Promise<AgentToolResult>,
+): (input: Record<string, unknown>) => Promise<AgentToolResult> {
+  return async (input) => {
+    try {
+      return await handler(input);
+    } catch (err) {
+      return toolErrorFromThrown(err);
+    }
+  };
+}
