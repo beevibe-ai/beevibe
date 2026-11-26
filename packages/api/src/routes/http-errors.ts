@@ -120,6 +120,16 @@ export async function loadOwned<T>(
 }
 
 /**
+ * A domain error class paired with the HTTP status and wire code it answers
+ * with. Checked with `instanceof`, in the order given.
+ */
+export interface ErrorMapping {
+  error: new (...args: never[]) => Error;
+  status: number;
+  code: string;
+}
+
+/**
  * The 500 handler every route router grew its own copy of.
  *
  * `signin`, `signup`, `room` and `view` each defined a byte-identical (bar the
@@ -138,11 +148,31 @@ export async function loadOwned<T>(
  * logs. That is a real divergence in what we expose, not an accident of
  * copy-paste, so chat keeps its own handler and this factory preserves the
  * existing behavior of the other four rather than quietly changing it.
+ *
+ * `mappings` carries the known domain errors a router answers with a
+ * specific status. `task` mapped TaskNotFoundError / InvalidTaskTransition,
+ * `escalation` mapped three of its own, and `negotiation` mapped one
+ * inline — each hand-rolling the same `if (err instanceof X) { res
+ * .status(S).json({ error: C, message: err.message }); return; }` ladder in
+ * front of a byte-identical 500 tail. So that tail was duplicated a further
+ * three times beyond the four this factory already covered.
+ *
+ * Mapped errors match in order and are deliberately NOT logged — they are
+ * expected outcomes (a 404 for an id that isn't there), and only the
+ * unmapped 500 path writes to the console. That is what all three routers
+ * already did.
  */
 export function makeErrorHandler(
   tag: string,
+  mappings: readonly ErrorMapping[] = [],
 ): (err: unknown, res: Response, context?: string) => void {
   return (err, res, context) => {
+    for (const mapping of mappings) {
+      if (err instanceof mapping.error) {
+        res.status(mapping.status).json({ error: mapping.code, message: err.message });
+        return;
+      }
+    }
     console.error(context ? `[${tag}: ${context}]` : `[${tag}]`, err);
     res.status(500).json({
       error: "internal_error",
