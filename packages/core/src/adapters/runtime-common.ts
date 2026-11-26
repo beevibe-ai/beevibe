@@ -1,5 +1,10 @@
 import { tmpdir } from "node:os";
-import type { RuntimeContext, RuntimeHealth, RuntimeResult } from "../ports/runtime.js";
+import type {
+  RuntimeContext,
+  RuntimeHealth,
+  RuntimeResult,
+  RuntimeStep,
+} from "../ports/runtime.js";
 import { type CliProcessResult, runCliProcess } from "./claude-code/spawn.js";
 
 /**
@@ -156,6 +161,55 @@ export function createStdoutLineReader(handleLine: (line: string) => void): {
       }
     },
   };
+}
+
+/**
+ * Collect a CLI's NDJSON event stream while streaming step events as they
+ * arrive.
+ *
+ * All three CLI runtimes need both halves at once: the full event list, to
+ * parse into a `RuntimeResult` once the process settles, *and* a per-event
+ * callback so a watching UI sees progress live. Each had written the same
+ * line handler by hand —
+ *
+ *     const events: T[] = [];
+ *     const handleLine = (line) => {
+ *       const evt = parseLine(line);
+ *       if (!evt) return;
+ *       events.push(evt);
+ *       if (!context.onStep) return;
+ *       for (const step of extractSteps(evt)) context.onStep(step);
+ *     };
+ *     const stdout = createStdoutLineReader(handleLine);
+ *
+ * differing only in the two function references. The ordering matters and
+ * is easy to get subtly wrong: the event must be appended before steps are
+ * streamed, and an unparseable line must be skipped without aborting the
+ * stream, so one implementation beats three.
+ *
+ * `onStep` is read once per line rather than captured: a context with no
+ * `onStep` skips `extractSteps` entirely instead of building step objects
+ * nobody consumes.
+ */
+export function createEventCollector<T>(
+  parseLine: (line: string) => T | null,
+  extractSteps: (event: T) => RuntimeStep[],
+  onStep: ((step: RuntimeStep) => void) | undefined,
+): {
+  /** Events parsed so far, in stream order. Read after `flush()`. */
+  events: T[];
+  onLog: (stream: "stdout" | "stderr", chunk: string) => void;
+  flush: () => void;
+} {
+  const events: T[] = [];
+  const reader = createStdoutLineReader((line) => {
+    const event = parseLine(line);
+    if (!event) return;
+    events.push(event);
+    if (!onStep) return;
+    for (const step of extractSteps(event)) onStep(step);
+  });
+  return { events, onLog: reader.onLog, flush: reader.flush };
 }
 
 /**

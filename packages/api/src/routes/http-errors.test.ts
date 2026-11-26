@@ -3,6 +3,7 @@ import type { Request, Response } from "express";
 import {
   invalidBody,
   loadOwned,
+  makeErrorHandler,
   requireNullableString,
   requireParam,
 } from "./http-errors.js";
@@ -217,5 +218,78 @@ describe("requireNullableString", () => {
     expect(res.body).toMatchObject({
       message: "expected { runtime_id: string | null }",
     });
+  });
+});
+
+describe("makeErrorHandler", () => {
+  class NotFound extends Error {}
+  class BadState extends Error {}
+  class SubclassOfNotFound extends NotFound {}
+
+  const mappings = [
+    { error: NotFound, status: 404, code: "thing_not_found" },
+    { error: BadState, status: 409, code: "invalid_state" },
+  ];
+
+  it("maps a known error to its status and wire code", () => {
+    const res = fakeRes();
+    makeErrorHandler("task route", mappings)(new NotFound("task_1 missing"), res);
+    expect(res.statusCode).toBe(404);
+    expect(res.body).toEqual({ error: "thing_not_found", message: "task_1 missing" });
+  });
+
+  it("picks the mapping that matches, not merely the first one", () => {
+    const res = fakeRes();
+    makeErrorHandler("task route", mappings)(new BadState("already done"), res);
+    expect(res.statusCode).toBe(409);
+    expect(res.body).toEqual({ error: "invalid_state", message: "already done" });
+  });
+
+  it("does not log a mapped error — it is an expected outcome", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    makeErrorHandler("task route", mappings)(new NotFound("nope"), fakeRes());
+    expect(spy).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it("falls through to a logged 500 for an unmapped error", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeErrorHandler("task route", mappings)(new Error("db down"), res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "db down" });
+    expect(spy).toHaveBeenCalledWith("[task route]", expect.any(Error));
+    spy.mockRestore();
+  });
+
+  it("matches a subclass of a mapped error", () => {
+    const res = fakeRes();
+    makeErrorHandler("task route", mappings)(new SubclassOfNotFound("child"), res);
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("stringifies a non-Error throw on the 500 path", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeErrorHandler("task route", mappings)("just a string", res);
+    expect(res.body).toEqual({ error: "internal_error", message: "just a string" });
+    spy.mockRestore();
+  });
+
+  it("with no mappings behaves exactly as the plain 500 handler did", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const res = fakeRes();
+    makeErrorHandler("room route")(new Error("boom"), res);
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: "internal_error", message: "boom" });
+    expect(spy).toHaveBeenCalledWith("[room route]", expect.any(Error));
+    spy.mockRestore();
+  });
+
+  it("appends a per-call context to the log tag", () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => {});
+    makeErrorHandler("view route")(new Error("boom"), fakeRes(), "task detail");
+    expect(spy).toHaveBeenCalledWith("[view route: task detail]", expect.any(Error));
+    spy.mockRestore();
   });
 });

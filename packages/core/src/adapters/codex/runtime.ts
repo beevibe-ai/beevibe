@@ -14,7 +14,7 @@ import {
   cancelledResult,
   cliVersionHealthCheck,
   composePrompt,
-  createStdoutLineReader,
+  createEventCollector,
   finalizeCliResult,
   warnIfTruncated,
 } from "../runtime-common.js";
@@ -22,7 +22,6 @@ import {
   extractCodexStepEvents,
   parseCodexEventLine,
   parseCodexEvents,
-  type CodexEvent,
 } from "./stream-json.js";
 
 export interface CodexRuntimeConfig {
@@ -120,17 +119,11 @@ export class CodexRuntime implements AgentRuntime {
     if (context.env) Object.assign(env, context.env);
     if (prepared) env.BEEVIBE_AGENT_API_KEY = prepared.agentApiKey;
 
-    const events: CodexEvent[] = [];
-    const handleLine = (line: string): void => {
-      const evt = parseCodexEventLine(line);
-      if (!evt) return;
-      events.push(evt);
-      if (!context.onStep) return;
-      for (const step of extractCodexStepEvents(evt)) {
-        context.onStep(step);
-      }
-    };
-    const stdout = createStdoutLineReader(handleLine);
+    const stdout = createEventCollector(
+      parseCodexEventLine,
+      extractCodexStepEvents,
+      context.onStep,
+    );
 
     const result = await runCliProcess({
       command: this.config.command ?? "codex",
@@ -155,7 +148,7 @@ export class CodexRuntime implements AgentRuntime {
     const lastMessage = readIfExists(lastMessagePath);
     removeIfExists(lastMessagePath);
     return finalizeCliResult(
-      parseCodexEvents(events, result.exitCode, lastMessage),
+      parseCodexEvents(stdout.events, result.exitCode, lastMessage),
       result,
     );
   }

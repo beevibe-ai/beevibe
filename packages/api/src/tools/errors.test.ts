@@ -4,7 +4,7 @@ import {
   MeshCapacityError,
   MeshMaxRoundsError,
 } from "../mesh/types.js";
-import { toolError, toolErrorFromThrown } from "./errors.js";
+import { safeHandler, toolError, toolErrorFromThrown } from "./errors.js";
 
 describe("toolError", () => {
   it("puts the code in `error` and the human text in `message`", () => {
@@ -71,5 +71,55 @@ describe("toolErrorFromThrown", () => {
     // carry a `code` too, and must not be reported as a mesh code.
     const pgLike = Object.assign(new Error("duplicate key"), { code: "23505" });
     expect(toolErrorFromThrown(pgLike).content).toEqual({ error: "duplicate key" });
+  });
+});
+
+describe("safeHandler", () => {
+  it("passes a successful result through untouched", async () => {
+    const wrapped = safeHandler(async (input) => ({ content: { echo: input.q } }));
+    await expect(wrapped({ q: "hi" })).resolves.toEqual({ content: { echo: "hi" } });
+  });
+
+  it("preserves a handler's own isError result rather than re-wrapping it", async () => {
+    const wrapped = safeHandler(async () => ({
+      content: { error: "query must be a non-empty string" },
+      isError: true,
+    }));
+    await expect(wrapped({})).resolves.toEqual({
+      content: { error: "query must be a non-empty string" },
+      isError: true,
+    });
+  });
+
+  it("converts a rejected promise into the catch-all envelope", async () => {
+    const wrapped = safeHandler(async () => {
+      throw new Error("db down");
+    });
+    await expect(wrapped({})).resolves.toEqual({
+      content: { error: "db down" },
+      isError: true,
+    });
+  });
+
+  it("keeps the code and meta of a coded mesh error", async () => {
+    const wrapped = safeHandler(async () => {
+      throw new MeshCapacityError("at cap", { agentId: "agent_1", running: 3, cap: 3 });
+    });
+    const result = await wrapped({});
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({ error: "MESH_CAPACITY_EXCEEDED", agentId: "agent_1" });
+  });
+
+  it("catches a synchronous throw from the handler body", async () => {
+    // The frame this replaced was an inline `try` around the body, so a
+    // throw before the first `await` was caught too. A wrapper that only
+    // attached `.catch()` to the returned promise would miss this.
+    const wrapped = safeHandler((() => {
+      throw new Error("sync boom");
+    }) as unknown as Parameters<typeof safeHandler>[0]);
+    await expect(wrapped({})).resolves.toEqual({
+      content: { error: "sync boom" },
+      isError: true,
+    });
   });
 });
