@@ -20,7 +20,10 @@ import type {
   WorkProductRepository,
 } from "@beevibe/core";
 import type { MemoryAgent } from "@beevibe/core/services/memory";
-import type { TaskService } from "@beevibe/core/services/task-service";
+import {
+  type TaskService,
+  InvalidTaskTransitionError,
+} from "@beevibe/core/services/task-service";
 import type { EscalationService } from "@beevibe/core/services/escalation-service";
 import type { DispatchService } from "@beevibe/core/services/dispatch-service";
 import type { Pool } from "@beevibe/core/adapters/postgres";
@@ -69,6 +72,17 @@ function fakeWp(overrides: Partial<WorkProduct> = {}): WorkProduct {
   };
 }
 
+/** Only the fields add_to_escalation reads; the rest of the row is noise. */
+function fakeEscalation(
+  overrides: Record<string, unknown> = {},
+): Awaited<ReturnType<EscalationService["addContribution"]>> {
+  return {
+    id: "esc_1",
+    status: "pending",
+    ...overrides,
+  } as unknown as Awaited<ReturnType<EscalationService["addContribution"]>>;
+}
+
 function fakeWpListItem(
   overrides: Partial<WorkProductListItem> = {},
 ): WorkProductListItem {
@@ -84,12 +98,20 @@ function buildServices(overrides: {
   memoryAgent?: Partial<MemoryAgent>;
   escalationService?: Partial<EscalationService>;
   dispatchService?: Partial<DispatchService>;
+  coreMemoryRepo?: Partial<CoreMemoryBlockRepository>;
+  agentProvisionEventRepo?: Partial<AgentProvisionEventRepository>;
 } = {}) {
   const agentRepo = {
     findById: vi.fn(async () => undefined),
     findParent: vi.fn(async () => undefined),
     findSubordinates: vi.fn(async () => []),
     findPeers: vi.fn(async () => []),
+    // provisionAgent (create_subordinate_agent) calls through to
+    // agentRepo.create + coreMemoryRepo.initDefaults, so both need a
+    // default here rather than a mocked-out provisionAgent.
+    create: vi.fn(async (input: Record<string, unknown>) =>
+      fakeAgent(input as Partial<Agent>),
+    ),
     ...overrides.agentRepo,
   } as unknown as AgentRepository;
 
@@ -155,12 +177,15 @@ function buildServices(overrides: {
   const coreMemoryRepo = {
     findByAgent: vi.fn(async () => []),
     updateContent: vi.fn(async () => undefined),
+    initDefaults: vi.fn(async () => []),
+    ...overrides.coreMemoryRepo,
   } as unknown as CoreMemoryBlockRepository;
 
   const agentProvisionEventRepo = {
     create: vi.fn(async () => ({})),
     countByParentSince: vi.fn(async () => 0),
     listByParent: vi.fn(async () => []),
+    ...overrides.agentProvisionEventRepo,
   } as unknown as AgentProvisionEventRepository;
 
   return {
@@ -574,5 +599,737 @@ describe("check_work_status", () => {
     const result = await callTool(tools, "check_work_status", { agent_id: "rando" });
     expect(result.isError).toBe(true);
     expect((result.content as { error: string }).error).toBe("unauthorized");
+  });
+});
+
+// ── revise_task ──────────────────────────────────────────────────────────
+
+describe("revise_task", () => {
+  /** A subordinate assigned to `agent_t`'s child, blocked and revisable. */
+  function revisableServices(
+    over: Parameters<typeof buildServices>[0] = {},
+  ): ReturnType<typeof buildServices> {
+    return buildServices({
+      taskRepo: {
+        findById: vi.fn(async () =>
+          fakeTask({ id: "task_1", status: "blocked", assignee_id: "sub_1" }),
+        ),
+      },
+      agentRepo: {
+        findById: vi.fn(async () =>
+          fakeAgent({ id: "sub_1", parent_agent_id: "agent_t" }),
+        ),
+      },
+      taskService: {
+        reviseTask: vi.fn(async () =>
+          fakeTask({
+            id: "task_1",
+            status: "needs_revision",
+            assignee_id: "sub_1",
+            next_dispatch_context: {
+              kind: "revision",
+              feedback: "try the mirror registry",
+              from_status: "blocked",
+            },
+          } as Partial<Task>),
+        ),
+      },
+      ...over,
+    });
+  }
+
+  const CTX = { agentId: "agent_t", hierarchyLevel: "team" as HierarchyLevel };
+
+  it("revises the task and reports the status transition", async () => {
+    const services = revisableServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "revise_task", {
+      task_id: "task_1",
+      feedback: "try the mirror registry",
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(services.taskService.reviseTask).toHaveBeenCalledWith(
+      "task_1",
+      "try the mirror registry",
+      { source: "parent_agent", reviserAgentId: "agent_t" },
+    );
+    expect(result.content).toMatchObject({
+      revised: true,
+      task_id: "task_1",
+      // Post-#186 the flip to 'revision' is the daemon's job on claim,
+      // so the tool must report needs_revision, not an optimistic guess.
+      status: "needs_revision",
+      from_status: "blocked",
+    });
+  });
+
+  it("dispatches the revision session with the stamped revision context", async () => {
+    const services = revisableServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    await callTool(tools, "revise_task", {
+      task_id: "task_1",
+      feedback: "try the mirror registry",
+    });
+
+    expect(services.dispatchService.dispatchTask).toHaveBeenCalledTimes(1);
+    const arg = (services.dispatchService.dispatchTask as ReturnType<typeof vi.fn>)
+      .mock.calls[0]?.[0] as Record<string, unknown>;
+    // The reason is reused verbatim so the <context type="revision">
+    // block the IC sees matches what reviseTask persisted.
+    expect(arg).toMatchObject({
+      agentId: "sub_1",
+      type: "task",
+      reason: {
+        kind: "revision",
+        feedback: "try the mirror registry",
+        from_status: "blocked",
+      },
+    });
+    expect(String(arg.intent)).toContain("task_1");
+  });
+
+  it("skips the dispatch when no revision context was stamped", async () => {
+    // Without a revision context there is nothing to resume with, so
+    // dispatching would hand the IC an empty guidance block.
+    const services = revisableServices({
+      taskService: {
+        reviseTask: vi.fn(async () =>
+          fakeTask({ id: "task_1", status: "needs_revision", assignee_id: "sub_1" }),
+        ),
+      },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "revise_task", {
+      task_id: "task_1",
+      feedback: "f",
+    });
+
+    expect(result.isError).toBeFalsy();
+    expect(services.dispatchService.dispatchTask).not.toHaveBeenCalled();
+  });
+
+  it("requires task_id and feedback", async () => {
+    const services = revisableServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    for (const input of [
+      {},
+      { task_id: "task_1" },
+      { feedback: "f" },
+      { task_id: "", feedback: "f" },
+    ]) {
+      const result = await callTool(tools, "revise_task", input);
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatchObject({
+        error: "task_id and feedback required",
+      });
+    }
+    expect(services.taskService.reviseTask).not.toHaveBeenCalled();
+  });
+
+  it("reports task_not_found for an unknown task", async () => {
+    const services = buildServices({
+      taskRepo: { findById: vi.fn(async () => undefined) },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "revise_task", {
+      task_id: "task_nope",
+      feedback: "f",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({
+      error: "task_not_found",
+      task_id: "task_nope",
+    });
+  });
+
+  it("reports task_unassigned when the task has no assignee", async () => {
+    const services = buildServices({
+      taskRepo: {
+        findById: vi.fn(async () => fakeTask({ assignee_id: undefined })),
+      },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "revise_task", {
+      task_id: "task_1",
+      feedback: "f",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({ error: "task_unassigned" });
+  });
+
+  it("reports assignee_not_found when the assignee row is gone", async () => {
+    const services = buildServices({
+      taskRepo: {
+        findById: vi.fn(async () => fakeTask({ assignee_id: "sub_gone" })),
+      },
+      agentRepo: { findById: vi.fn(async () => undefined) },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "revise_task", {
+      task_id: "task_1",
+      feedback: "f",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({ error: "assignee_not_found" });
+  });
+
+  it("refuses a caller who is not the assignee's direct parent", async () => {
+    // Only the direct parent may revise; a grandparent or a peer team
+    // agent redirecting someone else's IC is the case this blocks.
+    const services = buildServices({
+      taskRepo: {
+        findById: vi.fn(async () =>
+          fakeTask({ status: "blocked", assignee_id: "sub_1" }),
+        ),
+      },
+      agentRepo: {
+        findById: vi.fn(async () =>
+          fakeAgent({ id: "sub_1", parent_agent_id: "agent_other" }),
+        ),
+      },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "revise_task", {
+      task_id: "task_1",
+      feedback: "f",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({ error: "not_parent" });
+    expect(services.taskService.reviseTask).not.toHaveBeenCalled();
+  });
+
+  it("maps an InvalidTaskTransitionError to invalid_transition", async () => {
+    // Reviving a task that is not blocked is the common case — the
+    // service owns the state machine and the tool surfaces its refusal
+    // with a code the agent can branch on.
+    const services = revisableServices({
+      taskService: {
+        reviseTask: vi.fn(async () => {
+          throw new InvalidTaskTransitionError(
+            "cannot revise task from status 'done'",
+          );
+        }),
+      },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "revise_task", {
+      task_id: "task_1",
+      feedback: "f",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({ error: "invalid_transition" });
+  });
+
+  it("falls back to the catch-all envelope for an unexpected throw", async () => {
+    const services = revisableServices({
+      taskService: {
+        reviseTask: vi.fn(async () => {
+          throw new Error("pool exhausted");
+        }),
+      },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "revise_task", {
+      task_id: "task_1",
+      feedback: "f",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({ error: "pool exhausted" });
+  });
+});
+
+// ── add_to_escalation ────────────────────────────────────────────────────
+
+describe("add_to_escalation", () => {
+  const CTX = { agentId: "agent_t", hierarchyLevel: "team" as HierarchyLevel };
+
+  it("adds the caller's contribution and notifies listeners", async () => {
+    const services = buildServices({
+      escalationService: {
+        addContribution: vi.fn(async () => fakeEscalation({
+          initiator_submitted_at: new Date("2026-04-01"),
+          counterparty_submitted_at: undefined,
+        })),
+      },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "add_to_escalation", {
+      escalation_id: "esc_1",
+      proposals: [{ title: "B", description: "do B" }],
+      open_questions: ["what is the SLA?"],
+    });
+
+    expect(services.escalationService.addContribution).toHaveBeenCalledWith({
+      escalationId: "esc_1",
+      callerAgentId: "agent_t",
+      proposals: [{ title: "B", description: "do B" }],
+      openQuestions: ["what is the SLA?"],
+    });
+    expect(result.content).toMatchObject({
+      escalation_id: "esc_1",
+      status: "pending",
+      both_sides_submitted: false,
+    });
+  });
+
+  it("reports both_sides_submitted once each slot has a timestamp", async () => {
+    // This is the signal the human reviewer waits on, so it has to flip
+    // only when both timestamps are actually present.
+    const services = buildServices({
+      escalationService: {
+        addContribution: vi.fn(async () => fakeEscalation({
+          initiator_submitted_at: new Date("2026-04-01"),
+          counterparty_submitted_at: new Date("2026-04-02"),
+        })),
+      },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "add_to_escalation", {
+      escalation_id: "esc_1",
+    });
+
+    expect(result.content).toMatchObject({ both_sides_submitted: true });
+  });
+
+  it("emits pg_notify('escalation_updated') with the escalation id", async () => {
+    const services = buildServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    await callTool(tools, "add_to_escalation", { escalation_id: "esc_1" });
+
+    const call = (services.pool.query as ReturnType<typeof vi.fn>).mock.calls[0];
+    expect(String(call?.[0])).toContain("escalation_updated");
+    expect(call?.[1]).toEqual(["esc_1"]);
+  });
+
+  it("requires escalation_id", async () => {
+    const services = buildServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    for (const escalation_id of [undefined, "", null]) {
+      const result = await callTool(tools, "add_to_escalation", {
+        escalation_id,
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatchObject({ error: "escalation_id required" });
+    }
+    expect(services.escalationService.addContribution).not.toHaveBeenCalled();
+  });
+
+  it("omits proposals and open_questions when they are not arrays", async () => {
+    const services = buildServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    await callTool(tools, "add_to_escalation", {
+      escalation_id: "esc_1",
+      proposals: "B then C",
+      open_questions: "what is the SLA?",
+    });
+
+    expect(services.escalationService.addContribution).toHaveBeenCalledWith(
+      expect.objectContaining({ proposals: undefined, openQuestions: undefined }),
+    );
+  });
+
+  it("drops non-string open_questions entries", async () => {
+    const services = buildServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    await callTool(tools, "add_to_escalation", {
+      escalation_id: "esc_1",
+      open_questions: ["what is the SLA?", 7, null, "who owns it?"],
+    });
+
+    expect(services.escalationService.addContribution).toHaveBeenCalledWith(
+      expect.objectContaining({
+        openQuestions: ["what is the SLA?", "who owns it?"],
+      }),
+    );
+  });
+
+  it("returns the catch-all envelope when the service throws", async () => {
+    const services = buildServices({
+      escalationService: {
+        addContribution: vi.fn(async () => {
+          throw new Error("already submitted");
+        }),
+      },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "add_to_escalation", {
+      escalation_id: "esc_1",
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({ error: "already submitted" });
+  });
+});
+
+// ── create_subordinate_agent ─────────────────────────────────────────────
+
+describe("create_subordinate_agent", () => {
+  const CTX = { agentId: "agent_t", hierarchyLevel: "team" as HierarchyLevel };
+
+  const GOOD = {
+    name: "Backend specialist",
+    tag_line: "Owns the API surface",
+    persona: "Pragmatic, test-first.",
+    domain: "Express routes, Postgres adapters.",
+  };
+
+  function parentServices(
+    over: Parameters<typeof buildServices>[0] = {},
+  ): ReturnType<typeof buildServices> {
+    return buildServices({
+      agentRepo: {
+        findById: vi.fn(async () =>
+          fakeAgent({
+            id: "agent_t",
+            name: "Team lead",
+            owner_id: "person_1",
+            hierarchy_level: "team",
+            runtime_config: { type: "claude", model: "opus" },
+          } as Partial<Agent>),
+        ),
+        create: vi.fn(async (input: Record<string, unknown>) =>
+          fakeAgent({ ...(input as Partial<Agent>), id: "agent_child" }),
+        ),
+      },
+      ...over,
+    });
+  }
+
+  it("provisions an IC under the caller and returns its identity", async () => {
+    const services = parentServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "create_subordinate_agent", GOOD);
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content).toEqual({
+      created: {
+        id: "agent_child",
+        name: "Backend specialist",
+        hierarchy_level: "ic",
+        parent_agent_id: "agent_t",
+      },
+    });
+  });
+
+  it("inherits the parent's owner and runtime, overriding only the name line", async () => {
+    // Sharing the parent's runtime keeps every agent on the same Claude
+    // auth; the persona belongs in core memory, not the system prompt.
+    const services = parentServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    await callTool(tools, "create_subordinate_agent", GOOD);
+
+    const arg = (services.agentRepo.create as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as Record<string, unknown>;
+    expect(arg).toMatchObject({
+      owner_id: "person_1",
+      parent_agent_id: "agent_t",
+      hierarchy_level: "ic",
+    });
+    expect(arg.runtime_config).toMatchObject({
+      type: "claude",
+      model: "opus",
+      system_prompt_addition: "You are Backend specialist.",
+    });
+  });
+
+  it("pins the child to the parent's runtime when the parent has one", async () => {
+    const services = parentServices({
+      agentRepo: {
+        findById: vi.fn(async () =>
+          fakeAgent({ id: "agent_t", preferred_runtime_id: "rt_1" } as Partial<Agent>),
+        ),
+        create: vi.fn(async (input: Record<string, unknown>) =>
+          fakeAgent({ ...(input as Partial<Agent>), id: "agent_child" }),
+        ),
+      },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    await callTool(tools, "create_subordinate_agent", GOOD);
+
+    const arg = (services.agentRepo.create as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as Record<string, unknown>;
+    expect(arg.preferred_runtime_id).toBe("rt_1");
+  });
+
+  it("leaves preferred_runtime_id unset when the parent has none", async () => {
+    const services = parentServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    await callTool(tools, "create_subordinate_agent", GOOD);
+
+    const arg = (services.agentRepo.create as ReturnType<typeof vi.fn>).mock
+      .calls[0]?.[0] as Record<string, unknown>;
+    expect("preferred_runtime_id" in arg).toBe(false);
+  });
+
+  it("seeds the three required core-memory blocks", async () => {
+    const services = parentServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    await callTool(tools, "create_subordinate_agent", GOOD);
+
+    const written = (
+      services.coreMemoryRepo.updateContent as ReturnType<typeof vi.fn>
+    ).mock.calls.map((c) => [c[1], c[2]]);
+    expect(written).toEqual([
+      ["tag_line", "Owns the API surface"],
+      ["persona", "Pragmatic, test-first."],
+      ["domain", "Express routes, Postgres adapters."],
+    ]);
+  });
+
+  it("seeds the optional blocks only when content was supplied", async () => {
+    // Empty optional blocks stay empty so the IC can fill them itself;
+    // writing "" would look like a deliberate blank.
+    const services = parentServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    await callTool(tools, "create_subordinate_agent", {
+      ...GOOD,
+      active_context: "Migrating auth to SSO",
+      constraints: "   ",
+    });
+
+    const names = (
+      services.coreMemoryRepo.updateContent as ReturnType<typeof vi.fn>
+    ).mock.calls.map((c) => c[1]);
+    expect(names).toContain("active_context");
+    expect(names).not.toContain("constraints");
+  });
+
+  it("writes the provision audit row", async () => {
+    const services = parentServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    await callTool(tools, "create_subordinate_agent", GOOD);
+
+    expect(services.agentProvisionEventRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parent_agent_id: "agent_t",
+        child_agent_id: "agent_child",
+        owner_person_id: "person_1",
+        child_name: "Backend specialist",
+        persona: "Pragmatic, test-first.",
+        domain: "Express routes, Postgres adapters.",
+      }),
+    );
+  });
+
+  it("still reports success when the audit row fails to write", async () => {
+    // The agent and its memory are the user-visible artifacts; losing
+    // the audit row must not strand a provisioned agent behind an error.
+    const errSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const services = parentServices({
+      agentProvisionEventRepo: {
+        create: vi.fn(async () => {
+          throw new Error("audit table full");
+        }),
+      },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "create_subordinate_agent", GOOD);
+
+    expect(result.isError).toBeFalsy();
+    expect(result.content).toMatchObject({
+      created: { id: "agent_child" },
+    });
+    expect(errSpy).toHaveBeenCalled();
+    errSpy.mockRestore();
+  });
+
+  it("is withheld from IC callers entirely", async () => {
+    // The handler also carries an `ic_cannot_spawn` guard, but it is not
+    // reachable through buildHierarchyTools: the same hierarchyLevel
+    // that would trip it also withholds the tool. That branch is
+    // defence-in-depth for a future caller that assembles the team set
+    // directly, so the reachable contract is the absence asserted here.
+    const services = parentServices();
+    const icTools = buildHierarchyTools(
+      { agentId: "agent_i", hierarchyLevel: "ic" },
+      services,
+    );
+
+    expect(icTools.some((t) => t.name === "create_subordinate_agent")).toBe(
+      false,
+    );
+  });
+
+  it("requires name, tag_line, persona and domain", async () => {
+    const services = parentServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    for (const key of ["name", "tag_line", "persona", "domain"]) {
+      const result = await callTool(tools, "create_subordinate_agent", {
+        ...GOOD,
+        [key]: "   ",
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatchObject({ error: "missing_required_fields" });
+    }
+    expect(services.agentRepo.create).not.toHaveBeenCalled();
+  });
+
+  it("rejects a tag_line over 100 chars and reports the actual length", async () => {
+    const services = parentServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "create_subordinate_agent", {
+      ...GOOD,
+      tag_line: "x".repeat(101),
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({
+      error: "tag_line_too_long",
+      actual: 101,
+    });
+  });
+
+  it("accepts a tag_line of exactly 100 chars", async () => {
+    const services = parentServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "create_subordinate_agent", {
+      ...GOOD,
+      tag_line: "x".repeat(100),
+    });
+
+    expect(result.isError).toBeFalsy();
+  });
+
+  it("rejects a name over 80 chars or carrying control characters", async () => {
+    const services = parentServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    for (const name of ["x".repeat(81), "Back\u0000end", "Back\u001fend", "Back\u007fend"]) {
+      const result = await callTool(tools, "create_subordinate_agent", {
+        ...GOOD,
+        name,
+      });
+      expect(result.isError).toBe(true);
+      expect(result.content).toMatchObject({ error: "invalid_name" });
+    }
+    expect(services.agentRepo.create).not.toHaveBeenCalled();
+  });
+
+  it("reports parent_not_found when the caller's row is missing", async () => {
+    const services = buildServices({
+      agentRepo: { findById: vi.fn(async () => undefined) },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "create_subordinate_agent", GOOD);
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({
+      error: "parent_not_found",
+      agent_id: "agent_t",
+    });
+  });
+
+  it("enforces the per-parent daily spawn cap", async () => {
+    // Guards against a team agent looping on create_subordinate_agent
+    // and provisioning dozens of specialists.
+    const services = parentServices({
+      agentProvisionEventRepo: {
+        countByParentSince: vi.fn(async () => 8),
+      },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "create_subordinate_agent", GOOD);
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({
+      error: "subordinate_daily_cap",
+      cap: 8,
+      count: 8,
+    });
+    expect(services.agentRepo.create).not.toHaveBeenCalled();
+  });
+
+  it("counts the cap over a 24h window for the calling parent", async () => {
+    const services = parentServices();
+    const tools = buildHierarchyTools(CTX, services);
+
+    await callTool(tools, "create_subordinate_agent", GOOD);
+
+    expect(
+      services.agentProvisionEventRepo.countByParentSince,
+    ).toHaveBeenCalledWith("agent_t", 24 * 60 * 60);
+  });
+
+  it("allows a spawn one under the cap", async () => {
+    const services = parentServices({
+      agentProvisionEventRepo: {
+        countByParentSince: vi.fn(async () => 7),
+      },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "create_subordinate_agent", GOOD);
+
+    expect(result.isError).toBeFalsy();
+  });
+
+  it("documents each field from the shared IC block templates", async () => {
+    // The tool's field guidance and the <core_memory> block descriptions
+    // come from one source so they can't drift apart.
+    const services = parentServices();
+    const tool = findTool(
+      buildHierarchyTools(CTX, services),
+      "create_subordinate_agent",
+    );
+    const props = tool.schema.properties as Record<string, { description: string }>;
+
+    for (const field of ["tag_line", "persona", "domain", "active_context", "constraints"]) {
+      expect(props[field]?.description.length ?? 0).toBeGreaterThan(0);
+    }
+    expect(tool.schema.required).toEqual(["name", "tag_line", "persona", "domain"]);
+  });
+
+  it("returns the catch-all envelope when provisioning throws", async () => {
+    const services = parentServices({
+      agentRepo: {
+        findById: vi.fn(async () => fakeAgent({ id: "agent_t" })),
+        create: vi.fn(async () => {
+          throw new Error("unique violation on name");
+        }),
+      },
+    });
+    const tools = buildHierarchyTools(CTX, services);
+
+    const result = await callTool(tools, "create_subordinate_agent", GOOD);
+
+    expect(result.isError).toBe(true);
+    expect(result.content).toMatchObject({ error: "unique violation on name" });
   });
 });
