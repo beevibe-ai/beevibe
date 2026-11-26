@@ -13,7 +13,7 @@ import {
   cancelledResult,
   cliVersionHealthCheck,
   composePrompt,
-  createStdoutLineReader,
+  createEventCollector,
   finalizeCliResult,
   warnIfTruncated,
 } from "../runtime-common.js";
@@ -21,7 +21,6 @@ import {
   extractOpenCodeStepEvents,
   parseOpenCodeEventLine,
   parseOpenCodeEvents,
-  type OpenCodeEvent,
 } from "./stream-json.js";
 
 export interface OpenCodeRuntimeConfig {
@@ -76,17 +75,11 @@ export class OpenCodeRuntime implements AgentRuntime {
     const env: Record<string, string | undefined> = { ...process.env };
     if (context.env) Object.assign(env, context.env);
 
-    const events: OpenCodeEvent[] = [];
-    const handleLine = (line: string): void => {
-      const evt = parseOpenCodeEventLine(line);
-      if (!evt) return;
-      events.push(evt);
-      if (!context.onStep) return;
-      for (const step of extractOpenCodeStepEvents(evt)) {
-        context.onStep(step);
-      }
-    };
-    const stdout = createStdoutLineReader(handleLine);
+    const stdout = createEventCollector(
+      parseOpenCodeEventLine,
+      extractOpenCodeStepEvents,
+      context.onStep,
+    );
 
     const result = await runCliProcess({
       command: this.config.command ?? "opencode",
@@ -105,7 +98,7 @@ export class OpenCodeRuntime implements AgentRuntime {
 
     if (result.aborted) return cancelledResult(result);
 
-    return finalizeCliResult(parseOpenCodeEvents(events, result.exitCode), result);
+    return finalizeCliResult(parseOpenCodeEvents(stdout.events, result.exitCode), result);
   }
 
   async healthCheck(): Promise<RuntimeHealth> {

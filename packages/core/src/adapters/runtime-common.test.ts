@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { CliProcessResult } from "./claude-code/spawn.js";
-import type { RuntimeResult } from "../ports/runtime.js";
+import type { RuntimeResult, RuntimeStep } from "../ports/runtime.js";
 import {
   cancelledResult,
+  createEventCollector,
   createStdoutLineReader,
   finalizeCliResult,
   warnIfTruncated,
@@ -145,5 +146,81 @@ describe("finalizeCliResult", () => {
   it("omits stderr on failure when the CLI wrote nothing", () => {
     const failed: RuntimeResult = { status: "failed", output: "" };
     expect(finalizeCliResult(failed, cliResult({ stderr: "", exitCode: 1 })).stderr).toBeUndefined();
+  });
+});
+
+describe("createEventCollector", () => {
+  interface Evt {
+    n: number;
+  }
+  const parse = (line: string): Evt | null => {
+    const n = Number(line);
+    return Number.isFinite(n) && line.trim() !== "" ? { n } : null;
+  };
+  const steps = (e: Evt): RuntimeStep[] =>
+    [{ kind: "text", text: `step ${e.n}`, at: "now" } as unknown as RuntimeStep];
+
+  it("collects every parsed event in stream order", () => {
+    const c = createEventCollector(parse, steps, undefined);
+    c.onLog("stdout", "1\n2\n3\n");
+    expect(c.events).toEqual([{ n: 1 }, { n: 2 }, { n: 3 }]);
+  });
+
+  it("streams a step per event as it arrives, not after flush", () => {
+    const seen: RuntimeStep[] = [];
+    const c = createEventCollector(parse, steps, (s) => seen.push(s));
+    c.onLog("stdout", "1\n");
+    expect(seen).toHaveLength(1);
+    c.onLog("stdout", "2\n");
+    expect(seen).toHaveLength(2);
+    expect(seen.map((s) => (s as unknown as { text: string }).text)).toEqual([
+      "step 1",
+      "step 2",
+    ]);
+  });
+
+  it("skips an unparseable line without aborting the stream", () => {
+    const c = createEventCollector(parse, steps, undefined);
+    c.onLog("stdout", "1\nnot a number\n2\n");
+    expect(c.events).toEqual([{ n: 1 }, { n: 2 }]);
+  });
+
+  it("reassembles an event split across chunk boundaries", () => {
+    const c = createEventCollector(parse, steps, undefined);
+    c.onLog("stdout", "12");
+    c.onLog("stdout", "3\n");
+    expect(c.events).toEqual([{ n: 123 }]);
+  });
+
+  it("emits a trailing partial line only on flush", () => {
+    const c = createEventCollector(parse, steps, undefined);
+    c.onLog("stdout", "7");
+    expect(c.events).toEqual([]);
+    c.flush();
+    expect(c.events).toEqual([{ n: 7 }]);
+  });
+
+  it("ignores stderr", () => {
+    const c = createEventCollector(parse, steps, undefined);
+    c.onLog("stderr", "1\n");
+    expect(c.events).toEqual([]);
+  });
+
+  it("does not call extractSteps at all when there is no onStep", () => {
+    const extract = vi.fn(steps);
+    const c = createEventCollector(parse, extract, undefined);
+    c.onLog("stdout", "1\n2\n");
+    expect(c.events).toHaveLength(2);
+    expect(extract).not.toHaveBeenCalled();
+  });
+
+  it("appends the event before streaming its steps", () => {
+    // An onStep that reads back `events` must already see the event that
+    // produced the step — the parsed result is built from this list, so a
+    // consumer correlating the two would otherwise be off by one.
+    const lengths: number[] = [];
+    const c = createEventCollector(parse, steps, () => lengths.push(c.events.length));
+    c.onLog("stdout", "1\n2\n");
+    expect(lengths).toEqual([1, 2]);
   });
 });
