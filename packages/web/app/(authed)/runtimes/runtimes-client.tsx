@@ -19,6 +19,7 @@ import {
   type RuntimesListResponse,
 } from "@/lib/api/client";
 import { isApiConfigured } from "@/lib/api/config";
+import { apiNotConfiguredCopy } from "@/lib/api/gate-copy";
 import { describeError } from "@/lib/api/http";
 import { queryKeys } from "@/lib/hooks/keys";
 import { formatRelativeTime } from "@/lib/format";
@@ -80,11 +81,7 @@ function Body({
   if (!isApiConfigured) {
     return (
       <div className="rounded-lg border border-dashed border-border">
-        <EmptyState
-          icon={Terminal}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the API server to load this page."
-        />
+        <EmptyState icon={Terminal} {...apiNotConfiguredCopy("runtimes")} />
       </div>
     );
   }

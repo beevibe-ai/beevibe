@@ -11,6 +11,7 @@ import { ChainBudget } from "@/components/mesh/chain-budget";
 import { MeshWindowPills } from "@/components/mesh/window-pills";
 import { useMeshOverview } from "@/lib/hooks/use-mesh";
 import { isApiConfigured } from "@/lib/api/config";
+import { apiNotConfiguredCopy } from "@/lib/api/gate-copy";
 import type { MeshDisplay, MeshHover, MeshWindow } from "@/lib/types/mesh";
 
 export function MeshClient() {
@@ -59,11 +60,7 @@ function Body({
   if (!isApiConfigured) {
     return (
       <div className="rounded-lg border border-dashed border-border">
-        <EmptyState
-          icon={Network}
-          title="No mesh asks yet"
-          description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load mesh activity."
-        />
+        <EmptyState icon={Network} {...apiNotConfiguredCopy("mesh activity")} />
       </div>
     );
   }

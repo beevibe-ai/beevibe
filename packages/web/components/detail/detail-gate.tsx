@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { AlertTriangle, type LucideIcon } from "lucide-react";
 import { isApiConfigured } from "@/lib/api/config";
+import { apiNotConfiguredCopy, loadFailedCopy } from "@/lib/api/gate-copy";
 import { DetailShell } from "./detail-shell";
 import { EmptyState } from "@/components/empty-state";
 
@@ -46,11 +47,7 @@ export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }
   if (!isApiConfigured) {
     return (
       <DetailShell nav={nav}>
-        <EmptyState
-          icon={icon}
-          title="API not configured"
-          description={`Set NEXT_PUBLIC_BV_API_URL and run the API server to load this ${noun}.`}
-        />
+        <EmptyState icon={icon} {...apiNotConfiguredCopy(`this ${noun}`)} />
       </DetailShell>
     );
   }
@@ -60,14 +57,9 @@ export function DetailGate<T>({ nav, icon, noun, id, query, skeleton, children }
   }
 
   if (query.isError || !query.data) {
-    const Noun = noun.charAt(0).toUpperCase() + noun.slice(1);
     return (
       <DetailShell nav={nav}>
-        <EmptyState
-          icon={AlertTriangle}
-          title={`Couldn't load ${noun}`}
-          description={`${Noun} ${id} could not be fetched. Check the API server logs.`}
-        />
+        <EmptyState icon={AlertTriangle} {...loadFailedCopy(noun, id)} />
       </DetailShell>
     );
   }
