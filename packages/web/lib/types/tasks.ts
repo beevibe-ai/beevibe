@@ -1,1 +1,1 @@
-export type { TaskListItem, TaskLatestSessionSummary } from "@beevibe/api/views/types";
+export type { TaskListItem } from "@beevibe/api/views/types";

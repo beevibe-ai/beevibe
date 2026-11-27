@@ -1,1 +1,1 @@
-export type { CoreBlockDisplay, AgentMetrics } from "@beevibe/api/views/types";
+export type { CoreBlockDisplay } from "@beevibe/api/views/types";

@@ -1,1 +1,1 @@
-export type { AgentNetwork, AgentPeerOwner } from "@beevibe/api/views/types";
+export type { AgentNetwork } from "@beevibe/api/views/types";
