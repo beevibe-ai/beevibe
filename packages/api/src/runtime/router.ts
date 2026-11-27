@@ -44,6 +44,7 @@ import {
 } from "@beevibe/core/services/agent-session";
 import { transitionTaskOnClaim } from "@beevibe/core/services/dispatch-service";
 import { requireDaemon, requireHuman } from "../auth/middleware.js";
+import { invalidBody } from "../routes/http-errors.js";
 import type { DaemonHub } from "./hub.js";
 
 export interface RuntimeRouterDeps {
@@ -97,10 +98,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
     if (!requireHuman(req, res)) return;
     const body = parseRegisterBody(req.body);
     if (!body) {
-      res.status(400).json({
-        error: "invalid_body",
-        message: "expected { external_id, device_name, runtimes: [{cli, cli_version?}] }",
-      });
+      invalidBody(res, "expected { external_id, device_name, runtimes: [{cli, cli_version?}] }");
       return;
     }
 
@@ -134,10 +132,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
     if (!requireDaemon(req, res)) return;
     const body = parseSyncBody(req.body);
     if (!body) {
-      res.status(400).json({
-        error: "invalid_body",
-        message: "expected { runtimes: [{cli, cli_version?}] }",
-      });
+      invalidBody(res, "expected { runtimes: [{cli, cli_version?}] }");
       return;
     }
     try {
@@ -156,7 +151,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
     if (!requireDaemon(req, res)) return;
     const body = req.body as Partial<RuntimeHeartbeatRequest>;
     if (!Array.isArray(body.runtime_ids) || body.runtime_ids.length === 0) {
-      res.status(400).json({ error: "invalid_body", message: "runtime_ids required" });
+      invalidBody(res, "runtime_ids required");
       return;
     }
     const runtimeIds = body.runtime_ids.filter(
@@ -229,7 +224,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
     if (!requireDaemon(req, res)) return;
     const body = req.body as Partial<RuntimeEventsRequest>;
     if (!Array.isArray(body.events) || body.events.length === 0) {
-      res.status(400).json({ error: "invalid_body", message: "events required" });
+      invalidBody(res, "events required");
       return;
     }
     const events = body.events.filter(isValidEvent);
@@ -270,7 +265,7 @@ export function createRuntimeRouter(deps: RuntimeRouterDeps): Router {
     if (!requireDaemon(req, res)) return;
     const body = req.body as Partial<RuntimeDoneRequest>;
     if (!body.session_id || typeof body.session_id !== "string") {
-      res.status(400).json({ error: "invalid_body", message: "session_id required" });
+      invalidBody(res, "session_id required");
       return;
     }
     if (!isTerminalSessionStatus(body.status)) {
