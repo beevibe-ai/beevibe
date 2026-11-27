@@ -6,6 +6,7 @@ import { PromotionEventSkeleton } from "@/components/skeletons";
 import { PromotionEventRow } from "@/components/promotions/event-row";
 import { usePromotions } from "@/lib/hooks/use-promotions";
 import { isApiConfigured } from "@/lib/api/config";
+import { apiNotConfiguredCopy } from "@/lib/api/gate-copy";
 import type { PromotionEvent } from "@/lib/types/promotion-events";
 
 export function PromotionsClient() {
@@ -53,11 +54,7 @@ function Body({
 }) {
   if (!isApiConfigured) {
     return (
-      <EmptyWrapper
-        icon={TrendingUp}
-        title="No promotions yet"
-        description="Set NEXT_PUBLIC_BV_API_URL and run the MCP server to load promotion events."
-      />
+      <EmptyWrapper icon={TrendingUp} {...apiNotConfiguredCopy("promotion events")} />
     );
   }
 

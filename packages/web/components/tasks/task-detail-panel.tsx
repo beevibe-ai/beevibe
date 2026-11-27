@@ -11,13 +11,10 @@ import { EmptyState } from "@/components/empty-state";
 import { HierChip } from "@/components/hier-chip";
 import { Skeleton } from "@/components/skeleton";
 import { isApiConfigured } from "@/lib/api/config";
+import { apiNotConfiguredCopy, loadFailedCopy } from "@/lib/api/gate-copy";
 import { useTask } from "@/lib/hooks/use-tasks";
-import {
-  useApproveTask,
-  useRejectTask,
-  useReviseTask,
-} from "@/lib/hooks/use-task-mutations";
 import { TaskLifecycleActions } from "./task-lifecycle-actions";
+import { TaskReviewActions, useTaskReview } from "./task-review-actions";
 import { formatRelativeTime, shortId } from "@/lib/format";
 import { richTextToMarkdown, type RichText } from "@/components/rich-text";
 import { cn } from "@/lib/utils";
@@ -59,11 +56,7 @@ function PanelBody({ taskId }: { taskId: string }) {
   if (!isApiConfigured) {
     return (
       <div className="p-4">
-        <EmptyState
-          icon={ListChecks}
-          title="API not configured"
-          description="Set NEXT_PUBLIC_BV_API_URL to load this task."
-        />
+        <EmptyState icon={ListChecks} {...apiNotConfiguredCopy("this task")} />
       </div>
     );
   }
@@ -81,11 +74,7 @@ function PanelBody({ taskId }: { taskId: string }) {
   if (isError || !data) {
     return (
       <div className="p-4">
-        <EmptyState
-          icon={AlertTriangle}
-          title="Couldn't load task"
-          description={`Task ${taskId} could not be fetched.`}
-        />
+        <EmptyState icon={AlertTriangle} {...loadFailedCopy("task", taskId)} />
       </div>
     );
   }
@@ -369,95 +358,7 @@ function SessionRow({
 // ── Review actions ──────────────────────────────────────────────────
 
 function ReviewActions({ task }: { task: TaskDetail }) {
-  const approve = useApproveTask(task.id);
-  const reject = useRejectTask(task.id);
-  const revise = useReviseTask(task.id);
-  const [reviseOpen, setReviseOpen] = useState(false);
-  const [feedback, setFeedback] = useState("");
-
-  const anyPending = approve.isPending || reject.isPending || revise.isPending;
-  const lastError =
-    approve.error ?? reject.error ?? revise.error ?? null;
-
-  const submit = () => {
-    const fb = feedback.trim();
-    if (!fb) return;
-    revise.mutate(
-      { feedback: fb },
-      {
-        onSuccess: () => {
-          setFeedback("");
-          setReviseOpen(false);
-        },
-      },
-    );
-  };
-
-  return (
-    <div className="mt-4 space-y-2">
-      <div className="flex items-center gap-2">
-        <button
-          type="button"
-          disabled={anyPending}
-          onClick={() => approve.mutate({})}
-          className="flex-1 h-8 px-3 rounded text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {approve.isPending ? "Approving…" : "Approve"}
-        </button>
-        <button
-          type="button"
-          disabled={anyPending}
-          onClick={() => setReviseOpen((v) => !v)}
-          className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          Revise
-        </button>
-        <button
-          type="button"
-          disabled={anyPending}
-          onClick={() => reject.mutate({})}
-          className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-        >
-          {reject.isPending ? "Rejecting…" : "Reject"}
-        </button>
-      </div>
-      {reviseOpen ? (
-        <div className="rounded-md border border-border bg-background/40 p-2.5 space-y-2">
-          <textarea
-            value={feedback}
-            onChange={(e) => setFeedback(e.target.value)}
-            placeholder="What needs to change?"
-            rows={3}
-            className="w-full rounded border border-border bg-background px-2 py-1 text-xs focus:outline-none focus:ring-1 focus:ring-ring"
-          />
-          <div className="flex justify-end gap-2">
-            <button
-              type="button"
-              onClick={() => {
-                setReviseOpen(false);
-                setFeedback("");
-              }}
-              className="h-7 px-2.5 rounded text-[11px] font-medium border border-border hover:bg-secondary transition-colors cursor-pointer"
-            >
-              Cancel
-            </button>
-            <button
-              type="button"
-              disabled={anyPending || feedback.trim().length === 0}
-              onClick={submit}
-              className="h-7 px-2.5 rounded text-[11px] font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              {revise.isPending ? "Submitting…" : "Submit"}
-            </button>
-          </div>
-        </div>
-      ) : null}
-      {lastError ? (
-        <p className="text-[11px] text-status-failed">
-          Action failed: {lastError.message}
-        </p>
-      ) : null}
-    </div>
-  );
+  const review = useTaskReview(task.id);
+  return <TaskReviewActions review={review} variant="panel" />;
 }
 
