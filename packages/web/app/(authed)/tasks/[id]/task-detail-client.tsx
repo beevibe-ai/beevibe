@@ -14,11 +14,7 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api/client";
 import { useTask } from "@/lib/hooks/use-tasks";
-import {
-  useApproveTask,
-  useRejectTask,
-  useReviseTask,
-} from "@/lib/hooks/use-task-mutations";
+import { TaskReviewActions, useTaskReview } from "@/components/tasks/task-review-actions";
 import { TaskLifecycleActions } from "@/components/tasks/task-lifecycle-actions";
 import { isTerminalTaskStatus } from "@/lib/task-status";
 import { TaskStatusPill, SessionStatusPill } from "@/components/detail/status-pill";
@@ -74,48 +70,16 @@ export function TaskDetailClient({ taskId }: { taskId: string }) {
   );
 }
 
-type ReviewMutation = "approve" | "reject" | "revise";
-
-function reviewStatus(
-  hooks: Record<ReviewMutation, { isPending: boolean; isError: boolean; error: Error | null }>,
-) {
-  const actions: ReviewMutation[] = ["approve", "reject", "revise"];
-  return {
-    anyPending: actions.some((a) => hooks[a].isPending),
-    lastError: actions.map((a) => hooks[a].error).find((e) => e) ?? null,
-    lastErrorAction: actions.find((a) => hooks[a].isError) ?? null,
-  };
-}
-
 function TaskDetailLoaded({ task }: { task: TaskDetail }) {
   const isInReview = task.status === "review";
   const isTerminal = isTerminalTaskStatus(task.status);
   const activeSession = task.latest_session?.status === "running" ? task.latest_session : null;
-  const approve = useApproveTask(task.id);
-  const reject = useRejectTask(task.id);
-  const revise = useReviseTask(task.id);
-  const [reviseOpen, setReviseOpen] = useState(false);
-  const [reviseFeedback, setReviseFeedback] = useState("");
-
   // Review actions in flight gate each other AND the lifecycle Cancel
   // button (passed via `extraDisabled` to TaskLifecycleActions) — if
   // cancel raced with an in-flight approve/reject, the task could end
   // up in a weird mid-transition state.
-  const { anyPending: reviewPending, lastError, lastErrorAction } = reviewStatus({ approve, reject, revise });
-
-  const submitRevise = () => {
-    const feedback = reviseFeedback.trim();
-    if (!feedback) return;
-    revise.mutate(
-      { feedback },
-      {
-        onSuccess: () => {
-          setReviseFeedback("");
-          setReviseOpen(false);
-        },
-      },
-    );
-  };
+  const review = useTaskReview(task.id);
+  const reviewPending = review.anyPending;
 
   return (
     <>
@@ -129,75 +93,7 @@ function TaskDetailLoaded({ task }: { task: TaskDetail }) {
         </div>
         <TaskLifecycleActions task={task} extraDisabled={reviewPending} />
 
-        {isInReview ? (
-          <>
-            <div className="flex justify-end gap-2 mb-2">
-              <button
-                type="button"
-                disabled={reviewPending}
-                onClick={() => reject.mutate({})}
-                className="h-9 px-3 rounded text-sm font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {reject.isPending ? "Rejecting…" : "Reject"}
-              </button>
-              <button
-                type="button"
-                disabled={reviewPending}
-                onClick={() => setReviseOpen((v) => !v)}
-                className="h-9 px-3 rounded text-sm font-medium border border-border hover:bg-secondary transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Request revision
-              </button>
-              <button
-                type="button"
-                disabled={reviewPending}
-                onClick={() => approve.mutate({})}
-                className="h-9 px-3 rounded text-sm font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {approve.isPending ? "Approving…" : "Approve"}
-              </button>
-            </div>
-            {reviseOpen ? (
-              <div className="mb-2 rounded-lg border border-border bg-card p-3 space-y-2">
-                <label className="block text-[11px] uppercase tracking-wider text-muted-foreground font-medium">
-                  Revision feedback
-                </label>
-                <textarea
-                  value={reviseFeedback}
-                  onChange={(e) => setReviseFeedback(e.target.value)}
-                  placeholder="What needs to change?"
-                  rows={3}
-                  className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-ring"
-                />
-                <div className="flex justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setReviseOpen(false);
-                      setReviseFeedback("");
-                    }}
-                    className="h-8 px-3 rounded text-xs font-medium border border-border hover:bg-secondary transition-colors cursor-pointer"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    disabled={reviewPending || reviseFeedback.trim().length === 0}
-                    onClick={submitRevise}
-                    className="h-8 px-3 rounded text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-opacity cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                  >
-                    {revise.isPending ? "Submitting…" : "Submit revision"}
-                  </button>
-                </div>
-              </div>
-            ) : null}
-          </>
-        ) : null}
-        {lastError ? (
-          <div className="text-xs text-status-failed text-right">
-            Couldn&apos;t {lastErrorAction ?? "submit"}: {lastError.message}
-          </div>
-        ) : null}
+        {isInReview ? <TaskReviewActions review={review} variant="page" /> : null}
       </header>
 
       {task.status === "blocked" && task.blocker_reason ? (
